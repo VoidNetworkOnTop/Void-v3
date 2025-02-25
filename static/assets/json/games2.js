@@ -145,11 +145,6 @@ const games2Data = [
     link: __uv$config.prefix + __uv$config.encodeUrl("https://media.abcya.com/games/blue_box/html/index.html")
 },
 {
-    title: "Taming.io", 
-    imgSrc: "https://lh7-us.googleusercontent.com/FdvN87WTIIj7zggusKau6JplAWDM8rypnSZB6xLP2CrJLOBqkXmqm57zY1X4a7oqdRjDaNoyGFgY2K7rH7EfUXQXNmtXggPvRJEpyhnw-nJY9RQ3mmxkSK7DZONv9c8Q31q5PviveteeRA7snbZlPLdvS2ryfQ",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://taming.io/crazygames.html?ref=crazygames&skipPrerollExp25=true")
-},
-{
     title: "DreadHead Parkour", 
     imgSrc: "https://lh7-us.googleusercontent.com/jf5vvm3zg5py2cwdn3r_YTxSd-d-UdDXKbL2XwWpmT7g-hxF3iXd4nNcTrEOjPJhELf8rCnjDVAk0Vo4-VCDJuBA_XzvYBZ9hZhiK1diVev6goyQMAw96ECCpQlBUHVbi7kPweQArljg6AoWdWwXbXaTP5201w",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://scrap-metal.github.io/s7/dreadhead-parkour/")
