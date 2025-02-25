@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin>
     <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com">
     
-    <!-- UV Proxy Scripts - ADDED -->
+    <!-- UV Proxy Scripts -->
     <script src="/uv/uv.bundle.js"></script>
     <script src="/uv/uv.config.js"></script>
     
@@ -41,7 +41,7 @@
             const swAllowedHostnames = ['localhost', '127.0.0.1'];
             
             const swPath = new URL('/uv/sw.js', window.location.origin).href;
-            const swScope = new URL('/uv/', window.location.origin).href; // MODIFIED: correct scope
+            const swScope = new URL('/uv/', window.location.origin).href;
 
             if (location.protocol === 'https:' || swAllowedHostnames.includes(location.hostname)) {
                 window.addEventListener('load', () => {
@@ -70,7 +70,7 @@
             requestAnimationFrame(() => loadGameUrl(gameUrl));
         }
 
-        // MODIFIED: Updated loadGameUrl function to use UV proxy
+        // CORRECTED: loadGameUrl function that properly handles URLs
         function loadGameUrl(gameUrl) {
             const iframe = document.getElementById('gframe');
             const loadingScreen = document.getElementById('loadingScreen');
@@ -112,16 +112,28 @@
                 };
 
                 try {
+                    // Decode the URL from the query parameter
                     const decodedUrl = decodeURIComponent(gameUrl);
+                    console.log('Decoded game URL:', decodedUrl);
                     
-                    // Process the URL through Ultraviolet proxy
-                    if (window.__uv$config) {
-                        console.log('[UV] Processing game URL through UV proxy:', decodedUrl);
+                    // Important: Don't re-encode URLs that are already in UV format
+                    if (decodedUrl.startsWith('/uv/') || decodedUrl.startsWith('/service/')) {
+                        console.log('URL appears to be already in UV format, using directly:', decodedUrl);
+                        iframe.src = decodedUrl;
+                    } 
+                    // Handle bare URLs (not starting with http or https)
+                    else if (!decodedUrl.startsWith('http://') && !decodedUrl.startsWith('https://')) {
+                        console.log('URL is not an absolute URL, using directly:', decodedUrl);
+                        iframe.src = decodedUrl;
+                    }
+                    // Handle regular URLs that need encoding
+                    else if (window.__uv$config) {
+                        console.log('Encoding URL through UV proxy:', decodedUrl);
                         const encodedUrl = window.__uv$config.prefix + window.__uv$config.encodeUrl(decodedUrl);
-                        console.log('[UV] Encoded URL:', encodedUrl);
+                        console.log('Encoded URL:', encodedUrl);
                         iframe.src = encodedUrl;
                     } else {
-                        console.error('[UV] __uv$config not found! Loading direct URL, but it may not work');
+                        console.error('__uv$config not found! Using URL directly, but it may not work');
                         iframe.src = decodedUrl;
                     }
                 } catch (error) {
@@ -281,7 +293,8 @@
             <div class="loading-spinner"></div>
             <div class="loading-text">Loading Game...</div>
         </div>
-        <iframe class="game_iframe" id="gframe" allow="fullscreen; autoplay; keyboard"></iframe>
+        <!-- Removed "keyboard" from allow attributes since it's not recognized -->
+        <iframe class="game_iframe" id="gframe" allow="fullscreen; autoplay"></iframe>
         <div class="footer">
             <button onclick="toggleFullScreen()">
                 <img src="/nav/fullscreenbutton.png" alt="Fullscreen">
