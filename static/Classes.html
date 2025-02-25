@@ -8,6 +8,10 @@
     <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin>
     <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com">
     
+    <!-- UV Proxy Scripts - ADDED -->
+    <script src="/uv/uv.bundle.js"></script>
+    <script src="/uv/uv.config.js"></script>
+    
     <script>
         window.addEventListener('pageshow', function(event) {
             if (event.persisted) {
@@ -37,13 +41,13 @@
             const swAllowedHostnames = ['localhost', '127.0.0.1'];
             
             const swPath = new URL('/uv/sw.js', window.location.origin).href;
-            const swScope = new URL('/', window.location.origin).href;
+            const swScope = new URL('/uv/', window.location.origin).href; // MODIFIED: correct scope
 
             if (location.protocol === 'https:' || swAllowedHostnames.includes(location.hostname)) {
                 window.addEventListener('load', () => {
                     navigator.serviceWorker.register(swPath, { scope: swScope })
                         .then(reg => {
-                            console.log('Service Worker registered successfully');
+                            console.log('Service Worker registered successfully with scope:', reg.scope);
                             
                             if (reg.active) {
                                 reg.active.postMessage({ type: 'SKIP_WAITING' });
@@ -66,6 +70,7 @@
             requestAnimationFrame(() => loadGameUrl(gameUrl));
         }
 
+        // MODIFIED: Updated loadGameUrl function to use UV proxy
         function loadGameUrl(gameUrl) {
             const iframe = document.getElementById('gframe');
             const loadingScreen = document.getElementById('loadingScreen');
@@ -108,12 +113,22 @@
 
                 try {
                     const decodedUrl = decodeURIComponent(gameUrl);
-                    iframe.src = decodedUrl;
+                    
+                    // Process the URL through Ultraviolet proxy
+                    if (window.__uv$config) {
+                        console.log('[UV] Processing game URL through UV proxy:', decodedUrl);
+                        const encodedUrl = window.__uv$config.prefix + window.__uv$config.encodeUrl(decodedUrl);
+                        console.log('[UV] Encoded URL:', encodedUrl);
+                        iframe.src = encodedUrl;
+                    } else {
+                        console.error('[UV] __uv$config not found! Loading direct URL, but it may not work');
+                        iframe.src = decodedUrl;
+                    }
                 } catch (error) {
                     loadingScreen.style.opacity = '0';
                     loadingScreen.style.visibility = 'hidden';
-                    console.error('URL decoding error:', error);
-                    alert('Invalid game URL. Please try again.');
+                    console.error('URL processing error:', error);
+                    alert('Failed to process game URL. Please try again.');
                 }
             }
         }
