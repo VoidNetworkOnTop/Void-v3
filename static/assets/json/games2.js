@@ -184,6 +184,11 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/aQayYMGrPJ5bSXljew1lev_iMzaZpPR6qsI3vhUiyBMqmurV-CiBpC7KHzWXSHvRfdfNZ8P7arurrlvTIAbiFTEECRviS5DcoFWFlpdn7Lf2WiHiX-1GvoL6MeACRzSSpekd8O_HBEFQlv_VFRzOVJZhL7SS2w",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://escaperoad2.io/escape-road-2.embed")
 },
+{
+    title: "Hole.io", 
+    imgSrc: "https://lh7-us.googleusercontent.com/fP9XY_TtvaWROK8DON0_lY3qxqFilEzrOCYcrm70CeDjtRogK1uSc5eSXHBhxKy-r-ENdLL9iDxuP2gitRDmS8lVvAAF24g4vhogKjteHS5SadaQxnpEczjosd_uFvoolYaBEkvThZq2aUa-pN7XihIiSrm2zA",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://holey-io-battle-royale.game-files.crazygames.com/holey-io-battle-royale/6/index.html?aaConfigcatTest=true")
+},
 
 
 
