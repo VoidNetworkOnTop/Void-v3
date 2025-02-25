@@ -14,6 +14,11 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     <!-- Favicon -->
     <link rel="shortcut icon" href="./assets/favicon.png" type="image/png">
     
+    <!-- Preload UV Service Worker -->
+    <link rel="preload" href="/uv/sw.js" as="script">
+    <link rel="preload" href="/uv/uv.bundle.js" as="script">
+    <link rel="preload" href="/uv/uv.config.js" as="script">
+    
     <!-- Stylesheets -->
     <link rel="stylesheet" href="/assets/css/styles.css">
     <link rel="stylesheet" href="/assets/css/index.css">
@@ -495,14 +500,15 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     });
 </script>
 
-<!-- Enhanced Service Worker Registration -->
+<!-- FIXED Service Worker Registration -->
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const stockSW = "/uv/sw.js";
-        const swScope = "/";
+        // IMPORTANT: Use the allowed scope instead of root scope
+        const swScope = "/uv/"; 
         const swAllowedHostnames = ["localhost", "127.0.0.1"];
         
-        // Function to preload and register the service worker
+        // Function to preload and register the service worker with correct scope
         async function preloadServiceWorker() {
             // Check if service workers are supported
             if (!('serviceWorker' in navigator)) {
@@ -517,16 +523,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             }
             
             try {
-                // First, try to prefetch the service worker file
-                const prefetch = document.createElement('link');
-                prefetch.rel = 'prefetch';
-                prefetch.href = stockSW;
-                document.head.appendChild(prefetch);
+                console.log('Registering UV service worker with scope:', swScope);
                 
-                // Wait a moment to give the prefetch a chance to start
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-                // Register the service worker
+                // Register the service worker with the CORRECT scope
                 const registration = await navigator.serviceWorker.register(stockSW, { 
                     scope: swScope,
                     updateViaCache: 'none'
@@ -540,7 +539,8 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                     registration.active.postMessage({ type: 'SKIP_WAITING' });
                 }
                 
-                console.log('UV service worker successfully preloaded and registered');
+                console.log('UV service worker successfully registered with scope:', registration.scope);
+                window.__uv$serviceWorkerRegistered = true;
                 return true;
             } catch (error) {
                 console.error('UV service worker registration failed:', error);
@@ -585,15 +585,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                 <h3 class="game-title">${game.title}</h3>
             `;
             
-            // Enhance click handler to ensure service worker is ready
+            // Update click handler to work with service worker scope limitations
             gameElement.onclick = async () => {
-                // Check if service worker is already active and proceed immediately if so
-                if (navigator.serviceWorker.controller) {
-                    window.location.href = `/Classes.html?game=${encodeURIComponent(game.link)}`;
-                    return;
-                }
-                
-                // Otherwise, show loading overlay and wait for service worker to be ready
+                // Show loading overlay
                 const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
                     loadingOverlay.classList.remove('fade-out');
@@ -602,23 +596,20 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                 }
                 
                 try {
-                    // Try to activate service worker with timeout
-                    await Promise.race([
-                        window.preloadServiceWorker ? window.preloadServiceWorker() : 
-                            Promise.resolve(navigator.serviceWorker.ready),
-                        new Promise(resolve => setTimeout(() => resolve(), 2000))
-                    ]);
-                    
-                    // Show completion
+                    // Progress animation
                     const progressFill = document.getElementById('progressFill');
                     if (progressFill) {
+                        progressFill.style.width = '30%';
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        progressFill.style.width = '60%';
+                        await new Promise(resolve => setTimeout(resolve, 100));
                         progressFill.style.width = '100%';
                         await new Promise(resolve => setTimeout(resolve, 200));
                     }
                 } catch (error) {
-                    console.error('Error preparing game:', error);
+                    console.error('Error in loading animation:', error);
                 } finally {
-                    // Proceed with navigation regardless
+                    // Navigate to the game
                     window.location.href = `/Classes.html?game=${encodeURIComponent(game.link)}`;
                 }
             };
