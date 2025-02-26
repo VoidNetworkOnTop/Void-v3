@@ -189,6 +189,11 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/fP9XY_TtvaWROK8DON0_lY3qxqFilEzrOCYcrm70CeDjtRogK1uSc5eSXHBhxKy-r-ENdLL9iDxuP2gitRDmS8lVvAAF24g4vhogKjteHS5SadaQxnpEczjosd_uFvoolYaBEkvThZq2aUa-pN7XihIiSrm2zA",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://holey-io-battle-royale.game-files.crazygames.com/holey-io-battle-royale/6/index.html?aaConfigcatTest=true")
 },
+{
+    title: "We Become What We Behold", 
+    imgSrc: "https://lh7-us.googleusercontent.com/Nbbw9xp6kOtRO59CP0zxpwHY2lKlvaibA7rvDi2lJA9O0JqZNJhErdCQxq5YHWwP0S9bDGrs-c2GzMw7zUTi3qc-obm3eM-YTOLqX0HODxnfUVgGFUtGrFR71oLb2mkiS6SF5BeRTzLKRda8jHjUvS7GN4J2pw",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://cdn.now.gg/html5-games/com.nowgg.h5.pub501.app51543/we-become-what-we-behold/index.html")
+},
 
 
 
