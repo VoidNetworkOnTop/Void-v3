@@ -13,6 +13,9 @@
     <script src="/uv/uv.config.js"></script>
     
     <script>
+        // Store the current game URL globally
+        let currentGameUrl = "";
+        
         window.addEventListener('pageshow', function(event) {
             if (event.persisted) {
                 window.location.reload();
@@ -61,53 +64,118 @@
         function initGame() {
             const urlParams = new URLSearchParams(window.location.search);
             const gameUrl = urlParams.get('game');
+            currentGameUrl = gameUrl;
             
             if (!gameUrl) {
                 window.location.href = '/';
                 return;
             }
 
-            requestAnimationFrame(() => loadGameUrl(gameUrl));
+            setTimeout(() => loadGameUrl(gameUrl), 100);
         }
 
+        // Skip button functionality to show the game even if it's still loading
+        function skipLoading() {
+            const iframe = document.getElementById('gframe');
+            const loadingScreen = document.getElementById('loadingScreen');
+            
+            if (iframe && iframe.src && iframe.src !== 'about:blank') {
+                loadingScreen.style.opacity = '0';
+                loadingScreen.style.visibility = 'hidden';
+                iframe.style.opacity = '1';
+                console.log('User skipped loading screen');
+            }
+        }
+        
         // CORRECTED: loadGameUrl function that properly handles URLs
         function loadGameUrl(gameUrl) {
             const iframe = document.getElementById('gframe');
             const loadingScreen = document.getElementById('loadingScreen');
+            const loadingText = document.getElementById('loadingText');
+            const skipButton = document.getElementById('skipButton');
             
             if (iframe) {
                 // Show loading screen
                 loadingScreen.style.opacity = '1';
                 loadingScreen.style.visibility = 'visible';
                 iframe.style.opacity = '0';
+                
+                // Make skip button visible after 8 seconds if game is still loading
+                setTimeout(() => {
+                    if (loadingScreen.style.visibility === 'visible') {
+                        skipButton.style.display = 'block';
+                    }
+                }, 8000);
 
-                // Timeout to prevent indefinite loading
+                // Auto-reveal game after 15 seconds no matter what
+                const autoRevealTimeout = setTimeout(() => {
+                    if (loadingScreen.style.visibility === 'visible') {
+                        console.log('Auto-revealing game after 15s timeout');
+                        loadingScreen.style.opacity = '0';
+                        loadingScreen.style.visibility = 'hidden';
+                        iframe.style.opacity = '1';
+                    }
+                }, 15000);
+
+                // Main loading timeout (show error message)
                 const loadTimeout = setTimeout(() => {
                     console.error('Game loading timeout');
                     loadingScreen.style.opacity = '0';
                     loadingScreen.style.visibility = 'hidden';
                     iframe.style.opacity = '1';
-                    iframe.src = 'about:blank';
-                    alert('Game loading took too long. Please refresh or try another game.');
-                }, 30000);  // 30 seconds timeout
+                    
+                    if (iframe.src === 'about:blank' || !iframe.src) {
+                        iframe.src = 'about:blank';
+                        alert('Game loading took too long. Please refresh or try another game.');
+                    }
+                }, 30000);
+
+                // Update loading text periodically to show progress and keep user engaged
+                let loadingStage = 0;
+                const loadingMessages = [
+                    'Loading Game...',
+                    'Loading Resources...',
+                    'Initializing Game...',
+                    'Almost Ready...',
+                    'Still Loading...',
+                    'This Is Taking Longer Than Expected...'
+                ];
+                
+                const updateLoadingText = setInterval(() => {
+                    if (loadingScreen.style.visibility !== 'visible') {
+                        clearInterval(updateLoadingText);
+                        return;
+                    }
+                    
+                    loadingStage = (loadingStage + 1) % loadingMessages.length;
+                    loadingText.textContent = loadingMessages[loadingStage];
+                }, 3000);
 
                 iframe.onload = () => {
                     clearTimeout(loadTimeout);
+                    clearTimeout(autoRevealTimeout);
+                    clearInterval(updateLoadingText);
+                    
                     // Small delay to ensure game is actually rendered
                     setTimeout(() => {
                         loadingScreen.style.opacity = '0';
                         loadingScreen.style.visibility = 'hidden';
                         iframe.style.opacity = '1';
+                        skipButton.style.display = 'none';
                         console.log('Game loaded successfully');
-                    }, 1500);
+                    }, 1000);
                 };
 
                 iframe.onerror = () => {
                     clearTimeout(loadTimeout);
+                    clearTimeout(autoRevealTimeout);
+                    clearInterval(updateLoadingText);
+                    
                     loadingScreen.style.opacity = '0';
                     loadingScreen.style.visibility = 'hidden';
                     console.error('Game loading failed');
                     iframe.style.opacity = '1';
+                    skipButton.style.display = 'none';
                     alert('Failed to load game. Please try a different game.');
                 };
 
@@ -137,6 +205,10 @@
                         iframe.src = decodedUrl;
                     }
                 } catch (error) {
+                    clearTimeout(loadTimeout);
+                    clearTimeout(autoRevealTimeout);
+                    clearInterval(updateLoadingText);
+                    
                     loadingScreen.style.opacity = '0';
                     loadingScreen.style.visibility = 'hidden';
                     console.error('URL processing error:', error);
@@ -146,9 +218,7 @@
         }
         
         window.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => {
-                initGame();
-            }, 100);
+            setTimeout(initGame, 100);
         });
     </script>
     
@@ -238,8 +308,25 @@
 
         .loading-text {
             margin-top: 20px;
+            margin-bottom: 20px;
             font-size: 18px;
             color: #fff;
+        }
+        
+        .skip-button {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s ease;
+            display: none;
+        }
+        
+        .skip-button:hover {
+            background: rgba(255, 255, 255, 0.3);
         }
 
         @keyframes spin {
@@ -291,7 +378,8 @@
     <div class="game_container">
         <div class="loading-screen" id="loadingScreen">
             <div class="loading-spinner"></div>
-            <div class="loading-text">Loading Game...</div>
+            <div class="loading-text" id="loadingText">Loading Game...</div>
+            <button class="skip-button" id="skipButton" onclick="skipLoading()">Show Game Anyway</button>
         </div>
         <!-- iframe for game content -->
         <iframe class="game_iframe" id="gframe" allow="fullscreen; autoplay"></iframe>
@@ -315,14 +403,20 @@
         function reloadGame() {
             const iframe = document.getElementById('gframe');
             const loadingScreen = document.getElementById('loadingScreen');
-            const currentSrc = iframe.src;
+            const skipButton = document.getElementById('skipButton');
             
             loadingScreen.style.opacity = '1';
             loadingScreen.style.visibility = 'visible';
+            skipButton.style.display = 'none';
             iframe.style.opacity = '0';
             iframe.src = 'about:blank';
+            
             setTimeout(() => {
-                iframe.src = currentSrc;
+                if (currentGameUrl) {
+                    loadGameUrl(currentGameUrl);
+                } else {
+                    window.location.reload();
+                }
             }, 200);
         }
 
