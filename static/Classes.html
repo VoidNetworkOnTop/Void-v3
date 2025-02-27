@@ -21,6 +21,7 @@
         let loadTimeout;
         let analyticsErrorHandled = false;
         let gameUrl = "";
+        let visibilityCheckInterval;
 
         // Handle page refresh when using back button
         window.addEventListener('pageshow', function(event) {
@@ -109,6 +110,44 @@
             setTimeout(() => loadGameUrl(gameUrl), 200);
         }
 
+        // Check if iframe has actual visible content
+        function hasVisibleContent(iframe) {
+            try {
+                // For same-origin iframes
+                if (iframe.contentDocument) {
+                    return iframe.contentDocument.body && 
+                           iframe.contentDocument.body.children.length > 0;
+                }
+            } catch (e) {
+                // Cross-origin restrictions, can't check content directly
+            }
+            return null; // Unknown, cross-origin
+        }
+
+        // Function to continue checking if game is actually rendering content
+        function checkGameVisibility() {
+            const iframe = document.getElementById('gframe');
+            const loadingScreen = document.getElementById('loadingScreen');
+            
+            if (!iframe || !loadingScreen || loadingScreen.style.visibility !== 'visible') {
+                clearInterval(visibilityCheckInterval);
+                return;
+            }
+            
+            // If the game has been showing for more than 5 seconds
+            // and still appears to be blank, try reloading
+            if (iframe.style.opacity === '1' && !hasVisibleContent(iframe)) {
+                const currentTime = new Date().getTime();
+                const revealTime = iframe.getAttribute('data-reveal-time');
+                
+                if (revealTime && (currentTime - parseInt(revealTime) > 5000)) {
+                    console.log('Game appears blank after 5 seconds, attempting to refresh');
+                    reloadGame();
+                    clearInterval(visibilityCheckInterval);
+                }
+            }
+        }
+
         // Main function to load the game
         function loadGameUrl(gameUrl) {
             const iframe = document.getElementById('gframe');
@@ -123,6 +162,9 @@
             loadingText.textContent = 'Preparing Game...';
             iframe.style.opacity = '0';
 
+            // Set proper allowances for iframe
+            iframe.setAttribute('allow', 'fullscreen; autoplay; clipboard-write; cross-origin-isolated');
+            
             // Keep track of loading stages
             let loadingStage = 1;
             function updateLoadingMessage() {
@@ -222,9 +264,15 @@
                     loadingScreen.style.opacity = '0';
                     loadingScreen.style.visibility = 'hidden';
                     iframe.style.opacity = '1';
+                    iframe.setAttribute('data-reveal-time', new Date().getTime().toString());
+                    
+                    // Start checking if the game is actually showing content
+                    clearInterval(visibilityCheckInterval);
+                    visibilityCheckInterval = setInterval(checkGameVisibility, 2000);
+                    
                     clearAllTimers();
                 }
-            }, 18000);
+            }, 15000);  // Reduced to 15 seconds from 18
 
             // Listen for load events in the iframe
             iframe.onload = () => {
@@ -240,10 +288,16 @@
                         loadingScreen.style.opacity = '0';
                         loadingScreen.style.visibility = 'hidden';
                         iframe.style.opacity = '1';
+                        iframe.setAttribute('data-reveal-time', new Date().getTime().toString());
+                        
+                        // Start checking if the game is actually showing content
+                        clearInterval(visibilityCheckInterval);
+                        visibilityCheckInterval = setInterval(checkGameVisibility, 2000);
+                        
                         clearAllTimers();
                         console.log('Game loaded successfully');
-                    }, 1500);
-                }, 1500);
+                    }, 1000);
+                }, 1000);
             };
 
             // Handle load errors
@@ -279,6 +333,12 @@
                         loadingScreen.style.opacity = '0';
                         loadingScreen.style.visibility = 'hidden';
                         iframe.style.opacity = '1';
+                        iframe.setAttribute('data-reveal-time', new Date().getTime().toString());
+                        
+                        // Start checking if the game is actually showing content
+                        clearInterval(visibilityCheckInterval);
+                        visibilityCheckInterval = setInterval(checkGameVisibility, 2000);
+                        
                         clearAllTimers();
                     }
                 }
@@ -313,6 +373,11 @@
                         loadingScreen.style.opacity = '0';
                         loadingScreen.style.visibility = 'hidden';
                         iframe.style.opacity = '1';
+                        iframe.setAttribute('data-reveal-time', new Date().getTime().toString());
+                        
+                        // Start checking if the game is actually showing content
+                        clearInterval(visibilityCheckInterval);
+                        visibilityCheckInterval = setInterval(checkGameVisibility, 2000);
                     }
                 }
             }
@@ -446,6 +511,24 @@
             width: 24px;
             height: 24px;
         }
+        
+        /* Adding background pattern for better visual indication when game is loading */
+        .game-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 36px);
+            background-image: 
+                linear-gradient(45deg, #111 25%, transparent 25%), 
+                linear-gradient(-45deg, #111 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #111 75%),
+                linear-gradient(-45deg, transparent 75%, #111 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            border-radius: 10px 10px 0 0;
+            z-index: 1;
+        }
     </style>
 </head>
 <body>
@@ -456,12 +539,17 @@
     </header>
 
     <div class="game_container">
+        <!-- Background pattern to help identify when a game is actually rendering -->
+        <div class="game-background"></div>
+        
         <div class="loading-screen" id="loadingScreen">
             <div class="loading-spinner"></div>
             <div class="loading-text" id="loadingText">Preparing Game...</div>
         </div>
-        <!-- Important: No sandbox attribute - allows games to work properly -->
-        <iframe class="game_iframe" id="gframe" allow="fullscreen; autoplay"></iframe>
+        
+        <!-- No sandbox attribute -->
+        <iframe class="game_iframe" id="gframe"></iframe>
+        
         <div class="footer">
             <button onclick="toggleFullScreen()">
                 <img src="/nav/fullscreenbutton.png" alt="Fullscreen">
@@ -483,6 +571,7 @@
             // Reset all state variables
             loadingAttempts = 0;
             analyticsErrorHandled = false;
+            clearInterval(visibilityCheckInterval);
             
             const iframe = document.getElementById('gframe');
             const loadingScreen = document.getElementById('loadingScreen');
