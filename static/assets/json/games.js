@@ -568,7 +568,7 @@ const gamesData = [
 {
     title: "ROBLOX", 
     imgSrc: "https://lh7-us.googleusercontent.com/ur4VB3U3kGEVoFAiha3Ay_h9rubAOXsSUJvXVxywP63P5TMrBrB6jauVFTwxlarQG9Vyv-ApDxsyYBPcA5f2BJAXddsz49fYeJZuoh3Q4EQDe2BcOqb2MkxB5o5TZiJi4TxFE2wvjFG2OU5mvYfUfwnKaCKPug",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://now.gg/apps/a/10020/b.html")
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.easyfun.gg/cloud-games/roblox.html")
 },
 {
     title: "Opposite Day", 
