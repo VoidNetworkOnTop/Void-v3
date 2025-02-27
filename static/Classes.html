@@ -175,6 +175,13 @@
                 }
             }, 40000);  // 40 seconds timeout (increased for slower connections)
 
+            // Remove sandbox attributes that could be causing issues
+            iframe.removeAttribute('sandbox');
+            
+            // Set appropriate sandbox attributes - removing allow-same-origin to fix the warning
+            // but keeping necessary permissions for games to function
+            iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock');
+            
             // Initial load delay before showing the iframe
             // This ensures the UV proxy is ready
             const preloadTimeout = setTimeout(() => {
@@ -214,7 +221,7 @@
                 }
             }, 500);
 
-            // Auto-reveal game after max wait time (20 seconds)
+            // Auto-reveal game after reasonable wait time
             // This ensures users see something even if load events aren't firing
             const gameVisibilityTimeout = setTimeout(() => {
                 if (loadingScreen.style.visibility === 'visible') {
@@ -224,7 +231,7 @@
                     iframe.style.opacity = '1';
                     clearAllTimers();
                 }
-            }, 20000);
+            }, 18000);  // 18 seconds (reduced from 20 to show game faster)
 
             // Listen for load events in the iframe
             iframe.onload = () => {
@@ -242,8 +249,8 @@
                         iframe.style.opacity = '1';
                         clearAllTimers();
                         console.log('Game loaded successfully');
-                    }, 2000);
-                }, 2000);
+                    }, 1500);
+                }, 1500);
             };
 
             // Handle load errors
@@ -268,46 +275,21 @@
             // Check for game activity periodically
             // This detects if the game is ready even if normal events aren't firing
             const contentCheckInterval = setInterval(() => {
-                // Check if iframe has content or has been interacted with
-                try {
-                    // For same-origin iframes, we can check document state
-                    if (iframe.contentWindow && 
-                        iframe.contentWindow.document && 
-                        iframe.contentWindow.document.readyState === 'complete') {
-                        
-                        console.log('Iframe content detected as ready');
-                        
-                        // Allow a short delay for the game to initialize
-                        setTimeout(() => {
-                            loadingScreen.style.opacity = '0';
-                            loadingScreen.style.visibility = 'hidden';
-                            iframe.style.opacity = '1';
-                            clearAllTimers();
-                        }, 1500);
-                    }
-                } catch (e) {
-                    // Cross-origin restrictions will throw an error - this is normal
-                    // Instead, look for signs of activity like canvas rendering
-                    if (iframe.src && iframe.src !== 'about:blank') {
-                        const elapsedTime = (loadingStage - 1) * 3000;
-                        
-                        // After 6 seconds, start checking if we should reveal the game
-                        // This is for cross-origin games where we can't detect readiness directly
-                        if (elapsedTime >= 6000) {
-                            // We've waited at least 6 seconds, check if screen should be removed
-                            const gameIsLikelyLoaded = analyticsErrorHandled || elapsedTime >= 12000;
-                            
-                            if (gameIsLikelyLoaded) {
-                                console.log('Game appears to be active, revealing iframe');
-                                loadingScreen.style.opacity = '0';
-                                loadingScreen.style.visibility = 'hidden';
-                                iframe.style.opacity = '1';
-                                clearAllTimers();
-                            }
-                        }
+                // Check if enough time has passed to show the game anyway
+                const elapsedTime = (loadingStage - 1) * 3000;
+                
+                // After 9 seconds, consider revealing the game
+                if (elapsedTime >= 9000) {
+                    // We've waited long enough, show the game
+                    if (loadingScreen.style.visibility === 'visible') {
+                        console.log('Game appears to be loading, revealing iframe');
+                        loadingScreen.style.opacity = '0';
+                        loadingScreen.style.visibility = 'hidden';
+                        iframe.style.opacity = '1';
+                        clearAllTimers();
                     }
                 }
-            }, 2000);
+            }, 3000);
         }
         
         // Initialize the game when DOM is loaded
@@ -485,8 +467,8 @@
             <div class="loading-spinner"></div>
             <div class="loading-text" id="loadingText">Preparing Game...</div>
         </div>
-        <!-- iframe for game content -->
-        <iframe class="game_iframe" id="gframe" allow="fullscreen; autoplay" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-orientation-lock"></iframe>
+        <!-- iframe for game content - no sandbox attribute here, we'll set it in JavaScript -->
+        <iframe class="game_iframe" id="gframe" allow="fullscreen; autoplay"></iframe>
         <div class="footer">
             <button onclick="toggleFullScreen()">
                 <img src="/nav/fullscreenbutton.png" alt="Fullscreen">
@@ -505,26 +487,31 @@
 
     <script>
         function reloadGame() {
-            // Store the current URL
-            const iframe = document.getElementById('gframe');
-            const currentSrc = iframe.src;
-            
             // Reset all state variables
             loadingAttempts = 0;
             analyticsErrorHandled = false;
             
-            // Clear the iframe first
+            const iframe = document.getElementById('gframe');
+            const loadingScreen = document.getElementById('loadingScreen');
+            const loadingText = document.getElementById('loadingText');
+            
+            // Reset loading screen and iframe
+            loadingScreen.style.opacity = '1';
+            loadingScreen.style.visibility = 'visible';
+            loadingText.textContent = 'Preparing Game...';
+            iframe.style.opacity = '0';
+            
+            // Clear the iframe temporarily
             iframe.src = 'about:blank';
             
-            // After a short delay, reload with the right URL
+            // Use a delay to ensure iframe is cleared before reloading
             setTimeout(() => {
-                // Start fresh by triggering the whole loading process again
+                // Start fresh with the game URL
                 if (gameUrl) {
                     loadGameUrl(gameUrl);
                 } else {
-                    // Fallback to using the stored URL
-                    const urlObject = new URL(currentSrc, window.location.origin);
-                    iframe.src = urlObject.href;
+                    // If no game URL is stored, redirect to home
+                    window.location.href = '/';
                 }
             }, 500);
         }
