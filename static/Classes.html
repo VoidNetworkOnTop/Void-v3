@@ -8,30 +8,17 @@
     <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin>
     <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com">
     
-    <!-- UV Proxy Scripts - Preload for faster initialization -->
-    <link rel="preload" href="/uv/uv.bundle.js" as="script">
-    <link rel="preload" href="/uv/uv.config.js" as="script">
+    <!-- UV Proxy Scripts -->
     <script src="/uv/uv.bundle.js"></script>
     <script src="/uv/uv.config.js"></script>
     
     <script>
-        // Global variables for loading management
-        let loadingAttempts = 0;
-        const MAX_LOADING_ATTEMPTS = 3;
-        let loadTimeout;
-        let analyticsErrorHandled = false;
-        let gameUrl = "";
-        let visibilityCheckInterval;
-        let useDirectMode = false; // Toggle for direct iframe loading
-
-        // Handle page refresh when using back button
         window.addEventListener('pageshow', function(event) {
             if (event.persisted) {
                 window.location.reload();
             }
         });
 
-        // Preload navigation icons
         const preloadResources = [
             '/nav/home.png',
             '/nav/search.png',
@@ -50,7 +37,6 @@
             document.head.appendChild(link);
         });
 
-        // Register service worker
         if ('serviceWorker' in navigator) {
             const swAllowedHostnames = ['localhost', '127.0.0.1'];
             
@@ -72,181 +58,65 @@
             }
         }
 
-        // Extract the original URL from a UV proxy URL
-        function extractOriginalUrl(uvUrl) {
-            try {
-                if (!uvUrl.includes('/uv/service/')) return null;
-                
-                const encodedPart = uvUrl.split('/uv/service/')[1];
-                if (!encodedPart) return null;
-                
-                // Decode the UV-encoded URL
-                if (window.__uv$config && window.__uv$config.decodeUrl) {
-                    return window.__uv$config.decodeUrl(encodedPart);
-                }
-                
-                // Fallback to base64 decode if UV config isn't available
-                return atob(encodedPart.replace(/_/g, '/').replace(/-/g, '+'));
-            } catch (e) {
-                console.error('Failed to extract original URL:', e);
-                return null;
-            }
-        }
-
-        // Initialize game from URL parameter
         function initGame() {
             const urlParams = new URLSearchParams(window.location.search);
-            gameUrl = urlParams.get('game');
+            const gameUrl = urlParams.get('game');
             
             if (!gameUrl) {
                 window.location.href = '/';
                 return;
             }
 
-            // Check if we should use direct mode based on URL parameter
-            useDirectMode = urlParams.get('direct') === 'true';
-
-            // Clear any existing load timeouts
-            clearTimeout(loadTimeout);
-            
-            // Load game with slight delay to ensure DOM is ready
-            setTimeout(() => loadGameUrl(gameUrl), 200);
+            requestAnimationFrame(() => loadGameUrl(gameUrl));
         }
 
-        // Attempt to directly load the game URL without UV proxy
-        function tryDirectLoad() {
-            const iframe = document.getElementById('gframe');
-            const loadingText = document.getElementById('loadingText');
-            
-            // Show that we're trying a different approach
-            loadingText.textContent = 'Trying alternative loading method...';
-            
-            // Extract the original URL if it's a UV proxy URL
-            const originalUrl = extractOriginalUrl(gameUrl);
-            if (originalUrl) {
-                console.log('Attempting direct load with original URL:', originalUrl);
-                iframe.src = originalUrl;
-                useDirectMode = true;
-                return true;
-            }
-            
-            return false;
-        }
-
-        // Main function to load the game
+        // CORRECTED: loadGameUrl function that properly handles URLs
         function loadGameUrl(gameUrl) {
             const iframe = document.getElementById('gframe');
             const loadingScreen = document.getElementById('loadingScreen');
-            const loadingText = document.getElementById('loadingText');
             
-            if (!iframe) return;
-            
-            // Show loading screen with initial message
-            loadingScreen.style.opacity = '1';
-            loadingScreen.style.visibility = 'visible';
-            loadingText.textContent = 'Preparing Game...';
-            iframe.style.opacity = '0';
+            if (iframe) {
+                // Show loading screen
+                loadingScreen.style.opacity = '1';
+                loadingScreen.style.visibility = 'visible';
+                iframe.style.opacity = '0';
 
-            // Set proper allowances for iframe - very permissive to allow games to work
-            iframe.setAttribute('allow', 'fullscreen; autoplay; clipboard-write; cross-origin-isolated; gamepad; microphone; camera; payment; web-share; accelerometer; gyroscope');
-            
-            // Keep track of loading stages
-            let loadingStage = 1;
-            function updateLoadingMessage() {
-                loadingStage++;
-                switch(loadingStage) {
-                    case 2:
-                        loadingText.textContent = 'Loading Game Resources...';
-                        break;
-                    case 3:
-                        loadingText.textContent = 'Starting Game...';
-                        break;
-                    case 4:
-                        loadingText.textContent = 'Almost Ready...';
-                        break;
-                    default:
-                        loadingText.textContent = 'Loading Game...';
-                }
-            }
-
-            // Update loading message every few seconds to show progress
-            const loadingMessageInterval = setInterval(updateLoadingMessage, 3000);
-
-            // Clean up all timers
-            function clearAllTimers() {
-                clearTimeout(loadTimeout);
-                clearTimeout(preloadTimeout);
-                clearTimeout(gameVisibilityTimeout);
-                clearTimeout(fallbackTimeout);
-                clearInterval(contentCheckInterval);
-                clearInterval(loadingMessageInterval);
-            }
-
-            // Set timeout for loading (extended from original)
-            clearTimeout(loadTimeout);
-            loadTimeout = setTimeout(() => {
-                console.log(`Game loading attempt ${loadingAttempts + 1} timed out`);
-                
-                // First try direct loading if we haven't already
-                if (!useDirectMode && tryDirectLoad()) {
-                    // Reset the timeout for the direct load attempt
-                    clearTimeout(loadTimeout);
-                    loadTimeout = setTimeout(() => {
-                        if (loadingAttempts < MAX_LOADING_ATTEMPTS) {
-                            loadingAttempts++;
-                            console.log(`Retrying game load after timeout (Attempt ${loadingAttempts + 1})`);
-                            clearAllTimers();
-                            loadGameUrl(gameUrl);
-                        } else {
-                            clearAllTimers();
-                            loadingScreen.style.opacity = '0';
-                            loadingScreen.style.visibility = 'hidden';
-                            iframe.style.opacity = '1';
-                            iframe.src = 'about:blank';
-                            alert('Game loading took too long. Please refresh or try another game.');
-                        }
-                    }, 30000);
-                    return;
-                }
-                
-                // Try loading again if under max attempts
-                if (loadingAttempts < MAX_LOADING_ATTEMPTS) {
-                    loadingAttempts++;
-                    console.log(`Retrying game load (Attempt ${loadingAttempts + 1})`);
-                    clearAllTimers();
-                    loadGameUrl(gameUrl);
-                } else {
-                    clearAllTimers();
+                // Timeout to prevent indefinite loading
+                const loadTimeout = setTimeout(() => {
+                    console.error('Game loading timeout');
                     loadingScreen.style.opacity = '0';
                     loadingScreen.style.visibility = 'hidden';
                     iframe.style.opacity = '1';
                     iframe.src = 'about:blank';
                     alert('Game loading took too long. Please refresh or try another game.');
-                }
-            }, 30000);  // 30 seconds timeout
+                }, 30000);  // 30 seconds timeout
 
-            // Set a timeout to try direct loading if regular loading doesn't work
-            const fallbackTimeout = setTimeout(() => {
-                if (loadingScreen.style.visibility === 'visible' && !useDirectMode) {
-                    console.log('Trying direct load as fallback...');
-                    tryDirectLoad();
-                }
-            }, 12000);  // Try direct load after 12 seconds if still loading
+                iframe.onload = () => {
+                    clearTimeout(loadTimeout);
+                    // Small delay to ensure game is actually rendered
+                    setTimeout(() => {
+                        loadingScreen.style.opacity = '0';
+                        loadingScreen.style.visibility = 'hidden';
+                        iframe.style.opacity = '1';
+                        console.log('Game loaded successfully');
+                    }, 1500);
+                };
 
-            // Initial load delay before showing the iframe
-            // This ensures everything is ready
-            const preloadTimeout = setTimeout(() => {
-                updateLoadingMessage(); // Update to "Loading Game Resources"
-                
+                iframe.onerror = () => {
+                    clearTimeout(loadTimeout);
+                    loadingScreen.style.opacity = '0';
+                    loadingScreen.style.visibility = 'hidden';
+                    console.error('Game loading failed');
+                    iframe.style.opacity = '1';
+                    alert('Failed to load game. Please try a different game.');
+                };
+
                 try {
-                    // If in direct mode, this was already set
-                    if (useDirectMode) return;
-                    
-                    // Process the game URL
+                    // Decode the URL from the query parameter
                     const decodedUrl = decodeURIComponent(gameUrl);
                     console.log('Decoded game URL:', decodedUrl);
                     
-                    // Don't re-encode URLs that are already in UV format
+                    // Important: Don't re-encode URLs that are already in UV format
                     if (decodedUrl.startsWith('/uv/') || decodedUrl.startsWith('/service/')) {
                         console.log('URL appears to be already in UV format, using directly:', decodedUrl);
                         iframe.src = decodedUrl;
@@ -267,139 +137,18 @@
                         iframe.src = decodedUrl;
                     }
                 } catch (error) {
-                    clearAllTimers();
                     loadingScreen.style.opacity = '0';
                     loadingScreen.style.visibility = 'hidden';
                     console.error('URL processing error:', error);
                     alert('Failed to process game URL. Please try again.');
                 }
-            }, 500);
-
-            // Auto-reveal game after reasonable wait time
-            // This ensures users see something even if load events aren't firing
-            const gameVisibilityTimeout = setTimeout(() => {
-                if (loadingScreen.style.visibility === 'visible') {
-                    console.log('Auto-revealing game after maximum wait time');
-                    loadingScreen.style.opacity = '0';
-                    loadingScreen.style.visibility = 'hidden';
-                    iframe.style.opacity = '1';
-                    iframe.setAttribute('data-reveal-time', new Date().getTime().toString());
-                    clearAllTimers();
-                }
-            }, 15000);
-
-            // Listen for load events in the iframe
-            iframe.onload = () => {
-                console.log('Iframe onload triggered');
-                updateLoadingMessage(); // Update to next stage
-                
-                // Give a delay to allow game to initialize
-                setTimeout(() => {
-                    updateLoadingMessage(); // Update to final stage
-                    
-                    // After another short delay, reveal the game
-                    setTimeout(() => {
-                        loadingScreen.style.opacity = '0';
-                        loadingScreen.style.visibility = 'hidden';
-                        iframe.style.opacity = '1';
-                        iframe.setAttribute('data-reveal-time', new Date().getTime().toString());
-                        clearAllTimers();
-                        console.log('Game loaded successfully');
-                        
-                        // Check after a short delay if the iframe actually has content
-                        setTimeout(() => {
-                            // If the iframe is still blank, try direct mode
-                            if (!useDirectMode && iframe.src && iframe.src !== 'about:blank') {
-                                const originalUrl = extractOriginalUrl(gameUrl);
-                                if (originalUrl) {
-                                    console.log('Game appears blank, trying direct load');
-                                    useDirectMode = true;
-                                    reloadGame();
-                                }
-                            }
-                        }, 3000);
-                    }, 1000);
-                }, 1000);
-            };
-
-            // Handle load errors
-            iframe.onerror = (error) => {
-                console.log('Game loading failed with error:', error);
-                
-                // First try direct loading if we haven't already
-                if (!useDirectMode && tryDirectLoad()) {
-                    console.log('Trying direct load after error');
-                    return;
-                }
-                
-                // Try loading again if under max attempts
-                if (loadingAttempts < MAX_LOADING_ATTEMPTS) {
-                    loadingAttempts++;
-                    console.log(`Retrying game load after error (Attempt ${loadingAttempts + 1})`);
-                    clearAllTimers();
-                    loadGameUrl(gameUrl);
-                } else {
-                    clearAllTimers();
-                    loadingScreen.style.opacity = '0';
-                    loadingScreen.style.visibility = 'hidden';
-                    iframe.style.opacity = '1';
-                    alert('Failed to load game. Please try a different game.');
-                }
-            };
-
-            // Check for game activity periodically
-            // This detects if the game is ready even if normal events aren't firing
-            const contentCheckInterval = setInterval(() => {
-                // Check if enough time has passed to show the game anyway
-                const elapsedTime = (loadingStage - 1) * 3000;
-                
-                // After 9 seconds, consider revealing the game
-                if (elapsedTime >= 9000) {
-                    // We've waited long enough, show the game
-                    if (loadingScreen.style.visibility === 'visible') {
-                        console.log('Game appears to be loading, revealing iframe');
-                        loadingScreen.style.opacity = '0';
-                        loadingScreen.style.visibility = 'hidden';
-                        iframe.style.opacity = '1';
-                        iframe.setAttribute('data-reveal-time', new Date().getTime().toString());
-                        clearAllTimers();
-                    }
-                }
-            }, 3000);
+            }
         }
         
-        // Initialize the game when DOM is loaded
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(initGame, 100);
-        });
-
-        // Add an event handler for postMessage events from the game
-        // Some games signal they're ready via postMessage
-        window.addEventListener('message', function(event) {
-            // Check if message is from our iframe
-            const iframe = document.getElementById('gframe');
-            if (iframe && event.source === iframe.contentWindow) {
-                console.log('Received message from game:', event.data);
-                
-                // Check if message indicates game is ready
-                if (event.data && 
-                   (typeof event.data === 'string' && 
-                    (event.data.includes('ready') || 
-                     event.data.includes('loaded') || 
-                     event.data.includes('start'))) || 
-                    event.data.status === 'ready' || 
-                    event.data.loaded === true) {
-                    
-                    const loadingScreen = document.getElementById('loadingScreen');
-                    if (loadingScreen && loadingScreen.style.visibility === 'visible') {
-                        console.log('Game sent ready message, revealing iframe');
-                        loadingScreen.style.opacity = '0';
-                        loadingScreen.style.visibility = 'hidden';
-                        iframe.style.opacity = '1';
-                        iframe.setAttribute('data-reveal-time', new Date().getTime().toString());
-                    }
-                }
-            }
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                initGame();
+            }, 100);
         });
     </script>
     
@@ -503,7 +252,7 @@
             height: calc(100% - 36px);
             border: none;
             border-radius: 10px 10px 0 0;
-            background-color: #121212;  /* Slightly lighter than pure black */
+            background-color: #000;
             opacity: 0;
             transition: opacity 0.5s ease-in;
         }
@@ -530,26 +279,6 @@
             width: 24px;
             height: 24px;
         }
-        
-        /* Direct load button */
-        .direct-load-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: #fff;
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 12px;
-            cursor: pointer;
-            z-index: 10;
-            transition: background 0.3s ease;
-        }
-        
-        .direct-load-btn:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
     </style>
 </head>
 <body>
@@ -562,13 +291,10 @@
     <div class="game_container">
         <div class="loading-screen" id="loadingScreen">
             <div class="loading-spinner"></div>
-            <div class="loading-text" id="loadingText">Preparing Game...</div>
-            <button class="direct-load-btn" onclick="tryDirectLoad()">Try Direct Load</button>
+            <div class="loading-text">Loading Game...</div>
         </div>
-        
-        <!-- No sandbox attribute -->
-        <iframe class="game_iframe" id="gframe"></iframe>
-        
+        <!-- iframe for game content -->
+        <iframe class="game_iframe" id="gframe" allow="fullscreen; autoplay"></iframe>
         <div class="footer">
             <button onclick="toggleFullScreen()">
                 <img src="/nav/fullscreenbutton.png" alt="Fullscreen">
@@ -587,34 +313,17 @@
 
     <script>
         function reloadGame() {
-            // Reset all state variables
-            analyticsErrorHandled = false;
-            clearInterval(visibilityCheckInterval);
-            
             const iframe = document.getElementById('gframe');
             const loadingScreen = document.getElementById('loadingScreen');
-            const loadingText = document.getElementById('loadingText');
+            const currentSrc = iframe.src;
             
-            // Reset loading screen and iframe
             loadingScreen.style.opacity = '1';
             loadingScreen.style.visibility = 'visible';
-            loadingText.textContent = 'Preparing Game...';
             iframe.style.opacity = '0';
-            
-            // Clear the iframe temporarily
             iframe.src = 'about:blank';
-            
-            // Use a delay to ensure iframe is cleared before reloading
             setTimeout(() => {
-                // Start fresh with the game URL
-                if (gameUrl) {
-                    // Don't reset loading attempts on manual reload
-                    loadGameUrl(gameUrl);
-                } else {
-                    // If no game URL is stored, redirect to home
-                    window.location.href = '/';
-                }
-            }, 500);
+                iframe.src = currentSrc;
+            }, 200);
         }
 
         function toggleFullScreen() {
