@@ -15,6 +15,9 @@
     <script src="/uv/uv.config.js" defer></script>
     
     <script>
+        // DEBUG MODE - Set to true to enable verbose console debugging
+        const DEBUG_MODE = true;
+        
         // Global variables for loading management
         let loadingAttempts = 0;
         const MAX_LOADING_ATTEMPTS = 5; // Increased from 3
@@ -22,6 +25,13 @@
         let analyticsErrorHandled = false;
         let uvConfigLoaded = false;
         let gameLoaded = false;
+        
+        // Helper function for debug logging
+        function debugLog(...args) {
+            if (DEBUG_MODE) {
+                console.log("[GAME LOADER]", ...args);
+            }
+        }
 
         // Check if UV config is loaded
         function checkUVConfig() {
@@ -265,8 +275,14 @@
         function loadGameUrl(gameUrl, skipUV) {
             const iframe = document.getElementById('gframe');
             const loadingScreen = document.getElementById('loadingScreen');
+            const fallbackMessage = document.getElementById('fallbackMessage');
             
             if (!iframe) return;
+            
+            // Hide fallback message
+            if (fallbackMessage) {
+                fallbackMessage.style.display = 'none';
+            }
             
             // Reset loaded state
             gameLoaded = false;
@@ -433,21 +449,95 @@
                 }
             };
 
-            // Check iframe content periodically
+                            // Check iframe content periodically
             const contentCheckInterval = setInterval(() => {
                 if (checkGameReady() || loadingScreen.style.visibility !== 'visible') {
                     clearInterval(contentCheckInterval);
                 }
             }, 1000);
+            
+            // Fallback - show fallback UI if game doesn't appear after significant time
+            setTimeout(() => {
+                const iframe = document.getElementById('gframe');
+                if (iframe && iframe.src && iframe.src !== 'about:blank' && !gameLoaded) {
+                    debugLog('Game did not become visible after extended timeout, showing fallback options');
+                    
+                    const fallbackWrapper = document.getElementById('fallbackWrapper');
+                    if (fallbackWrapper) {
+                        fallbackWrapper.style.display = 'flex';
+                    }
+                }
+            }, 20000); // 20 seconds
 
             try {
                 // Process the game URL
                 const decodedUrl = decodeURIComponent(gameUrl);
                 console.log('Decoded game URL:', decodedUrl);
                 
+                // Check if we need special handling for this domain
+                const needsSpecialHandling = tryDirectLoad(decodedUrl);
+                
                 // Don't re-encode URLs that are already in UV format
                 if (decodedUrl.startsWith('/uv/') || decodedUrl.startsWith('/service/')) {
                     console.log('URL appears to be already in UV format, using directly:', decodedUrl);
+                    
+                    // For special domains, try a more direct approach first
+                    if (needsSpecialHandling && loadingAttempts > 0) {
+                        // Try to extract the actual URL from the UV format
+                        try {
+                            const encodedPart = decodedUrl.replace('/uv/service/', '');
+                            const actualUrl = atob(encodedPart);
+                            console.log('Using special handling - extracted URL:', actualUrl);
+                            
+                            // For Friv games specifically, try a different approach
+                            if (actualUrl.includes('friv.com')) {
+                                const directUrl = '/uv/service/' + encodedPart;
+                                iframe.src = directUrl;
+                                console.log('Set direct UV path for Friv game:', directUrl);
+                                
+                                // Create a container iframe if needed
+                                if (loadingAttempts > 1) {
+                                    console.log('Trying containment approach for Friv game');
+                                    const tempIframe = document.createElement('iframe');
+                                    tempIframe.style.display = 'none';
+                                    document.body.appendChild(tempIframe);
+                                    
+                                    try {
+                                        const tempDoc = tempIframe.contentDocument || tempIframe.contentWindow.document;
+                                        tempDoc.open();
+                                        tempDoc.write(`
+                                            <!DOCTYPE html>
+                                            <html>
+                                            <head><title>Game Frame</title></head>
+                                            <body style="margin:0;padding:0;overflow:hidden;">
+                                                <iframe src="${directUrl}" style="width:100%;height:100%;border:none;" allowfullscreen></iframe>
+                                            </body>
+                                            </html>
+                                        `);
+                                        tempDoc.close();
+                                        
+                                        // Set our main iframe to this content
+                                        setTimeout(() => {
+                                            iframe.src = 'about:blank';
+                                            setTimeout(() => {
+                                                iframe.src = URL.createObjectURL(new Blob([tempDoc.documentElement.outerHTML], {type: 'text/html'}));
+                                                document.body.removeChild(tempIframe);
+                                            }, 200);
+                                        }, 200);
+                                        
+                                        return; // Skip the regular assignment below
+                                    } catch (e) {
+                                        console.log('Container approach failed:', e);
+                                        document.body.removeChild(tempIframe);
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.log('Special handling extraction failed:', e);
+                        }
+                    }
+                    
+                    // Default approach - use direct URL
                     iframe.src = decodedUrl;
                 } 
                 // Handle bare URLs (not starting with http or https)
@@ -472,6 +562,25 @@
                     // Additional check for successful load
                     console.log('Additional load listener triggered');
                     setTimeout(checkGameReady, 1000);
+                });
+                
+                // Special handling for service worker errors
+                window.addEventListener('unhandledrejection', function(event) {
+                    console.warn('Unhandled promise rejection:', event.reason);
+                    
+                    // If it's a service worker error and we're still loading
+                    if (event.reason && event.reason.message && 
+                        event.reason.message.includes('URL') && 
+                        loadingScreen.style.visibility === 'visible') {
+                        
+                        console.log('Detected service worker URL error, attempting recovery');
+                        
+                        // Try direct loading if we haven't already
+                        if (!skipUV && loadingAttempts < MAX_LOADING_ATTEMPTS) {
+                            loadingAttempts++;
+                            loadGameUrl(gameUrl, true); // Skip UV this time
+                        }
+                    }
                 });
             } catch (error) {
                 clearTimeout(loadTimeout);
