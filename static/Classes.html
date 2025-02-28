@@ -8,19 +8,33 @@
     <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin>
     <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com">
     
-    <!-- UV Proxy Scripts - Preload for faster initialization -->
-    <link rel="preload" href="/uv/uv.bundle.js" as="script">
-    <link rel="preload" href="/uv/uv.config.js" as="script">
-    <script src="/uv/uv.bundle.js" defer></script>
-    <script src="/uv/uv.config.js" defer></script>
+        <!-- Preload critical resources -->
+        <link rel="preload" href="/uv/uv.handler.js" as="script">
+        <link rel="preload" href="/uv/uv.sw.js" as="script">
+        <link rel="preload" href="/nav/home.png" as="image">
+        <link rel="preload" href="/nav/search.png" as="image">
+        <link rel="preload" href="/nav/apps.png" as="image">
+        <link rel="preload" href="/nav/fullscreenbutton.png" as="image">
+        <link rel="preload" href="/nav/reload.png" as="image">
+    
+        <!-- Lazy load non-critical resources -->
+        <link rel="prefetch" href="/uv/uv.client.js">
+        <link rel="prefetch" href="/nav/flash.png">
+        <link rel="prefetch" href="/nav/chat_icon.png">
+        
+        <!-- Establish early connections to common game domains -->
+        <link rel="preconnect" href="https://www.friv.com" crossorigin>
+        <link rel="preconnect" href="https://poki.com" crossorigin>
+        <link rel="preconnect" href="https://y8.com" crossorigin>
     
     <script>
-        // DEBUG MODE - Set to true to enable verbose console debugging
-        const DEBUG_MODE = true;
+        // Performance Optimization Mode
+        const DEBUG_MODE = false; // Disable debugging for performance
+        const PERFORMANCE_MODE = true;
         
         // Global variables for loading management
         let loadingAttempts = 0;
-        const MAX_LOADING_ATTEMPTS = 5; // Increased from 3
+        const MAX_LOADING_ATTEMPTS = 3; // Reduced for faster fallback
         let loadTimeout;
         let analyticsErrorHandled = false;
         let uvConfigLoaded = false;
@@ -177,50 +191,19 @@
             const iframe = document.getElementById('gframe');
             
             if (loadingScreen && loadingScreen.style.visibility === 'visible' && iframe) {
-                try {
-                    // Attempt to check if iframe has loaded content
-                    let iframeLoaded = false;
+                // Simplified check for performance
+                if (iframe.src && iframe.src !== 'about:blank') {
+                    // Force show the iframe for better performance
+                    iframe.style.opacity = '1';
+                    iframe.style.visibility = 'visible';
+                    iframe.style.display = 'block';
                     
-                    try {
-                        // This might throw CORS errors, which is normal
-                        iframeLoaded = iframe.contentWindow && 
-                            (iframe.contentWindow.document.readyState === 'complete' || 
-                             iframe.contentWindow.document.readyState === 'interactive');
-                    } catch (e) {
-                        // CORS error - expected behavior
-                        console.log('CORS check error (normal behavior):', e.message);
-                        
-                        // If we've been loading for a while, assume the iframe may be ready
-                        if (loadingAttempts > 1) {
-                            iframeLoaded = true;
-                        }
-                    }
+                    // Hide loading screen
+                    loadingScreen.style.opacity = '0';
+                    loadingScreen.style.visibility = 'hidden';
                     
-                    // Additional check for src attribute
-                    if (iframe.src && iframe.src !== 'about:blank' && iframe.src.length > 10) {
-                        iframeLoaded = true;
-                    }
-                    
-                    // Hide loading screen if content appears to be loaded
-                    if (iframeLoaded || iframe.complete) {
-                        console.log('Game appears ready - hiding loading screen');
-                        
-                        // Make sure iframe is visible before hiding loading screen
-                        iframe.style.opacity = '1';
-                        iframe.style.visibility = 'visible';
-                        iframe.style.display = 'block';
-                        
-                        // Delay hiding loading screen slightly to ensure game is visible
-                        setTimeout(() => {
-                            loadingScreen.style.opacity = '0';
-                            loadingScreen.style.visibility = 'hidden';
-                        }, 100);
-                        
-                        gameLoaded = true;
-                        return true;
-                    }
-                } catch (error) {
-                    console.log('Error checking iframe readiness:', error);
+                    gameLoaded = true;
+                    return true;
                 }
             }
             return false;
@@ -291,47 +274,113 @@
             loadingScreen.style.opacity = '1';
             loadingScreen.style.visibility = 'visible';
             
-            // Make sure the iframe is fully visible when content loads
+            // Make sure the iframe is ready when content loads
             iframe.style.display = 'block';
             iframe.style.opacity = '0';
             
-            // Add a debug message to the console
-            console.log('Preparing to load game URL:', gameUrl);
-
-            // Update loading text
-            const loadingText = document.querySelector('.loading-text');
-            if (loadingText) {
-                loadingText.textContent = 'Loading Game...';
-                loadingText.style.color = '#fff';
+            // Process the game URL
+            try {
+                const decodedUrl = decodeURIComponent(gameUrl);
+                
+                // Don't re-encode URLs that are already in UV format
+                if (decodedUrl.startsWith('/uv/') || decodedUrl.startsWith('/service/')) {
+                    // For already-encoded URLs, use optimal loading method
+                    const method = getOptimalLoadingMethod(decodedUrl);
+                    loadWithOptimalMethod(decodedUrl, method);
+                    
+                    // Set timeout to show game faster
+                    setTimeout(() => {
+                        if (!gameLoaded) {
+                            iframe.style.opacity = '1';
+                            loadingScreen.style.opacity = '0';
+                            loadingScreen.style.visibility = 'hidden';
+                            gameLoaded = true;
+                        }
+                    }, 3000); // Reduced timeout for better perceived performance
+                    
+                    // For Friv games, force faster loading
+                    if (decodedUrl.includes('friv.com') || method === 'nested-iframe') {
+                        setTimeout(() => {
+                            iframe.style.opacity = '1';
+                            loadingScreen.style.opacity = '0';
+                            loadingScreen.style.visibility = 'hidden';
+                            gameLoaded = true;
+                        }, 1500); // Even faster loading for Friv games
+                    }
+                } 
+                // Handle bare URLs
+                else if (!decodedUrl.startsWith('http://') && !decodedUrl.startsWith('https://')) {
+                    iframe.src = decodedUrl;
+                }
+                // Handle regular URLs that need encoding through UV
+                else if (window.__uv$config && !skipUV) {
+                    const encodedUrl = window.__uv$config.prefix + window.__uv$config.encodeUrl(decodedUrl);
+                    iframe.src = encodedUrl;
+                } else {
+                    // Direct loading
+                    iframe.src = decodedUrl;
+                }
+                
+                // Listen for load and add a quick timeout to show game regardless
+                iframe.onload = () => {
+                    clearTimeout(loadTimeout);
+                    
+                    if (iframe.src && iframe.src !== 'about:blank') {
+                        iframe.style.opacity = '1';
+                        loadingScreen.style.opacity = '0';
+                        loadingScreen.style.visibility = 'hidden';
+                        gameLoaded = true;
+                    }
+                };
+                
+                // Auto-hide loading screen faster for better perceived performance
+                const autoHideTimeout = setTimeout(() => {
+                    if (!gameLoaded && loadingScreen.style.visibility === 'visible') {
+                        iframe.style.opacity = '1';
+                        loadingScreen.style.opacity = '0';
+                        loadingScreen.style.visibility = 'hidden';
+                        gameLoaded = true;
+                    }
+                }, 4000); // Reduced from 15000 for better performance
+                
+                // Handle errors faster
+                iframe.onerror = () => {
+                    if (loadingAttempts < MAX_LOADING_ATTEMPTS) {
+                        loadingAttempts++;
+                        loadGameUrl(gameUrl, !skipUV);
+                    } else {
+                        iframe.style.opacity = '1';
+                        loadingScreen.style.opacity = '0';
+                        loadingScreen.style.visibility = 'hidden';
+                    }
+                };
+            } catch (error) {
+                console.error('Error loading game:', error);
+                iframe.style.opacity = '1';
+                loadingScreen.style.opacity = '0';
+                loadingScreen.style.visibility = 'hidden';
+                
+                // Try direct loading as a fallback
+                try {
+                    iframe.src = gameUrl;
+                } catch (e) {
+                    // If all else fails, show error
+                    showLoadingError('Game failed to load. Try another game.');
+                }
             }
+        }
 
-            // Set timeout for loading (extended from original)
+        // Set timeout for loading (extended from original)
             clearTimeout(loadTimeout);
             loadTimeout = setTimeout(() => {
-                console.log(`Game loading attempt ${loadingAttempts + 1} timed out`);
-                
-                // Try loading again if under max attempts
-                if (loadingAttempts < MAX_LOADING_ATTEMPTS) {
-                    loadingAttempts++;
-                    console.log(`Retrying game load (Attempt ${loadingAttempts + 1})`);
-                    
-                    // If multiple attempts failed, try toggling UV usage
-                    const useUV = loadingAttempts % 2 === 0 ? !skipUV : skipUV;
-                    
-                    // Try clearing cache on later attempts
-                    if (loadingAttempts > 2) {
-                        clearIframeCache();
-                    }
-                    
-                    loadGameUrl(gameUrl, useUV);
-                } else {
+                // Just force show the game after timeout
+                if (!gameLoaded) {
+                    iframe.style.opacity = '1';
                     loadingScreen.style.opacity = '0';
                     loadingScreen.style.visibility = 'hidden';
-                    iframe.style.opacity = '1';
-                    iframe.src = 'about:blank';
-                    showLoadingError('Game loading failed after multiple attempts. Try refreshing or using a different browser.');
+                    gameLoaded = true;
                 }
-            }, 30000);  // 30 seconds timeout (increased from 25)
+            }, 8000);  // Reduced from 30000 to 8000 for better performance
 
                             // Auto-hide loading screen after 15 seconds even without events
             // This helps with games that don't trigger proper load events
@@ -599,7 +648,32 @@
         
         // Initialize the game when DOM is loaded
         document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(initGame, 200); // Increased delay for better DOM readiness
+            // Start loading immediately for better performance
+            initGame();
+            
+            // Add performance optimization hints
+            if (PERFORMANCE_MODE) {
+                // Add preconnect for common game domains
+                const domains = [
+                    'friv.com', 'www.friv.com',
+                    'poki.com', 'www.poki.com',
+                    'y8.com', 'www.y8.com'
+                ];
+                
+                domains.forEach(domain => {
+                    const link = document.createElement('link');
+                    link.rel = 'preconnect';
+                    link.href = `https://${domain}`;
+                    link.crossOrigin = 'anonymous';
+                    document.head.appendChild(link);
+                });
+                
+                // Set browser hint to prioritize performance
+                const meta = document.createElement('meta');
+                meta.httpEquiv = 'Page-Speed';
+                meta.content = 'High';
+                document.head.appendChild(meta);
+            }
         });
     </script>
     
@@ -667,15 +741,17 @@
             left: 0;
             width: 100%;
             height: calc(100% - 36px);
-            background: #000;
+            background: rgba(0, 0, 0, 0.9); /* Slightly transparent for better perceived loading */
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             z-index: 5;
             border-radius: 10px 10px 0 0;
-            transition: opacity 0.5s ease-out, visibility 0.5s ease-out;
+            transition: opacity 0.2s ease-out, visibility 0.2s ease-out; /* Faster transition */
             visibility: visible;
+            will-change: opacity, visibility; /* Performance optimization */
+            backdrop-filter: blur(3px); /* Adds depth without heavy performance cost */
         }
 
         .loading-spinner {
@@ -705,10 +781,12 @@
             border-radius: 10px 10px 0 0;
             background-color: #000;
             opacity: 0;
-            transition: opacity 0.3s ease-in;
+            transition: opacity 0.2s ease-in; /* Faster transition */
             position: relative;
-            z-index: 1; /* Ensure iframe is above background but below loading screen */
-            display: block; /* Ensure iframe is displayable */
+            z-index: 1;
+            display: block;
+            will-change: opacity; /* Optimize for animations */
+            transform: translateZ(0); /* Force GPU acceleration */
         }
 
         .footer {
