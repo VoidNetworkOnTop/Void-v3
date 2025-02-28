@@ -194,6 +194,11 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/Nbbw9xp6kOtRO59CP0zxpwHY2lKlvaibA7rvDi2lJA9O0JqZNJhErdCQxq5YHWwP0S9bDGrs-c2GzMw7zUTi3qc-obm3eM-YTOLqX0HODxnfUVgGFUtGrFR71oLb2mkiS6SF5BeRTzLKRda8jHjUvS7GN4J2pw",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://cdn.now.gg/html5-games/com.nowgg.h5.pub501.app51543/we-become-what-we-behold/index.html")
 },
+{
+    title: "Poeltl", 
+    imgSrc: "https://poeltl.nbpa.com/public/assets/183263d0-aa82-11ee-b417-db331415685f-W3Oc8TwNRI2qEKKc.png",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://poeltl.nbpa.com")
+},
 
 
 
