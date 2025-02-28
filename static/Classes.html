@@ -8,19 +8,9 @@
     <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin>
     <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com">
     
-        <!-- Preload critical resources -->
-        <link rel="preload" href="/uv/uv.handler.js" as="script">
-        <link rel="preload" href="/uv/uv.sw.js" as="script">
-        <link rel="preload" href="/nav/home.png" as="image">
-        <link rel="preload" href="/nav/search.png" as="image">
-        <link rel="preload" href="/nav/apps.png" as="image">
-        <link rel="preload" href="/nav/fullscreenbutton.png" as="image">
-        <link rel="preload" href="/nav/reload.png" as="image">
-    
-        <!-- Lazy load non-critical resources -->
-        <link rel="prefetch" href="/uv/uv.client.js">
-        <link rel="prefetch" href="/nav/flash.png">
-        <link rel="prefetch" href="/nav/chat_icon.png">
+        <!-- Preload critical resources with correct types -->
+        <script src="/uv/uv.bundle.js"></script>
+        <script src="/uv/uv.config.js"></script>
         
         <!-- Establish early connections to common game domains -->
         <link rel="preconnect" href="https://www.friv.com" crossorigin>
@@ -53,6 +43,18 @@
                 uvConfigLoaded = true;
                 return true;
             }
+            
+            // Fallback - manually initialize UV if needed
+            if (typeof window.UV !== 'undefined' && typeof window.UV.config !== 'undefined') {
+                try {
+                    window.__uv$config = window.UV.config;
+                    uvConfigLoaded = true;
+                    return true;
+                } catch (e) {
+                    console.error("Error setting UV config:", e);
+                }
+            }
+            
             return false;
         }
 
@@ -256,30 +258,44 @@
 
         // Main function to load the game
         function loadGameUrl(gameUrl, skipUV) {
-            const iframe = document.getElementById('gframe');
-            const loadingScreen = document.getElementById('loadingScreen');
-            const fallbackMessage = document.getElementById('fallbackMessage');
-            
-            if (!iframe) return;
-            
-            // Hide fallback message
-            if (fallbackMessage) {
-                fallbackMessage.style.display = 'none';
-            }
-            
-            // Reset loaded state
-            gameLoaded = false;
-            
-            // Show loading screen
-            loadingScreen.style.opacity = '1';
-            loadingScreen.style.visibility = 'visible';
-            
-            // Make sure the iframe is ready when content loads
-            iframe.style.display = 'block';
-            iframe.style.opacity = '0';
-            
-            // Process the game URL
             try {
+                const iframe = document.getElementById('gframe');
+                const loadingScreen = document.getElementById('loadingScreen');
+                const fallbackMessage = document.getElementById('fallbackMessage');
+                
+                if (!iframe) return;
+                
+                // Hide fallback message
+                if (fallbackMessage) {
+                    fallbackMessage.style.display = 'none';
+                }
+                
+                // Reset loaded state
+                gameLoaded = false;
+                
+                // Show loading screen
+                loadingScreen.style.opacity = '1';
+                loadingScreen.style.visibility = 'visible';
+                
+                // Make sure the iframe is ready when content loads
+                iframe.style.display = 'block';
+                iframe.style.opacity = '0';
+                
+                // Handle Google UserContent URLs specially
+                if (gameUrl.includes('googleusercontent') || gameUrl.includes('googlesyndication') || gameUrl.includes('google') || gameUrl.includes('%')) {
+                    console.log('Special handling for complex URL');
+                    iframe.src = gameUrl;
+                    
+                    // Force show after a delay
+                    setTimeout(() => {
+                        iframe.style.opacity = '1';
+                        loadingScreen.style.opacity = '0';
+                        loadingScreen.style.visibility = 'hidden';
+                    }, 3000);
+                    return;
+                }
+                
+                // Process the game URL
                 const decodedUrl = decodeURIComponent(gameUrl);
                 
                 // Don't re-encode URLs that are already in UV format
@@ -297,16 +313,6 @@
                             gameLoaded = true;
                         }
                     }, 3000); // Reduced timeout for better perceived performance
-                    
-                    // For Friv games, force faster loading
-                    if (decodedUrl.includes('friv.com') || method === 'nested-iframe') {
-                        setTimeout(() => {
-                            iframe.style.opacity = '1';
-                            loadingScreen.style.opacity = '0';
-                            loadingScreen.style.visibility = 'hidden';
-                            gameLoaded = true;
-                        }, 1500); // Even faster loading for Friv games
-                    }
                 } 
                 // Handle bare URLs
                 else if (!decodedUrl.startsWith('http://') && !decodedUrl.startsWith('https://')) {
@@ -333,40 +339,46 @@
                     }
                 };
                 
-                // Auto-hide loading screen faster for better perceived performance
-                const autoHideTimeout = setTimeout(() => {
-                    if (!gameLoaded && loadingScreen.style.visibility === 'visible') {
+                // Set a safety timeout
+                clearTimeout(loadTimeout);
+                loadTimeout = setTimeout(() => {
+                    if (!gameLoaded) {
                         iframe.style.opacity = '1';
                         loadingScreen.style.opacity = '0';
                         loadingScreen.style.visibility = 'hidden';
                         gameLoaded = true;
                     }
-                }, 4000); // Reduced from 15000 for better performance
+                }, 8000);
                 
-                // Handle errors faster
-                iframe.onerror = () => {
-                    if (loadingAttempts < MAX_LOADING_ATTEMPTS) {
-                        loadingAttempts++;
-                        loadGameUrl(gameUrl, !skipUV);
-                    } else {
+            } catch (error) {
+                console.error('Critical error loading game:', error);
+                tryDirectLoading(gameUrl);
+            }
+        }
+        
+        // Fallback function for direct loading in case of errors
+        function tryDirectLoading(gameUrl) {
+            try {
+                const iframe = document.getElementById('gframe');
+                const loadingScreen = document.getElementById('loadingScreen');
+                
+                // Basic error recovery - use direct loading approach
+                iframe.src = 'about:blank';
+                
+                setTimeout(() => {
+                    iframe.src = gameUrl;
+                    
+                    // Force show after a delay
+                    setTimeout(() => {
                         iframe.style.opacity = '1';
                         loadingScreen.style.opacity = '0';
                         loadingScreen.style.visibility = 'hidden';
-                    }
-                };
-            } catch (error) {
-                console.error('Error loading game:', error);
-                iframe.style.opacity = '1';
-                loadingScreen.style.opacity = '0';
-                loadingScreen.style.visibility = 'hidden';
-                
-                // Try direct loading as a fallback
-                try {
-                    iframe.src = gameUrl;
-                } catch (e) {
-                    // If all else fails, show error
-                    showLoadingError('Game failed to load. Try another game.');
-                }
+                    }, 2000);
+                }, 500);
+            } catch (e) {
+                console.error('Fallback loading failed:', e);
+                // Show error
+                showLoadingError('Game failed to load. Please try another game.');
             }
         }
 
@@ -845,70 +857,63 @@
 
     <script>
         function reloadGame() {
-            const iframe = document.getElementById('gframe');
-            const loadingScreen = document.getElementById('loadingScreen');
-            const fallbackMessage = document.getElementById('fallbackMessage');
-            let currentSrc = iframe.src;
-            
-            // Hide fallback message if visible
-            if (fallbackMessage) {
-                fallbackMessage.style.display = 'none';
-            }
-            
-            // Reset state variables
-            loadingAttempts = 0;
-            analyticsErrorHandled = false;
-            gameLoaded = false;
-            
-            // Show loading screen
-            loadingScreen.style.opacity = '1';
-            loadingScreen.style.visibility = 'visible';
-            iframe.style.opacity = '0';
-            
-            // If iframe has no source or is about:blank, get game URL from query params
-            if (!currentSrc || currentSrc === 'about:blank' || currentSrc === 'about:blank?') {
-                const urlParams = new URLSearchParams(window.location.search);
-                const gameUrl = urlParams.get('game');
-                if (gameUrl) {
-                    console.log('Reloading from URL parameter');
-                    // Clear iframe state and reload
-                    iframe.src = 'about:blank';
-                    setTimeout(() => {
-                        initGame();
-                    }, 500);
+            try {
+                const iframe = document.getElementById('gframe');
+                const loadingScreen = document.getElementById('loadingScreen');
+                const fallbackWrapper = document.getElementById('fallbackWrapper');
+                
+                // Hide any visible fallback
+                if (fallbackWrapper) {
+                    fallbackWrapper.style.display = 'none';
+                }
+                
+                // Reset state variables
+                loadingAttempts = 0;
+                analyticsErrorHandled = false;
+                gameLoaded = false;
+                
+                // Show loading screen
+                loadingScreen.style.opacity = '1';
+                loadingScreen.style.visibility = 'visible';
+                iframe.style.opacity = '0';
+                
+                // Get current or original URL
+                let gameUrl;
+                
+                if (iframe.src && iframe.src !== 'about:blank') {
+                    gameUrl = iframe.src;
+                } else {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    gameUrl = urlParams.get('game');
+                }
+                
+                if (!gameUrl) {
+                    showLoadingError('No game URL found. Please return to the home page.');
                     return;
                 }
-            }
-            
-            // Try with cache buster
-            const cacheBuster = Date.now();
-            const srcWithoutCache = currentSrc.split('?')[0];
-            const newSrc = srcWithoutCache + '?cache=' + cacheBuster;
-            
-            console.log('Reloading game with new source:', newSrc);
-            
-            // Set to blank first to ensure a complete reload
-            iframe.src = 'about:blank';
-            
-            // Small delay before reloading
-            setTimeout(() => {
-                iframe.src = newSrc;
                 
-                // Check if the game is visible after reload
+                // Reset iframe
+                iframe.src = 'about:blank';
+                
+                // Try to load with the most basic approach for better compatibility
                 setTimeout(() => {
-                    if (!gameLoaded) {
-                        // Force visibility
-                        iframe.style.opacity = '1';
-                        loadingScreen.style.opacity = '0';
-                        loadingScreen.style.visibility = 'hidden';
+                    try {
+                        iframe.src = gameUrl;
                         
-                        // Show fallback message if content still not visible
-                        if (fallbackMessage) {
-                            fallbackMessage.style.display = 'block';
-                        }
+                        // Force show after a delay
+                        setTimeout(() => {
+                            iframe.style.opacity = '1';
+                            loadingScreen.style.opacity = '0';
+                            loadingScreen.style.visibility = 'hidden';
+                        }, 3000);
+                    } catch (error) {
+                        console.error('Error reloading game:', error);
+                        showLoadingError('Error reloading game. Please try a different game.');
                     }
-                }, 10000); // 10 second timeout
-            }, 500);
+                }, 500);
+            } catch (error) {
+                console.error('Critical error in reload:', error);
+            }
         }
 
         function toggleFullScreen() {
