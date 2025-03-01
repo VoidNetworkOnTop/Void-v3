@@ -5,101 +5,159 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Classes</title>
     
-    <!-- Critical hints to prioritize game display -->
-    <meta http-equiv="Page-Speed" content="High">
-    <meta name="priority" content="high">
-    
-    <!-- Inline critical styles only -->
     <style>
-        /* Only essential styles */
-        body, html {
+        * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
             background: #000;
             height: 100vh;
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-family: system-ui, sans-serif;
         }
-        
+
         .header {
             position: fixed;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            left: 0;
+            padding: 1rem;
+            top: 0;
+            font-weight: 700;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .header a {
+            margin: 0 1.5rem;
+        }
+
+        .home_bttn {
+            height: 3vh;
+            width: 3vh;
+        }
+
+        .game_container {
+            background: #000;
+            width: 80%;
+            max-width: 1000px;
+            height: 70vh;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+            z-index: 2;
+        }
+
+        .loading-screen {
+            position: absolute;
             top: 0;
             left: 0;
             width: 100%;
-            background: rgba(0,0,0,0.7);
-            height: 40px;
-            display: flex;
-            justify-content: center;
-            z-index: 10;
-        }
-        
-        .header a {
-            margin: 0 15px;
-            padding-top: 8px;
-        }
-        
-        .home_bttn {
-            height: 24px;
-            width: 24px;
-        }
-        
-        .game_container {
-            position: absolute;
-            top: 40px;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            height: calc(100% - 36px);
+            background: #000;
             display: flex;
             flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 5;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #333;
+            border-top: 5px solid #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .loading-text {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #fff;
         }
         
-        /* Game iframe takes most of the space */
-        #gframe {
-            flex: 1;
-            width: 100%;
+        .show-game-btn {
+            display: none;
+            margin-top: 20px;
+            padding: 10px 15px;
+            background: #4a6ed3;
+            color: white;
             border: none;
-            background: #000;
-            display: block;
+            border-radius: 5px;
+            cursor: pointer;
         }
-        
-        /* Simple footer bar */
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .game_iframe {
+            width: 100%;
+            height: calc(100% - 36px);
+            border: none;
+            border-radius: 10px 10px 0 0;
+            background-color: #000;
+        }
+
         .footer {
             height: 36px;
-            background: rgba(30,30,30,0.6);
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 0 0 10px 10px;
             display: flex;
             justify-content: center;
+            align-items: center;
+            gap: 10px;
         }
-        
+
         .footer button {
-            margin: 0 10px;
+            width: 36px;
+            height: 36px;
             background: transparent;
             border: none;
             cursor: pointer;
-            height: 36px;
-            width: 36px;
         }
-        
-        .footer img {
-            height: 24px;
+
+        .footer button img {
             width: 24px;
+            height: 24px;
         }
     </style>
 </head>
 <body>
-    <!-- Minimal header -->
     <header class="header">
         <a href="/"><img src="/nav/home.png" class="home_bttn" alt="Home"></a>
         <a href="/ta"><img src="/nav/search.png" class="home_bttn" alt="Search"></a>
         <a href="/app"><img src="/nav/apps.png" class="home_bttn" alt="Apps"></a>
     </header>
 
-    <!-- Game container - no extra elements -->
     <div class="game_container">
-        <!-- Game iframe with no sandbox to ensure immediate display -->
-        <iframe id="gframe" allowfullscreen="true" allow="fullscreen; autoplay"></iframe>
+        <div class="loading-screen" id="loadingScreen">
+            <div class="loading-spinner"></div>
+            <div class="loading-text" id="loadingText">Loading Game...</div>
+            <button class="show-game-btn" id="showGameBtn">Show Game Now</button>
+        </div>
         
-        <!-- Minimal footer -->
+        <!-- Game iframe - no sandbox attributes to cause warnings -->
+        <iframe id="gframe" class="game_iframe" allowfullscreen="true" allow="fullscreen; autoplay"></iframe>
+        
         <div class="footer">
-            <button onclick="location.reload()" title="Reload">
+            <button onclick="reloadGame()" title="Reload">
                 <img src="/nav/reload.png" alt="Reload">
             </button>
             <button onclick="toggleFullScreen()" title="Fullscreen">
@@ -108,12 +166,19 @@
         </div>
     </div>
 
-    <!-- Inline script for immediate execution -->
     <script>
-        // Immediately get and set the game URL - top priority
-        (function() {
-            try {
-                // Get game URL from query parameter
+        // Ultra simple script to address black screen issues
+        document.addEventListener('DOMContentLoaded', function() {
+            const iframe = document.getElementById('gframe');
+            const loadingScreen = document.getElementById('loadingScreen');
+            const loadingText = document.getElementById('loadingText');
+            const showGameBtn = document.getElementById('showGameBtn');
+            
+            let checkVisibilityInterval;
+            let gameLoaded = false;
+            
+            // Load game from URL parameter
+            function loadGame() {
                 const urlParams = new URLSearchParams(window.location.search);
                 const gameUrl = urlParams.get('game');
                 
@@ -122,27 +187,136 @@
                     return;
                 }
                 
-                // Set iframe src immediately
-                document.getElementById('gframe').src = gameUrl;
-            } catch(e) {
-                console.error('Error loading game:', e);
+                // Set iframe src to load game
+                iframe.src = gameUrl;
+                
+                // Show "Show Game" button after 5 seconds
+                setTimeout(function() {
+                    showGameBtn.style.display = 'block';
+                }, 5000);
+                
+                // Start checking for visible content
+                startVisibilityCheck();
             }
-        })();
-        
-        // Simple fullscreen toggle function
-        function toggleFullScreen() {
-            const iframe = document.getElementById('gframe');
             
-            try {
-                if (!document.fullscreenElement) {
-                    iframe.requestFullscreen();
-                } else {
-                    document.exitFullscreen();
-                }
-            } catch(e) {
-                console.error('Fullscreen error:', e);
+            // Check if the iframe has visible content
+            function startVisibilityCheck() {
+                // Clear any existing interval
+                clearInterval(checkVisibilityInterval);
+                
+                // Only start checking after an initial delay
+                setTimeout(function() {
+                    loadingText.textContent = "Waiting for game to appear...";
+                    
+                    // Set 500ms interval to check for content
+                    checkVisibilityInterval = setInterval(function() {
+                        checkIframeVisibility();
+                    }, 500);
+                    
+                    // Set max wait time - after 20 seconds, show game regardless
+                    setTimeout(function() {
+                        if (!gameLoaded) {
+                            hideLoadingScreen();
+                            loadingText.textContent = "Game may still be loading...";
+                        }
+                    }, 20000);
+                }, 2000);
             }
-        }
+            
+            // Check if iframe has visible content
+            function checkIframeVisibility() {
+                try {
+                    // Check if iframe has source
+                    if (!iframe.src || iframe.src === 'about:blank') {
+                        return;
+                    }
+                    
+                    // Method 1: Check if iframe reported as "complete"
+                    try {
+                        if (iframe.contentWindow && iframe.contentWindow.document.readyState === 'complete') {
+                            // Additional wait to let the game render
+                            setTimeout(hideLoadingScreen, 1500);
+                            return;
+                        }
+                    } catch (e) {
+                        // CORS error expected for security
+                    }
+                    
+                    // Method 2: Simple time-based detection
+                    // If iframe has loaded for 8+ seconds, assume content is there
+                    if (iframe.dataset.loadTime && new Date().getTime() - parseInt(iframe.dataset.loadTime) > 8000) {
+                        hideLoadingScreen();
+                    }
+                } catch (e) {
+                    console.log('Error checking iframe visibility:', e);
+                }
+            }
+            
+            // Handle iframe load event
+            iframe.addEventListener('load', function() {
+                // Store load time
+                iframe.dataset.loadTime = new Date().getTime();
+                
+                // Extra wait after load event to give the game more time to render
+                setTimeout(function() {
+                    if (!gameLoaded) {
+                        loadingText.textContent = "Almost ready...";
+                    }
+                }, 2000);
+            });
+            
+            // Show Game button click handler
+            showGameBtn.addEventListener('click', function() {
+                hideLoadingScreen();
+            });
+            
+            // Hide loading screen and show game
+            function hideLoadingScreen() {
+                if (gameLoaded) return;
+                
+                gameLoaded = true;
+                loadingScreen.style.display = 'none';
+                clearInterval(checkVisibilityInterval);
+            }
+            
+            // Reload game function
+            window.reloadGame = function() {
+                gameLoaded = false;
+                loadingScreen.style.display = 'flex';
+                showGameBtn.style.display = 'none';
+                loadingText.textContent = "Loading Game...";
+                
+                // Reset iframe
+                iframe.src = 'about:blank';
+                
+                // Load game after short delay
+                setTimeout(loadGame, 100);
+            };
+            
+            // Toggle fullscreen function
+            window.toggleFullScreen = function() {
+                if (!document.fullscreenElement) {
+                    if (iframe.requestFullscreen) {
+                        iframe.requestFullscreen();
+                    } else if (iframe.webkitRequestFullscreen) {
+                        iframe.webkitRequestFullscreen();
+                    } else if (iframe.msRequestFullscreen) {
+                        iframe.msRequestFullscreen();
+                    }
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    } else if (document.webkitExitFullscreen) {
+                        document.webkitExitFullscreen();
+                    } else if (document.msExitFullscreen) {
+                        document.msExitFullscreen();
+                    }
+                }
+            };
+            
+            // Start loading game
+            loadGame();
+        });
     </script>
 </body>
 </html>
