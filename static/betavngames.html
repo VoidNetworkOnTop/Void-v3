@@ -338,7 +338,7 @@
     <div id="auth-container">
         <div id="user-profile" style="display:none;">
             <h3>Welcome, <span id="username-display"></span>!</h3>
-            <p>Balance: $<span id="balance-display">0.00</span></p>
+            <p>Coins: <span id="balance-display">0</span></p>
             <button id="logout-btn">Logout</button>
         </div>
 
@@ -397,7 +397,7 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-// Profile Icon Toggle Functionality
+        // Profile Icon Toggle Functionality
         const profileIcon = document.getElementById('profile-icon');
         const authContainer = document.getElementById('auth-container');
         
@@ -418,285 +418,285 @@
             }
         });
 
-        // Void Network Accounting Class
-        class VoidNetworkAccounting {
-            constructor() {
-                this.auth = auth;
-                this.db = db;
-            }
+// Void Network Accounting Class
+class VoidNetworkAccounting {
+    constructor() {
+        this.auth = auth;
+        this.db = db;
+    }
 
-            // User Registration
-            async registerUser(email, password, username) {
-                try {
-                    const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
-                    const user = userCredential.user;
+    // User Registration
+    async registerUser(email, password, username) {
+        try {
+            const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
+            const user = userCredential.user;
 
-                    // Create user profile in Firestore
-                    await setDoc(doc(this.db, 'users', user.uid), {
-                        username: username,
-                        email: email,
-                        createdAt: new Date(),
-                        accountBalance: 0,
-                        totalGamesPlayed: 0,
-                        totalMoneySpent: 0,
-                        totalMoneyEarned: 0
-                    });
+            // Create user profile in Firestore
+            await setDoc(doc(this.db, 'users', user.uid), {
+                username: username,
+                email: email,
+                createdAt: new Date(),
+                accountBalance: 0,
+                totalGamesPlayed: 0,
+                totalMoneySpent: 0,
+                totalMoneyEarned: 0
+            });
 
-                    return user;
-                } catch (error) {
-                    console.error("Registration Error:", error);
-                    throw error;
-                }
-            }
-
-            // User Login
-            async loginUser(email, password) {
-                try {
-                    const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
-                    return userCredential.user;
-                } catch (error) {
-                    console.error("Login Error:", error);
-                    throw error;
-                }
-            }
-
-            // Logout
-            async logout() {
-                try {
-                    await this.auth.signOut();
-                } catch (error) {
-                    console.error("Logout Error:", error);
-                    throw error;
-                }
-            }
-
-            // Get Current User
-            getCurrentUser() {
-                return this.auth.currentUser;
-            }
-
-            // Get User Account Details
-            async getUserAccountDetails(userId) {
-                try {
-                    const userRef = doc(this.db, 'users', userId);
-                    const userDoc = await getDoc(userRef);
-
-                    if (!userDoc.exists()) {
-                        throw new Error('User not found');
-                    }
-
-                    return userDoc.data();
-                } catch (error) {
-                    console.error("Account Details Error:", error);
-                    throw error;
-                }
-            }
-
-            // Track Game Transaction
-            async recordGameTransaction(gameId, userId, transactionType, amount) {
-                try {
-                    // Create transaction record
-                    const transactionRef = doc(collection(this.db, 'transactions'));
-                    await setDoc(transactionRef, {
-                        userId: userId,
-                        gameId: gameId,
-                        transactionType: transactionType,
-                        amount: amount,
-                        timestamp: new Date()
-                    });
-
-                    // Update user's account
-                    const userRef = doc(this.db, 'users', userId);
-                    const userDoc = await getDoc(userRef);
-                    const userData = userDoc.data();
-
-                    let updatedBalance = userData.accountBalance;
-                    if (transactionType === 'deposit') {
-                        updatedBalance += amount;
-                    } else if (transactionType === 'withdrawal') {
-                        updatedBalance -= amount;
-                    } else if (transactionType === 'game_play') {
-                        updatedBalance -= amount;
-                        userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
-                        userData.totalMoneySpent = (userData.totalMoneySpent || 0) + amount;
-                    } else if (transactionType === 'game_win') {
-                        updatedBalance += amount;
-                        userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + amount;
-                    }
-
-                    await updateDoc(userRef, {
-                        accountBalance: updatedBalance,
-                        totalGamesPlayed: userData.totalGamesPlayed,
-                        totalMoneySpent: userData.totalMoneySpent,
-                        totalMoneyEarned: userData.totalMoneyEarned
-                    });
-
-                    return {
-                        transactionId: transactionRef.id,
-                        newBalance: updatedBalance
-                    };
-                } catch (error) {
-                    console.error("Transaction Error:", error);
-                    throw error;
-                }
-            }
+            return user;
+        } catch (error) {
+            console.error("Registration Error:", error);
+            throw error;
         }
+    }
 
-        // Initialize Accounting System
-        const voidAccounting = new VoidNetworkAccounting();
-
-        // Authentication Event Listeners
-        document.getElementById('login-btn')?.addEventListener('click', async () => {
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-            
-            try {
-                const user = await voidAccounting.loginUser(email, password);
-                console.log('Logged in user:', user);
-                updateUIForLoggedInUser(user);
-                authContainer.style.display = 'none'; // Hide auth container after login
-            } catch (error) {
-                alert('Login failed: ' + error.message);
-            }
-        });
-
-        document.getElementById('register-btn')?.addEventListener('click', async () => {
-            const username = document.getElementById('register-username').value;
-            const email = document.getElementById('register-email').value;
-            const password = document.getElementById('register-password').value;
-            
-            try {
-                const user = await voidAccounting.registerUser(email, password, username);
-                console.log('Registered user:', user);
-                updateUIForLoggedInUser(user);
-                authContainer.style.display = 'none'; // Hide auth container after registration
-            } catch (error) {
-                alert('Registration failed: ' + error.message);
-            }
-        });
-
-        document.getElementById('logout-btn')?.addEventListener('click', async () => {
-            try {
-                await voidAccounting.logout();
-                updateUIForLoggedOutUser();
-            } catch (error) {
-                alert('Logout failed: ' + error.message);
-            }
-        });
-
-        // Update UI based on authentication state
-        function updateUIForLoggedInUser(user) {
-            document.getElementById('login-form').style.display = 'none';
-            document.getElementById('register-form').style.display = 'none';
-            document.getElementById('user-profile').style.display = 'block';
-            
-            // Fetch and display user details
-            voidAccounting.getUserAccountDetails(user.uid)
-                .then(userDetails => {
-                    document.getElementById('username-display').textContent = userDetails.username;
-                    document.getElementById('balance-display').textContent = userDetails.accountBalance.toFixed(2);
-                });
+    // User Login
+    async loginUser(email, password) {
+        try {
+            const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
+            return userCredential.user;
+        } catch (error) {
+            console.error("Login Error:", error);
+            throw error;
         }
+    }
 
-        function updateUIForLoggedOutUser() {
-            document.getElementById('login-form').style.display = 'block';
-            document.getElementById('register-form').style.display = 'block';
-            document.getElementById('user-profile').style.display = 'none';
+    // Logout
+    async logout() {
+        try {
+            await this.auth.signOut();
+        } catch (error) {
+            console.error("Logout Error:", error);
+            throw error;
         }
+    }
 
-        // Listen for authentication state changes
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                updateUIForLoggedInUser(user);
+    // Get Current User
+    getCurrentUser() {
+        return this.auth.currentUser;
+    }
+
+    // Get User Account Details
+    async getUserAccountDetails(userId) {
+        try {
+            const userRef = doc(this.db, 'users', userId);
+            const userDoc = await getDoc(userRef);
+
+            if (!userDoc.exists()) {
+                throw new Error('User not found');
+            }
+
+            return userDoc.data();
+        } catch (error) {
+            console.error("Account Details Error:", error);
+            throw error;
+        }
+    }
+
+    // Track Game Transaction
+    async recordGameTransaction(gameId, userId, transactionType, amount) {
+        try {
+            // Create transaction record
+            const transactionRef = doc(collection(this.db, 'transactions'));
+            await setDoc(transactionRef, {
+                userId: userId,
+                gameId: gameId,
+                transactionType: transactionType,
+                amount: amount,
+                timestamp: new Date()
+            });
+
+            // Update user's account
+            const userRef = doc(this.db, 'users', userId);
+            const userDoc = await getDoc(userRef);
+            const userData = userDoc.data();
+
+            let updatedBalance = userData.accountBalance;
+            if (transactionType === 'deposit') {
+                updatedBalance += amount;
+            } else if (transactionType === 'withdrawal') {
+                updatedBalance -= amount;
+            } else if (transactionType === 'game_play') {
+                updatedBalance -= amount;
+                userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
+                userData.totalMoneySpent = (userData.totalMoneySpent || 0) + amount;
+            } else if (transactionType === 'game_win') {
+                updatedBalance += amount;
+                userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + amount;
+            }
+
+            await updateDoc(userRef, {
+                accountBalance: updatedBalance,
+                totalGamesPlayed: userData.totalGamesPlayed,
+                totalMoneySpent: userData.totalMoneySpent,
+                totalMoneyEarned: userData.totalMoneyEarned
+            });
+
+            return {
+                transactionId: transactionRef.id,
+                newBalance: updatedBalance
+            };
+        } catch (error) {
+            console.error("Transaction Error:", error);
+            throw error;
+        }
+    }
+}
+
+// Initialize Accounting System
+const voidAccounting = new VoidNetworkAccounting();
+
+// Authentication Event Listeners
+document.getElementById('login-btn')?.addEventListener('click', async () => {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+    
+    try {
+        const user = await voidAccounting.loginUser(email, password);
+        console.log('Logged in user:', user);
+        updateUIForLoggedInUser(user);
+        authContainer.style.display = 'none'; // Hide auth container after login
+    } catch (error) {
+        alert('Login failed: ' + error.message);
+    }
+});
+
+document.getElementById('register-btn')?.addEventListener('click', async () => {
+    const username = document.getElementById('register-username').value;
+    const email = document.getElementById('register-email').value;
+    const password = document.getElementById('register-password').value;
+    
+    try {
+        const user = await voidAccounting.registerUser(email, password, username);
+        console.log('Registered user:', user);
+        updateUIForLoggedInUser(user);
+        authContainer.style.display = 'none'; // Hide auth container after registration
+    } catch (error) {
+        alert('Registration failed: ' + error.message);
+    }
+});
+
+document.getElementById('logout-btn')?.addEventListener('click', async () => {
+    try {
+        await voidAccounting.logout();
+        updateUIForLoggedOutUser();
+    } catch (error) {
+        alert('Logout failed: ' + error.message);
+    }
+});
+
+// Update UI based on authentication state
+function updateUIForLoggedInUser(user) {
+    document.getElementById('login-form').style.display = 'none';
+    document.getElementById('register-form').style.display = 'none';
+    document.getElementById('user-profile').style.display = 'block';
+    
+    // Fetch and display user details
+    voidAccounting.getUserAccountDetails(user.uid)
+        .then(userDetails => {
+            document.getElementById('username-display').textContent = userDetails.username;
+            document.getElementById('balance-display').textContent = userDetails.accountBalance;
+        });
+}
+
+function updateUIForLoggedOutUser() {
+    document.getElementById('login-form').style.display = 'block';
+    document.getElementById('register-form').style.display = 'block';
+    document.getElementById('user-profile').style.display = 'none';
+}
+
+// Listen for authentication state changes
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        updateUIForLoggedInUser(user);
+    } else {
+        updateUIForLoggedOutUser();
+    }
+});
+
+// Existing game loading logic
+const defaultApps = [
+    {
+        title: "Plinko",
+        imgSrc: "/gameimg/plinko.webp",
+        link: "/local games/Plinko/plinko.html"
+    },
+];
+
+function renderAppsList() {
+    const gamesList = document.getElementById("gamesList");
+    
+    if (!gamesList) return;
+    
+    gamesList.innerHTML = '';
+    
+    defaultApps.forEach(app => {
+        const appElement = document.createElement("div");
+        appElement.className = "game-item";
+        
+        appElement.innerHTML = `
+            <div class="game-icon">
+                <img src="${app.imgSrc}" alt="${app.title} icon">
+            </div>
+            <h3 class="game-title">${app.title}</h3>
+        `;
+
+        appElement.onclick = () => {
+            // Check if user is logged in before navigating to game
+            const currentUser = voidAccounting.getCurrentUser();
+            if (currentUser) {
+                // Directly navigate to the game link without UV proxy
+                window.location.href = app.link;
             } else {
-                updateUIForLoggedOutUser();
+                alert('Please login to play games');
             }
-        });
+        };
 
-        // Existing game loading logic
-        const defaultApps = [
-            {
-                title: "Plinko",
-                imgSrc: "/gameimg/plinko.webp",
-                link: "/local games/Plinko/plinko.html"
-            },
-        ];
+        gamesList.appendChild(appElement);
+    });
+}
 
-        function renderAppsList() {
-            const gamesList = document.getElementById("gamesList");
+document.getElementById("searchApps").addEventListener("keyup", function(e) {
+    const gamesList = document.getElementById("gamesList");
+    const searchTerm = this.value.toLowerCase();
+    
+    gamesList.innerHTML = '';
+    
+    defaultApps.forEach(app => {
+        if (app.title.toLowerCase().includes(searchTerm)) {
+            const appElement = document.createElement("div");
+            appElement.className = "game-item";
             
-            if (!gamesList) return;
-            
-            gamesList.innerHTML = '';
-            
-            defaultApps.forEach(app => {
-                const appElement = document.createElement("div");
-                appElement.className = "game-item";
-                
-                appElement.innerHTML = `
-                    <div class="game-icon">
-                        <img src="${app.imgSrc}" alt="${app.title} icon">
-                    </div>
-                    <h3 class="game-title">${app.title}</h3>
-                `;
+            appElement.innerHTML = `
+                <div class="game-icon">
+                    <img src="${app.imgSrc}" alt="${app.title} icon">
+                </div>
+                <h3 class="game-title">${app.title}</h3>
+            `;
 
-                appElement.onclick = () => {
-                    // Check if user is logged in before navigating to game
-                    const currentUser = voidAccounting.getCurrentUser();
-                    if (currentUser) {
-                        // Directly navigate to the game link without UV proxy
-                        window.location.href = app.link;
-                    } else {
-                        alert('Please login to play games');
-                    }
-                };
-
-                gamesList.appendChild(appElement);
-            });
-        }
-
-        document.getElementById("searchApps").addEventListener("keyup", function(e) {
-            const gamesList = document.getElementById("gamesList");
-            const searchTerm = this.value.toLowerCase();
-            
-            gamesList.innerHTML = '';
-            
-            defaultApps.forEach(app => {
-                if (app.title.toLowerCase().includes(searchTerm)) {
-                    const appElement = document.createElement("div");
-                    appElement.className = "game-item";
-                    
-                    appElement.innerHTML = `
-                        <div class="game-icon">
-                            <img src="${app.imgSrc}" alt="${app.title} icon">
-                        </div>
-                        <h3 class="game-title">${app.title}</h3>
-                    `;
-
-                    appElement.onclick = () => {
-                        // Check if user is logged in before navigating to game
-                        const currentUser = voidAccounting.getCurrentUser();
-                        if (currentUser) {
-                            // Directly navigate to the game link without UV proxy
-                            window.location.href = app.link;
-                        } else {
-                            alert('Please login to play games');
-                        }
-                    };
-
-                    gamesList.appendChild(appElement);
+            appElement.onclick = () => {
+                // Check if user is logged in before navigating to game
+                const currentUser = voidAccounting.getCurrentUser();
+                if (currentUser) {
+                    // Directly navigate to the game link without UV proxy
+                    window.location.href = app.link;
+                } else {
+                    alert('Please login to play games');
                 }
-            });
-        });
+            };
 
-        // Load apps on page load
-        window.addEventListener('load', async () => {
-            try {
-                renderAppsList();
-            } catch (err) {
-                console.error('Error during initialization:', err);
-            }
-        });
-    </script>
+            gamesList.appendChild(appElement);
+        }
+    });
+});
+
+// Load apps on page load
+window.addEventListener('load', async () => {
+    try {
+        renderAppsList();
+    } catch (err) {
+        console.error('Error during initialization:', err);
+    }
+});
+</script>
 </body>
 </html>
