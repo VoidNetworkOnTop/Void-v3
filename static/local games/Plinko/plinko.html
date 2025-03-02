@@ -291,7 +291,7 @@
        // Firebase Imports
        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-       import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+       import { getFirestore, doc, getDoc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
        // Firebase Configuration
        const firebaseConfig = {
@@ -331,7 +331,7 @@
            if (!currentUser) return;
 
            try {
-               const userRef = doc(db, 'users', currentUser.uid);
+               const userRef = doc(db, 'users', currentUser.email);
                const userDoc = await getDoc(userRef);
 
                if (userDoc.exists()) {
@@ -344,7 +344,7 @@
                    window.setupGame();
                } else {
                    // Create initial balance if no document exists
-                   await updateDoc(userRef, { accountBalance: 1000 });
+                   await setDoc(userRef, { accountBalance: 1000 });
                    window.coinBalance = 1000;
                    window.updateCoinDisplay();
                }
@@ -359,7 +359,7 @@
            if (!currentUser) return;
 
            try {
-               const userRef = doc(db, 'users', currentUser.uid);
+               const userRef = doc(db, 'users', currentUser.email);
                await updateDoc(userRef, { accountBalance: newBalance });
            } catch (error) {
                console.error("Error updating coin balance:", error);
@@ -438,458 +438,416 @@
 
    <script>
 // Game Configuration
-        const config = {
-            ballRadius: 7,    // Reduced further to ensure smooth falling
-            pegRadius: 3.5,   // Slightly smaller pegs
-            pegSpacing: 45,   // Adjusted for perfect spacing
-            pegRows: 10,      // Reduced to ensure buckets are visible
-            dropSpeed: 2.5,
-            gravity: 0.25,
-            friction: 0.9,
-            bounceSpeed: 0.6,
-            buckets: 5,
-            minReward: -600,
-            maxReward: 500
-        };
+const config = {
+    ballRadius: 7,    // Reduced further to ensure smooth falling
+    pegRadius: 3.5,   // Slightly smaller pegs
+    pegSpacing: 45,   // Adjusted for perfect spacing
+    pegRows: 10,      // Reduced to ensure buckets are visible
+    dropSpeed: 2.5,
+    gravity: 0.25,
+    friction: 0.9,
+    bounceSpeed: 0.6,
+    buckets: 5,
+    minReward: -600,
+    maxReward: 500
+};
 
-        // Initialize canvas
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        let canvasWidth, canvasHeight;
+// Initialize canvas
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let canvasWidth, canvasHeight;
 
-        // Game state
-        let ball = null;
-        let pegs = [];
-        let buckets = [];
-        let gameActive = false;
-        let gameComplete = false;
-        let animationFrame = null;
-        let coinBalance = 0;  // Track coin balance
+// Game state
+let ball = null;
+let pegs = [];
+let buckets = [];
+let gameActive = false;
+let gameComplete = false;
+let animationFrame = null;
+let coinBalance = 0;  // Track coin balance
 
-        // DOM elements
-        const dropButton = document.getElementById('dropButton');
-        const resetButton = document.getElementById('resetButton');
-        const scoreDisplay = document.getElementById('scoreDisplay');
-        const coinDisplay = document.getElementById('coinDisplay');
+// DOM elements
+const dropButton = document.getElementById('dropButton');
+const resetButton = document.getElementById('resetButton');
+const scoreDisplay = document.getElementById('scoreDisplay');
+const coinDisplay = document.getElementById('coinDisplay');
 
-        // Load coin balance from localStorage
-        function loadCoinBalance() {
-            const savedCoins = localStorage.getItem('ballDropperCoins');
-            if (savedCoins !== null) {
-                coinBalance = parseInt(savedCoins);
-            } else {
-                coinBalance = 1000; // Starting coins - enough to play a few games
-            }
-            updateCoinDisplay();
-        }
+// Update coin display
+function updateCoinDisplay() {
+    coinDisplay.textContent = coinBalance;
+    
+    // Update drop button state based on coin balance
+    if (coinBalance < 300) {
+        dropButton.title = "Low on coins";
+        dropButton.classList.add('insufficient');
+    } else {
+        dropButton.title = "Drop a ball";
+        dropButton.classList.remove('insufficient');
+    }
+    
+    if (!gameActive && !gameComplete) {
+        dropButton.disabled = false;
+    }
+}
+
+// Update coin balance
+function updateCoins(amount) {
+    coinBalance += amount;
+    updateCoinDisplay();
+
+    // Animate coin display
+    coinDisplay.style.animation = 'none';
+    setTimeout(() => {
+        coinDisplay.style.animation = 'glow 2s infinite';
+    }, 10);
+
+    // Sync with Firebase
+    if (window.updateFirebaseCoinBalance) {
+        window.updateFirebaseCoinBalance(coinBalance);
+    }
+}
+
+// Resize canvas to fit container
+function resizeCanvas() {
+    const gameBoard = document.querySelector('.game-board');
+    canvasWidth = gameBoard.clientWidth;
+    canvasHeight = gameBoard.clientHeight;
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    
+    // Recalculate game elements based on new canvas size
+    setupGame();
+}
+
+// Utility function to shuffle an array
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+// Setup the game
+function setupGame() {
+    // Clear previous game state
+    if (animationFrame) {
+        cancelAnimationFrame(animationFrame);
+    }
+    
+    ball = null;
+    pegs = [];
+    buckets = [];
+    gameActive = false;
+    gameComplete = false;
+    
+    // Update drop button state based on coin balance
+    updateCoinDisplay();
+    
+    // Calculate peg positions
+    const startX = canvasWidth / 2;
+    const startY = 60;
+    
+    // Create a perfect triangular pattern with consistent spacing
+    for (let row = 0; row < config.pegRows; row++) {
+        const pegCount = row + 1;
         
-        // Ensure player always has minimum coins to play
-        function ensureMinimumCoins() {
-            // If player has less than 300 coins and no saved balance, give them enough to play
-            if (coinBalance < 300 && !localStorage.getItem('ballDropperCoins')) {
-                coinBalance = 300;
-                updateCoinDisplay();
-                saveCoinBalance();
-            }
-        }
-
-        // Save coin balance to localStorage
-        function saveCoinBalance() {
-            localStorage.setItem('ballDropperCoins', coinBalance.toString());
-        }
-
-        // Update coin display
-        function updateCoinDisplay() {
-            coinDisplay.textContent = coinBalance;
+        for (let i = 0; i < pegCount; i++) {
+            // Calculate x position with perfect spacing
+            const x = startX - (pegCount - 1) * config.pegSpacing / 2 + i * config.pegSpacing;
+            const y = startY + row * config.pegSpacing;
             
-            // Update drop button state based on coin balance
-            if (coinBalance < 300) {
-                dropButton.disabled = true;
-                dropButton.title = "Need 300 coins to play";
-                dropButton.innerHTML = "300 COINS";
-            } else {
-                if (!gameActive && !gameComplete) {
-                    dropButton.disabled = false;
-                    dropButton.title = "Drop a ball";
-                    dropButton.innerHTML = "DROP";
-                }
-            }
-        }
-
-        // Update coin balance
-        function updateCoins(amount) {
-            coinBalance += amount;
-            updateCoinDisplay();
-            saveCoinBalance();
-
-            // Animate coin display
-            coinDisplay.style.animation = 'none';
-            setTimeout(() => {
-                coinDisplay.style.animation = 'glow 2s infinite';
-            }, 10);
-
-            // Sync with Firebase if available
-            if (window.updateFirebaseCoinBalance) {
-                window.updateFirebaseCoinBalance(coinBalance);
-            }
-        }
-
-        // Resize canvas to fit container
-        function resizeCanvas() {
-            const gameBoard = document.querySelector('.game-board');
-            canvasWidth = gameBoard.clientWidth;
-            canvasHeight = gameBoard.clientHeight;
-            canvas.width = canvasWidth;
-            canvas.height = canvasHeight;
-            
-            // Recalculate game elements based on new canvas size
-            setupGame();
-        }
-
-        // Utility function to shuffle an array
-        function shuffleArray(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
-        }
-
-        // Setup the game
-        function setupGame() {
-            // Clear previous game state
-            if (animationFrame) {
-                cancelAnimationFrame(animationFrame);
-            }
-            
-            ball = null;
-            pegs = [];
-            buckets = [];
-            gameActive = false;
-            gameComplete = false;
-            
-            // Update drop button state based on coin balance
-            updateCoinDisplay();
-            
-            // Calculate peg positions
-            const startX = canvasWidth / 2;
-            const startY = 60;
-            
-            // Create a perfect triangular pattern with consistent spacing
-            for (let row = 0; row < config.pegRows; row++) {
-                const pegCount = row + 1;
-                
-                for (let i = 0; i < pegCount; i++) {
-                    // Calculate x position with perfect spacing
-                    const x = startX - (pegCount - 1) * config.pegSpacing / 2 + i * config.pegSpacing;
-                    const y = startY + row * config.pegSpacing;
-                    
-                    // No random offsets to ensure perfect alignment
-                    pegs.push({
-                        x: x,
-                        y: y,
-                        radius: config.pegRadius
-                    });
-                }
-            }
-            
-            // Setup buckets at the bottom
-            // Calculate width based on the peg layout
-            const lastRowWidth = config.pegSpacing * config.pegRows;
-            const bucketWidth = lastRowWidth / config.buckets;
-            // Position buckets directly below the last row of pegs
-            const bucketY = startY + (config.pegRows) * config.pegSpacing + 20;
-            const bucketStartX = startX - lastRowWidth / 2;
-            
-            // Generate random rewards for each bucket
-            const rewards = [];
-            for (let i = 0; i < config.buckets; i++) {
-                // Generate random rewards but ensure a mix of positive and negative
-                let reward;
-                if (i < 2) {
-                    // At least 2 buckets will be negative
-                    reward = Math.floor(Math.random() * (0 - config.minReward) + config.minReward);
-                } else if (i >= config.buckets - 2) {
-                    // At least 2 buckets will be positive
-                    reward = Math.floor(Math.random() * config.maxReward);
-                } else {
-                    // The rest can be either positive or negative
-                    reward = Math.floor(Math.random() * (config.maxReward - config.minReward) + config.minReward);
-                }
-                rewards.push(reward);
-            }
-            
-            // Shuffle the rewards to randomize their positions
-            shuffleArray(rewards);
-            
-            for (let i = 0; i < config.buckets; i++) {
-                const x = bucketStartX + i * bucketWidth + bucketWidth / 2;
-                buckets.push({
-                    x: x,
-                    y: bucketY,
-                    width: bucketWidth,
-                    height: 40,  // Increased height for better visibility
-                    reward: rewards[i]
-                });
-            }
-            
-            // Enable the drop button only if player has enough coins
-            updateCoinDisplay();
-            scoreDisplay.textContent = '';
-            
-            // Draw initial state
-            drawGame();
-        }
-
-        // Create a new ball and drop it
-        function dropBall() {
-            if (gameActive || gameComplete) return;
-            
-            // Check if player has enough coins
-            if (coinBalance < 300) {
-                // Show message that player needs more coins
-                scoreDisplay.innerHTML = `<span class="lose-amount">Need 300 coins to play!</span>`;
-                setTimeout(() => {
-                    if (!gameActive) scoreDisplay.textContent = '';
-                }, 2000);
-                return;
-            }
-            
-            // Deduct 300 coins for dropping a ball
-            updateCoins(-300);
-            
-            ball = {
-                x: canvasWidth / 2,
-                y: 20,
-                radius: config.ballRadius,
-                velocityX: 0,
-                velocityY: config.dropSpeed
-            };
-            
-            gameActive = true;
-            dropButton.disabled = true;
-            animateGame();
-        }
-
-        // Reset the game
-        function resetGame() {
-            setupGame();
-        }
-
-        // Main game animation loop
-        function animateGame() {
-            if (!gameActive) return;
-            
-            // Clear canvas
-            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-            
-            // Update ball position
-            updateBall();
-            
-            // Draw game elements
-            drawGame();
-            
-            // Continue animation
-            animationFrame = requestAnimationFrame(animateGame);
-        }
-
-        // Update ball physics
-        function updateBall() {
-            if (!ball) return;
-            
-            // Apply gravity
-            ball.velocityY += config.gravity;
-            
-            // Update position
-            ball.x += ball.velocityX;
-            ball.y += ball.velocityY;
-            
-            // Check for collisions with pegs
-            for (const peg of pegs) {
-                const dx = ball.x - peg.x;
-                const dy = ball.y - peg.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                
-                if (distance < ball.radius + peg.radius) {
-                    // Calculate collision response
-                    const angle = Math.atan2(dy, dx);
-                    
-                    // Reposition the ball outside the peg
-                    const minDistance = ball.radius + peg.radius;
-                    ball.x = peg.x + Math.cos(angle) * minDistance;
-                    ball.y = peg.y + Math.sin(angle) * minDistance;
-                    
-                    // Calculate new velocity (bounce)
-                    const normalX = dx / distance;
-                    const normalY = dy / distance;
-                    
-                    const dotProduct = ball.velocityX * normalX + ball.velocityY * normalY;
-                    
-                    ball.velocityX -= 2 * dotProduct * normalX;
-                    ball.velocityY -= 2 * dotProduct * normalY;
-                    
-                    // Apply friction and bounce speed reduction
-                    ball.velocityX *= config.friction * config.bounceSpeed;
-                    ball.velocityY *= config.friction * config.bounceSpeed;
-                    
-                    // Add a small random factor to make it less predictable
-                    ball.velocityX += (Math.random() - 0.5) * 0.5;
-                }
-            }
-            
-            // Check for collisions with walls
-            if (ball.x - ball.radius < 0) {
-                ball.x = ball.radius;
-                ball.velocityX = -ball.velocityX * config.friction;
-            } else if (ball.x + ball.radius > canvasWidth) {
-                ball.x = canvasWidth - ball.radius;
-                ball.velocityX = -ball.velocityX * config.friction;
-            }
-            
-            // Check if ball has entered a bucket
-            if (ball.y > buckets[0].y - ball.radius) {
-                for (let i = 0; i < buckets.length; i++) {
-                    const bucket = buckets[i];
-                    if (ball.x > bucket.x - bucket.width / 2 && 
-                        ball.x < bucket.x + bucket.width / 2) {
-                        // Ball has entered this bucket
-                        gameComplete = true;
-                        gameActive = false;
-                        
-                        // Update coin balance
-                        updateCoins(bucket.reward);
-                        
-                        // Display result
-                        if (bucket.reward >= 0) {
-                            scoreDisplay.innerHTML = `You won: <span class="win-amount">+${bucket.reward}</span>`;
-                        } else {
-                            scoreDisplay.innerHTML = `You lost: <span class="lose-amount">${bucket.reward}</span>`;
-                        }
-                        
-                        break;
-                    }
-                }
-            }
-            
-            // Check if ball has left the game area
-            if (ball.y - ball.radius > canvasHeight) {
-                gameActive = false;
-                dropButton.disabled = false;
-            }
-        }
-
-        // Draw all game elements
-        function drawGame() {
-            // Clear canvas
-            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-            
-            // Draw pegs
-            pegs.forEach(peg => {
-                ctx.beginPath();
-                ctx.arc(peg.x, peg.y, peg.radius, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                ctx.fill();
-                
-                // Add glow effect
-                ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-                ctx.shadowBlur = 10;
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-                ctx.shadowBlur = 0;
+            // No random offsets to ensure perfect alignment
+            pegs.push({
+                x: x,
+                y: y,
+                radius: config.pegRadius
             });
-            
-            // Draw buckets with enhanced visibility
-            buckets.forEach(bucket => {
-                // Draw the bucket with glow effect
-                ctx.beginPath();
-                ctx.rect(bucket.x - bucket.width / 2, bucket.y, bucket.width, bucket.height);
-                ctx.fillStyle = 'rgba(40, 40, 40, 0.9)';
-                ctx.fill();
-                
-                // Add stronger border and glow
-                ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-                ctx.shadowBlur = 8;
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.shadowBlur = 0;
-                
-                // Draw bucket label with larger font
-                ctx.font = 'bold 16px Arial';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                
-                if (bucket.reward >= 0) {
-                    ctx.fillStyle = '#4caf50'; // Green for positive rewards
-                    ctx.fillText(`+${bucket.reward}`, bucket.x, bucket.y + bucket.height / 2);
-                } else {
-                    ctx.fillStyle = '#f44336'; // Red for negative rewards
-                    ctx.fillText(`${bucket.reward}`, bucket.x, bucket.y + bucket.height / 2);
-                }
-            });
-            
-            // Draw triangle outline around pegs
-            if (pegs.length > 0) {
-                const topPeg = pegs[0];
-                // For a perfect triangle, use the first and last peg of the bottom row
-                const lastRowStartIndex = pegs.length - config.pegRows;
-                const leftPeg = pegs[lastRowStartIndex];
-                const rightPeg = pegs[pegs.length - 1];
-                
-                ctx.beginPath();
-                ctx.moveTo(topPeg.x, topPeg.y - 20);
-                ctx.lineTo(leftPeg.x - 20, buckets[0].y);
-                ctx.lineTo(rightPeg.x + 20, buckets[0].y);
-                ctx.closePath();
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-            }
-            
-            // Draw ball
-            if (ball) {
-                ctx.beginPath();
-                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-                
-// Create gradient for ball
-                const gradient = ctx.createRadialGradient(
-                    ball.x - 3, ball.y - 3, 1,
-                    ball.x, ball.y, ball.radius
-                );
-                gradient.addColorStop(0, '#fff');
-                gradient.addColorStop(1, '#aaa');
-                
-                ctx.fillStyle = gradient;
-                ctx.fill();
-                
-                // Add glow effect to the ball
-                ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-                ctx.shadowBlur = 15;
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-                ctx.shadowBlur = 0;
-            }
         }
-
-        // Event listeners
-        dropButton.addEventListener('click', dropBall);
-        resetButton.addEventListener('click', resetGame);
-        window.addEventListener('resize', resizeCanvas);
-
-        // Initialize the game
-        window.addEventListener('load', () => {
-            // Check if Firebase load function exists
-            if (window.loadFirebaseCoinBalance) {
-                window.loadFirebaseCoinBalance();
-            } else {
-                loadCoinBalance();
-                ensureMinimumCoins();
-            }
-            resizeCanvas();
-            setupGame();
+    }
+    
+    // Setup buckets at the bottom
+    // Calculate width based on the peg layout
+    const lastRowWidth = config.pegSpacing * config.pegRows;
+    const bucketWidth = lastRowWidth / config.buckets;
+    // Position buckets directly below the last row of pegs
+    const bucketY = startY + (config.pegRows) * config.pegSpacing + 20;
+    const bucketStartX = startX - lastRowWidth / 2;
+    
+    // Generate random rewards for each bucket
+    const rewards = [];
+    for (let i = 0; i < config.buckets; i++) {
+        // Generate random rewards but ensure a mix of positive and negative
+        let reward;
+        if (i < 2) {
+            // At least 2 buckets will be negative
+            reward = Math.floor(Math.random() * (0 - config.minReward) + config.minReward);
+        } else if (i >= config.buckets - 2) {
+            // At least 2 buckets will be positive
+            reward = Math.floor(Math.random() * config.maxReward);
+        } else {
+            // The rest can be either positive or negative
+            reward = Math.floor(Math.random() * (config.maxReward - config.minReward) + config.minReward);
+        }
+        rewards.push(reward);
+    }
+    
+    // Shuffle the rewards to randomize their positions
+    shuffleArray(rewards);
+    
+    for (let i = 0; i < config.buckets; i++) {
+        const x = bucketStartX + i * bucketWidth + bucketWidth / 2;
+        buckets.push({
+            x: x,
+            y: bucketY,
+            width: bucketWidth,
+            height: 40,  // Increased height for better visibility
+            reward: rewards[i]
         });
-    </script>
+    }
+    
+    scoreDisplay.textContent = '';
+    
+    // Draw initial state
+    drawGame();
+}
+
+// Create a new ball and drop it
+function dropBall() {
+    if (gameActive || gameComplete) return;
+    
+    // Deduct 300 coins for dropping a ball
+    updateCoins(-300);
+    
+    ball = {
+        x: canvasWidth / 2,
+        y: 20,
+        radius: config.ballRadius,
+        velocityX: 0,
+        velocityY: config.dropSpeed
+    };
+    
+    gameActive = true;
+    dropButton.disabled = true;
+    animateGame();
+}
+
+// Reset the game
+function resetGame() {
+    setupGame();
+}
+
+// Main game animation loop
+function animateGame() {
+    if (!gameActive) return;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    
+    // Update ball position
+    updateBall();
+    
+    // Draw game elements
+    drawGame();
+    
+    // Continue animation
+    animationFrame = requestAnimationFrame(animateGame);
+}
+
+// Update ball physics
+function updateBall() {
+    if (!ball) return;
+    
+    // Apply gravity
+    ball.velocityY += config.gravity;
+    
+    // Update position
+    ball.x += ball.velocityX;
+    ball.y += ball.velocityY;
+    
+    // Check for collisions with pegs
+    for (const peg of pegs) {
+        const dx = ball.x - peg.x;
+        const dy = ball.y - peg.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < ball.radius + peg.radius) {
+            // Calculate collision response
+            const angle = Math.atan2(dy, dx);
+            
+            // Reposition the ball outside the peg
+            const minDistance = ball.radius + peg.radius;
+            ball.x = peg.x + Math.cos(angle) * minDistance;
+            ball.y = peg.y + Math.sin(angle) * minDistance;
+            
+            // Calculate new velocity (bounce)
+            const normalX = dx / distance;
+            const normalY = dy / distance;
+            
+            const dotProduct = ball.velocityX * normalX + ball.velocityY * normalY;
+            
+            ball.velocityX -= 2 * dotProduct * normalX;
+            ball.velocityY -= 2 * dotProduct * normalY;
+            
+            // Apply friction and bounce speed reduction
+            ball.velocityX *= config.friction * config.bounceSpeed;
+            ball.velocityY *= config.friction * config.bounceSpeed;
+            
+            // Add a small random factor to make it less predictable
+            ball.velocityX += (Math.random() - 0.5) * 0.5;
+        }
+    }
+    
+    // Check for collisions with walls
+    if (ball.x - ball.radius < 0) {
+        ball.x = ball.radius;
+        ball.velocityX = -ball.velocityX * config.friction;
+    } else if (ball.x + ball.radius > canvasWidth) {
+        ball.x = canvasWidth - ball.radius;
+        ball.velocityX = -ball.velocityX * config.friction;
+    }
+    
+    // Check if ball has entered a bucket
+    if (ball.y > buckets[0].y - ball.radius) {
+        for (let i = 0; i < buckets.length; i++) {
+            const bucket = buckets[i];
+            if (ball.x > bucket.x - bucket.width / 2 && 
+                ball.x < bucket.x + bucket.width / 2) {
+                // Ball has entered this bucket
+                gameComplete = true;
+                gameActive = false;
+                
+                // Update coin balance
+                updateCoins(bucket.reward);
+                
+                // Display result
+                if (bucket.reward >= 0) {
+                    scoreDisplay.innerHTML = `You won: <span class="win-amount">+${bucket.reward}</span>`;
+                } else {
+                    scoreDisplay.innerHTML = `You lost: <span class="lose-amount">${bucket.reward}</span>`;
+                }
+                
+                break;
+            }
+        }
+    }
+    
+    // Check if ball has left the game area
+    if (ball.y - ball.radius > canvasHeight) {
+        gameActive = false;
+        dropButton.disabled = false;
+    }
+}
+
+// Draw all game elements
+function drawGame() {
+    // Clear canvas
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    
+    // Draw pegs
+    pegs.forEach(peg => {
+        ctx.beginPath();
+        ctx.arc(peg.x, peg.y, peg.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fill();
+        
+        // Add glow effect
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+    });
+    
+    // Draw buckets with enhanced visibility
+    buckets.forEach(bucket => {
+        // Draw the bucket with glow effect
+        ctx.beginPath();
+        ctx.rect(bucket.x - bucket.width / 2, bucket.y, bucket.width, bucket.height);
+        ctx.fillStyle = 'rgba(40, 40, 40, 0.9)';
+        ctx.fill();
+        
+        // Add stronger border and glow
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+        ctx.shadowBlur = 8;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        
+        // Draw bucket label with larger font
+        ctx.font = 'bold 16px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        if (bucket.reward >= 0) {
+            ctx.fillStyle = '#4caf50'; // Green for positive rewards
+            ctx.fillText(`+${bucket.reward}`, bucket.x, bucket.y + bucket.height / 2);
+        } else {
+            ctx.fillStyle = '#f44336'; // Red for negative rewards
+            ctx.fillText(`${bucket.reward}`, bucket.x, bucket.y + bucket.height / 2);
+        }
+    });
+    
+    // Draw triangle outline around pegs
+    if (pegs.length > 0) {
+        const topPeg = pegs[0];
+        // For a perfect triangle, use the first and last peg of the bottom row
+        const lastRowStartIndex = pegs.length - config.pegRows;
+        const leftPeg = pegs[lastRowStartIndex];
+        const rightPeg = pegs[pegs.length - 1];
+        
+        ctx.beginPath();
+        ctx.moveTo(topPeg.x, topPeg.y - 20);
+        ctx.lineTo(leftPeg.x - 20, buckets[0].y);
+        ctx.lineTo(rightPeg.x + 20, buckets[0].y);
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+    
+    // Draw ball
+    if (ball) {
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+        
+        // Create gradient for ball
+        const gradient = ctx.createRadialGradient(
+            ball.x - 3, ball.y - 3, 1,
+            ball.x, ball.y, ball.radius
+        );
+        gradient.addColorStop(0, '#fff');
+        gradient.addColorStop(1, '#aaa');
+        
+        ctx.fillStyle = gradient;
+        ctx.fill();
+        
+        // Add glow effect to the ball
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+        ctx.shadowBlur = 15;
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+    }
+}
+
+// Event listeners
+dropButton.addEventListener('click', dropBall);
+resetButton.addEventListener('click', resetGame);
+window.addEventListener('resize', resizeCanvas);
+
+// Initialize the game
+window.addEventListener('load', () => {
+    // Check if Firebase load function exists
+    if (window.loadFirebaseCoinBalance) {
+        window.loadFirebaseCoinBalance();
+    }
+    resizeCanvas();
+    setupGame();
+});
+</script>
 </body>
 </html>
