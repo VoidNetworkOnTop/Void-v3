@@ -95,7 +95,7 @@
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-        import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, query, limit } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+        import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, query, limit, where } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration
         const firebaseConfig = {
@@ -126,6 +126,25 @@
         // Admin email constant
         const ADMIN_EMAIL = "six7588@gmail.com";
         
+        // Hardcoded known user IDs from Firebase Auth UI
+        const KNOWN_USERS = {
+            "KIsAtjOwRpdVDOL3VPrDBACSxdw1": "six7588@gmail.com",
+            "GU9JmuJistfcjKLwtJLmj5BELHs2": "nigatikler@gmail.com",
+            "mtl6j5MsEwYhfVfT1yw9JmrSfMV2": "1q2w3e4r5t6y7u8i9o0p@gmail.com",
+            "ku8A1MuC6jWJxEnPIb9nYCY2MnH2": "mjbalkovski@gmail.com",
+            "Ga450aQRGGMqUOgFVGs62fRnZ6l1": "svalenciarivera@isdkids.org",
+            "3qJsAc8TsbZzx0SZdfduH7ijLuP2": "dfsgdsgr@gamil.comsd",
+            "dcxtOHGcfrQ12XBrSz04MhQzEbq1": "shrey436@proton.me",
+            "44b4NFWyEnSPhCsofxMkbkIP1vt1": "gvrelectrodude@gmail.com",
+            "Wtc6hcUIzmORUJxJFc5nJVPgjRE2": "shrey150436@gmail.com"
+        };
+        
+        // Reverse lookup for emails to IDs
+        const EMAIL_TO_ID = {};
+        for (const [id, email] of Object.entries(KNOWN_USERS)) {
+            EMAIL_TO_ID[email.toLowerCase()] = id;
+        }
+        
         // Terminal output functions
         function printToTerminal(message, className = '') {
             const line = document.createElement('div');
@@ -153,17 +172,18 @@
             printToTerminal('----------------------------------');
             printToTerminal('Available commands:');
             printToTerminal('help - Show available commands');
-            printToTerminal('list users - List all users (limit 20)');
+            printToTerminal('list users - List all known users');
             printToTerminal('<user ID> coin amount - Check coins by user ID');
             printToTerminal('<user ID> add coins <amount> - Add coins by user ID');
             printToTerminal('<user ID> remove coins <amount> - Remove coins from user');
+            printToTerminal('<user email> - Look up user ID by email');
             printToTerminal('----------------------------------');
             printSuccess(`Authenticated as admin: ${userEmail}`);
             printInfo(`Your user ID: ${userId}`);
             printInfo('Ready for commands.');
         }
         
-        // Login functionality - SIMPLIFIED to avoid permission checks
+        // Login functionality
         loginButton.addEventListener('click', async () => {
             const email = emailInput.value.trim();
             const password = passwordInput.value;
@@ -176,24 +196,8 @@
             try {
                 // Try to sign in with Firebase Authentication
                 showLoginMessage('Authenticating...', false);
-                
-                try {
-                    await signInWithEmailAndPassword(auth, email, password);
-                    // Login successful
-                    loginForm.classList.add('hidden');
-                    adminConsole.classList.remove('hidden');
-                    
-                    // Get user info from Firebase Auth
-                    const user = auth.currentUser;
-                    if (user) {
-                        initConsole(user.email, user.uid);
-                    } else {
-                        initConsole(email, "unknown");
-                    }
-                } catch (authError) {
-                    console.error("Auth error:", authError);
-                    showLoginMessage(`Login failed: ${authError.message}`, true);
-                }
+                await signInWithEmailAndPassword(auth, email, password);
+                // Login successful, will be handled by onAuthStateChanged
             } catch (error) {
                 console.error("Login error:", error);
                 showLoginMessage(`Login failed: ${error.message}`, true);
@@ -206,6 +210,18 @@
             loginMessage.className = isError ? 'error' : 'info';
             loginMessage.classList.remove('hidden');
         }
+        
+        // Handle authentication state changes
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // User is signed in
+                loginForm.classList.add('hidden');
+                adminConsole.classList.remove('hidden');
+                
+                // Initialize the admin console
+                initConsole(user.email, user.uid);
+            }
+        });
         
         // Process command input
         commandInput.addEventListener('keypress', async (e) => {
@@ -228,10 +244,11 @@
             if (command.toLowerCase() === 'help') {
                 printInfo('Available commands:');
                 printInfo('help - Show this help information');
-                printInfo('list users - List all users (limit 20)');
+                printInfo('list users - List all known users');
                 printInfo('<user ID> coin amount - Check a user\'s coin balance by ID');
                 printInfo('<user ID> add coins <amount> - Add coins to a user by ID');
                 printInfo('<user ID> remove coins <amount> - Remove coins from a user by ID');
+                printInfo('<user email> - Look up user ID by email');
                 printInfo('me - Show your own user ID (for reference)');
                 return;
             }
@@ -248,37 +265,11 @@
                 return;
             }
             
-            // List users command - DIRECT ACCESS TO FIRESTORE
+            // List users command
             if (command.toLowerCase() === 'list users') {
-                try {
-                    printInfo('Loading users (limit 20)...');
-                    
-                    try {
-                        // Try to directly list users
-                        const usersRef = collection(db, 'users');
-                        const usersQuery = query(usersRef, limit(20));
-                        const querySnapshot = await getDocs(usersQuery);
-                        
-                        if (querySnapshot.empty) {
-                            printInfo('No users found in database');
-                        } else {
-                            printInfo('Users:');
-                            querySnapshot.forEach((userDoc) => {
-                                const userData = userDoc.data();
-                                const userId = userDoc.id;
-                                const email = userData.email || 'No email';
-                                const balance = userData.accountBalance || 0;
-                                printInfo(`ID: ${userId} | Email: ${email} | Balance: ${balance}`);
-                            });
-                            printSuccess(`Found ${querySnapshot.size} users`);
-                        }
-                    } catch (listError) {
-                        printError(`Error listing users: ${listError.message}`);
-                        printInfo("Listing failed. Security rules may be preventing collection access.");
-                        printInfo("Try using specific user IDs instead.");
-                    }
-                } catch (error) {
-                    printError(`Error listing users: ${error.message}`);
+                printInfo('Known Users:');
+                for (const [userId, email] of Object.entries(KNOWN_USERS)) {
+                    printInfo(`${email} (ID: ${userId})`);
                 }
                 return;
             }
@@ -287,7 +278,17 @@
             
             // Check if command is for checking coins
             if (parts.length >= 3 && parts[1] === 'coin' && parts[2] === 'amount') {
-                const userId = parts[0];
+                let userId = parts[0];
+                
+                // If it looks like an email, convert to ID
+                if (userId.includes('@')) {
+                    userId = EMAIL_TO_ID[userId.toLowerCase()];
+                    if (!userId) {
+                        printError(`No user ID found for email: ${parts[0]}`);
+                        return;
+                    }
+                }
+                
                 try {
                     const coins = await checkUserCoins(userId);
                     if (coins !== null) {
@@ -299,7 +300,17 @@
             }
             // Check if command is for adding coins
             else if (parts.length >= 4 && parts[1] === 'add' && parts[2] === 'coins') {
-                const userId = parts[0];
+                let userId = parts[0];
+                
+                // If it looks like an email, convert to ID
+                if (userId.includes('@')) {
+                    userId = EMAIL_TO_ID[userId.toLowerCase()];
+                    if (!userId) {
+                        printError(`No user ID found for email: ${parts[0]}`);
+                        return;
+                    }
+                }
+                
                 const amount = parseInt(parts[3]);
                 
                 if (isNaN(amount)) {
@@ -318,7 +329,17 @@
             }
             // Check if command is for removing coins
             else if (parts.length >= 4 && parts[1] === 'remove' && parts[2] === 'coins') {
-                const userId = parts[0];
+                let userId = parts[0];
+                
+                // If it looks like an email, convert to ID
+                if (userId.includes('@')) {
+                    userId = EMAIL_TO_ID[userId.toLowerCase()];
+                    if (!userId) {
+                        printError(`No user ID found for email: ${parts[0]}`);
+                        return;
+                    }
+                }
+                
                 const amount = parseInt(parts[3]);
                 
                 if (isNaN(amount)) {
@@ -340,118 +361,116 @@
                     printError(`Error removing coins: ${error.message}`);
                 }
             }
+            // Look up user ID by email
+            else if (parts.length === 1 && parts[0].includes('@')) {
+                const email = parts[0].toLowerCase();
+                const userId = EMAIL_TO_ID[email];
+                
+                if (userId) {
+                    printSuccess(`User ID for ${email}: ${userId}`);
+                } else {
+                    printError(`No user ID found for email: ${email}`);
+                }
+            }
             else {
                 printError('Invalid command. Type "help" for available commands.');
             }
         }
 
-        // Check user's coin balance - DIRECT ACCESS VERSION
+        // Check user's coin balance
         async function checkUserCoins(userId) {
             try {
                 printInfo(`Checking coin balance for user ID: ${userId}...`);
                 
-                try {
-                    // Direct document access
-                    const userRef = doc(db, 'users', userId);
-                    const userDoc = await getDoc(userRef);
-                    
-                    if (!userDoc.exists()) {
-                        printError("User document not found");
-                        return null;
-                    }
-                    
-                    const userData = userDoc.data();
-                    const coinBalance = userData.accountBalance || 0;
-                    
-                    // Show additional info if available
-                    if (userData.email) {
-                        printInfo(`User email: ${userData.email}`);
-                    }
-                    
-                    return coinBalance;
-                } catch (docError) {
-                    printError(`Error accessing user document: ${docError.message}`);
+                // Get the user document
+                const userRef = doc(db, 'users', userId);
+                const userDoc = await getDoc(userRef);
+                
+                if (!userDoc.exists()) {
+                    printError("User document not found");
                     return null;
                 }
+                
+                const userData = userDoc.data();
+                const coinBalance = userData.accountBalance || 0;
+                
+                // Show user email if available
+                if (userData.email) {
+                    printInfo(`User email: ${userData.email}`);
+                } else if (KNOWN_USERS[userId]) {
+                    printInfo(`User email: ${KNOWN_USERS[userId]}`);
+                }
+                
+                return coinBalance;
             } catch (error) {
                 printError(`Error checking user coins: ${error.message}`);
                 throw error;
             }
         }
 
-        // Add coins to user - DIRECT ACCESS VERSION
+        // Add coins to user
         async function addCoinsToUser(userId, amount) {
             try {
                 printInfo(`Adding ${amount} coins to user ID: ${userId}...`);
                 
-                try {
-                    // Direct document access
-                    const userRef = doc(db, 'users', userId);
-                    const userDoc = await getDoc(userRef);
-                    
-                    if (!userDoc.exists()) {
-                        printError("User document not found");
-                        return false;
-                    }
-                    
-                    const userData = userDoc.data();
-                    const currentBalance = userData.accountBalance || 0;
-                    const newBalance = currentBalance + amount;
-                    
-                    // Update the balance
-                    await updateDoc(userRef, { 
-                        accountBalance: newBalance 
-                    });
-                    
-                    printInfo(`Updated balance. New balance: ${newBalance}`);
-                    return true;
-                } catch (docError) {
-                    printError(`Error updating user document: ${docError.message}`);
+                // Get current balance
+                const userRef = doc(db, 'users', userId);
+                const userDoc = await getDoc(userRef);
+                
+                if (!userDoc.exists()) {
+                    printError("User document not found");
                     return false;
                 }
+                
+                const userData = userDoc.data();
+                const currentBalance = userData.accountBalance || 0;
+                const newBalance = currentBalance + amount;
+                
+                // Update the balance
+                await updateDoc(userRef, { 
+                    accountBalance: newBalance 
+                });
+                
+                printInfo(`Updated balance. New balance: ${newBalance}`);
+                return true;
             } catch (error) {
                 printError(`Error adding coins: ${error.message}`);
                 throw error;
             }
         }
         
-        // Remove coins from user - DIRECT ACCESS VERSION
+        // Remove coins from user
         async function removeCoinsFromUser(userId, amount) {
             try {
                 printInfo(`Removing ${amount} coins from user ID: ${userId}...`);
                 
-                try {
-                    // Direct document access
-                    const userRef = doc(db, 'users', userId);
-                    const userDoc = await getDoc(userRef);
-                    
-                    if (!userDoc.exists()) {
-                        printError("User document not found");
-                        return false;
-                    }
-                    
-                    const userData = userDoc.data();
-                    const currentBalance = userData.accountBalance || 0;
-                    
-                    // Check if user has enough balance
-                    if (currentBalance < amount) {
-                        printError(`User only has ${currentBalance} coins, cannot remove ${amount}`);
-                        return false;
-                    }
-                    
-                    const newBalance = currentBalance - amount;
-                    
-                    // Update the balance
-                    await updateDoc(userRef, { 
-                        accountBalance: newBalance 
-                    });
-                    
-                    printInfo(`Updated balance. New balance: ${newBalance}`);
-                    return true;
-                } catch (docError) {
-                    printError(`Error updating user document: ${docError.message}`);
+                // Get current balance
+                const userRef = doc(db, 'users', userId);
+                const userDoc = await getDoc(userRef);
+                
+                if (!userDoc.exists()) {
+                    printError("User document not found");
                     return false;
                 }
+                
+                const userData = userDoc.data();
+                const currentBalance = userData.accountBalance || 0;
+                
+                // Check if user has enough balance
+                if (currentBalance < amount) {
+                    printError(`User only has ${currentBalance} coins, cannot remove ${amount}`);
+                    return false;
+                }
+                
+                const newBalance = currentBalance - amount;
+                
+                // Update the balance
+                await updateDoc(userRef, { 
+                    accountBalance: newBalance 
+                });
+                
+                printInfo(`Updated balance. New balance: ${newBalance}`);
+                return true;
             } catch (error) {
                 printError(`Error removing coins: ${error.message}`);
                 throw error;
