@@ -3,10 +3,7 @@
 <head>
    <meta charset="UTF-8">
    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-   <title>The Void Games - Mission Uncrossable</title>
-   
-   <!-- Favicon -->
-   <link rel="shortcut icon" href="./assets/favicon.png" type="image/png">
+   <title>Mission Uncrossable</title>
    
    <style>
        body, html {
@@ -665,7 +662,7 @@
            <p class="game-subtitle">Cross roads and cash out before you crash!</p>
            <div class="coin-tracker">
                <div class="coin-icon"></div>
-               <span class="coin-amount" id="coinDisplay">0</span>
+               <span class="coin-amount" id="coinDisplay">1000</span>
            </div>
        </div>
        
@@ -681,8 +678,8 @@
            
            <!-- Bet Display -->
            <div class="bet-display" id="bet-display">
-              <span class="bet-amount" id="current-bet">0.00</span>
-              <span class="potential-win" id="potential-win">Win: 0.00</span>
+              <span class="bet-amount" id="current-bet">5.00</span>
+              <span class="potential-win" id="potential-win">Win: 5.00</span>
            </div>
            
            <!-- Difficulty Indicator -->
@@ -728,7 +725,7 @@
            <div class="game-overlay" id="game-over-screen">
                <div class="overlay-content">
                    <h2 class="overlay-title lose">Crashed!</h2>
-                   <p class="overlay-message">You got hit by a car!<br>Lost: <span class="lose-amount" id="lost-amount">10.00</span><br>You reached <span id="final-level">0</span> roads with <span id="final-multiplier">1.00x</span></p>
+                   <p class="overlay-message">You got hit by a car!<br>Lost: <span class="lose-amount" id="lost-amount">5.00</span><br>You reached <span id="final-level">0</span> roads with <span id="final-multiplier">1.00x</span></p>
                    <button id="restart-btn" class="game-btn">Play Again</button>
                    
                    <!-- Hash verification -->
@@ -742,7 +739,7 @@
            <div class="game-overlay" id="win-screen">
                <div class="overlay-content">
                    <h2 class="overlay-title win">Cash Out Success!</h2>
-                   <p class="overlay-message">You cashed out at <span id="cashout-multiplier">2.35x</span>!<br>Won: <span class="win-amount" id="win-amount">25.00</span><br>Crossed <span id="roads-crossed">12</span> roads safely!</p>
+                   <p class="overlay-message">You cashed out at <span id="cashout-multiplier">2.35x</span>!<br>Won: <span class="win-amount" id="win-amount">11.75</span><br>Crossed <span id="roads-crossed">12</span> roads safely!</p>
                    <button id="continue-btn" class="game-btn">Play Again</button>
                </div>
            </div>
@@ -751,324 +748,33 @@
        <div class="score-display" id="scoreDisplay">Multiplier: 1.00x</div>
        
        <div class="controls">
-           <button id="back-btn" class="restart-btn">Back to Beta Games</button>
+           <button id="back-btn" class="restart-btn">Back to Games</button>
        </div>
    </div>
    
-   
-
-   <!-- Firebase SDK -->
-   <script type="module">
-       // Firebase Imports
-       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-       import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-       import { getFirestore, doc, getDoc, updateDoc, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
-
-       // Firebase Configuration
-       const firebaseConfig = {
-           apiKey: "AIzaSyB04yFuvFnJrTa4FYgvRIUJFp0Qvk9JHDQ",
-           authDomain: "void-network-games.firebaseapp.com",
-           projectId: "void-network-games",
-           storageBucket: "void-network-games.appspot.com",
-           messagingSenderId: "878896483861",
-           appId: "1:878896483861:web:a876f521a8fc0faed0881c",
-           measurementId: "G-0PV8WC36X7"
-       };
-
-       // Initialize Firebase
-       const app = initializeApp(firebaseConfig);
-       const auth = getAuth(app);
-       const db = getFirestore(app);
-
-       // Authentication and Coin Management
-       let currentUser = null;
-       let firebaseCoinBalance = 0;
-
-       // Authentication State Listener
-       onAuthStateChanged(auth, async (user) => {
-           if (user) {
-               // User is signed in
-               currentUser = user;
-               console.log("User signed in:", user.uid);
-               await loadFirebaseCoinBalance();
-           } else {
-               // No user is signed in
-               currentUser = null;
-               console.log("No user signed in");
-               showLoginPrompt();
-           }
-       });
-
-       // Load Coin Balance from Firebase
-       async function loadFirebaseCoinBalance() {
-           if (!currentUser) {
-               console.log("No user available to load balance");
-               return;
-           }
-
-           try {
-               console.log("Loading balance for user:", currentUser.uid);
-               
-               // Use currentUser.uid and force server data retrieval
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
-
-               if (userDoc.exists()) {
-                   // Get coin balance from Firestore
-                   const userData = userDoc.data();
-                   
-                   // IMPORTANT: Use accountBalance field for consistency with main page
-                   firebaseCoinBalance = userData.accountBalance || 0;
-                   
-                   console.log("Loaded balance from Firebase:", firebaseCoinBalance);
-                   
-                   // Update local coin display and game state
-                   window.coinBalance = firebaseCoinBalance;
-                   
-                   // Make sure the global variable is also set
-                   coinBalance = firebaseCoinBalance;
-                   
-                   // Update UI and game state
-                   window.updateCoinDisplay();
-                   
-                   // Update start button appearance based on current bet
-                   const betInput = document.getElementById('bet-input');
-                   const currentBet = parseFloat(betInput.value);
-                   
-                   const startBtn = document.getElementById('start-btn');
-                   if (startBtn) {
-                       if (coinBalance < currentBet) {
-                           startBtn.classList.add('insufficient');
-                           startBtn.textContent = "Insufficient Balance";
-                       } else {
-                           startBtn.classList.remove('insufficient');
-                           startBtn.textContent = "Start Game";
-                       }
-                       
-                       // Always enable the button
-                       startBtn.disabled = false;
-                   }
-                   
-                   console.log("Updated local balance:", coinBalance);
-                   return firebaseCoinBalance;
-               } else {
-                   console.log("User document doesn't exist, creating new one");
-                   // Create initial balance if no document exists
-                   await setDoc(userRef, { 
-                     accountBalance: 1000,
-                     username: currentUser.displayName || "Player",
-                     email: currentUser.email,
-                     createdAt: new Date(),
-                     totalGamesPlayed: 0,
-                     totalMoneySpent: 0,
-                     totalMoneyEarned: 0
-                   });
-                   
-                   firebaseCoinBalance = 1000;
-                   window.coinBalance = 1000;
-                   coinBalance = 1000;
-                   window.updateCoinDisplay();
-                   return 1000;
-               }
-           } catch (error) {
-               console.error("Error loading coin balance:", error);
-               showLoginPrompt();
-               return 0;
-           }
-       }
-
-       // Update Coin Balance in Firebase
-       async function updateFirebaseCoinBalance(newBalance) {
-           if (!currentUser) {
-               console.log("No user available to update balance");
-               return false;
-           }
-
-           try {
-               console.log("Updating balance for user:", currentUser.uid, "New balance:", newBalance);
-               
-               // Get the current document first to make sure we're updating the latest data
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
-               
-               if (!userDoc.exists()) {
-                   console.error("Cannot update non-existent user document");
-                   return false;
-               }
-               
-               // Update with the exact same field format as the main page
-               await updateDoc(userRef, { 
-                   accountBalance: newBalance 
-               });
-               
-               firebaseCoinBalance = newBalance;
-               console.log("Firebase balance updated successfully");
-               
-               return true;
-           } catch (error) {
-               console.error("Error updating coin balance:", error);
-               return false;
-           }
-       }
-
-       // Record Game Transaction for better tracking
-       async function recordGameTransaction(gameId, amount, isWin) {
-           if (!currentUser) return;
-
-           try {
-               // Create transaction record with consistent data format
-               const transactionRef = doc(collection(db, 'transactions'));
-               await setDoc(transactionRef, {
-                   userId: currentUser.uid,
-                   gameId: gameId,
-                   transactionType: isWin ? 'game_win' : 'game_play',
-                   amount: Math.abs(amount),
-                   timestamp: new Date()
-               });
-
-               // Get latest user data from server
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' });
-               
-               if (userDoc.exists()) {
-                   const userData = userDoc.data();
-                   let updatedBalance = userData.accountBalance || 0;
-                   
-                   // Calculate new balance
-                   if (isWin) {
-                       updatedBalance += amount;
-                       userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
-                   } else {
-                       updatedBalance -= Math.abs(amount);
-                       userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
-                       userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
-                   }
-
-                   // Update firebase and local state consistently
-                   await updateDoc(userRef, {
-                       accountBalance: updatedBalance,
-                       totalGamesPlayed: userData.totalGamesPlayed || 0,
-                       totalMoneySpent: userData.totalMoneySpent || 0,
-                       totalMoneyEarned: userData.totalMoneyEarned || 0
-                   });
-                   
-                   // Make sure local state is synced with Firebase
-                   coinBalance = updatedBalance;
-                   firebaseCoinBalance = updatedBalance;
-                   
-                   // Update display
-                   updateCoinDisplay();
-                   
-                   return {
-                       transactionId: transactionRef.id,
-                       newBalance: updatedBalance
-                   };
-               }
-           } catch (error) {
-               console.error("Transaction Error:", error);
-           }
-       }
-
-       // Show Login Prompt
-       function showLoginPrompt() {
-           // Create a modal overlay
-           const overlay = document.createElement('div');
-           overlay.style.position = 'fixed';
-           overlay.style.top = '0';
-           overlay.style.left = '0';
-           overlay.style.width = '100%';
-           overlay.style.height = '100%';
-           overlay.style.background = 'rgba(0,0,0,0.8)';
-           overlay.style.display = 'flex';
-           overlay.style.justifyContent = 'center';
-           overlay.style.alignItems = 'center';
-           overlay.style.zIndex = '1000';
-
-           const modalContent = document.createElement('div');
-           modalContent.style.background = '#222';
-           modalContent.style.padding = '2rem';
-           modalContent.style.borderRadius = '10px';
-           modalContent.style.textAlign = 'center';
-           modalContent.style.color = 'white';
-
-           modalContent.innerHTML = `
-               <h2>Login Required</h2>
-               <p>Please log in to play Mission Uncrossable and track your coins.</p>
-               <div>
-                   <button id="loginBtn" style="
-                       background: #4CAF50;
-                       color: white;
-                       border: none;
-                       padding: 10px 20px;
-                       margin: 10px;
-                       border-radius: 5px;
-                       cursor: pointer;
-                   ">Go to Login</button>
-                   <button id="cancelBtn" style="
-                       background: #f44336;
-                       color: white;
-                       border: none;
-                       padding: 10px 20px;
-                       margin: 10px;
-                       border-radius: 5px;
-                       cursor: pointer;
-                   ">Cancel</button>
-               </div>
-           `;
-
-           overlay.appendChild(modalContent);
-           document.body.appendChild(overlay);
-
-           // Add event listeners
-           document.getElementById('loginBtn').addEventListener('click', () => {
-               // Redirect to main page where login is possible
-               window.location.href = 'index.html';
-           });
-
-           document.getElementById('cancelBtn').addEventListener('click', () => {
-               document.body.removeChild(overlay);
-               // Disable game interactions
-               const startBtn = document.getElementById('start-btn');
-               if (startBtn) {
-                   startBtn.disabled = true;
-                   startBtn.textContent = 'Login to Play';
-               }
-           });
-       }
-
-       // Attach functions to window for game script access
-       window.loadFirebaseCoinBalance = loadFirebaseCoinBalance;
-       window.updateFirebaseCoinBalance = updateFirebaseCoinBalance;
-       window.recordGameTransaction = recordGameTransaction;
-       window.showLoginPrompt = showLoginPrompt;
-       window.currentUser = currentUser;
-   </script>
-
    <script>
 // Game Configuration
 const GAME_CONFIG = {
-    minBet: 1,           // Minimum bet amount
-    maxBet: 1000,        // Maximum bet amount
-    gameId: 'mission_uncrossable',  // ID for Firebase transactions
-    playerSize: 20,         // Size of player square
-    roadHeight: 60,         // Height of each road
-    safeZoneHeight: 60,     // Height of safe zones between roads
-    carMinSpeed: 3,         // Minimum car speed
-    carMaxSpeed: 15,        // Maximum car speed
-    carWidth: 60,           // Width of cars
-    carHeight: 30,          // Height of cars
-    carSpawnRate: 0.018,    // Chance of car spawning each frame
-    maxRoads: 100,          // Maximum roads (theoretical)
-    maxMultiplier: 100,     // Maximum multiplier
-    baseMultiplierIncrease: 0.05, // Base increase per road crossed
+    minBet: 1,            // Minimum bet amount
+    maxBet: 1000,         // Maximum bet amount
+    playerSize: 20,       // Size of player square
+    roadHeight: 60,       // Height of each road
+    safeZoneHeight: 60,   // Height of safe zones between roads
+    carMinSpeed: 3,       // Minimum car speed
+    carMaxSpeed: 15,      // Maximum car speed
+    carWidth: 60,         // Width of cars
+    carHeight: 30,        // Height of cars
+    carSpawnRate: 0.018,  // Chance of car spawning each frame
+    maxRoads: 100,        // Maximum roads (theoretical)
+    maxMultiplier: 100,   // Maximum multiplier
     difficultyScaling: 0.20, // Higher difficulty scaling per road
-    obstacleRate: 0.3       // Chance of obstacles in safe zones
+    obstacleRate: 0.3     // Chance of obstacles in safe zones
 };
 
 // Multiplier Configuration
 const MULTIPLIER_CONFIG = {
-    base: 1,                 // Starting multiplier
-    increment: [            // Multiplier increments at different stages (roads crossed)
+    base: 1,              // Starting multiplier
+    increment: [          // Multiplier increments at different stages
         { threshold: 0, value: 0.05 },    // 0-4 roads: +0.05 per road
         { threshold: 5, value: 0.10 },    // 5-14 roads: +0.10 per road
         { threshold: 15, value: 0.15 },   // 15-24 roads: +0.15 per road
@@ -1078,10 +784,10 @@ const MULTIPLIER_CONFIG = {
     ]
 };
 
-// Game state
+// Game state variables
 let canvas, ctx;
 let canvasWidth, canvasHeight;
-let player;
+let player = null;
 let roads = [];
 let cars = [];
 let obstacles = [];
@@ -1089,84 +795,25 @@ let gameActive = false;
 let currentLevel = 0;
 let gameOver = false;
 let gameWon = false;
-let coinBalance = 0;
-let animationFrame;
-let keysPressed = {};
-
-// Betting state
+let coinBalance = 1000; // Starting balance
 let currentBet = 5.00;
 let currentMultiplier = MULTIPLIER_CONFIG.base;
 let nextMultiplier = 0;
 let gameHash = "";
+let animationFrame;
+let keysPressed = {};
 
-// DOM elements
-const scoreDisplay = document.getElementById('scoreDisplay');
-const coinDisplay = document.getElementById('coinDisplay');
-const startScreen = document.getElementById('start-screen');
-const gameOverScreen = document.getElementById('game-over-screen');
-const winScreen = document.getElementById('win-screen');
-const startBtn = document.getElementById('start-btn');
-const restartBtn = document.getElementById('restart-btn');
-const continueBtn = document.getElementById('continue-btn');
-const backBtn = document.getElementById('back-btn');
-const cashoutBtn = document.getElementById('cashout-btn');
-const cashoutContainer = document.getElementById('cashout-container');
-const betInput = document.getElementById('bet-input');
-const increaseBetBtn = document.getElementById('increase-bet');
-const decreaseBetBtn = document.getElementById('decrease-bet');
-const quickBets = document.querySelectorAll('.quick-bet');
-const multiplierDisplay = document.getElementById('multiplier-display');
-const currentMultiplierDisplay = document.getElementById('current-multiplier');
-const nextMultiplierDisplay = document.getElementById('next-multiplier');
-const betDisplay = document.getElementById('bet-display');
-const currentBetDisplay = document.getElementById('current-bet');
-const potentialWinDisplay = document.getElementById('potential-win');
+// DOM elements - will be initialized in the init function
+let startScreen, gameOverScreen, winScreen;
+let coinDisplay, scoreDisplay;
+let startBtn, restartBtn, continueBtn, cashoutBtn, backBtn;
+let betInput, increaseBetBtn, decreaseBetBtn;
+let cashoutContainer;
+let currentMultiplierDisplay, nextMultiplierDisplay;
+let currentBetDisplay, potentialWinDisplay;
+let quickBets = [];
 
-// Update coin display
-function updateCoinDisplay() {
-    coinDisplay.textContent = coinBalance.toLocaleString();
-    
-    // Update start button appearance based on current bet
-    updateStartButtonState();
-}
-
-// Update start button state
-function updateStartButtonState() {
-    if (startBtn) {
-        if (coinBalance < currentBet) {
-            startBtn.classList.add('insufficient');
-            startBtn.textContent = "Insufficient Balance";
-            startBtn.disabled = true;
-        } else {
-            startBtn.classList.remove('insufficient');
-            startBtn.textContent = "Start Game";
-            startBtn.disabled = false;
-        }
-    }
-}
-
-// Update coin balance (local)
-function updateCoins(amount) {
-    const newBalance = coinBalance + amount;
-    coinBalance = newBalance;
-    
-    console.log(`Updating coins: ${amount > 0 ? '+' : ''}${amount}, New balance: ${newBalance}`);
-    
-    // Update the display
-    updateCoinDisplay();
-    
-    // Record transaction in Firebase
-    if (window.recordGameTransaction) {
-        window.recordGameTransaction(GAME_CONFIG.gameId, amount, amount > 0);
-    } else {
-        // Fallback to direct update if transaction recording isn't available
-        if (window.updateFirebaseCoinBalance) {
-            window.updateFirebaseCoinBalance(newBalance);
-        }
-    }
-}
-
-// Generate random game hash
+// Generator for game hash
 function generateGameHash() {
     const characters = '0123456789abcdef';
     let hash = '';
@@ -1179,6 +826,11 @@ function generateGameHash() {
 // Initialize canvas
 function initCanvas() {
     canvas = document.getElementById('game-canvas');
+    if (!canvas) {
+        console.error("Canvas element not found!");
+        return;
+    }
+    
     ctx = canvas.getContext('2d');
     
     const gameBoard = document.querySelector('.game-board');
@@ -1200,9 +852,11 @@ function initCanvas() {
     canvas.style.height = canvasHeight + "px";
 }
 
-// Initialize game
+// Initialize game for play
 function initGame() {
-    // Make sure we have a valid bet
+    console.log("Initializing game...");
+    
+    // Get current bet from input
     currentBet = parseFloat(betInput.value);
     if (isNaN(currentBet) || currentBet < GAME_CONFIG.minBet) {
         currentBet = GAME_CONFIG.minBet;
@@ -1217,7 +871,6 @@ function initGame() {
     
     // Reset multiplier
     currentMultiplier = MULTIPLIER_CONFIG.base;
-    updateMultiplierDisplay();
     
     // Generate new game hash
     gameHash = generateGameHash();
@@ -1327,6 +980,15 @@ function initGame() {
     // Start game loop
     window.cancelAnimationFrame(animationFrame);
     gameLoop();
+    
+    console.log("Game initialized successfully!");
+}
+
+// Update player balance and display
+function updateCoins(amount) {
+    coinBalance += amount;
+    coinDisplay.textContent = coinBalance.toFixed(2);
+    console.log(`Balance updated: ${amount > 0 ? '+' : ''}${amount}, New balance: ${coinBalance}`);
 }
 
 // Update bet display
@@ -1342,11 +1004,11 @@ function updateMultiplierDisplay() {
     let increment = getMultiplierIncrement(currentLevel);
     
     // Calculate next multiplier
-    nextMultiplier = (currentMultiplier + increment).toFixed(2);
+    nextMultiplier = parseFloat((currentMultiplier + increment).toFixed(2));
     
     // Update displays
     currentMultiplierDisplay.textContent = `${currentMultiplier.toFixed(2)}x`;
-    nextMultiplierDisplay.textContent = `Next: ${nextMultiplier}x`;
+    nextMultiplierDisplay.textContent = `Next: ${nextMultiplier.toFixed(2)}x`;
     
     // Update potential win
     const potentialWin = currentBet * currentMultiplier;
@@ -1393,10 +1055,28 @@ function updateScoreDisplay() {
     }
 }
 
+// Update start button state based on current bet
+function updateStartButtonState() {
+    if (coinBalance < currentBet) {
+        startBtn.classList.add('insufficient');
+        startBtn.textContent = "Insufficient Balance";
+        startBtn.disabled = true;
+    } else {
+        startBtn.classList.remove('insufficient');
+        startBtn.textContent = "Start Game";
+        startBtn.disabled = false;
+    }
+}
+
 // Spawn cars on roads
 function spawnCars() {
     for (let i = 0; i < roads.length; i++) {
         const road = roads[i];
+        
+        // Skip roads that are off-screen
+        if (road.y > canvasHeight || road.y + road.height < 0) {
+            continue;
+        }
         
         // Scale spawn rate based on current level
         const roadLevel = roads.length - i - 1;
@@ -1467,13 +1147,38 @@ function spawnCar(road, direction) {
             break;
     }
     
+    // Get car color
+    const normalColors = ['#f44336', '#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4', '#009688'];
+    const truckColors = ['#795548', '#607D8B', '#6D4C41', '#546E7A']; 
+    const sportsCarColors = ['#F44336', '#FFEB3B', '#2196F3', '#000000', '#FFFFFF'];
+    const busColors = ['#FFC107', '#CDDC39', '#4CAF50'];
+    const motorcycleColors = ['#000000', '#212121', '#424242', '#1A237E'];
+    
+    let carColor;
+    switch(carType) {
+        case 1: // Truck
+            carColor = truckColors[Math.floor(Math.random() * truckColors.length)];
+            break;
+        case 2: // Sports car
+            carColor = sportsCarColors[Math.floor(Math.random() * sportsCarColors.length)];
+            break;
+        case 3: // Bus
+            carColor = busColors[Math.floor(Math.random() * busColors.length)];
+            break;
+        case 4: // Motorcycle
+            carColor = motorcycleColors[Math.floor(Math.random() * motorcycleColors.length)];
+            break;
+        default: // Normal car
+            carColor = normalColors[Math.floor(Math.random() * normalColors.length)];
+    }
+    
     const car = {
         x: carX,
         y: carY,
         width: carWidth,
         height: carHeight,
         speed: finalSpeed,
-        color: getRandomCarColor(carType),
+        color: carColor,
         type: carType,
         // Add headlights for visual enhancement
         headlights: Math.random() > 0.3, // 70% chance to have headlights
@@ -1484,28 +1189,6 @@ function spawnCar(road, direction) {
     };
     
     cars.push(car);
-}
-
-// Get random car color based on car type
-function getRandomCarColor(carType) {
-    const normalColors = ['#f44336', '#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4', '#009688'];
-    const truckColors = ['#795548', '#607D8B', '#6D4C41', '#546E7A']; 
-    const sportsCarColors = ['#F44336', '#FFEB3B', '#2196F3', '#000000', '#FFFFFF'];
-    const busColors = ['#FFC107', '#CDDC39', '#4CAF50'];
-    const motorcycleColors = ['#000000', '#212121', '#424242', '#1A237E'];
-    
-    switch(carType) {
-        case 1: // Truck
-            return truckColors[Math.floor(Math.random() * truckColors.length)];
-        case 2: // Sports car
-            return sportsCarColors[Math.floor(Math.random() * sportsCarColors.length)];
-        case 3: // Bus
-            return busColors[Math.floor(Math.random() * busColors.length)];
-        case 4: // Motorcycle
-            return motorcycleColors[Math.floor(Math.random() * motorcycleColors.length)];
-        default: // Normal car
-            return normalColors[Math.floor(Math.random() * normalColors.length)];
-    }
 }
 
 // Move cars
@@ -1523,6 +1206,8 @@ function moveCars() {
 
 // Move player
 function movePlayer() {
+    if (!player) return;
+    
     // Store previous position for trail effect
     const prevX = player.x;
     const prevY = player.y;
@@ -1565,6 +1250,8 @@ function movePlayer() {
 
 // Check level progress
 function checkLevelProgress() {
+    if (!player) return;
+    
     // Calculate which level (road) the player is at
     const roadAndSafeZoneHeight = GAME_CONFIG.roadHeight + GAME_CONFIG.safeZoneHeight;
     const playerLevel = Math.floor((canvasHeight - player.y) / roadAndSafeZoneHeight);
@@ -1606,6 +1293,8 @@ function animateMultiplierIncrease() {
 
 // Check collisions with cars and obstacles
 function checkCollisions() {
+    if (!player) return;
+    
     // Check collisions with cars
     for (const car of cars) {
         if (
@@ -1731,6 +1420,40 @@ function cashOut() {
     
     // Create win celebration effect
     createWinCelebration();
+}
+
+// Create particles for visual effects
+function createParticles(count) {
+    // Remove existing particles
+    const existingParticles = document.querySelectorAll('.particle');
+    existingParticles.forEach(p => p.remove());
+    
+    // Create new particles
+    const gameBoard = document.querySelector('.game-board');
+    if (!gameBoard) return;
+    
+    for (let i = 0; i < count; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        
+        // Random position
+        particle.style.left = `${Math.random() * 100}%`;
+        particle.style.top = `${Math.random() * 100}%`;
+        
+        // Random size
+        const size = Math.random() * 3 + 1;
+        particle.style.width = `${size}px`;
+        particle.style.height = `${size}px`;
+        
+        // Random opacity
+        particle.style.opacity = Math.random() * 0.5 + 0.2;
+        
+        // Animation
+        particle.style.animation = `float ${Math.random() * 10 + 5}s linear infinite`;
+        particle.style.animationDelay = `${Math.random() * 5}s`;
+        
+        gameBoard.appendChild(particle);
+    }
 }
 
 // Create explosion effect
@@ -1901,42 +1624,48 @@ function flashWarning() {
     }
 }
 
-// Create visual particles
-function createParticles(count) {
-    // Remove existing particles
-    const existingParticles = document.querySelectorAll('.particle');
-    existingParticles.forEach(p => p.remove());
+// Adapt difficulty based on level progression
+function adaptDifficulty() {
+    if (!player) return;
     
-    // Create new particles
-    const gameBoard = document.querySelector('.game-board');
-    if (!gameBoard) return;
+    // Increase player speed slightly as levels progress, but cap it
+    if (currentLevel > 10 && currentLevel < 60) {
+        player.speed = 5 + (currentLevel - 10) * 0.04;
+    } else if (currentLevel >= 60) {
+        // Slightly reduce speed at extreme levels to maintain control
+        player.speed = 5 + 50 * 0.04 - (currentLevel - 60) * 0.01;
+        player.speed = Math.max(5, player.speed); // Don't go below base speed
+    }
     
-    for (let i = 0; i < count; i++) {
-        const particle = document.createElement('div');
-        particle.className = 'particle';
-        
-        // Random position
-        particle.style.left = `${Math.random() * 100}%`;
-        particle.style.top = `${Math.random() * 100}%`;
-        
-        // Random size
-        const size = Math.random() * 3 + 1;
-        particle.style.width = `${size}px`;
-        particle.style.height = `${size}px`;
-        
-        // Random opacity
-        particle.style.opacity = Math.random() * 0.5 + 0.2;
-        
-        // Animation
-        particle.style.animation = `float ${Math.random() * 10 + 5}s linear infinite`;
-        particle.style.animationDelay = `${Math.random() * 5}s`;
-        
-        gameBoard.appendChild(particle);
+    // Make obstacles shift positions sometimes in higher levels
+    if (currentLevel > 50 && obstacles.length > 0 && Math.random() < 0.01) {
+        for (const obstacle of obstacles) {
+            if (Math.random() < 0.3) { // 30% chance for each obstacle
+                obstacle.x += (Math.random() - 0.5) * 5; // Shift left or right slightly
+                
+                // Keep within bounds
+                obstacle.x = Math.max(0, Math.min(canvasWidth - obstacle.width, obstacle.x));
+            }
+        }
+    }
+    
+    // Create particle effects at higher levels - more at higher levels
+    const particleChance = currentLevel > 30 ? 0.02 + (currentLevel / 500) : 0;
+    if (Math.random() < particleChance) {
+        const particleCount = Math.floor(currentLevel / 20) + 5;
+        createParticles(particleCount);
+    }
+    
+    // Flash warning on extreme levels
+    if (currentLevel > 80 && Math.random() < 0.05) {
+        flashWarning();
     }
 }
 
 // Draw game elements
 function drawGame() {
+    if (!canvas || !ctx) return;
+    
     // Clear canvas
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     
@@ -2237,93 +1966,272 @@ function drawGame() {
     }
     
     // Draw player with enhanced visuals
-    ctx.save();
-    const playerCenterX = player.x + player.width / 2;
-    const playerCenterY = player.y + player.height / 2;
-    
-    // Create a gradient for the player
-    const playerGradient = ctx.createRadialGradient(
-        playerCenterX, playerCenterY, 0,
-        playerCenterX, playerCenterY, player.width
-    );
-    playerGradient.addColorStop(0, '#4CAF50');
-    playerGradient.addColorStop(1, '#2E7D32');
-    
-    // Draw player body (rounded rectangle)
-    const cornerRadius = 5;
-    ctx.fillStyle = playerGradient;
-    
-    ctx.beginPath();
-    ctx.moveTo(player.x + cornerRadius, player.y);
-    ctx.lineTo(player.x + player.width - cornerRadius, player.y);
-    ctx.quadraticCurveTo(player.x + player.width, player.y, player.x + player.width, player.y + cornerRadius);
-    ctx.lineTo(player.x + player.width, player.y + player.height - cornerRadius);
-    ctx.quadraticCurveTo(player.x + player.width, player.y + player.height, player.x + player.width - cornerRadius, player.y + player.height);
-    ctx.lineTo(player.x + cornerRadius, player.y + player.height);
-    ctx.quadraticCurveTo(player.x, player.y + player.height, player.x, player.y + player.height - cornerRadius);
-    ctx.lineTo(player.x, player.y + cornerRadius);
-    ctx.quadraticCurveTo(player.x, player.y, player.x + cornerRadius, player.y);
-    ctx.closePath();
-    ctx.fill();
-    
-    // Add player glow effect
-    ctx.shadowColor = '#4CAF50';
-    ctx.shadowBlur = 10;
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = '#81C784';
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    
-    // Add player details (eyes)
-    ctx.fillStyle = '#fff';
-    const eyeSize = 4;
-    ctx.fillRect(player.x + player.width / 4 - eyeSize / 2, player.y + player.height / 3, eyeSize, eyeSize);
-    ctx.fillRect(player.x + 3 * player.width / 4 - eyeSize / 2, player.y + player.height / 3, eyeSize, eyeSize);
-    
-    // Add player "mouth" - simple smile
-    ctx.beginPath();
-    ctx.arc(player.x + player.width / 2, player.y + player.height / 2 + 2, 4, 0, Math.PI);
-    ctx.stroke();
-    
-    ctx.restore();
-    
-    // Draw background pattern
-    function drawBackgroundPattern() {
-        // Create grid pattern
-        ctx.fillStyle = '#001133';
+    if (player) {
+        ctx.save();
+        const playerCenterX = player.x + player.width / 2;
+        const playerCenterY = player.y + player.height / 2;
         
-        for (let x = 0; x < canvasWidth; x += 20) {
-            for (let y = 0; y < canvasHeight; y += 20) {
-                ctx.fillRect(x, y, 1, 1);
-            }
-        }
+        // Create a gradient for the player
+        const playerGradient = ctx.createRadialGradient(
+            playerCenterX, playerCenterY, 0,
+            playerCenterX, playerCenterY, player.width
+        );
+        playerGradient.addColorStop(0, '#4CAF50');
+        playerGradient.addColorStop(1, '#2E7D32');
+        
+        // Draw player body (rounded rectangle)
+        const cornerRadius = 5;
+        ctx.fillStyle = playerGradient;
+        
+        ctx.beginPath();
+        ctx.moveTo(player.x + cornerRadius, player.y);
+        ctx.lineTo(player.x + player.width - cornerRadius, player.y);
+        ctx.quadraticCurveTo(player.x + player.width, player.y, player.x + player.width, player.y + cornerRadius);
+        ctx.lineTo(player.x + player.width, player.y + player.height - cornerRadius);
+        ctx.quadraticCurveTo(player.x + player.width, player.y + player.height, player.x + player.width - cornerRadius, player.y + player.height);
+        ctx.lineTo(player.x + cornerRadius, player.y + player.height);
+        ctx.quadraticCurveTo(player.x, player.y + player.height, player.x, player.y + player.height - cornerRadius);
+        ctx.lineTo(player.x, player.y + cornerRadius);
+        ctx.quadraticCurveTo(player.x, player.y, player.x + cornerRadius, player.y);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add player glow effect
+        ctx.shadowColor = '#4CAF50';
+        ctx.shadowBlur = 10;
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#81C784';
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        
+        // Add player details (eyes)
+        ctx.fillStyle = '#fff';
+        const eyeSize = 4;
+        ctx.fillRect(player.x + player.width / 4 - eyeSize / 2, player.y + player.height / 3, eyeSize, eyeSize);
+        ctx.fillRect(player.x + 3 * player.width / 4 - eyeSize / 2, player.y + player.height / 3, eyeSize, eyeSize);
+        
+        // Add player "mouth" - simple smile
+        ctx.beginPath();
+        ctx.arc(player.x + player.width / 2, player.y + player.height / 2 + 2, 4, 0, Math.PI);
+        ctx.stroke();
+        
+        ctx.restore();
     }
+}
+
+// Draw background pattern
+function drawBackgroundPattern() {
+    if (!ctx) return;
     
-    // Draw player trail
-    function drawPlayerTrail() {
-        // Update player trail
-        if (player.trail && player.trail.length > 10) {
-            player.trail.shift();
-        }
-        
-        // Draw trail
-        if (player.trail) {
-            for (let i = 0; i < player.trail.length; i++) {
-                const point = player.trail[i];
-                const alpha = i / player.trail.length;
-                const size = (player.width / 2) * alpha;
-                
-                ctx.fillStyle = `rgba(76, 175, 80, ${alpha * 0.3})`;
-                ctx.beginPath();
-                ctx.arc(point.x, point.y, size, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Fade trail points
-                point.alpha -= 0.05;
-            }
+    // Create grid pattern
+    ctx.fillStyle = '#001133';
+    
+    for (let x = 0; x < canvasWidth; x += 20) {
+        for (let y = 0; y < canvasHeight; y += 20) {
+            ctx.fillRect(x, y, 1, 1);
         }
     }
 }
-</script>
+
+// Draw player trail
+function drawPlayerTrail() {
+    if (!ctx || !player || !player.trail) return;
+    
+    // Draw trail
+    for (let i = 0; i < player.trail.length; i++) {
+        const point = player.trail[i];
+        const alpha = i / player.trail.length;
+        const size = (player.width / 2) * alpha;
+        
+        ctx.fillStyle = `rgba(76, 175, 80, ${alpha * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+// Game loop
+function gameLoop() {
+    if (gameActive) {
+        // Game logic
+        spawnCars();
+        moveCars();
+        movePlayer();
+        checkCollisions();
+        
+        // Draw game
+        drawGame();
+        
+        // Adapt difficulty based on level progression
+        adaptDifficulty();
+        
+        // Continue game loop
+        animationFrame = requestAnimationFrame(gameLoop);
+    }
+}
+
+// Initialize game components and event listeners
+function init() {
+    console.log("Initializing Mission Uncrossable...");
+    
+    // Get DOM elements
+    startScreen = document.getElementById('start-screen');
+    gameOverScreen = document.getElementById('game-over-screen');
+    winScreen = document.getElementById('win-screen');
+    
+    coinDisplay = document.getElementById('coinDisplay');
+    scoreDisplay = document.getElementById('scoreDisplay');
+    
+    startBtn = document.getElementById('start-btn');
+    restartBtn = document.getElementById('restart-btn');
+    continueBtn = document.getElementById('continue-btn');
+    cashoutBtn = document.getElementById('cashout-btn');
+    backBtn = document.getElementById('back-btn');
+    
+    betInput = document.getElementById('bet-input');
+    increaseBetBtn = document.getElementById('increase-bet');
+    decreaseBetBtn = document.getElementById('decrease-bet');
+    
+    cashoutContainer = document.getElementById('cashout-container');
+    
+    currentMultiplierDisplay = document.getElementById('current-multiplier');
+    nextMultiplierDisplay = document.getElementById('next-multiplier');
+    
+    currentBetDisplay = document.getElementById('current-bet');
+    potentialWinDisplay = document.getElementById('potential-win');
+    
+    quickBets = document.querySelectorAll('.quick-bet');
+    
+    // Initialize canvas
+    initCanvas();
+    
+    // Generate initial game hash
+    gameHash = generateGameHash();
+    const hashElement = document.getElementById('game-hash');
+    if (hashElement) {
+        hashElement.textContent = `Game Hash: ${gameHash}`;
+    }
+    
+    const verifyElement = document.getElementById('verify-hash');
+    if (verifyElement) {
+        verifyElement.textContent = `Verify: ${gameHash}`;
+    }
+    
+    // Set up event listeners
+    // Keyboard controls
+    document.addEventListener('keydown', (e) => {
+        keysPressed[e.key] = true;
+        
+        // Prevent scrolling when using arrow keys
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+            e.preventDefault();
+        }
+        
+        // Cash out with space bar
+        if (e.key === ' ' && gameActive) {
+            cashOut();
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        keysPressed[e.key] = false;
+    });
+    
+    // Bet controls
+    if (increaseBetBtn) {
+        increaseBetBtn.addEventListener('click', function() {
+            currentBet = parseFloat(betInput.value);
+            currentBet += currentBet >= 100 ? 100 : currentBet >= 10 ? 10 : 1;
+            currentBet = Math.min(currentBet, GAME_CONFIG.maxBet);
+            betInput.value = currentBet.toFixed(2);
+            updateStartButtonState();
+        });
+    }
+    
+    if (decreaseBetBtn) {
+        decreaseBetBtn.addEventListener('click', function() {
+            currentBet = parseFloat(betInput.value);
+            currentBet -= currentBet > 100 ? 100 : currentBet > 10 ? 10 : 1;
+            currentBet = Math.max(currentBet, GAME_CONFIG.minBet);
+            betInput.value = currentBet.toFixed(2);
+            updateStartButtonState();
+        });
+    }
+    
+    if (betInput) {
+        betInput.addEventListener('input', function() {
+            let newBet = parseFloat(betInput.value);
+            if (isNaN(newBet) || newBet < GAME_CONFIG.minBet) {
+                newBet = GAME_CONFIG.minBet;
+            } else if (newBet > GAME_CONFIG.maxBet) {
+                newBet = GAME_CONFIG.maxBet;
+            }
+            currentBet = newBet;
+            updateStartButtonState();
+        });
+    }
+    
+    // Quick bet buttons
+    quickBets.forEach(btn => {
+        btn.addEventListener('click', function() {
+            currentBet = parseFloat(btn.getAttribute('data-value'));
+            betInput.value = currentBet.toFixed(2);
+            updateStartButtonState();
+        });
+    });
+    
+    // Game control buttons
+    if (startBtn) {
+        startBtn.addEventListener('click', function() {
+            if (coinBalance >= currentBet) {
+                startScreen.classList.remove('visible');
+                initGame();
+            }
+        });
+    }
+    
+    if (restartBtn) {
+        restartBtn.addEventListener('click', function() {
+            gameOverScreen.classList.remove('visible');
+            startScreen.classList.add('visible');
+            updateStartButtonState();
+        });
+    }
+    
+    if (continueBtn) {
+        continueBtn.addEventListener('click', function() {
+            winScreen.classList.remove('visible');
+            startScreen.classList.add('visible');
+            updateStartButtonState();
+        });
+    }
+    
+    if (cashoutBtn) {
+        cashoutBtn.addEventListener('click', function() {
+            cashOut();
+        });
+    }
+    
+    if (backBtn) {
+        backBtn.addEventListener('click', function() {
+            window.location.href = '/betavngames.html';
+        });
+    }
+    
+    // Update display
+    updateCoinDisplay();
+    updateBetDisplay();
+    updateMultiplierDisplay();
+    updateStartButtonState();
+    
+    // Create initial particles for visual effect
+    createParticles(30);
+    
+    console.log("Initialization complete!");
+}
+
+// Start everything when page loads
+window.addEventListener('load', init);
+   </script>
 </body>
 </html>
