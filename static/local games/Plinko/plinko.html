@@ -318,53 +318,97 @@
            if (user) {
                // User is signed in
                currentUser = user;
+               console.log("User signed in:", user.uid);
                await loadFirebaseCoinBalance();
            } else {
                // No user is signed in
                currentUser = null;
+               console.log("No user signed in");
                showLoginPrompt();
            }
        });
 
        // Load Coin Balance from Firebase - FIXED to use UID instead of email
        async function loadFirebaseCoinBalance() {
-           if (!currentUser) return;
+           if (!currentUser) {
+               console.log("No user available to load balance");
+               return;
+           }
 
            try {
+               console.log("Loading balance for user:", currentUser.uid);
+               
                // Use currentUser.uid instead of email
                const userRef = doc(db, 'users', currentUser.uid);
                const userDoc = await getDoc(userRef);
 
                if (userDoc.exists()) {
                    // Get coin balance from Firestore
-                   firebaseCoinBalance = userDoc.data().accountBalance || 0;
+                   const userData = userDoc.data();
+                   firebaseCoinBalance = userData.accountBalance || 0;
+                   
+                   console.log("Loaded balance from Firebase:", firebaseCoinBalance);
                    
                    // Update local coin display and game state
                    window.coinBalance = firebaseCoinBalance;
+                   
+                   // Make sure the global variable is also set
+                   coinBalance = firebaseCoinBalance;
+                   
+                   // Update UI and game state
                    window.updateCoinDisplay();
                    window.setupGame();
+                   
+                   console.log("Updated local balance:", coinBalance);
+                   return firebaseCoinBalance;
                } else {
+                   console.log("User document doesn't exist, creating new one");
                    // Create initial balance if no document exists
-                   await setDoc(userRef, { accountBalance: 1000 });
+                   await setDoc(userRef, { 
+                     accountBalance: 1000,
+                     username: currentUser.displayName || "Player",
+                     email: currentUser.email,
+                     createdAt: new Date(),
+                     totalGamesPlayed: 0,
+                     totalMoneySpent: 0,
+                     totalMoneyEarned: 0
+                   });
+                   
+                   firebaseCoinBalance = 1000;
                    window.coinBalance = 1000;
+                   coinBalance = 1000;
                    window.updateCoinDisplay();
+                   return 1000;
                }
            } catch (error) {
                console.error("Error loading coin balance:", error);
                showLoginPrompt();
+               return 0;
            }
        }
 
        // Update Coin Balance in Firebase - FIXED to use UID instead of email
        async function updateFirebaseCoinBalance(newBalance) {
-           if (!currentUser) return;
+           if (!currentUser) {
+               console.log("No user available to update balance");
+               return;
+           }
 
            try {
+               console.log("Updating balance for user:", currentUser.uid, "New balance:", newBalance);
+               
                // Use currentUser.uid instead of email
                const userRef = doc(db, 'users', currentUser.uid);
                await updateDoc(userRef, { accountBalance: newBalance });
+               
+               // Update the local reference as well
+               firebaseCoinBalance = newBalance;
+               console.log("Firebase balance updated successfully");
+               
+               return true;
            } catch (error) {
                console.error("Error updating coin balance:", error);
+               return false;
            }
        }
 
@@ -528,25 +572,41 @@ const coinDisplay = document.getElementById('coinDisplay');
 
 // Update coin display
 function updateCoinDisplay() {
-    coinDisplay.textContent = coinBalance;
+    // Format number with commas for thousands
+    coinDisplay.textContent = coinBalance.toLocaleString();
+    console.log("Updated coin display:", coinBalance);
     
     // Update drop button state based on coin balance
     if (coinBalance < 300) {
         dropButton.title = "Low on coins";
         dropButton.classList.add('insufficient');
+        
+        // Disable the button if we don't have enough coins
+        if (!gameActive && !gameComplete) {
+            dropButton.disabled = true;
+            dropButton.textContent = `Need 300 Coins (${coinBalance})`;
+        }
     } else {
         dropButton.title = "Drop a ball";
         dropButton.classList.remove('insufficient');
-    }
-    
-    if (!gameActive && !gameComplete) {
-        dropButton.disabled = false;
+        
+        // Enable the button if we have enough coins and the game isn't active
+        if (!gameActive && !gameComplete) {
+            dropButton.disabled = false;
+            dropButton.textContent = "Drop";
+        }
     }
 }
 
 // Update coin balance
 function updateCoins(amount) {
-    coinBalance += amount;
+    // Calculate new balance
+    const newBalance = coinBalance + amount;
+    coinBalance = newBalance;
+    
+    console.log(`Updating coins: ${amount > 0 ? '+' : ''}${amount}, New balance: ${newBalance}`);
+    
+    // Update the display
     updateCoinDisplay();
 
     // Animate coin display
@@ -557,10 +617,10 @@ function updateCoins(amount) {
 
     // Sync with Firebase
     if (window.updateFirebaseCoinBalance) {
-        window.updateFirebaseCoinBalance(coinBalance);
+        window.updateFirebaseCoinBalance(newBalance);
     }
     
-    // NEW: Record transaction for better tracking
+    // Record transaction for better tracking
     if (window.recordGameTransaction) {
         // If it's a positive amount, it's a win, otherwise it's a play cost
         window.recordGameTransaction("ball_dropper", amount, amount > 0);
@@ -901,12 +961,35 @@ window.addEventListener('resize', resizeCanvas);
 
 // Initialize the game
 window.addEventListener('load', () => {
-    // Check if Firebase load function exists
-    if (window.loadFirebaseCoinBalance) {
-        window.loadFirebaseCoinBalance();
+    console.log("Game loading...");
+    
+    // Set an initial check for auth state
+    if (auth.currentUser) {
+        console.log("User already authenticated on page load");
+        currentUser = auth.currentUser;
     }
-    resizeCanvas();
-    setupGame();
+    
+    // Properly initialize the game based on authentication state
+    const initializeGame = async () => {
+        if (currentUser) {
+            console.log("Initializing game with authenticated user");
+            // Check if Firebase load function exists and load balance
+            if (window.loadFirebaseCoinBalance) {
+                const balance = await window.loadFirebaseCoinBalance();
+                console.log("Initialized with balance:", balance);
+            }
+        } else {
+            console.log("Initializing game with no user");
+            coinBalance = 0;
+            updateCoinDisplay();
+        }
+        
+        resizeCanvas();
+        setupGame();
+    };
+    
+    // Call the initialization function
+    initializeGame();
 });
 </script>
 </body>
