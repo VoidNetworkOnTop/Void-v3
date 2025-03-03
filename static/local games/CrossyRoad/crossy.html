@@ -72,6 +72,7 @@
            border-bottom: 1px solid rgba(77, 124, 255, 0.2);
            position: relative;
            background: linear-gradient(90deg, transparent, rgba(77, 124, 255, 0.05), transparent);
+           z-index: 10;
        }
 
        .game-title {
@@ -101,45 +102,49 @@
            opacity: 0.8;
        }
        
-       /* Lane-based layout styling */
-       .game-lanes {
+       /* Road-based layout styling */
+       .game-world {
            position: absolute;
-           top: 0;
-           left: 0;
            width: 100%;
-           height: 100%;
-           display: flex;
-           flex-direction: row;
-           justify-content: space-between;
+           height: 5000px; /* Very tall to accommodate scrolling */
+           bottom: 0;
+           left: 0;
+           transition: transform 0.3s ease-out;
        }
        
-       .lane {
-           flex: 1;
-           height: 100%;
-           border-right: 2px dashed rgba(255, 255, 255, 0.2);
-           position: relative;
+       .road {
+           position: absolute;
+           width: 100%;
+           height: 80px;
+           background-color: #333333;
+           border-top: 4px solid #444444;
+           border-bottom: 4px solid #444444;
        }
        
-       .lane:last-child {
-           border-right: none;
+       .road-marking {
+           position: absolute;
+           width: 60px;
+           height: 8px;
+           background-color: #FFFFFF;
+           left: 50%;
+           transform: translateX(-50%);
        }
        
        .multiplier {
            position: absolute;
-           bottom: 20%;
-           left: 50%;
-           transform: translateX(-50%);
+           right: 20px;
            background: rgba(255, 255, 255, 0.15);
            color: white;
            font-weight: bold;
            padding: 10px;
            border-radius: 50%;
-           width: 60px;
-           height: 60px;
+           width: 40px;
+           height: 40px;
            display: flex;
            align-items: center;
            justify-content: center;
            font-size: 0.9rem;
+           z-index: 2;
        }
        
        .active-multiplier {
@@ -161,6 +166,7 @@
            box-shadow: 0 0 10px rgba(77, 124, 255, 0.3);
            animation: glow 2s infinite;
            backdrop-filter: blur(5px);
+           z-index: 10;
        }
 
        .coin-icon {
@@ -212,7 +218,7 @@
            width: 100%;
            height: 100%;
            background: transparent;
-           z-index: 1;
+           z-index: 2;
            display: block;
            cursor: pointer;
        }
@@ -297,6 +303,7 @@
            align-items: center;
            padding: 1rem 0;
            gap: 1rem;
+           z-index: 10;
        }
 
        .game-btn {
@@ -399,6 +406,7 @@
            background: linear-gradient(90deg, transparent, rgba(77, 124, 255, 0.05), transparent);
            padding: 0.2rem 0;
            border-radius: 20px;
+           z-index: 10;
        }
 
        .win-amount {
@@ -415,19 +423,6 @@
            text-shadow: 0 0 5px rgba(244, 67, 54, 0.5);
        }
 
-       .back-link {
-           margin-top: 1rem;
-           color: rgba(255, 255, 255, 0.7);
-           text-decoration: none;
-           font-size: 0.9rem;
-           transition: color 0.3s ease;
-       }
-
-       .back-link:hover {
-           color: #fff;
-           text-decoration: underline;
-       }
-
        .controls-info {
            position: absolute;
            bottom: 10px;
@@ -442,6 +437,7 @@
            border: 1px solid rgba(77, 124, 255, 0.2);
            backdrop-filter: blur(3px);
            animation: fadeInOut 3s infinite alternate;
+           z-index: 5;
        }
 
        @keyframes fadeInOut {
@@ -460,6 +456,7 @@
            color: #ff9800;
            font-size: 1.2rem;
            font-weight: bold;
+           z-index: 5;
        }
 
        .next-reward {
@@ -473,6 +470,7 @@
            color: #4caf50;
            font-size: 1.2rem;
            font-weight: bold;
+           z-index: 5;
        }
        
        .game-instruction {
@@ -487,6 +485,7 @@
            font-size: 1rem;
            max-width: 200px;
            text-align: center;
+           z-index: 5;
        }
 
        .click-circle {
@@ -552,11 +551,16 @@
            background: rgba(77, 124, 255, 0.5);
            border-radius: 50%;
            pointer-events: none;
-           z-index: 0;
+           z-index: 3;
        }
 
        /* Car animation */
-       @keyframes carDrive {
+       @keyframes carDriveLeft {
+           0% { right: -100px; }
+           100% { right: calc(100% + 100px); }
+       }
+
+       @keyframes carDriveRight {
            0% { left: -100px; }
            100% { left: calc(100% + 100px); }
        }
@@ -571,22 +575,20 @@
            box-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
        }
        
-       .car-top {
-           animation: carDriveTop 2s linear;
+       .car-left {
+           animation: carDriveLeft 2s linear;
        }
        
-       .car-bottom {
-           animation: carDriveBottom 2s linear;
+       .car-right {
+           animation: carDriveRight 2s linear;
        }
        
-       @keyframes carDriveTop {
-           0% { top: -50px; }
-           100% { top: calc(50% - 20px); }
-       }
-       
-       @keyframes carDriveBottom {
-           0% { bottom: -50px; }
-           100% { bottom: calc(50% - 20px); }
+       .chicken {
+           position: absolute;
+           width: 40px;
+           height: 40px;
+           z-index: 5;
+           transition: left 0.3s ease;
        }
    </style>
 </head>
@@ -595,7 +597,7 @@
    <div class="game-container">
        <div class="game-header">
            <h1 class="game-title">Lucky Chicken</h1>
-           <p class="game-subtitle">Test your luck! 50% chance to survive each lane</p>
+           <p class="game-subtitle">Test your luck! 50% chance to survive each road</p>
            <div class="coin-tracker">
                <div class="coin-icon"></div>
                <span class="coin-amount" id="coinDisplay">0</span>
@@ -604,10 +606,11 @@
        
        <div class="game-board">
            <canvas id="game-canvas"></canvas>
-           <div class="game-lanes" id="game-lanes">
-               <!-- Lanes will be added dynamically -->
+           <div class="game-world" id="game-world">
+               <!-- Roads will be added dynamically -->
            </div>
-           <div class="game-instruction">Click on a coin to advance!</div>
+           <div class="chicken" id="chicken"></div>
+           <div class="game-instruction">Click to advance forward!</div>
            <div class="chance-display">Survival Chance: 50%</div>
            <div class="next-reward" id="next-reward">Multiplier: 2.00×</div>
            
@@ -616,7 +619,7 @@
                <div class="overlay-content">
                    <h2 class="overlay-title">Lucky Chicken</h2>
                    <p class="overlay-message">Test your luck! Each time you click a coin, you have a 50% chance to survive.<br>
-                   Multipliers increase with each lane crossed!<br>
+                   Multipliers increase with each road crossed!<br>
                    Cost to play: 5 coins</p>
                    <button id="start-btn" class="game-btn">Start Game</button>
                </div>
@@ -928,24 +931,33 @@
 // Game Configuration
 const GAME_CONFIG = {
     startCost: 5,           // Cost to start the game
-    playerSize: 30,         // Size of player (chicken)
-    laneCount: 7,           // Number of lanes
+    playerSize: 40,         // Size of player (chicken)
+    roadCount: 20,          // Initial number of roads to generate
+    roadHeight: 80,         // Height of each road
+    roadSpacing: 100,       // Space between each road
     surviveProbability: 0.5, // 50% chance to survive (50% to die)
-    baseMultiplier: 2.00,   // Base multiplier for first lane
-    multiplierStep: 0.40,   // Increase in multiplier per lane
-    gameId: 'lucky_chicken' // ID for Firebase transactions
+    baseMultiplier: 2.00,   // Base multiplier for first road
+    multiplierStep: 0.40,   // Increase in multiplier per road
+    gameId: 'lucky_chicken', // ID for Firebase transactions
+    viewportHeight: 0,      // Will be set in initGame
+    cameraOffset: 200       // Distance from bottom of viewport to keep player
 };
 
 // Game state
 let canvas, ctx;
 let canvasWidth, canvasHeight;
-let player;
+let chickenElem;
+let gameWorld;
+let roads = [];
 let gameActive = false;
 let currentRoad = 0;
 let gameOver = false;
 let coinBalance = 0;
 let animationFrame;
 let totalCoinsWon = 0;
+let currentPosition = 0;
+let nextCoinPosition = 0;
+let clickCoin = null;
 
 // DOM elements
 const scoreDisplay = document.getElementById('scoreDisplay');
@@ -1020,8 +1032,11 @@ function initCanvas() {
     canvas.style.width = canvasWidth + "px";
     canvas.style.height = canvasHeight + "px";
     
-    // Remove any existing event listeners to prevent duplicates
-    canvas.removeEventListener('click', handleCanvasClick);
+    // Store viewport height for camera calculations
+    GAME_CONFIG.viewportHeight = canvasHeight;
+    
+    // Add click listener to canvas for advancing
+    canvas.addEventListener('click', handleCanvasClick);
 }
 
 // Initialize game
@@ -1029,29 +1044,33 @@ function initGame() {
     // Deduct the cost to play
     updateCoins(-GAME_CONFIG.startCost);
     
-    // Clear any existing lanes and elements
+    // Clear any existing elements
     clearGameElements();
     
-    // Set up lanes
-    createLanes();
+    // Get game world element
+    gameWorld = document.getElementById('game-world');
     
-    // Set up player in the middle lane
-    const middleLane = Math.floor(GAME_CONFIG.laneCount / 2);
-    player = {
-        laneIndex: middleLane,
-        x: (canvasWidth / GAME_CONFIG.laneCount) * middleLane + (canvasWidth / GAME_CONFIG.laneCount / 2) - GAME_CONFIG.playerSize / 2,
-        y: canvasHeight / 2 - GAME_CONFIG.playerSize / 2,
-        width: GAME_CONFIG.playerSize,
-        height: GAME_CONFIG.playerSize,
-        color: '#FFFFFF'
-    };
+    // Initialize chicken
+    chickenElem = document.getElementById('chicken');
+    chickenElem.style.width = `${GAME_CONFIG.playerSize}px`;
+    chickenElem.style.height = `${GAME_CONFIG.playerSize}px`;
+    chickenElem.style.left = `${canvasWidth / 2 - GAME_CONFIG.playerSize / 2}px`;
+    chickenElem.style.bottom = `${GAME_CONFIG.cameraOffset}px`;
     
-    // Create coins in adjacent lanes
-    createCoins();
+    // Set chicken image using CSS
+    chickenElem.style.background = 'url("data:image/svg+xml;charset=utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Cellipse cx=\'50\' cy=\'50\' rx=\'40\' ry=\'45\' fill=\'%23FFFFFF\'/%3E%3Ccircle cx=\'70\' cy=\'35\' r=\'8\' fill=\'%23000\'/%3E%3Cpath d=\'M80 40 L100 50 L80 60 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M30 70 L20 85 L30 85 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M70 70 L80 85 L70 85 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M70 10 L80 0 L90 10 Z\' fill=\'%23F44336\'/%3E%3C/svg%3E") center/contain no-repeat';
     
+    // Generate roads
+    generateRoads(GAME_CONFIG.roadCount);
+    
+    // Create initial click coin
+    createClickCoin();
+    
+    // Reset game state
     currentRoad = 0;
     totalCoinsWon = 0;
     gameOver = false;
+    currentPosition = 0;
     
     // Set game state
     gameActive = true;
@@ -1063,21 +1082,17 @@ function initGame() {
     // Start game loop
     window.cancelAnimationFrame(animationFrame);
     gameLoop();
-    
-    // Remove old event listeners to prevent duplicates
-    canvas.removeEventListener('click', handleCanvasClick);
-    
-    // Add canvas click listener
-    canvas.addEventListener('click', handleCanvasClick);
 }
 
 // Clear any existing game elements
 function clearGameElements() {
-    // Clear lanes
-    const lanesContainer = document.getElementById('game-lanes');
-    if (lanesContainer) {
-        lanesContainer.innerHTML = '';
+    // Clear game world
+    if (gameWorld) {
+        gameWorld.innerHTML = '';
     }
+    
+    // Clear roads array
+    roads = [];
     
     // Remove existing coins
     const existingCoins = document.querySelectorAll('.coin');
@@ -1096,130 +1111,142 @@ function clearGameElements() {
     rewardTexts.forEach(text => text.remove());
 }
 
-// Create lanes
-function createLanes() {
-    const lanesContainer = document.getElementById('game-lanes');
-    if (!lanesContainer) return;
-    
-    lanesContainer.innerHTML = '';
-    
-    for (let i = 0; i < GAME_CONFIG.laneCount; i++) {
-        const lane = document.createElement('div');
-        lane.className = 'lane';
-        lane.dataset.index = i;
-        
-        // Add multiplier display
-        const multiplier = document.createElement('div');
-        multiplier.className = 'multiplier';
-        
-        // Calculate multiplier value
-        const multiplierValue = (GAME_CONFIG.baseMultiplier + (i * GAME_CONFIG.multiplierStep)).toFixed(2);
-        multiplier.textContent = multiplierValue + '×';
-        
-        // Highlight the middle lane initially
-        if (i === Math.floor(GAME_CONFIG.laneCount / 2)) {
-            multiplier.classList.add('active-multiplier');
-        }
-        
-        lane.appendChild(multiplier);
-        lanesContainer.appendChild(lane);
+// Generate roads
+function generateRoads(count) {
+    for (let i = 0; i < count; i++) {
+        addRoad(i);
     }
 }
 
-// Create clickable coins
-function createCoins() {
-    // Remove existing coins
-    const existingCoins = document.querySelectorAll('.coin');
-    existingCoins.forEach(coin => coin.remove());
+// Add a new road
+function addRoad(index) {
+    const roadY = index * (GAME_CONFIG.roadHeight + GAME_CONFIG.roadSpacing);
+    
+    // Create road element
+    const road = document.createElement('div');
+    road.className = 'road';
+    road.style.bottom = `${roadY}px`;
+    
+    // Add road markings
+    const numMarkings = Math.floor(canvasWidth / 100);
+    for (let i = 0; i < numMarkings; i++) {
+        const marking = document.createElement('div');
+        marking.className = 'road-marking';
+        marking.style.left = `${(i * 100) + 50}px`;
+        marking.style.top = `${GAME_CONFIG.roadHeight / 2 - 4}px`;
+        road.appendChild(marking);
+    }
+    
+    // Add multiplier display
+    const multiplier = document.createElement('div');
+    multiplier.className = 'multiplier';
+    multiplier.dataset.index = index;
+    
+    // Calculate multiplier value
+    const multiplierValue = (GAME_CONFIG.baseMultiplier + (index * GAME_CONFIG.multiplierStep)).toFixed(2);
+    multiplier.textContent = multiplierValue + '×';
+    road.appendChild(multiplier);
+    
+    // Add road to game world
+    gameWorld.appendChild(road);
+    
+    // Store road info
+    roads.push({
+        element: road,
+        y: roadY,
+        index: index,
+        multiplier: multiplierValue
+    });
+    
+    return road;
+}
+
+// Create click coin
+function createClickCoin() {
+    // Remove existing coin if there is one
+    if (clickCoin) {
+        clickCoin.remove();
+        clickCoin = null;
+    }
     
     const gameBoard = document.querySelector('.game-board');
     if (!gameBoard) return;
     
-    // Get adjacent lanes to place coins
-    let availableLanes = [];
+    // Create new coin
+    clickCoin = document.createElement('div');
+    clickCoin.className = 'coin';
     
-    // Always allow moving left (unless at edge)
-    if (player.laneIndex > 0) {
-        availableLanes.push(player.laneIndex - 1);
-    }
+    // Position coin in front of chicken
+    const coinX = canvasWidth / 2 - 20; // center horizontally
+    const coinY = (currentRoad + 1) * (GAME_CONFIG.roadHeight + GAME_CONFIG.roadSpacing) - (GAME_CONFIG.roadHeight / 2) - 20;
+    nextCoinPosition = coinY;
     
-    // Always allow moving right (unless at edge)
-    if (player.laneIndex < GAME_CONFIG.laneCount - 1) {
-        availableLanes.push(player.laneIndex + 1);
-    }
+    clickCoin.style.left = `${coinX}px`;
+    clickCoin.style.bottom = `${coinY}px`;
     
-    // Create coins in available lanes
-    availableLanes.forEach(laneIndex => {
-        const coin = document.createElement('div');
-        coin.className = 'coin';
-        
-        // Position coin in lane
-        const laneWidth = canvasWidth / GAME_CONFIG.laneCount;
-        const coinX = laneWidth * laneIndex + laneWidth / 2 - 20; // Center in lane
-        const coinY = player.y + player.height / 2 - 20; // Align with player
-        
-        coin.style.left = `${coinX}px`;
-        coin.style.top = `${coinY}px`;
-        
-        // Add data attribute for lane index
-        coin.dataset.laneIndex = laneIndex;
-        
-        // Add click event
-        coin.addEventListener('click', (e) => {
-            if (!gameActive) return;
-            e.stopPropagation();
-            
-            const clickedLaneIndex = parseInt(e.currentTarget.dataset.laneIndex);
-            tryToAdvance(clickedLaneIndex);
-        });
-        
-        gameBoard.appendChild(coin);
-    });
+    // Add click event
+    clickCoin.addEventListener('click', tryToAdvance);
+    
+    // Add coin to game world
+    gameWorld.appendChild(clickCoin);
 }
 
-// Try to advance to next lane
-function tryToAdvance(targetLaneIndex) {
+// Update camera position
+function updateCamera() {
+    if (!gameActive || !gameWorld) return;
+    
+    // Calculate camera position to keep chicken at fixed position from bottom
+    const targetY = currentRoad * (GAME_CONFIG.roadHeight + GAME_CONFIG.roadSpacing);
+    gameWorld.style.transform = `translateY(${-targetY + GAME_CONFIG.cameraOffset}px)`;
+    
+    // Check if we need to generate more roads
+    if (currentRoad + 5 > roads.length) {
+        // Generate 10 more roads ahead
+        for (let i = roads.length; i < roads.length + 10; i++) {
+            addRoad(i);
+        }
+    }
+}
+
+// Try to advance to next road
+function tryToAdvance(event) {
     if (!gameActive) return;
+    
+    // Stop event propagation
+    if (event) event.stopPropagation();
     
     // Check if we survive (50% chance)
     const roll = Math.random();
     const survived = roll <= GAME_CONFIG.surviveProbability;
     
     if (survived) {
-        // Success! Move to next lane
-        const previousLane = player.laneIndex;
-        player.laneIndex = targetLaneIndex;
-        
-        // Update player position
-        const laneWidth = canvasWidth / GAME_CONFIG.laneCount;
-        player.x = laneWidth * targetLaneIndex + laneWidth / 2 - player.width / 2;
-        
-        // Increment road count
+        // Success! Move to next road
         currentRoad++;
+        currentPosition = currentRoad * (GAME_CONFIG.roadHeight + GAME_CONFIG.roadSpacing);
         
         // Calculate multiplier value
-        const multiplier = (GAME_CONFIG.baseMultiplier + (targetLaneIndex * GAME_CONFIG.multiplierStep)).toFixed(2);
-        const reward = Math.floor(GAME_CONFIG.startCost * parseFloat(multiplier));
+        const multiplierValue = parseFloat((GAME_CONFIG.baseMultiplier + (currentRoad * GAME_CONFIG.multiplierStep)).toFixed(2));
+        const reward = Math.floor(GAME_CONFIG.startCost * multiplierValue);
         totalCoinsWon += reward;
         
         // Add coins to balance
         updateCoins(reward);
         
-        // Update multiplier highlights
-        updateMultiplierHighlights(targetLaneIndex);
+        // Update camera
+        updateCamera();
         
         // Create success animation
         createSuccessAnimation();
         
-        // Create new coins
-        createCoins();
+        // Create new click coin
+        createClickCoin();
         
         // Update displays
         updateScoreDisplay();
         updateNextRewardDisplay();
     } else {
         // Failed! Game over
-        createCarAnimation(targetLaneIndex);
+        createCarAnimation();
         
         // Allow time for car animation before showing game over
         setTimeout(() => {
@@ -1230,45 +1257,33 @@ function tryToAdvance(targetLaneIndex) {
     }
 }
 
-// Update multiplier highlights
-function updateMultiplierHighlights(activeLaneIndex) {
-    const multipliers = document.querySelectorAll('.multiplier');
-    multipliers.forEach((multiplier, index) => {
-        if (index === activeLaneIndex) {
-            multiplier.classList.add('active-multiplier');
-        } else {
-            multiplier.classList.remove('active-multiplier');
-        }
-    });
-}
-
 // Create car animation
-function createCarAnimation(laneIndex) {
-    // Remove coins
-    const existingCoins = document.querySelectorAll('.coin');
-    existingCoins.forEach(coin => coin.remove());
-    
-    // Calculate lane center
-    const laneWidth = canvasWidth / GAME_CONFIG.laneCount;
-    const laneCenter = laneWidth * laneIndex + laneWidth / 2;
-    
-    // Create car elements (one from top, one from bottom)
-    const carTop = document.createElement('div');
-    carTop.className = 'car car-top';
-    carTop.style.left = `${laneCenter - 40}px`; // Center in lane
-    carTop.style.top = `-50px`;
-    
-    const carBottom = document.createElement('div');
-    carBottom.className = 'car car-bottom';
-    carBottom.style.left = `${laneCenter - 40}px`; // Center in lane
-    carBottom.style.bottom = `-50px`;
-    
-    // Add to game board
-    const gameBoard = document.querySelector('.game-board');
-    if (gameBoard) {
-        gameBoard.appendChild(carTop);
-        gameBoard.appendChild(carBottom);
+function createCarAnimation() {
+    // Remove click coin
+    if (clickCoin) {
+        clickCoin.remove();
+        clickCoin = null;
     }
+    
+    // Determine which side the car comes from (random)
+    const fromLeft = Math.random() > 0.5;
+    
+    // Create car element
+    const car = document.createElement('div');
+    car.className = fromLeft ? 'car car-right' : 'car car-left';
+    
+    // Position car on the current road
+    const roadY = currentRoad * (GAME_CONFIG.roadHeight + GAME_CONFIG.roadSpacing) + (GAME_CONFIG.roadHeight / 2) - 20;
+    car.style.bottom = `${roadY}px`;
+    
+    if (fromLeft) {
+        car.style.left = '-80px';
+    } else {
+        car.style.right = '-80px';
+    }
+    
+    // Add car to game world
+    gameWorld.appendChild(car);
     
     // Play crash sound if available
     if (typeof Audio !== 'undefined') {
@@ -1280,13 +1295,10 @@ function createCarAnimation(laneIndex) {
         }
     }
     
-    // Remove cars after animation completes
+    // Remove car after animation completes
     setTimeout(() => {
-        if (carTop && carTop.parentNode) {
-            carTop.parentNode.removeChild(carTop);
-        }
-        if (carBottom && carBottom.parentNode) {
-            carBottom.parentNode.removeChild(carBottom);
+        if (car && car.parentNode) {
+            car.parentNode.removeChild(car);
         }
     }, 2500);
 }
@@ -1299,8 +1311,11 @@ function createSuccessAnimation() {
         particle.className = 'particle';
         
         // Position at player
-        particle.style.left = `${player.x + player.width / 2}px`;
-        particle.style.top = `${player.y + player.height / 2}px`;
+        const chickenX = canvasWidth / 2;
+        const chickenY = currentPosition;
+        
+        particle.style.left = `${chickenX}px`;
+        particle.style.bottom = `${chickenY}px`;
         
         // Random size
         const size = Math.random() * 6 + 3;
@@ -1320,24 +1335,21 @@ function createSuccessAnimation() {
         // Animation
         particle.style.transition = 'all 0.8s ease-out';
         
-        const gameBoard = document.querySelector('.game-board');
-        if (gameBoard) {
-            gameBoard.appendChild(particle);
-            
-            // Animate
-            setTimeout(() => {
-                particle.style.left = `${player.x + player.width / 2 + xVelocity * 40}px`;
-                particle.style.top = `${player.y + player.height / 2 + yVelocity * 40}px`;
-                particle.style.opacity = '0';
-            }, 10);
-            
-            // Remove particles
-            setTimeout(() => {
-                if (particle.parentNode) {
-                    particle.parentNode.removeChild(particle);
-                }
-            }, 1000);
-        }
+        gameWorld.appendChild(particle);
+        
+        // Animate
+        setTimeout(() => {
+            particle.style.left = `${chickenX + xVelocity * 40}px`;
+            particle.style.bottom = `${chickenY + yVelocity * 40}px`;
+            particle.style.opacity = '0';
+        }, 10);
+        
+        // Remove particles
+        setTimeout(() => {
+            if (particle.parentNode) {
+                particle.parentNode.removeChild(particle);
+            }
+        }, 1000);
     }
     
     // Play success sound if available
@@ -1351,15 +1363,14 @@ function createSuccessAnimation() {
     }
     
     // Show reward animation
-    const laneIndex = player.laneIndex;
-    const multiplier = (GAME_CONFIG.baseMultiplier + (laneIndex * GAME_CONFIG.multiplierStep)).toFixed(2);
-    const reward = Math.floor(GAME_CONFIG.startCost * parseFloat(multiplier));
+    const multiplierValue = parseFloat((GAME_CONFIG.baseMultiplier + (currentRoad * GAME_CONFIG.multiplierStep)).toFixed(2));
+    const reward = Math.floor(GAME_CONFIG.startCost * multiplierValue);
     
     const rewardText = document.createElement('div');
     rewardText.className = 'reward-text';
     rewardText.style.position = 'absolute';
-    rewardText.style.left = `${player.x + player.width / 2}px`;
-    rewardText.style.top = `${player.y - 30}px`;
+    rewardText.style.left = `${canvasWidth / 2}px`;
+    rewardText.style.bottom = `${currentPosition + 50}px`;
     rewardText.style.transform = 'translate(-50%, -50%)';
     rewardText.style.color = '#FFD700';
     rewardText.style.fontSize = '1.5rem';
@@ -1369,23 +1380,20 @@ function createSuccessAnimation() {
     rewardText.textContent = `+${reward}`;
     rewardText.style.transition = 'all 1s ease-out';
     
-    const gameBoard = document.querySelector('.game-board');
-    if (gameBoard) {
-        gameBoard.appendChild(rewardText);
-        
-        // Animate up and fade out
-        setTimeout(() => {
-            rewardText.style.top = `${player.y - 80}px`;
-            rewardText.style.opacity = '0';
-        }, 10);
-        
-        // Remove text
-        setTimeout(() => {
-            if (rewardText.parentNode) {
-                rewardText.parentNode.removeChild(rewardText);
-            }
-        }, 1000);
-    }
+    gameWorld.appendChild(rewardText);
+    
+    // Animate up and fade out
+    setTimeout(() => {
+        rewardText.style.bottom = `${currentPosition + 100}px`;
+        rewardText.style.opacity = '0';
+    }, 10);
+    
+    // Remove text
+    setTimeout(() => {
+        if (rewardText.parentNode) {
+            rewardText.parentNode.removeChild(rewardText);
+        }
+    }, 1000);
 }
 
 // Show game over screen
@@ -1405,27 +1413,42 @@ function showGameOver() {
     gameOverScreen.classList.add('visible');
     
     // Remove remaining game elements
-    const existingCoins = document.querySelectorAll('.coin');
-    existingCoins.forEach(coin => coin.remove());
+    if (clickCoin) {
+        clickCoin.remove();
+        clickCoin = null;
+    }
 }
 
 // Update score display
 function updateScoreDisplay() {
-    scoreDisplay.textContent = `Lanes Crossed: ${currentRoad}`;
+    scoreDisplay.textContent = `Roads Crossed: ${currentRoad}`;
 }
 
 // Update next reward display
 function updateNextRewardDisplay() {
-    const currentLaneIndex = player.laneIndex;
-    const currentMultiplier = (GAME_CONFIG.baseMultiplier + (currentLaneIndex * GAME_CONFIG.multiplierStep)).toFixed(2);
-    nextRewardDisplay.textContent = `Current Multiplier: ${currentMultiplier}×`;
+    const nextMultiplier = (GAME_CONFIG.baseMultiplier + ((currentRoad + 1) * GAME_CONFIG.multiplierStep)).toFixed(2);
+    nextRewardDisplay.textContent = `Next Multiplier: ${nextMultiplier}×`;
 }
 
 // Handle canvas click
 function handleCanvasClick(event) {
-    // We're handling clicks with the click circle now
-    // This just prevents the canvas click from doing anything
-    event.preventDefault();
+    if (!gameActive || gameOver) return;
+    
+    // Try to advance only if we click near the coin
+    const rect = canvas.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const clickY = event.clientY - rect.top;
+    
+    // Calculate position of the next coin in the viewport
+    const coinY = GAME_CONFIG.viewportHeight - (nextCoinPosition - currentPosition + GAME_CONFIG.cameraOffset);
+    
+    // If click is near the coin, trigger tryToAdvance
+    const coinCenterX = canvasWidth / 2;
+    const distance = Math.sqrt(Math.pow(clickX - coinCenterX, 2) + Math.pow(clickY - coinY, 2));
+    
+    if (distance < 60) { // Allow some leeway for clicking
+        tryToAdvance(event);
+    }
 }
 
 // Draw game elements
@@ -1433,86 +1456,54 @@ function drawGame() {
     // Clear canvas
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     
-    // We'll use just a minimal canvas drawing for the player
-    // since most of the visual elements are now DOM-based
+    // We're using DOM elements for most of the visuals now
+    // The canvas is just for background details
     
-    // Draw player (chicken)
-    drawChicken(player.x, player.y, player.width, player.height);
+    // Draw stars for background
+    drawStars();
+    
+    // Request next frame if game is active
+    if (gameActive) {
+        animationFrame = requestAnimationFrame(drawGame);
+    }
 }
 
-// Draw chicken character
-function drawChicken(x, y, width, height) {
-    // Main chicken body (white like in the reference image)
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.ellipse(x + width / 2, y + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
-    ctx.fill();
+// Draw stars in the background
+function drawStars() {
+    // Create a starry background effect
+    ctx.fillStyle = "#FFFFFF";
     
-    // Chicken eyes
-    ctx.fillStyle = '#000000';
-    ctx.beginPath();
-    ctx.arc(x + width * 0.7, y + height * 0.3, width * 0.1, 0, Math.PI * 2);
-    ctx.fill();
+    // Star positions based on camera offset
+    const cameraOffset = currentPosition;
     
-    // Chicken beak
-    ctx.fillStyle = '#FFA500';
-    ctx.beginPath();
-    ctx.moveTo(x + width * 0.9, y + height * 0.4);
-    ctx.lineTo(x + width * 1.2, y + height * 0.5);
-    ctx.lineTo(x + width * 0.9, y + height * 0.6);
-    ctx.closePath();
-    ctx.fill();
+    for (let i = 0; i < 100; i++) {
+        // Create a deterministic but varied star pattern
+        const seed = i * 31247; // Prime number to make it look random
+        const x = (seed % canvasWidth + cameraOffset * 0.05 * (i % 5)) % canvasWidth;
+        const y = (seed * 13 % canvasHeight + cameraOffset * 0.02 * ((i + 2) % 7)) % canvasHeight;
+        
+        // Vary the star sizes
+        const size = (i % 3) + 1;
+        
+        // Make stars twinkle
+        const alpha = 0.3 + 0.7 * Math.sin(Date.now() * 0.001 + i);
+        
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
     
-    // Chicken feet (yellow like in reference)
-    ctx.fillStyle = '#FFA500';
-    
-    // Left foot
-    ctx.beginPath();
-    ctx.moveTo(x + width * 0.3, y + height * 0.9);
-    ctx.lineTo(x + width * 0.2, y + height * 1.1);
-    ctx.lineTo(x + width * 0.3, y + height * 1.1);
-    ctx.closePath();
-    ctx.fill();
-    
-    // Right foot
-    ctx.beginPath();
-    ctx.moveTo(x + width * 0.7, y + height * 0.9);
-    ctx.lineTo(x + width * 0.8, y + height * 1.1);
-    ctx.lineTo(x + width * 0.7, y + height * 1.1);
-    ctx.closePath();
-    ctx.fill();
-    
-    // Chicken comb
-    ctx.fillStyle = '#F44336';
-    ctx.beginPath();
-    ctx.moveTo(x + width * 0.7, y);
-    ctx.lineTo(x + width * 0.8, y - height * 0.2);
-    ctx.lineTo(x + width * 0.9, y);
-    ctx.closePath();
-    ctx.fill();
-    
-    // Add a subtle shadow/glow
-    ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
-    ctx.shadowBlur = 10;
-    ctx.beginPath();
-    ctx.arc(x + width / 2, y + height / 2, width / 2 + 2, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1.0;
 }
-
-
 
 // Game loop
 function gameLoop() {
-    if (gameActive) {
-        // Draw game
-        drawGame();
-        
-        // Continue game loop
-        animationFrame = requestAnimationFrame(gameLoop);
-    }
+    // Update camera position
+    updateCamera();
+    
+    // Start drawing
+    drawGame();
 }
 
 // Event Listeners
@@ -1543,9 +1534,7 @@ window.addEventListener('load', () => {
     window.addEventListener('resize', () => {
         initCanvas();
         if (gameActive) {
-            drawGame();
-            // Recreate click circle with new dimensions
-            createClickCircle();
+            updateCamera();
         }
     });
     
