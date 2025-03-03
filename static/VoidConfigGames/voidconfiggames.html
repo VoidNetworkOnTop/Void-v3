@@ -95,7 +95,7 @@
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-        import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+        import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, setDoc, query, where, limit } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration
         const firebaseConfig = {
@@ -126,12 +126,18 @@
         // Admin email constant
         const ADMIN_EMAIL = "six7588@gmail.com";
         
-        // In-memory user cache and email mapping
-        let isAdminUser = false;
-        let currentUserId = null;
-        
-        // NEW: Email-to-ID mapping storage
-        const emailToIdMap = new Map();
+        // Known users from screenshot
+        const knownUsers = [
+            { id: "mtl6j5MsEwYhfVfT1yw9JmrSfMV2", email: "1q2w3e4r5t6y7u8i9o0p@gmail.com" },
+            { id: "ku8A1MuC6jWJxEnPIb9nYCY2MnH2", email: "mjbalkovski@gmail.com" },
+            { id: "Ga450aQRGGMqUOgFVGs62fRnZ6l1", email: "svalenciarivera@isdkids.org" },
+            { id: "GU9JmuJistfcjKLwtJLmj5BELHs2", email: "nigatikler@gmail.com" },
+            { id: "3qJsAc8TsbZzx0SZdfduH7ijLuP2", email: "dfsgdsgr@gamil.comsd" },
+            { id: "dcxtOHGcfrQ12XBrSz04MhQzEbq1", email: "shrey436@proton.me" },
+            { id: "44b4NFWyEnSPhCsofxMkbkIP1vt1", email: "gvrelectrodude@gmail.com" },
+            { id: "Wtc6hcUIzmORUJxJFc5nJVPgjRE2", email: "shrey150436@gmail.com" },
+            { id: "KIsAtjOwRpdVDOL3VPrDBACSxdw1", email: "six7588@gmail.com" }
+        ];
         
         // Terminal output functions
         function printToTerminal(message, className = '') {
@@ -160,8 +166,7 @@
             printToTerminal('----------------------------------');
             printToTerminal('Available commands:');
             printToTerminal('help - Show available commands');
-            printToTerminal('list users - List all available users');
-            printToTerminal('create mapping - Create email lookup mapping');
+            printToTerminal('list users - Show known users');
             printToTerminal('<user ID> coin amount - Check coins by user ID');
             printToTerminal('<user ID> add coins <amount> - Add coins by user ID');
             printToTerminal('<user ID> remove coins <amount> - Remove coins from user');
@@ -170,167 +175,9 @@
             printSuccess(`Authenticated as admin: ${userEmail}`);
             printInfo(`Your user ID: ${userId}`);
             printInfo('Ready for commands.');
-            
-            // Store admin user's info
-            emailToIdMap.set(userEmail.toLowerCase(), userId);
-            
-            // Initial setup - try to load email mapping
-            loadEmailMapping();
         }
         
-        // NEW: Load email mapping from config
-        async function loadEmailMapping() {
-            try {
-                printInfo("Loading email mapping from config...");
-                
-                const configRef = doc(db, 'config', 'emailMapping');
-                const configDoc = await getDoc(configRef);
-                
-                if (configDoc.exists()) {
-                    const mappingData = configDoc.data();
-                    let count = 0;
-                    
-                    for (const [email, id] of Object.entries(mappingData)) {
-                        if (email && id) {
-                            emailToIdMap.set(email.toLowerCase(), id);
-                            count++;
-                        }
-                    }
-                    
-                    printSuccess(`Loaded ${count} email-to-ID mappings from config`);
-                } else {
-                    printInfo("No email mapping found in config");
-                    printInfo("Use 'create mapping' command to create one");
-                }
-            } catch (error) {
-                printError(`Error loading email mapping: ${error.message}`);
-            }
-        }
-        
-        // NEW: Create email-to-ID mapping
-        async function createEmailMapping() {
-            try {
-                printInfo("Creating email-to-ID mapping...");
-                printInfo("This will traverse all user documents to build the mapping");
-                printInfo("Starting with user ID 1...");
-                
-                const mapping = {};
-                let successCount = 0;
-                let errorCount = 0;
-                let lastId = "";
-                
-                // We'll use a numeric approach to try IDs
-                // This is a workaround since we can't query by email
-                for (let i = 1; i <= 1000; i++) {
-                    try {
-                        // Try different ID formats
-                        const potentialIds = [
-                            `${i}`, // Simple numeric IDs
-                            `user${i}`, // user1, user2, etc.
-                            `${i.toString(16)}`, // Hex: 1, 2, 3... a, b, c, etc.
-                            `u${i}` // u1, u2, etc.
-                        ];
-                        
-                        // For very first users, also try some common patterns
-                        if (i <= 20) {
-                            potentialIds.push(`admin${i}`);
-                            potentialIds.push(`test${i}`);
-                            potentialIds.push(`demo${i}`);
-                        }
-                        
-                        for (const id of potentialIds) {
-                            const userRef = doc(db, 'users', id);
-                            const userDoc = await getDoc(userRef);
-                            
-                            if (userDoc.exists() && userDoc.data().email) {
-                                const email = userDoc.data().email.toLowerCase();
-                                mapping[email] = id;
-                                emailToIdMap.set(email, id);
-                                successCount++;
-                                lastId = id;
-                                printInfo(`Found user: ${email} (${id})`);
-                            }
-                        }
-                    } catch (error) {
-                        errorCount++;
-                        // Silently continue on errors
-                    }
-                    
-                    // Show progress every 100 attempts
-                    if (i % 100 === 0) {
-                        printInfo(`Progress: ${i}/1000 IDs checked, ${successCount} found`);
-                    }
-                }
-                
-                // Try UID format (long string IDs)
-                // Look at our current authenticated user ID for pattern
-                if (currentUserId && currentUserId.length > 20) {
-                    // Attempt firebase auth UID format - much harder to iterate
-                    printInfo("Trying additional ID formats...");
-                    
-                    // Try looking up common known users
-                    const commonEmails = [
-                        "test@test.com", 
-                        "admin@admin.com",
-                        "user@example.com",
-                        "nigatikler@gmail.com",
-                        "svalenciarivera@isdkids.org"
-                    ];
-                    
-                    for (const email of commonEmails) {
-                        try {
-                            // Try to directly look up based on email format in ID
-                            // This is a stretch but worth trying
-                            const emailParts = email.split('@')[0];
-                            const potentialId = `${emailParts}123`;
-                            
-                            const userRef = doc(db, 'users', potentialId);
-                            const userDoc = await getDoc(userRef);
-                            
-                            if (userDoc.exists() && userDoc.data().email) {
-                                const foundEmail = userDoc.data().email.toLowerCase();
-                                mapping[foundEmail] = potentialId;
-                                emailToIdMap.set(foundEmail, potentialId);
-                                successCount++;
-                                printInfo(`Found user: ${foundEmail} (${potentialId})`);
-                            }
-                        } catch (error) {
-                            // Silently continue
-                        }
-                    }
-                }
-                
-                // Save to config
-                try {
-                    if (successCount > 0) {
-                        const configRef = doc(db, 'config', 'emailMapping');
-                        await setDoc(configRef, mapping);
-                        printSuccess(`Email mapping created with ${successCount} entries`);
-                        printSuccess("Saved to config collection for future use");
-                    } else {
-                        printError("No users found to create mapping");
-                    }
-                } catch (saveError) {
-                    printError(`Error saving mapping: ${saveError.message}`);
-                }
-                
-                // Add some known mappings here for important users
-                if (ADMIN_EMAIL && currentUserId) {
-                    emailToIdMap.set(ADMIN_EMAIL.toLowerCase(), currentUserId);
-                    mapping[ADMIN_EMAIL.toLowerCase()] = currentUserId;
-                    printInfo(`Added admin mapping: ${ADMIN_EMAIL} → ${currentUserId}`);
-                }
-                
-                // Display results
-                printInfo(`Mapping creation complete`);
-                printInfo(`Total success: ${successCount}, Errors: ${errorCount}`);
-                printInfo(`Last found ID: ${lastId}`);
-            } catch (error) {
-                printError(`Error creating email mapping: ${error.message}`);
-            }
-        }
-        
-        // Login functionality - simplified to avoid early permission checks
+        // Login functionality
         loginButton.addEventListener('click', async () => {
             const email = emailInput.value.trim();
             const password = passwordInput.value;
@@ -365,21 +212,31 @@
             loginMessage.classList.remove('hidden');
         }
         
-        // Handle authentication state changes - simplified approach
+        // Handle authentication state changes
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 // User is signed in
                 if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-                    // This is the expected admin email, proceed without checking Firestore
-                    currentUserId = user.uid;
-                    isAdminUser = true;
-                    
-                    // Store the current user's email and ID
-                    loginForm.classList.add('hidden');
-                    adminConsole.classList.remove('hidden');
-                    
-                    // Initialize the admin console
-                    initConsole(user.email, user.uid);
+                    try {
+                        // Verify admin status in the admins collection
+                        const adminRef = doc(db, 'admins', user.uid);
+                        const adminDoc = await getDoc(adminRef);
+                        
+                        if (adminDoc.exists()) {
+                            // User is authenticated as admin, show console
+                            loginForm.classList.add('hidden');
+                            adminConsole.classList.remove('hidden');
+                            
+                            // Initialize the admin console
+                            initConsole(user.email, user.uid);
+                        } else {
+                            printError("User is not registered as an admin");
+                            await signOut(auth);
+                        }
+                    } catch (error) {
+                        console.error("Admin verification error:", error);
+                        showLoginMessage(`Admin verification error: ${error.message}`, true);
+                    }
                 } else {
                     // Not the expected admin email
                     showLoginMessage("Not authorized as admin", true);
@@ -410,8 +267,7 @@
             if (command.toLowerCase() === 'help') {
                 printInfo('Available commands:');
                 printInfo('help - Show this help information');
-                printInfo('list users - List all available users');
-                printInfo('create mapping - Create email lookup mapping');
+                printInfo('list users - Show known users');
                 printInfo('<user ID> coin amount - Check a user\'s coin balance by ID');
                 printInfo('<user ID> add coins <amount> - Add coins to a user by ID');
                 printInfo('<user ID> remove coins <amount> - Remove coins from a user by ID');
@@ -422,49 +278,32 @@
             
             // Show own user ID
             if (command.toLowerCase() === 'me') {
-                if (currentUserId) {
-                    printInfo(`Your user ID: ${currentUserId}`);
-                    printInfo(`Your email: ${ADMIN_EMAIL}`);
+                const currentUser = auth.currentUser;
+                if (currentUser) {
+                    printInfo(`Your user ID: ${currentUser.uid}`);
+                    printInfo(`Your email: ${currentUser.email}`);
                 } else {
                     printError('Not currently authenticated');
                 }
                 return;
             }
             
-            // List users in mapping
+            // List users command
             if (command.toLowerCase() === 'list users') {
-                printInfo('Users in current mapping:');
-                if (emailToIdMap.size === 0) {
-                    printInfo('No users in mapping. Use "create mapping" command first.');
-                } else {
-                    let count = 0;
-                    emailToIdMap.forEach((id, email) => {
-                        printInfo(`${email} → ${id}`);
-                        count++;
-                        
-                        // Limit display to avoid flooding console
-                        if (count >= 20 && emailToIdMap.size > 20) {
-                            printInfo(`...and ${emailToIdMap.size - 20} more`);
-                            return;
-                        }
-                    });
-                }
-                return;
-            }
-            
-            // Create email mapping
-            if (command.toLowerCase() === 'create mapping') {
-                await createEmailMapping();
+                printInfo('Known Users:');
+                knownUsers.forEach(user => {
+                    printInfo(`Email: ${user.email} | ID: ${user.id}`);
+                });
                 return;
             }
             
             const parts = command.split(' ');
             
-            // Check if command is for checking coins - now using user ID instead of email
+            // Check if command is for checking coins
             if (parts.length >= 3 && parts[1] === 'coin' && parts[2] === 'amount') {
                 const userId = parts[0];
                 try {
-                    const coins = await checkUserCoinsByUID(userId);
+                    const coins = await checkUserCoins(userId);
                     if (coins !== null) {
                         printSuccess(`User with ID ${userId} has ${coins} coins.`);
                     }
@@ -472,7 +311,7 @@
                     printError(`Error checking user coins: ${error.message}`);
                 }
             }
-            // Check if command is for adding coins - now using user ID instead of email
+            // Check if command is for adding coins
             else if (parts.length >= 4 && parts[1] === 'add' && parts[2] === 'coins') {
                 const userId = parts[0];
                 const amount = parseInt(parts[3]);
@@ -483,7 +322,7 @@
                 }
                 
                 try {
-                    const success = await addCoinsToUserByUID(userId, amount);
+                    const success = await addCoinsToUser(userId, amount);
                     if (success) {
                         printSuccess(`Successfully added ${amount} coins to user with ID ${userId}.`);
                     }
@@ -491,7 +330,7 @@
                     printError(`Error adding coins: ${error.message}`);
                 }
             }
-            // Check if command is for removing coins - using user ID
+            // Check if command is for removing coins
             else if (parts.length >= 4 && parts[1] === 'remove' && parts[2] === 'coins') {
                 const userId = parts[0];
                 const amount = parseInt(parts[3]);
@@ -507,7 +346,7 @@
                 }
                 
                 try {
-                    const success = await removeCoinsFromUserByUID(userId, amount);
+                    const success = await removeCoinsFromUser(userId, amount);
                     if (success) {
                         printSuccess(`Successfully removed ${amount} coins from user with ID ${userId}.`);
                     }
@@ -518,14 +357,20 @@
             // Check if command is for looking up user ID by email
             else if (parts.length === 1 && parts[0].includes('@')) {
                 const email = parts[0].toLowerCase();
-                
-                // Check in the email mapping
-                if (emailToIdMap.has(email)) {
-                    const userId = emailToIdMap.get(email);
-                    printSuccess(`User ID for ${email}: ${userId}`);
-                } else {
-                    printInfo(`No mapping found for ${email}`);
-                    printInfo("To create email mappings, use 'create mapping' command");
+                try {
+                    // Find in known users first
+                    const knownUser = knownUsers.find(user => user.email.toLowerCase() === email);
+                    if (knownUser) {
+                        printSuccess(`User ID for ${email}: ${knownUser.id}`);
+                    } else {
+                        // Try to look up in Firebase
+                        const userId = await lookupUserByEmail(email);
+                        if (!userId) {
+                            printError(`No user found with email: ${email}`);
+                        }
+                    }
+                } catch (error) {
+                    printError(`Error looking up user: ${error.message}`);
                 }
             }
             else {
@@ -533,141 +378,124 @@
             }
         }
 
-        // Check user's coin balance by UID
-        async function checkUserCoinsByUID(userId) {
+        // Look up user by email
+        async function lookupUserByEmail(email) {
+            try {
+                printInfo(`Looking up user ID for email: ${email}...`);
+                
+                // Check known users first
+                const knownUser = knownUsers.find(user => user.email.toLowerCase() === email.toLowerCase());
+                if (knownUser) {
+                    printSuccess(`User ID for ${email}: ${knownUser.id}`);
+                    return knownUser.id;
+                }
+                
+                // Try to query Firestore
+                const usersRef = collection(db, 'users');
+                const q = query(usersRef, where("email", "==", email));
+                
+                const querySnapshot = await getDocs(q);
+                
+                if (querySnapshot.empty) {
+                    printError(`No user found with email: ${email}`);
+                    return null;
+                }
+                
+                const userId = querySnapshot.docs[0].id;
+                printSuccess(`User ID for ${email}: ${userId}`);
+                return userId;
+            } catch (error) {
+                printError(`Error looking up user by email: ${error.message}`);
+                return null;
+            }
+        }
+
+        // Check user's coin balance
+        async function checkUserCoins(userId) {
             try {
                 printInfo(`Checking coin balance for user ID: ${userId}...`);
                 
-                // Direct document access
+                // Get the user document
                 const userRef = doc(db, 'users', userId);
+                const userDoc = await getDoc(userRef);
                 
-                try {
-                    const userDoc = await getDoc(userRef);
-                    
-                    if (!userDoc.exists()) {
-                        printError("User document not found in database");
-                        return null;
-                    }
-                    
-                    const coinBalance = userDoc.data().accountBalance || 0;
-                    
-                    // Store email mapping if we find it
-                    if (userDoc.data().email) {
-                        const email = userDoc.data().email.toLowerCase();
-                        emailToIdMap.set(email, userId);
-                        printInfo(`Added mapping: ${email} → ${userId}`);
-                    }
-                    
-                    return coinBalance;
-                } catch (docError) {
-                    printError(`Error accessing user document: ${docError.message}`);
+                if (!userDoc.exists()) {
+                    printError("User document not found");
                     return null;
                 }
+                
+                const userData = userDoc.data();
+                const coinBalance = userData.accountBalance || 0;
+                return coinBalance;
             } catch (error) {
                 printError(`Error checking user coins: ${error.message}`);
                 throw error;
             }
         }
 
-        // Add coins to user by UID
-        async function addCoinsToUserByUID(userId, amount) {
+        // Add coins to user
+        async function addCoinsToUser(userId, amount) {
             try {
                 printInfo(`Adding ${amount} coins to user ID: ${userId}...`);
                 
-                // Direct document access
+                // Get current balance
                 const userRef = doc(db, 'users', userId);
-                let currentBalance = 0;
+                const userDoc = await getDoc(userRef);
                 
-                try {
-                    // Try to get current balance
-                    const userDoc = await getDoc(userRef);
-                    if (userDoc.exists()) {
-                        currentBalance = userDoc.data().accountBalance || 0;
-                        printInfo(`Current balance: ${currentBalance}`);
-                        
-                        // Store email mapping if we find it
-                        if (userDoc.data().email) {
-                            const email = userDoc.data().email.toLowerCase();
-                            emailToIdMap.set(email, userId);
-                            printInfo(`Added mapping: ${email} → ${userId}`);
-                        }
-                    } else {
-                        printInfo("User document not found, will try to create it");
-                    }
-                } catch (readError) {
-                    printError(`Couldn't read current balance: ${readError.message}`);
+                if (!userDoc.exists()) {
+                    printError("User document not found");
                     return false;
                 }
                 
-                const newBalance = currentBalance + parseInt(amount);
+                const userData = userDoc.data();
+                const currentBalance = userData.accountBalance || 0;
+                const newBalance = currentBalance + amount;
                 
-                // Try to update balance
-                try {
-                    await updateDoc(userRef, { 
-                        accountBalance: newBalance 
-                    });
-                    printInfo(`Successfully updated balance. New balance: ${newBalance}`);
-                    return true;
-                } catch (updateError) {
-                    printError(`Error updating balance: ${updateError.message}`);
-                    return false;
-                }
+                // Update the balance
+                await updateDoc(userRef, { 
+                    accountBalance: newBalance 
+                });
+                
+                printInfo(`Updated balance. New balance: ${newBalance}`);
+                return true;
             } catch (error) {
                 printError(`Error adding coins: ${error.message}`);
                 throw error;
             }
         }
         
-        // Remove coins from user by UID
-        async function removeCoinsFromUserByUID(userId, amount) {
+        // Remove coins from user
+        async function removeCoinsFromUser(userId, amount) {
             try {
                 printInfo(`Removing ${amount} coins from user ID: ${userId}...`);
                 
-                // Direct document access
+                // Get current balance
                 const userRef = doc(db, 'users', userId);
-                let currentBalance = 0;
+                const userDoc = await getDoc(userRef);
                 
-                try {
-                    // Try to get current balance
-                    const userDoc = await getDoc(userRef);
-                    if (userDoc.exists()) {
-                        currentBalance = userDoc.data().accountBalance || 0;
-                        printInfo(`Current balance: ${currentBalance}`);
-                        
-                        // Store email mapping if we find it
-                        if (userDoc.data().email) {
-                            const email = userDoc.data().email.toLowerCase();
-                            emailToIdMap.set(email, userId);
-                            printInfo(`Added mapping: ${email} → ${userId}`);
-                        }
-                    } else {
-                        printError("User document not found");
-                        return false;
-                    }
-                } catch (readError) {
-                    printError(`Couldn't read current balance: ${readError.message}`);
+                if (!userDoc.exists()) {
+                    printError("User document not found");
                     return false;
                 }
                 
-                // Check if user has enough coins
+                const userData = userDoc.data();
+                const currentBalance = userData.accountBalance || 0;
+                
+                // Check if user has enough balance
                 if (currentBalance < amount) {
                     printError(`User only has ${currentBalance} coins, cannot remove ${amount}`);
                     return false;
                 }
                 
-                const newBalance = currentBalance - parseInt(amount);
+                const newBalance = currentBalance - amount;
                 
-                // Try to update balance
-                try {
-                    await updateDoc(userRef, { 
-                        accountBalance: newBalance 
-                    });
-                    printInfo(`Successfully updated balance. New balance: ${newBalance}`);
-                    return true;
-                } catch (updateError) {
-                    printError(`Error updating balance: ${updateError.message}`);
-                    return false;
-                }
+                // Update the balance
+                await updateDoc(userRef, { 
+                    accountBalance: newBalance 
+                });
+                
+                printInfo(`Updated balance. New balance: ${newBalance}`);
+                return true;
             } catch (error) {
                 printError(`Error removing coins: ${error.message}`);
                 throw error;
