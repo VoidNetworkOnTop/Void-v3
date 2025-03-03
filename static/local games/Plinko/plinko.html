@@ -118,6 +118,10 @@
            overflow: hidden;
            display: flex;
            flex-direction: column;
+           background-color: rgba(0, 0, 0, 0.5);
+           border-radius: 8px;
+           margin: 1rem 0;
+           min-height: 60vh; /* Ensure minimum height */
        }
 
        #canvas {
@@ -127,6 +131,8 @@
            width: 100%;
            height: 100%;
            background: transparent;
+           z-index: 1;
+           display: block; /* Ensure canvas is displayed */
        }
 
        .controls {
@@ -632,13 +638,28 @@ function updateCoins(amount) {
 // Resize canvas to fit container
 function resizeCanvas() {
     const gameBoard = document.querySelector('.game-board');
+    if (!gameBoard) {
+        console.error("Game board element not found!");
+        return;
+    }
+    
+    // Get actual dimensions of the game board
     canvasWidth = gameBoard.clientWidth;
     canvasHeight = gameBoard.clientHeight;
+    
+    console.log("Resizing canvas to:", canvasWidth, "x", canvasHeight);
+    
+    // Set canvas dimensions explicitly
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
+    canvas.style.width = canvasWidth + "px";
+    canvas.style.height = canvasHeight + "px";
     
-    // Recalculate game elements based on new canvas size
-    setupGame();
+    // Force immediate redraw
+    if (!gameActive) {
+        setupGame();
+        drawGame();
+    }
 }
 
 // Utility function to shuffle an array
@@ -656,6 +677,14 @@ function setupGame() {
     if (animationFrame) {
         cancelAnimationFrame(animationFrame);
     }
+    
+    // Safety check for canvas dimensions
+    if (!canvasWidth || !canvasHeight) {
+        console.error("Canvas dimensions are not set!");
+        resizeCanvas();
+    }
+    
+    console.log("Setting up game with canvas dimensions:", canvasWidth, "x", canvasHeight);
     
     ball = null;
     pegs = [];
@@ -868,6 +897,20 @@ function updateBall() {
 
 // Draw all game elements
 function drawGame() {
+    // Make sure canvas and context exist
+    if (!canvas || !ctx) {
+        console.error("Canvas or context not available for drawing");
+        return;
+    }
+    
+    // Make sure dimensions are correct
+    if (canvas.width === 0 || canvas.height === 0) {
+        console.log("Canvas has zero dimensions, resizing...");
+        resizeCanvas();
+    }
+    
+    console.log("Drawing game on canvas:", canvas.width, "x", canvas.height);
+    
     // Clear canvas
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     
@@ -959,6 +1002,11 @@ function drawGame() {
         ctx.stroke();
         ctx.shadowBlur = 0;
     }
+    
+    // Debug outline to see canvas boundaries
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, canvasWidth, canvasHeight);
 }
 
 // Event listeners
@@ -970,6 +1018,16 @@ window.addEventListener('resize', resizeCanvas);
 window.addEventListener('load', () => {
     console.log("Game loading...");
     
+    // Make sure canvas is properly referenced
+    if (!canvas) {
+        console.error("Canvas element not found!");
+        canvas = document.getElementById('canvas');
+        if (!canvas) {
+            alert("Could not find game canvas. Please refresh the page.");
+            return;
+        }
+    }
+    
     // Set an initial check for auth state
     if (auth.currentUser) {
         console.log("User already authenticated on page load");
@@ -978,6 +1036,9 @@ window.addEventListener('load', () => {
     
     // Properly initialize the game based on authentication state
     const initializeGame = async () => {
+        // Ensure canvas is sized before any drawing
+        resizeCanvas();
+        
         if (currentUser) {
             console.log("Initializing game with authenticated user");
             // Check if Firebase load function exists and load balance
@@ -991,9 +1052,20 @@ window.addEventListener('load', () => {
             updateCoinDisplay();
         }
         
-        resizeCanvas();
+        // Setup and draw the game
         setupGame();
+        drawGame(); // Force an initial draw
+        
+        console.log("Game initialization complete");
     };
+    
+    // Add event listener for visibility changes to ensure canvas renders when tab becomes active
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            console.log("Tab became visible, redrawing canvas");
+            drawGame();
+        }
+    });
     
     // Call the initialization function
     initializeGame();
