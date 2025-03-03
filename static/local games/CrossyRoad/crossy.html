@@ -527,6 +527,7 @@
            transform: translateY(-50%);
        }
 
+       /* UPDATED: Node z-index to ensure it's below chicken */
        .node {
            position: absolute;
            width: 60px;
@@ -536,7 +537,7 @@
            border: 2px solid rgba(255, 255, 255, 0.5);
            top: 50%;
            transform: translate(-50%, -50%);
-           z-index: 2;
+           z-index: 2; /* Ensure this is lower than chicken's z-index */
            display: flex;
            align-items: center;
            justify-content: center;
@@ -545,9 +546,11 @@
            font-size: 1.2rem;
        }
 
+       /* UPDATED: Improved active node visibility */
        .node.active {
            background: rgba(76, 175, 80, 0.3);
-           box-shadow: 0 0 15px rgba(76, 175, 80, 0.6);
+           box-shadow: 0 0 15px rgba(76, 175, 80, 0.8); /* Brighter glow */
+           border: 2px solid rgba(76, 175, 80, 0.8); /* More visible border */
            cursor: pointer;
            animation: pulseNode 1.5s infinite alternate;
        }
@@ -562,11 +565,12 @@
            box-shadow: 0 0 10px rgba(25, 118, 210, 0.5);
        }
 
+       /* UPDATED: Chicken z-index to be above nodes */
        .chicken {
            position: absolute;
            width: 50px;
            height: 50px;
-           z-index: 3;
+           z-index: 5; /* Increased from 3 to 5 to be above nodes */
            top: 50%;
            transform: translate(-50%, -50%);
            transition: left 0.5s ease-out;
@@ -1020,6 +1024,9 @@ function initGame() {
     gameWorld = document.getElementById('game-world');
     chickenElem = document.getElementById('chicken');
     
+    // FIX: Make sure chicken is visible and has proper z-index
+    chickenElem.style.zIndex = "5";
+    
     // Generate road and nodes
     generateRoad();
     
@@ -1042,6 +1049,9 @@ function initGame() {
     // Update displays
     updateScoreDisplay();
     updateRewardDisplay();
+    
+    // FIX: Ensure camera is properly positioned at start
+    updateCamera();
     
     // Start game loop
     window.cancelAnimationFrame(animationFrame);
@@ -1094,11 +1104,12 @@ function createNode(nodeIndex) {
     // Add to game world
     gameWorld.appendChild(node);
     
-    // Make the first node active (clickable)
+    // FIX: Only make node 1 active initially
     if (nodeIndex === 1) {
         node.classList.add('active');
         
-        // Add click event
+        // FIX: Make sure we add event listener properly and only once
+        node.removeEventListener('click', handleNodeClick); // Remove any existing listeners
         node.addEventListener('click', handleNodeClick);
     }
     
@@ -1108,7 +1119,10 @@ function createNode(nodeIndex) {
 // Position the chicken at a specific node
 function positionChicken(nodeIndex) {
     const xPos = nodeIndex * GAME_CONFIG.nodeSpacing + GAME_CONFIG.nodeSpacing / 2;
+    
+    // FIX: Ensure chicken is displayed correctly
     chickenElem.style.left = `${xPos}px`;
+    chickenElem.style.display = 'block';
     
     // Set chicken image using SVG
     chickenElem.style.background = 'url("data:image/svg+xml;charset=utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Cellipse cx=\'50\' cy=\'50\' rx=\'40\' ry=\'45\' fill=\'%23FFFFFF\'/%3E%3Ccircle cx=\'70\' cy=\'35\' r=\'8\' fill=\'%23000\'/%3E%3Cpath d=\'M80 40 L100 50 L80 60 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M30 70 L20 85 L30 85 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M70 70 L80 85 L70 85 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M70 10 L80 0 L90 10 Z\' fill=\'%23F44336\'/%3E%3C/svg%3E") center/contain no-repeat';
@@ -1116,13 +1130,14 @@ function positionChicken(nodeIndex) {
 
 // Update camera position to follow the chicken
 function updateCamera() {
-    if (!gameActive || !gameWorld) return;
+    if (!gameWorld) return;
     
+    // FIX: Improved camera follow logic
     // Calculate the position to center the chicken
     const xPos = currentNode * GAME_CONFIG.nodeSpacing;
-    const offset = 300; // Keep chicken this far from the left side
+    const offset = Math.min(canvasWidth / 2, 300); // More dynamic offset based on screen size
     
-    // Move the game world
+    // Move the game world with a smooth transition
     gameWorld.style.transform = `translateX(${-xPos + offset}px)`;
     
     // Generate more nodes if needed
@@ -1138,11 +1153,17 @@ function updateCamera() {
 function handleNodeClick(event) {
     if (!gameActive) return;
     
+    // FIX: Add debugging to ensure click is registered
+    console.log("Node clicked!");
+    
     const clickedNode = event.currentTarget;
     const nodeIndex = parseInt(clickedNode.dataset.index);
     
+    console.log("Clicked node index:", nodeIndex, "Current node:", currentNode);
+    
     // Only allow clicking the next node
     if (nodeIndex !== currentNode + 1) {
+        console.log("Not the next node, ignoring click");
         return;
     }
     
@@ -1156,10 +1177,14 @@ function tryToAdvance(targetNodeIndex) {
     const roll = Math.random();
     const survived = roll <= GAME_CONFIG.surviveProbability;
     
+    console.log(`Rolled ${roll.toFixed(2)}, needed <= ${GAME_CONFIG.surviveProbability} to survive, result: ${survived}`);
+    
     if (survived) {
         // Success! Move forward
         const previousNode = currentNode;
         currentNode = targetNodeIndex;
+        
+        console.log(`Moving from node ${previousNode} to node ${currentNode}`);
         
         // Mark previous node as visited
         const prevNodeElem = document.querySelector(`.node[data-index="${previousNode}"]`);
@@ -1174,7 +1199,7 @@ function tryToAdvance(targetNodeIndex) {
         // Move chicken to new position
         positionChicken(currentNode);
         
-        // Update the camera to follow
+        // Update the camera to follow - FIX: Camera update right after position change
         updateCamera();
         
         // Update current reward (doubles with each step)
@@ -1186,11 +1211,16 @@ function tryToAdvance(targetNodeIndex) {
             cashoutBtn.textContent = 'Cash Out';
         }
         
-        // Make next node active
+        // FIX: Make next node active - improved selector and added check
         const nextNodeElem = document.querySelector(`.node[data-index="${currentNode + 1}"]`);
+        console.log("Next node element:", nextNodeElem);
+        
         if (nextNodeElem) {
-            nextNodeElem.classList.add('active');
+            // Properly manage event listeners to prevent duplicates
+            nextNodeElem.removeEventListener('click', handleNodeClick);
             nextNodeElem.addEventListener('click', handleNodeClick);
+            nextNodeElem.classList.add('active');
+            console.log(`Made node ${currentNode + 1} active and clickable`);
         }
         
         // Create success animation
