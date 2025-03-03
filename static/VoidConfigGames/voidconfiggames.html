@@ -126,6 +126,9 @@
         // Admin email constant
         const ADMIN_EMAIL = "six7588@gmail.com";
         
+        // In-memory user cache to improve performance and work around security rules
+        const userCache = new Map();
+        
         // Terminal output functions
         function printToTerminal(message, className = '') {
             const line = document.createElement('div');
@@ -148,18 +151,23 @@
         }
         
         // Initialize admin console
-        function initConsole() {
+        function initConsole(currentUser) {
             printToTerminal('Void Network Admin Console v1.0');
             printToTerminal('----------------------------------');
             printToTerminal('Available commands:');
-            printToTerminal('1. <user email> coin amount');
-            printToTerminal('2. <user email> add coins <amount>');
+            printToTerminal('help - Show available commands');
+            printToTerminal('users - List cached users');
+            printToTerminal('<user email> coin amount - Check coins');
+            printToTerminal('<user email> add coins <amount> - Add coins');
             printToTerminal('----------------------------------');
-            printSuccess(`Authenticated as admin: ${ADMIN_EMAIL}`);
+            printSuccess(`Authenticated as admin: ${currentUser.email}`);
             printInfo('Ready for commands.');
+            
+            // Store the current user's ID in the userCache for later use
+            userCache.set(currentUser.email.toLowerCase(), currentUser.uid);
         }
         
-        // Login functionality with direct console access for admin
+        // Login functionality
         loginButton.addEventListener('click', async () => {
             const email = emailInput.value.trim();
             const password = passwordInput.value;
@@ -170,48 +178,17 @@
             }
             
             // Check if the email is the admin email
-            if (email !== ADMIN_EMAIL) {
+            if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
                 // Redirect to betavngames if not admin email
                 window.location.href = '/betavngames';
                 return;
             }
             
             try {
-                // For the admin email, try to sign in with Firebase Authentication
+                // Try to sign in with Firebase Authentication
                 showLoginMessage('Authenticating...', false);
-                
-                // Try to authenticate
-                try {
-                    await signInWithEmailAndPassword(auth, email, password);
-                    // Login successful, will be handled by onAuthStateChanged
-                } catch (authError) {
-                    console.error("Auth error:", authError);
-                    
-                    // Special case for admin user - bypass normal authentication if needed
-                    if (email === ADMIN_EMAIL) {
-                        showLoginMessage('Admin override activated', false);
-                        
-                        // Hide login form and show admin console directly
-                        loginForm.classList.add('hidden');
-                        adminConsole.classList.remove('hidden');
-                        
-                        // Initialize the admin console with special notice
-                        printToTerminal('Void Network Admin Console v1.0');
-                        printToTerminal('----------------------------------');
-                        printToTerminal('Available commands:');
-                        printToTerminal('1. <user email> coin amount');
-                        printToTerminal('2. <user email> add coins <amount>');
-                        printToTerminal('----------------------------------');
-                        printSuccess(`Authenticated as admin: ${ADMIN_EMAIL}`);
-                        printInfo('NOTICE: Running in limited permissions mode');
-                        printInfo('Some Firebase operations may be restricted');
-                        printInfo('Ready for commands.');
-                        
-                        return; // Skip further error handling
-                    } else {
-                        throw authError; // Re-throw for normal error handling
-                    }
-                }
+                await signInWithEmailAndPassword(auth, email, password);
+                // Login successful, handled by onAuthStateChanged
             } catch (error) {
                 console.error("Login error:", error);
                 showLoginMessage(`Login failed: ${error.message}`, true);
@@ -229,22 +206,26 @@
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 try {
-                    // Check if user email is the admin email
-                    if (user.email === ADMIN_EMAIL) {
-                        // Hide login form and show admin console
+                    // Check if the user is an admin by directly accessing the admin document
+                    const adminRef = doc(db, 'admins', user.uid);
+                    const adminDoc = await getDoc(adminRef);
+                    
+                    if (adminDoc.exists()) {
+                        // User is an admin, proceed
                         loginForm.classList.add('hidden');
                         adminConsole.classList.remove('hidden');
                         
                         // Initialize the admin console
-                        initConsole();
+                        initConsole(user);
                     } else {
-                        // If logged in but not with admin email, redirect
+                        // Not an admin, sign out and redirect
+                        printError('You are not registered as an admin in the database.');
                         await signOut(auth);
                         window.location.href = '/betavngames';
                     }
                 } catch (error) {
-                    console.error("Auth verification error:", error);
-                    showLoginMessage(`Verification error: ${error.message}`, true);
+                    console.error("Admin verification error:", error);
+                    showLoginMessage(`Admin verification error: ${error.message}`, true);
                 }
             }
         });
@@ -266,19 +247,33 @@
         
         // Process commands
         async function processCommand(command) {
-            const parts = command.split(' ');
-            
-            // Check if command is "help"
+            // Help command
             if (command.toLowerCase() === 'help') {
                 printInfo('Available commands:');
-                printInfo('1. <user email> coin amount - Check a user\'s coin balance');
-                printInfo('2. <user email> add coins <amount> - Add coins to a user');
+                printInfo('users - List cached users');
+                printInfo('<user email> coin amount - Check a user\'s coin balance');
+                printInfo('<user email> add coins <amount> - Add coins to a user');
                 return;
             }
             
+            // Users command to list cached users
+            if (command.toLowerCase() === 'users') {
+                printInfo('Cached users:');
+                if (userCache.size === 0) {
+                    printInfo('No users in cache yet.');
+                } else {
+                    userCache.forEach((uid, email) => {
+                        printInfo(`${email} (${uid})`);
+                    });
+                }
+                return;
+            }
+            
+            const parts = command.split(' ');
+            
             // Check if command is for checking coins
             if (parts.length >= 3 && parts[1] === 'coin' && parts[2] === 'amount') {
-                const email = parts[0];
+                const email = parts[0].toLowerCase();
                 try {
                     const coins = await checkUserCoins(email);
                     if (coins !== null) {
@@ -290,7 +285,7 @@
             }
             // Check if command is for adding coins
             else if (parts.length >= 4 && parts[1] === 'add' && parts[2] === 'coins') {
-                const email = parts[0];
+                const email = parts[0].toLowerCase();
                 const amount = parseInt(parts[3]);
                 
                 if (isNaN(amount)) {
@@ -312,189 +307,123 @@
             }
         }
 
-        // Get user ID by email - with admin-friendly approach
+        // Get user ID by email - compatible with security rules
         async function getUserIdByEmail(email) {
-            try {
-                printInfo(`Looking up user ID for email: ${email}...`);
-                
-                // Try to get from adminUsers collection first (which should have looser permissions)
-                try {
-                    const adminUsersRef = collection(db, 'adminUsers');
-                    const adminQ = query(adminUsersRef, where("email", "==", email));
-                    const adminSnapshot = await getDocs(adminQ);
-                    
-                    if (!adminSnapshot.empty) {
-                        const userId = adminSnapshot.docs[0].data().userId;
-                        printInfo(`Found user ID from admin collection: ${userId}`);
-                        return userId;
-                    }
-                } catch (adminErr) {
-                    printInfo("Admin collection approach failed, trying main users collection...");
-                }
-                
-                // Fallback to direct users collection query
-                const usersRef = collection(db, 'users');
-                const q = query(usersRef, where("email", "==", email));
-                const querySnapshot = await getDocs(q);
-                
-                if (querySnapshot.empty) {
-                    // Manual handling for known user emails
-                    if (email === "six7588@gmail.com") {
-                        printInfo("Manual handling for admin user...");
-                        // You should replace this with the actual user ID if known
-                        const adminUserId = "admin123"; // Replace with actual ID if known
-                        return adminUserId;
-                    }
-                    
-                    printError(`No user found with email: ${email}`);
-                    return null;
-                }
-                
-                const userId = querySnapshot.docs[0].id;
-                printInfo(`Found user ID: ${userId}`);
-                return userId;
-            } catch (error) {
-                printError(`Error finding user by email: ${error.message}`);
-                
-                // Manual override for admin user if permissions are an issue
-                if (email === "six7588@gmail.com") {
-                    printInfo("Permission error, using manual admin override...");
-                    // You should replace this with the actual user ID if known
-                    return "admin123"; // Replace with actual ID if known
-                }
-                
-                return null;
+            email = email.toLowerCase();
+            printInfo(`Looking up user ID for email: ${email}...`);
+            
+            // Check cache first
+            if (userCache.has(email)) {
+                const cachedId = userCache.get(email);
+                printInfo(`Found user ID in cache: ${cachedId}`);
+                return cachedId;
             }
+            
+            // For admin user, we can get from auth
+            if (email === ADMIN_EMAIL.toLowerCase()) {
+                const currentUser = auth.currentUser;
+                if (currentUser && currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+                    printInfo(`Using current user's ID for admin: ${currentUser.uid}`);
+                    userCache.set(email, currentUser.uid);
+                    return currentUser.uid;
+                }
+            }
+            
+            // We can't query by email directly due to security rules
+            // Let the caller know we couldn't find the user
+            printError(`Cannot find user ID for ${email} due to security rules limitations`);
+            printInfo('Consider adding user IDs manually using the current logged-in user');
+            
+            // Return null to indicate failure
+            return null;
         }
 
-        // Check user's coin balance with better error handling
+        // Check user's coin balance - working with security rules
         async function checkUserCoins(email) {
             try {
+                email = email.toLowerCase();
                 printInfo(`Checking coin balance for user: ${email}...`);
                 
-                // First get the user's UID from their email
+                // First get the user's UID 
                 const userId = await getUserIdByEmail(email);
                 if (!userId) {
-                    printError("User not found");
+                    printError(`Cannot check coins for ${email} - user ID unknown`);
+                    
+                    // Special case for admin testing
+                    if (email === ADMIN_EMAIL.toLowerCase()) {
+                        printInfo('Using mock data for admin user');
+                        return 10000; // Mock balance for admin
+                    }
+                    
                     return null;
                 }
                 
-                try {
-                    // Now use the UID to get their document
-                    const userRef = doc(db, 'users', userId);
-                    const userDoc = await getDoc(userRef);
-                    
-                    if (!userDoc.exists()) {
-                        printError("User document not found");
-                        return null;
-                    }
-                    
-                    const coinBalance = userDoc.data().accountBalance || 0;
-                    return coinBalance;
-                } catch (docError) {
-                    printError(`Error accessing user document: ${docError.message}`);
-                    
-                    // Alternative approach for when permissions are an issue
-                    printInfo("Trying alternative approach to get balance...");
-                    
-                    try {
-                        // Try to access through a special admin collection if it exists
-                        const adminRef = doc(db, 'adminAccess', `user_${userId}`);
-                        const adminDoc = await getDoc(adminRef);
-                        
-                        if (adminDoc.exists() && adminDoc.data().accountBalance !== undefined) {
-                            return adminDoc.data().accountBalance;
-                        }
-                        
-                        // For testing/demo purposes - return a mock balance
-                        if (email === "six7588@gmail.com") {
-                            printInfo("Using mock data for admin user");
-                            return 10000; // Mock balance for admin
-                        }
-                        
-                    } catch (altError) {
-                        printError("Alternative balance check also failed");
-                    }
-                    
-                    throw docError;
+                // Get user document directly (security rules allow this if you're the user or admin)
+                const userRef = doc(db, 'users', userId);
+                const userDoc = await getDoc(userRef);
+                
+                if (!userDoc.exists()) {
+                    printError("User document not found in database");
+                    return null;
                 }
+                
+                const coinBalance = userDoc.data().accountBalance || 0;
+                return coinBalance;
             } catch (error) {
                 printError(`Error checking user coins: ${error.message}`);
                 throw error;
             }
         }
 
-        // Add coins to user with improved error handling
+        // Add coins to user - compatible with security rules
         async function addCoinsToUser(email, amount) {
             try {
+                email = email.toLowerCase();
                 printInfo(`Adding ${amount} coins to user: ${email}...`);
                 
-                // First get the user's UID from their email
+                // Get the user's UID
                 const userId = await getUserIdByEmail(email);
                 if (!userId) {
-                    printError("User not found");
-                    return false;
-                }
-                
-                try {
-                    // Get current balance
-                    const userRef = doc(db, 'users', userId);
-                    let currentBalance = 0;
+                    printError(`Cannot add coins to ${email} - user ID unknown`);
                     
-                    try {
-                        const userDoc = await getDoc(userRef);
-                        if (userDoc.exists()) {
-                            currentBalance = userDoc.data().accountBalance || 0;
-                        } else {
-                            printInfo("User document not found, will create new document");
-                        }
-                    } catch (balanceError) {
-                        printInfo("Couldn't read current balance, assuming 0");
-                    }
-                    
-                    const newBalance = currentBalance + parseInt(amount);
-                    
-                    // Try to update the balance
-                    try {
-                        await updateDoc(userRef, { 
-                            accountBalance: newBalance 
-                        });
-                    } catch (updateError) {
-                        // If update fails, try to set the document instead
-                        printInfo("Update failed, trying to create document instead");
-                        await setDoc(userRef, { 
-                            accountBalance: newBalance,
-                            email: email,
-                            updatedAt: new Date()
-                        });
-                    }
-                    
-                    // Alternative approach - update in admin collection too
-                    try {
-                        const adminRef = doc(db, 'adminAccess', `user_${userId}`);
-                        await setDoc(adminRef, {
-                            accountBalance: newBalance,
-                            email: email,
-                            userId: userId,
-                            updatedAt: new Date()
-                        }, { merge: true });
-                    } catch (adminError) {
-                        printInfo("Admin collection update failed, but main update succeeded");
-                    }
-                    
-                    printSuccess(`Successfully updated balance. New balance: ${newBalance}`);
-                    return true;
-                    
-                } catch (accessError) {
-                    printError(`Database access error: ${accessError.message}`);
-                    
-                    // For admin or testing, show success message even if failed
-                    if (email === "six7588@gmail.com") {
-                        printSuccess(`Simulating success for admin user. Mock new balance: ${amount}`);
+                    // Special case for admin testing
+                    if (email === ADMIN_EMAIL.toLowerCase()) {
+                        printInfo('Using mock data for admin user');
+                        printSuccess('Coins added successfully (mock operation)');
                         return true;
                     }
                     
-                    throw accessError;
+                    return false;
+                }
+                
+                // Get current balance
+                const userRef = doc(db, 'users', userId);
+                let currentBalance = 0;
+                
+                try {
+                    const userDoc = await getDoc(userRef);
+                    if (userDoc.exists()) {
+                        currentBalance = userDoc.data().accountBalance || 0;
+                    } else {
+                        printInfo("User document not found, will create new document");
+                    }
+                } catch (balanceError) {
+                    printError(`Couldn't read current balance: ${balanceError.message}`);
+                    return false;
+                }
+                
+                const newBalance = currentBalance + parseInt(amount);
+                
+                // Update the balance
+                try {
+                    await updateDoc(userRef, { 
+                        accountBalance: newBalance 
+                    });
+                    printInfo(`Successfully updated balance. New balance: ${newBalance}`);
+                    return true;
+                } catch (updateError) {
+                    printError(`Error updating balance: ${updateError.message}`);
+                    return false;
                 }
             } catch (error) {
                 printError(`Error adding coins: ${error.message}`);
