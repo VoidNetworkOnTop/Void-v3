@@ -41,16 +41,60 @@
         .info {
             color: #0ff;
         }
+        #loginForm {
+            background-color: #111;
+            border: 1px solid #0f0;
+            padding: 20px;
+            margin: 20px auto;
+            max-width: 400px;
+            text-align: center;
+        }
+        input[type="email"], input[type="password"] {
+            width: 100%;
+            background-color: #111;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #111;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 10px 20px;
+            margin-top: 10px;
+            font-family: monospace;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0f0;
+            color: #111;
+        }
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <div id="terminal"></div>
-    <input type="text" id="commandInput" placeholder="Enter command..." autofocus>
+    <div id="loginForm">
+        <h2>Void Network Admin Login</h2>
+        <input type="email" id="emailInput" placeholder="Email" autofocus>
+        <input type="password" id="passwordInput" placeholder="Password">
+        <button id="loginButton">Login</button>
+        <div id="loginMessage" class="error hidden"></div>
+    </div>
+
+    <div id="adminConsole" class="hidden">
+        <div id="terminal"></div>
+        <input type="text" id="commandInput" placeholder="Enter command...">
+    </div>
     
     <script type="module">
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
         import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, setDoc, query, where } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration
@@ -69,9 +113,18 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
         
-        // Terminal elements
+        // DOM Elements
+        const loginForm = document.getElementById('loginForm');
+        const emailInput = document.getElementById('emailInput');
+        const passwordInput = document.getElementById('passwordInput');
+        const loginButton = document.getElementById('loginButton');
+        const loginMessage = document.getElementById('loginMessage');
+        const adminConsole = document.getElementById('adminConsole');
         const terminal = document.getElementById('terminal');
         const commandInput = document.getElementById('commandInput');
+        
+        // Admin email constant
+        const ADMIN_EMAIL = "six7588@gmail.com";
         
         // Terminal output functions
         function printToTerminal(message, className = '') {
@@ -102,33 +155,68 @@
             printToTerminal('1. <user email> coin amount');
             printToTerminal('2. <user email> add coins <amount>');
             printToTerminal('----------------------------------');
-            printToTerminal('Authenticating...');
-            
-            // Check if user is authenticated as admin
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    try {
-                        // Check if user is an admin
-                        const adminRef = doc(db, 'admins', user.uid);
-                        const adminDoc = await getDoc(adminRef);
-                        
-                        if (adminDoc.exists()) {
-                            printSuccess('Authentication successful. Welcome, administrator.');
-                            printInfo('Ready for commands.');
-                        } else {
-                            printError('Authentication failed. You are not an administrator.');
-                            // Optionally sign out non-admin users
-                            auth.signOut();
-                        }
-                    } catch (error) {
-                        printError(`Admin verification error: ${error.message}`);
-                    }
-                } else {
-                    printError('Not authenticated. Please sign in with admin credentials.');
-                    // Here you could add a sign-in form or redirect
-                }
-            });
+            printSuccess(`Authenticated as admin: ${ADMIN_EMAIL}`);
+            printInfo('Ready for commands.');
         }
+        
+        // Login functionality
+        loginButton.addEventListener('click', async () => {
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+            
+            if (!email || !password) {
+                showLoginMessage('Please enter both email and password', true);
+                return;
+            }
+            
+            // Check if the email is the admin email
+            if (email !== ADMIN_EMAIL) {
+                // Redirect to betavngames if not admin email
+                window.location.href = '/betavngames';
+                return;
+            }
+            
+            try {
+                // Try to sign in with Firebase Authentication
+                showLoginMessage('Authenticating...', false);
+                await signInWithEmailAndPassword(auth, email, password);
+                // Login successful, handled by onAuthStateChanged
+            } catch (error) {
+                console.error("Login error:", error);
+                showLoginMessage(`Login failed: ${error.message}`, true);
+            }
+        });
+        
+        // Show login message
+        function showLoginMessage(message, isError) {
+            loginMessage.textContent = message;
+            loginMessage.className = isError ? 'error' : 'info';
+            loginMessage.classList.remove('hidden');
+        }
+        
+        // Handle authentication state changes
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                try {
+                    // Check if user email is the admin email
+                    if (user.email === ADMIN_EMAIL) {
+                        // Hide login form and show admin console
+                        loginForm.classList.add('hidden');
+                        adminConsole.classList.remove('hidden');
+                        
+                        // Initialize the admin console
+                        initConsole();
+                    } else {
+                        // If logged in but not with admin email, redirect
+                        await signOut(auth);
+                        window.location.href = '/betavngames';
+                    }
+                } catch (error) {
+                    console.error("Auth verification error:", error);
+                    showLoginMessage(`Verification error: ${error.message}`, true);
+                }
+            }
+        });
         
         // Process command input
         commandInput.addEventListener('keypress', async (e) => {
@@ -148,6 +236,14 @@
         // Process commands
         async function processCommand(command) {
             const parts = command.split(' ');
+            
+            // Check if command is "help"
+            if (command.toLowerCase() === 'help') {
+                printInfo('Available commands:');
+                printInfo('1. <user email> coin amount - Check a user\'s coin balance');
+                printInfo('2. <user email> add coins <amount> - Add coins to a user');
+                return;
+            }
             
             // Check if command is for checking coins
             if (parts.length >= 3 && parts[1] === 'coin' && parts[2] === 'amount') {
@@ -275,8 +371,14 @@
             }
         }
         
-        // Initialize the console
-        initConsole();
+        // Add Enter key support for login form
+        emailInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') passwordInput.focus();
+        });
+        
+        passwordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') loginButton.click();
+        });
     </script>
 </body>
 </html>
