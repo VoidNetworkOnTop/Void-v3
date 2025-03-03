@@ -594,6 +594,31 @@
            text-align: center;
            z-index: 5;
        }
+       
+       .multiplier {
+           position: absolute;
+           bottom: 20%;
+           left: 50%;
+           transform: translateX(-50%);
+           background: rgba(255, 255, 255, 0.15);
+           color: white;
+           font-weight: bold;
+           padding: 10px;
+           border-radius: 50%;
+           width: 60px;
+           height: 60px;
+           display: flex;
+           align-items: center;
+           justify-content: center;
+           font-size: 0.9rem;
+           cursor: pointer;
+           transition: all 0.2s ease;
+       }
+       
+       .multiplier:hover {
+           transform: translateX(-50%) scale(1.1);
+           box-shadow: 0 0 20px rgba(76, 175, 80, 0.8);
+       }
 
        .click-circle {
            position: absolute;
@@ -717,7 +742,7 @@
                <!-- Lanes will be added dynamically -->
            </div>
            <div class="chicken" id="chicken"></div>
-           <div class="game-instruction">Click on the gold coin to advance!</div>
+           <div class="game-instruction">Click on the multiplier circles to advance!</div>
            <div class="chance-display">Survival Chance: 90%</div>
            <div class="next-reward" id="next-reward">Next Reward: 0</div>
            <button id="cashout-btn" class="cashout-btn" style="display: none;" disabled>Cash Out (after 3 lanes)</button>
@@ -726,8 +751,8 @@
            <div class="game-overlay visible" id="start-screen">
                <div class="overlay-content">
                    <h2 class="overlay-title">Lucky Chicken</h2>
-                   <p class="overlay-message">Test your luck! Each time you click the coin, you have a 90% chance to survive.<br>
-                   Multipliers increase with each lane crossed!</p>
+                   <p class="overlay-message">Test your luck! Each time you click a multiplier circle, you have a 90% chance to survive.<br>
+                   Your reward is your bet amount × your selected bet!</p>
                    
                    <div class="bet-selector">
                        <div class="bet-label">Select Your Bet (5-100 coins)</div>
@@ -1123,8 +1148,8 @@ function initGame() {
     // Create lanes
     createLanes();
     
-    // Create clickable coin
-    createClickCoin();
+    // Enable next multiplier
+    enableNextMultiplier();
     
     // Reset game state
     currentLane = 0;
@@ -1161,10 +1186,6 @@ function clearGameElements() {
         gameWorld.innerHTML = '';
     }
     
-    // Remove existing coins
-    const existingCoins = document.querySelectorAll('.coin');
-    existingCoins.forEach(coin => coin.remove());
-    
     // Remove existing cars
     const existingCars = document.querySelectorAll('.car');
     existingCars.forEach(car => car.remove());
@@ -1190,10 +1211,23 @@ function createLanes() {
         // Add multiplier display
         const multiplier = document.createElement('div');
         multiplier.className = 'multiplier';
+        multiplier.dataset.laneIndex = i;
         
         // Calculate multiplier value
         const multiplierValue = (GAME_CONFIG.baseMultiplier + (i * GAME_CONFIG.multiplierStep)).toFixed(2);
         multiplier.textContent = multiplierValue + '×';
+        
+        // Add click event to multiplier (but only for the next lane)
+        if (i === 1) { // Only add click for the first lane ahead
+            multiplier.style.cursor = 'pointer';
+            multiplier.addEventListener('click', (e) => {
+                if (!gameActive) return;
+                e.stopPropagation();
+                
+                const clickedLaneIndex = parseInt(e.currentTarget.dataset.laneIndex);
+                tryToAdvance(clickedLaneIndex);
+            });
+        }
         
         lane.appendChild(multiplier);
         gameWorld.appendChild(lane);
@@ -1203,48 +1237,40 @@ function createLanes() {
     gameWorld.style.width = `${GAME_CONFIG.laneCount * GAME_CONFIG.laneWidth}px`;
 }
 
-// Create clickable coin
-function createClickCoin() {
-    // Remove existing coin if there is one
-    if (clickCoin) {
-        clickCoin.remove();
-        clickCoin = null;
-    }
+// Enable the next multiplier for clicking
+function enableNextMultiplier() {
+    // Disable all multiplier click events first
+    const multipliers = document.querySelectorAll('.multiplier');
+    multipliers.forEach(multiplier => {
+        multiplier.style.cursor = 'default';
+        multiplier.removeEventListener('click', handleMultiplierClick);
+    });
     
-    // Only create a coin if there's a next lane available
-    if (currentLane + 1 >= GAME_CONFIG.laneCount) {
+    // Only enable the next lane's multiplier if there's a next lane
+    const nextLaneIndex = currentLane + 1;
+    if (nextLaneIndex >= GAME_CONFIG.laneCount) {
         console.log("No more lanes ahead!");
         return;
     }
     
-    // Create new coin
-    clickCoin = document.createElement('div');
-    clickCoin.className = 'coin';
-    
-    // Position coin in the next lane
-    const nextLaneX = (currentLane + 1) * GAME_CONFIG.laneWidth + GAME_CONFIG.laneWidth / 2 - 20;
-    const coinY = canvasHeight / 2 - 20;
-    
-    clickCoin.style.left = `${nextLaneX}px`;
-    clickCoin.style.top = `${coinY}px`;
-    
-    // Add data attribute for lane index
-    clickCoin.dataset.laneIndex = currentLane + 1;
-    
-    // Add click event
-    clickCoin.addEventListener('click', (e) => {
-        if (!gameActive) return;
-        e.stopPropagation();
+    // Find the next lane's multiplier and make it clickable
+    const nextLaneMultiplier = document.querySelector(`.multiplier[data-lane-index="${nextLaneIndex}"]`);
+    if (nextLaneMultiplier) {
+        nextLaneMultiplier.style.cursor = 'pointer';
+        nextLaneMultiplier.addEventListener('click', handleMultiplierClick);
         
-        const clickedLaneIndex = parseInt(e.currentTarget.dataset.laneIndex);
-        tryToAdvance(clickedLaneIndex);
-    });
-    
-    // Add coin to game board
-    const gameBoard = document.querySelector('.game-board');
-    if (gameBoard) {
-        gameBoard.appendChild(clickCoin);
+        // Add a pulse animation to make it stand out
+        nextLaneMultiplier.style.animation = 'pulseCircle 1.5s infinite alternate';
     }
+}
+
+// Handle multiplier click
+function handleMultiplierClick(e) {
+    if (!gameActive) return;
+    e.stopPropagation();
+    
+    const clickedLaneIndex = parseInt(e.currentTarget.dataset.laneIndex);
+    tryToAdvance(clickedLaneIndex);
 }
 
 // Update camera position
@@ -1306,9 +1332,8 @@ function tryToAdvance(targetLaneIndex) {
         // Update chicken position
         chickenElem.style.left = `${currentLane * GAME_CONFIG.laneWidth + GAME_CONFIG.laneWidth / 2 - GAME_CONFIG.playerSize / 2}px`;
         
-        // Calculate reward using the selected bet amount as the multiplier
-        const laneMultiplierValue = (GAME_CONFIG.baseMultiplier + (currentLane * GAME_CONFIG.multiplierStep));
-        const reward = Math.floor(currentBet * laneMultiplierValue);
+        // Calculate reward using the selected bet amount directly as the multiplier
+        const reward = Math.floor(GAME_CONFIG.startCost * currentBet);
         totalCoinsWon = reward; // Set total to current reward (not cumulative)
         
         // Check if we've reached the minimum lanes for cashout
@@ -1326,8 +1351,8 @@ function tryToAdvance(targetLaneIndex) {
         // Create success animation
         createSuccessAnimation();
         
-        // Create new clickable coin
-        createClickCoin();
+        // Enable next multiplier for clicking
+        enableNextMultiplier();
         
         // Update displays
         updateScoreDisplay();
@@ -1452,8 +1477,7 @@ function createSuccessAnimation() {
     // No sound effects
     
     // Show reward animation
-    const laneMultiplierValue = (GAME_CONFIG.baseMultiplier + (currentLane * GAME_CONFIG.multiplierStep)).toFixed(2);
-    const reward = Math.floor(currentBet * parseFloat(laneMultiplierValue));
+    const reward = Math.floor(GAME_CONFIG.startCost * currentBet);
     
     const rewardText = document.createElement('div');
     rewardText.className = 'reward-text';
@@ -1542,33 +1566,15 @@ function updateScoreDisplay() {
 // Update next reward display
 function updateNextRewardDisplay() {
     const nextLaneIndex = currentLane + 1;
-    const nextMultiplierValue = (GAME_CONFIG.baseMultiplier + (nextLaneIndex * GAME_CONFIG.multiplierStep)).toFixed(2);
-    const nextReward = Math.floor(currentBet * parseFloat(nextMultiplierValue));
+    // Use bet amount directly as multiplier
+    const nextReward = Math.floor(GAME_CONFIG.startCost * currentBet);
     nextRewardDisplay.textContent = `Next Reward: ${nextReward} coins`;
 }
 
-// Handle canvas click
+// Handle canvas click - no longer needed for coin clicks
 function handleCanvasClick(event) {
-    // If there's a coin, check if we clicked near it
-    if (clickCoin && gameActive && !gameOver) {
-        const rect = canvas.getBoundingClientRect();
-        const clickX = event.clientX - rect.left;
-        const clickY = event.clientY - rect.top;
-        
-        // Get coin position relative to viewport
-        const coinRect = clickCoin.getBoundingClientRect();
-        const coinCenterX = coinRect.left + coinRect.width / 2 - rect.left;
-        const coinCenterY = coinRect.top + coinRect.height / 2 - rect.top;
-        
-        // Calculate distance from click to coin center
-        const distance = Math.sqrt(Math.pow(clickX - coinCenterX, 2) + Math.pow(clickY - coinCenterY, 2));
-        
-        // If click is near the coin, trigger advancement
-        if (distance < 60) { // Allowing some leeway for clicking
-            const nextLane = currentLane + 1;
-            tryToAdvance(nextLane);
-        }
-    }
+    // Canvas click is now handled by multiplier click events directly
+    // This function is kept for potential future use
 }
 
 // Draw game elements
