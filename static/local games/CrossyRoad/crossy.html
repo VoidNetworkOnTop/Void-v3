@@ -932,13 +932,11 @@ const GAME_CONFIG = {
 let canvas, ctx;
 let canvasWidth, canvasHeight;
 let player;
-let roads = [];
 let gameActive = false;
 let currentRoad = 0;
 let gameOver = false;
 let coinBalance = 0;
 let animationFrame;
-let clickCircle = null;
 let totalCoinsWon = 0;
 
 // DOM elements
@@ -1013,6 +1011,9 @@ function initCanvas() {
     canvas.height = canvasHeight;
     canvas.style.width = canvasWidth + "px";
     canvas.style.height = canvasHeight + "px";
+    
+    // Remove any existing event listeners to prevent duplicates
+    canvas.removeEventListener('click', handleCanvasClick);
 }
 
 // Initialize game
@@ -1055,6 +1056,9 @@ function initGame() {
     window.cancelAnimationFrame(animationFrame);
     gameLoop();
     
+    // Remove old event listeners to prevent duplicates
+    canvas.removeEventListener('click', handleCanvasClick);
+    
     // Add canvas click listener
     canvas.addEventListener('click', handleCanvasClick);
 }
@@ -1074,6 +1078,14 @@ function clearGameElements() {
     // Remove existing cars
     const existingCars = document.querySelectorAll('.car');
     existingCars.forEach(car => car.remove());
+    
+    // Remove any particle effects
+    const existingParticles = document.querySelectorAll('.particle');
+    existingParticles.forEach(particle => particle.remove());
+    
+    // Remove any reward text animations
+    const rewardTexts = document.querySelectorAll('.reward-text');
+    rewardTexts.forEach(text => text.remove());
 }
 
 // Create lanes
@@ -1336,6 +1348,7 @@ function createSuccessAnimation() {
     const reward = Math.floor(GAME_CONFIG.startCost * parseFloat(multiplier));
     
     const rewardText = document.createElement('div');
+    rewardText.className = 'reward-text';
     rewardText.style.position = 'absolute';
     rewardText.style.left = `${player.x + player.width / 2}px`;
     rewardText.style.top = `${player.y - 30}px`;
@@ -1481,39 +1494,7 @@ function drawChicken(x, y, width, height) {
     ctx.shadowBlur = 0;
 }
 
-// Draw background
-function drawBackground() {
-    // Sky gradient
-    const skyGradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
-    skyGradient.addColorStop(0, '#1a237e');
-    skyGradient.addColorStop(1, '#283593');
-    ctx.fillStyle = skyGradient;
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    
-    // Draw some stars
-    ctx.fillStyle = '#ffffff';
-    for (let i = 0; i < 50; i++) {
-        const x = Math.random() * canvasWidth;
-        const y = Math.random() * canvasHeight;
-        const size = Math.random() * 2 + 1;
-        ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    
-    // Ground
-    ctx.fillStyle = '#1B5E20';
-    ctx.fillRect(0, canvasHeight / 2 + GAME_CONFIG.roadHeight / 2, canvasWidth, canvasHeight / 2);
-    
-    // Grass details
-    ctx.fillStyle = '#2E7D32';
-    for (let i = 0; i < 100; i++) {
-        const x = Math.random() * canvasWidth;
-        const baseY = canvasHeight / 2 + GAME_CONFIG.roadHeight / 2;
-        const height = Math.random() * 10 + 5;
-        ctx.fillRect(x, baseY, 2, -height);
-    }
-}
+
 
 // Game loop
 function gameLoop() {
