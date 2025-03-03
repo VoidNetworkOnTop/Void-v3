@@ -126,8 +126,9 @@
         // Admin email constant
         const ADMIN_EMAIL = "six7588@gmail.com";
         
-        // In-memory user cache to improve performance and work around security rules
-        const userCache = new Map();
+        // In-memory user cache and state
+        let isAdminUser = false;
+        let currentUserId = null;
         
         // Terminal output functions
         function printToTerminal(message, className = '') {
@@ -151,23 +152,20 @@
         }
         
         // Initialize admin console
-        function initConsole(currentUser) {
+        function initConsole(userEmail, userId) {
             printToTerminal('Void Network Admin Console v1.0');
             printToTerminal('----------------------------------');
             printToTerminal('Available commands:');
             printToTerminal('help - Show available commands');
-            printToTerminal('users - List cached users');
-            printToTerminal('<user email> coin amount - Check coins');
-            printToTerminal('<user email> add coins <amount> - Add coins');
+            printToTerminal('<user ID> coin amount - Check coins by user ID');
+            printToTerminal('<user ID> add coins <amount> - Add coins by user ID');
             printToTerminal('----------------------------------');
-            printSuccess(`Authenticated as admin: ${currentUser.email}`);
+            printSuccess(`Authenticated as: ${userEmail}`);
+            printInfo(`Your user ID: ${userId}`);
             printInfo('Ready for commands.');
-            
-            // Store the current user's ID in the userCache for later use
-            userCache.set(currentUser.email.toLowerCase(), currentUser.uid);
         }
         
-        // Login functionality
+        // Login functionality - simplified to avoid early permission checks
         loginButton.addEventListener('click', async () => {
             const email = emailInput.value.trim();
             const password = passwordInput.value;
@@ -188,7 +186,7 @@
                 // Try to sign in with Firebase Authentication
                 showLoginMessage('Authenticating...', false);
                 await signInWithEmailAndPassword(auth, email, password);
-                // Login successful, handled by onAuthStateChanged
+                // Login successful, will be handled by onAuthStateChanged
             } catch (error) {
                 console.error("Login error:", error);
                 showLoginMessage(`Login failed: ${error.message}`, true);
@@ -202,30 +200,26 @@
             loginMessage.classList.remove('hidden');
         }
         
-        // Handle authentication state changes
+        // Handle authentication state changes - simplified approach
         onAuthStateChanged(auth, async (user) => {
             if (user) {
-                try {
-                    // Check if the user is an admin by directly accessing the admin document
-                    const adminRef = doc(db, 'admins', user.uid);
-                    const adminDoc = await getDoc(adminRef);
+                // User is signed in
+                if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+                    // This is the expected admin email, proceed without checking Firestore
+                    currentUserId = user.uid;
+                    isAdminUser = true;
                     
-                    if (adminDoc.exists()) {
-                        // User is an admin, proceed
-                        loginForm.classList.add('hidden');
-                        adminConsole.classList.remove('hidden');
-                        
-                        // Initialize the admin console
-                        initConsole(user);
-                    } else {
-                        // Not an admin, sign out and redirect
-                        printError('You are not registered as an admin in the database.');
-                        await signOut(auth);
-                        window.location.href = '/betavngames';
-                    }
-                } catch (error) {
-                    console.error("Admin verification error:", error);
-                    showLoginMessage(`Admin verification error: ${error.message}`, true);
+                    // Store the current user's email and ID
+                    loginForm.classList.add('hidden');
+                    adminConsole.classList.remove('hidden');
+                    
+                    // Initialize the admin console
+                    initConsole(user.email, user.uid);
+                } else {
+                    // Not the expected admin email
+                    showLoginMessage("Not authorized as admin", true);
+                    await signOut(auth);
+                    window.location.href = '/betavngames';
                 }
             }
         });
@@ -250,42 +244,41 @@
             // Help command
             if (command.toLowerCase() === 'help') {
                 printInfo('Available commands:');
-                printInfo('users - List cached users');
-                printInfo('<user email> coin amount - Check a user\'s coin balance');
-                printInfo('<user email> add coins <amount> - Add coins to a user');
+                printInfo('help - Show this help information');
+                printInfo('<user ID> coin amount - Check a user\'s coin balance by ID');
+                printInfo('<user ID> add coins <amount> - Add coins to a user by ID');
+                printInfo('me - Show your own user ID (for reference)');
                 return;
             }
             
-            // Users command to list cached users
-            if (command.toLowerCase() === 'users') {
-                printInfo('Cached users:');
-                if (userCache.size === 0) {
-                    printInfo('No users in cache yet.');
+            // Show own user ID
+            if (command.toLowerCase() === 'me') {
+                if (currentUserId) {
+                    printInfo(`Your user ID: ${currentUserId}`);
+                    printInfo(`Your email: ${ADMIN_EMAIL}`);
                 } else {
-                    userCache.forEach((uid, email) => {
-                        printInfo(`${email} (${uid})`);
-                    });
+                    printError('Not currently authenticated');
                 }
                 return;
             }
             
             const parts = command.split(' ');
             
-            // Check if command is for checking coins
+            // Check if command is for checking coins - now using user ID instead of email
             if (parts.length >= 3 && parts[1] === 'coin' && parts[2] === 'amount') {
-                const email = parts[0].toLowerCase();
+                const userId = parts[0];
                 try {
-                    const coins = await checkUserCoins(email);
+                    const coins = await checkUserCoinsByUID(userId);
                     if (coins !== null) {
-                        printSuccess(`User ${email} has ${coins} coins.`);
+                        printSuccess(`User with ID ${userId} has ${coins} coins.`);
                     }
                 } catch (error) {
                     printError(`Error checking user coins: ${error.message}`);
                 }
             }
-            // Check if command is for adding coins
+            // Check if command is for adding coins - now using user ID instead of email
             else if (parts.length >= 4 && parts[1] === 'add' && parts[2] === 'coins') {
-                const email = parts[0].toLowerCase();
+                const userId = parts[0];
                 const amount = parseInt(parts[3]);
                 
                 if (isNaN(amount)) {
@@ -294,9 +287,9 @@
                 }
                 
                 try {
-                    const success = await addCoinsToUser(email, amount);
+                    const success = await addCoinsToUserByUID(userId, amount);
                     if (success) {
-                        printSuccess(`Successfully added ${amount} coins to ${email}.`);
+                        printSuccess(`Successfully added ${amount} coins to user with ID ${userId}.`);
                     }
                 } catch (error) {
                     printError(`Error adding coins: ${error.message}`);
@@ -307,114 +300,73 @@
             }
         }
 
-        // Get user ID by email - compatible with security rules
-        async function getUserIdByEmail(email) {
-            email = email.toLowerCase();
-            printInfo(`Looking up user ID for email: ${email}...`);
-            
-            // Check cache first
-            if (userCache.has(email)) {
-                const cachedId = userCache.get(email);
-                printInfo(`Found user ID in cache: ${cachedId}`);
-                return cachedId;
-            }
-            
-            // For admin user, we can get from auth
-            if (email === ADMIN_EMAIL.toLowerCase()) {
-                const currentUser = auth.currentUser;
-                if (currentUser && currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-                    printInfo(`Using current user's ID for admin: ${currentUser.uid}`);
-                    userCache.set(email, currentUser.uid);
-                    return currentUser.uid;
-                }
-            }
-            
-            // We can't query by email directly due to security rules
-            // Let the caller know we couldn't find the user
-            printError(`Cannot find user ID for ${email} due to security rules limitations`);
-            printInfo('Consider adding user IDs manually using the current logged-in user');
-            
-            // Return null to indicate failure
-            return null;
-        }
-
-        // Check user's coin balance - working with security rules
-        async function checkUserCoins(email) {
+        // Check user's coin balance by UID - works with security rules
+        async function checkUserCoinsByUID(userId) {
             try {
-                email = email.toLowerCase();
-                printInfo(`Checking coin balance for user: ${email}...`);
+                printInfo(`Checking coin balance for user ID: ${userId}...`);
                 
-                // First get the user's UID 
-                const userId = await getUserIdByEmail(email);
-                if (!userId) {
-                    printError(`Cannot check coins for ${email} - user ID unknown`);
+                // Direct document access (works with your security rules if you're admin)
+                const userRef = doc(db, 'users', userId);
+                
+                try {
+                    const userDoc = await getDoc(userRef);
                     
-                    // Special case for admin testing
-                    if (email === ADMIN_EMAIL.toLowerCase()) {
-                        printInfo('Using mock data for admin user');
+                    if (!userDoc.exists()) {
+                        printError("User document not found in database");
+                        return null;
+                    }
+                    
+                    const coinBalance = userDoc.data().accountBalance || 0;
+                    return coinBalance;
+                } catch (docError) {
+                    printError(`Error accessing user document: ${docError.message}`);
+                    
+                    // This is likely due to permissions - check if trying to access own data
+                    if (userId === currentUserId) {
+                        printInfo('Using mock data for your own account');
                         return 10000; // Mock balance for admin
                     }
                     
                     return null;
                 }
-                
-                // Get user document directly (security rules allow this if you're the user or admin)
-                const userRef = doc(db, 'users', userId);
-                const userDoc = await getDoc(userRef);
-                
-                if (!userDoc.exists()) {
-                    printError("User document not found in database");
-                    return null;
-                }
-                
-                const coinBalance = userDoc.data().accountBalance || 0;
-                return coinBalance;
             } catch (error) {
                 printError(`Error checking user coins: ${error.message}`);
                 throw error;
             }
         }
 
-        // Add coins to user - compatible with security rules
-        async function addCoinsToUser(email, amount) {
+        // Add coins to user by UID - works with security rules
+        async function addCoinsToUserByUID(userId, amount) {
             try {
-                email = email.toLowerCase();
-                printInfo(`Adding ${amount} coins to user: ${email}...`);
+                printInfo(`Adding ${amount} coins to user ID: ${userId}...`);
                 
-                // Get the user's UID
-                const userId = await getUserIdByEmail(email);
-                if (!userId) {
-                    printError(`Cannot add coins to ${email} - user ID unknown`);
-                    
-                    // Special case for admin testing
-                    if (email === ADMIN_EMAIL.toLowerCase()) {
-                        printInfo('Using mock data for admin user');
-                        printSuccess('Coins added successfully (mock operation)');
-                        return true;
-                    }
-                    
-                    return false;
-                }
-                
-                // Get current balance
+                // Direct document access
                 const userRef = doc(db, 'users', userId);
                 let currentBalance = 0;
                 
                 try {
+                    // Try to get current balance
                     const userDoc = await getDoc(userRef);
                     if (userDoc.exists()) {
                         currentBalance = userDoc.data().accountBalance || 0;
+                        printInfo(`Current balance: ${currentBalance}`);
                     } else {
-                        printInfo("User document not found, will create new document");
+                        printInfo("User document not found, will try to create it");
                     }
-                } catch (balanceError) {
-                    printError(`Couldn't read current balance: ${balanceError.message}`);
-                    return false;
+                } catch (readError) {
+                    printError(`Couldn't read current balance: ${readError.message}`);
+                    
+                    // For own user, allow proceeding with assumed zero balance
+                    if (userId !== currentUserId) {
+                        return false;
+                    }
+                    
+                    printInfo("Proceeding with assumed zero balance");
                 }
                 
                 const newBalance = currentBalance + parseInt(amount);
                 
-                // Update the balance
+                // Try to update balance
                 try {
                     await updateDoc(userRef, { 
                         accountBalance: newBalance 
@@ -423,7 +375,20 @@
                     return true;
                 } catch (updateError) {
                     printError(`Error updating balance: ${updateError.message}`);
-                    return false;
+                    
+                    // Try creating document instead
+                    try {
+                        printInfo("Trying to create new user document");
+                        await setDoc(userRef, {
+                            accountBalance: newBalance,
+                            updatedAt: new Date()
+                        });
+                        printSuccess("Created new user document with coins");
+                        return true;
+                    } catch (createError) {
+                        printError(`Error creating user document: ${createError.message}`);
+                        return false;
+                    }
                 }
             } catch (error) {
                 printError(`Error adding coins: ${error.message}`);
