@@ -939,13 +939,20 @@ function updateCoinDisplay() {
 
 // Update score display
 function updateScoreDisplay() {
-    scoreValue.textContent = score;
-    speedValue.textContent = speedMultiplier.toFixed(1);
+    if (scoreValue && speedValue) {
+        scoreValue.textContent = score;
+        speedValue.textContent = speedMultiplier.toFixed(1);
+    }
 }
 
 // Initialize canvas
 function initCanvas() {
     canvas = document.getElementById('snake-canvas');
+    if (!canvas) {
+        console.error("Canvas element not found!");
+        return;
+    }
+    
     ctx = canvas.getContext('2d');
     
     // Get game board dimensions
@@ -1109,6 +1116,8 @@ function moveSnake() {
 
 // Check if snake is near wall
 function checkNearWall() {
+    if (!warningBorder) return;
+    
     const head = snake[0];
     const isNearWall = 
         head.x <= 1 || 
@@ -1125,8 +1134,10 @@ function checkNearWall() {
         
         // Hide warning after a delay
         setTimeout(() => {
-            warningBorder.classList.remove('visible');
-            showingBorderWarning = false;
+            if (warningBorder) {
+                warningBorder.classList.remove('visible');
+                showingBorderWarning = false;
+            }
         }, GAME_CONFIG.borderWarningTime);
     }
 }
@@ -1526,15 +1537,19 @@ function endGame() {
     updateCoins(-GAME_CONFIG.deathPenalty);
     
     // Update final stats
-    finalScore.textContent = score;
-    applesEarned.textContent = applesEaten * GAME_CONFIG.appleReward;
+    if (finalScore && applesEarned) {
+        finalScore.textContent = score;
+        applesEarned.textContent = applesEaten * GAME_CONFIG.appleReward;
+    }
     
     // Create explosion effect
     createDeathExplosion();
     
     // Show game over screen
     setTimeout(() => {
-        gameOverScreen.classList.add('visible');
+        if (gameOverScreen) {
+            gameOverScreen.classList.add('visible');
+        }
     }, 1000);
 }
 
@@ -1742,80 +1757,102 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Touch controls for mobile
-document.getElementById('touch-up').addEventListener('touchstart', (e) => {
-    if (gameActive) changeDirection('up');
-    e.preventDefault();
-});
+const touchUp = document.getElementById('touch-up');
+const touchDown = document.getElementById('touch-down');
+const touchLeft = document.getElementById('touch-left');
+const touchRight = document.getElementById('touch-right');
 
-document.getElementById('touch-down').addEventListener('touchstart', (e) => {
-    if (gameActive) changeDirection('down');
-    e.preventDefault();
-});
+// Only add touch event listeners if elements exist
+if (touchUp) {
+    touchUp.addEventListener('touchstart', (e) => {
+        if (gameActive) changeDirection('up');
+        e.preventDefault();
+    });
+}
 
-document.getElementById('touch-left').addEventListener('touchstart', (e) => {
-    if (gameActive) changeDirection('left');
-    e.preventDefault();
-});
+if (touchDown) {
+    touchDown.addEventListener('touchstart', (e) => {
+        if (gameActive) changeDirection('down');
+        e.preventDefault();
+    });
+}
 
-document.getElementById('touch-right').addEventListener('touchstart', (e) => {
-    if (gameActive) changeDirection('right');
-    e.preventDefault();
-});
+if (touchLeft) {
+    touchLeft.addEventListener('touchstart', (e) => {
+        if (gameActive) changeDirection('left');
+        e.preventDefault();
+    });
+}
+
+if (touchRight) {
+    touchRight.addEventListener('touchstart', (e) => {
+        if (gameActive) changeDirection('right');
+        e.preventDefault();
+    });
+}
 
 // Swipe controls
-canvas.addEventListener('touchstart', (e) => {
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-}, false);
+if (canvas) {
+    canvas.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+    }, false);
 
-canvas.addEventListener('touchmove', (e) => {
-    if (!gameActive || !touchStartX || !touchStartY) return;
-    
-    const touchEndX = e.touches[0].clientX;
-    const touchEndY = e.touches[0].clientY;
-    
-    const diffX = touchStartX - touchEndX;
-    const diffY = touchStartY - touchEndY;
-    
-    // Determine swipe direction based on greatest difference
-    if (Math.abs(diffX) > Math.abs(diffY)) {
-        // Horizontal swipe
-        if (diffX > 10) {
-            changeDirection('left');
-        } else if (diffX < -10) {
-            changeDirection('right');
+    canvas.addEventListener('touchmove', (e) => {
+        if (!gameActive || !touchStartX || !touchStartY) return;
+        
+        const touchEndX = e.touches[0].clientX;
+        const touchEndY = e.touches[0].clientY;
+        
+        const diffX = touchStartX - touchEndX;
+        const diffY = touchStartY - touchEndY;
+        
+        // Determine swipe direction based on greatest difference
+        if (Math.abs(diffX) > Math.abs(diffY)) {
+            // Horizontal swipe
+            if (diffX > 10) {
+                changeDirection('left');
+            } else if (diffX < -10) {
+                changeDirection('right');
+            }
+        } else {
+            // Vertical swipe
+            if (diffY > 10) {
+                changeDirection('up');
+            } else if (diffY < -10) {
+                changeDirection('down');
+            }
         }
-    } else {
-        // Vertical swipe
-        if (diffY > 10) {
-            changeDirection('up');
-        } else if (diffY < -10) {
-            changeDirection('down');
-        }
-    }
-    
-    // Reset start position
-    touchStartX = touchEndX;
-    touchStartY = touchEndY;
-    
-    e.preventDefault();
-}, false);
+        
+        // Reset start position
+        touchStartX = touchEndX;
+        touchStartY = touchEndY;
+        
+        e.preventDefault();
+    }, false);
+}
 
 // Button event listeners
-startBtn.addEventListener('click', () => {
-    // Allow playing even with negative balance
-    initGame();
-});
+if (startBtn) {
+    startBtn.addEventListener('click', () => {
+        // Allow playing even with negative balance
+        initGame();
+    });
+}
 
-restartBtn.addEventListener('click', () => {
-    // Allow playing even with negative balance
-    gameOverScreen.classList.remove('visible');
-    initGame();
-});
+if (restartBtn) {
+    restartBtn.addEventListener('click', () => {
+        // Allow playing even with negative balance
+        gameOverScreen.classList.remove('visible');
+        initGame();
+    });
+}
 
-backBtn.addEventListener('click', () => {
-    window.location.href = '/betavngames.html';
-});
+if (backBtn) {
+    backBtn.addEventListener('click', () => {
+        window.location.href = '/betavngames.html';
+    });
+}
 
 // Handle window resize
 window.addEventListener('resize', () => {
@@ -1829,19 +1866,33 @@ window.addEventListener('resize', () => {
 window.addEventListener('load', () => {
     console.log("Hardcore Snake initializing...");
     
-    // Initialize canvas
-    initCanvas();
+    // Ensure all DOM elements are available before using them
+    if (!document.getElementById('snake-canvas') || 
+        !document.getElementById('start-btn') || 
+        !document.getElementById('restart-btn') || 
+        !document.getElementById('back-btn') || 
+        !document.querySelector('.game-board')) {
+        console.error("Required DOM elements missing, check HTML structure");
+        return;
+    }
     
-    // Create background particles
-    createParticles(30);
-    
-    // Check if Firebase is available
-    if (window.loadFirebaseCoinBalance) {
-        window.loadFirebaseCoinBalance();
-    } else {
-        // For testing without Firebase
-        coinBalance = 1000; 
-        updateCoinDisplay();
+    try {
+        // Initialize canvas
+        initCanvas();
+        
+        // Create background particles
+        createParticles(30);
+        
+        // Check if Firebase is available
+        if (window.loadFirebaseCoinBalance) {
+            window.loadFirebaseCoinBalance();
+        } else {
+            // For testing without Firebase
+            coinBalance = 1000; 
+            updateCoinDisplay();
+        }
+    } catch (error) {
+        console.error("Error during initialization:", error);
     }
 });
 </script>
