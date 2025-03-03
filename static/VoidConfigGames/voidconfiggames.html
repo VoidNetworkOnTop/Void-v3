@@ -156,9 +156,11 @@
             printToTerminal('Void Network Admin Console v1.0');
             printToTerminal('----------------------------------');
             printToTerminal('Available commands:');
-            printToTerminal('help - Show available commands');
+                            printToTerminal('help - Show available commands');
             printToTerminal('<user ID> coin amount - Check coins by user ID');
             printToTerminal('<user ID> add coins <amount> - Add coins by user ID');
+            printToTerminal('<user ID> remove coins <amount> - Remove coins from user');
+            printToTerminal('<user email> - Look up user ID by email');
             printToTerminal('----------------------------------');
             printSuccess(`Authenticated as: ${userEmail}`);
             printInfo(`Your user ID: ${userId}`);
@@ -247,6 +249,8 @@
                 printInfo('help - Show this help information');
                 printInfo('<user ID> coin amount - Check a user\'s coin balance by ID');
                 printInfo('<user ID> add coins <amount> - Add coins to a user by ID');
+                printInfo('<user ID> remove coins <amount> - Remove coins from a user by ID');
+                printInfo('<user email> - Look up user ID by email');
                 printInfo('me - Show your own user ID (for reference)');
                 return;
             }
@@ -293,6 +297,39 @@
                     }
                 } catch (error) {
                     printError(`Error adding coins: ${error.message}`);
+                }
+            }
+            // Check if command is for removing coins - using user ID
+            else if (parts.length >= 4 && parts[1] === 'remove' && parts[2] === 'coins') {
+                const userId = parts[0];
+                const amount = parseInt(parts[3]);
+                
+                if (isNaN(amount)) {
+                    printError('Invalid amount. Please provide a number.');
+                    return;
+                }
+                
+                if (amount <= 0) {
+                    printError('Amount to remove must be positive.');
+                    return;
+                }
+                
+                try {
+                    const success = await removeCoinsFromUserByUID(userId, amount);
+                    if (success) {
+                        printSuccess(`Successfully removed ${amount} coins from user with ID ${userId}.`);
+                    }
+                } catch (error) {
+                    printError(`Error removing coins: ${error.message}`);
+                }
+            }
+            // Check if command is for looking up user ID by email
+            else if (parts.length === 1 && parts[0].includes('@')) {
+                const email = parts[0].toLowerCase();
+                try {
+                    await lookupUserIdByEmail(email);
+                } catch (error) {
+                    printError(`Error looking up user: ${error.message}`);
                 }
             }
             else {
@@ -392,6 +429,104 @@
                 }
             } catch (error) {
                 printError(`Error adding coins: ${error.message}`);
+                throw error;
+            }
+        }
+        
+        // Remove coins from user by UID
+        async function removeCoinsFromUserByUID(userId, amount) {
+            try {
+                printInfo(`Removing ${amount} coins from user ID: ${userId}...`);
+                
+                // Direct document access
+                const userRef = doc(db, 'users', userId);
+                let currentBalance = 0;
+                
+                try {
+                    // Try to get current balance
+                    const userDoc = await getDoc(userRef);
+                    if (userDoc.exists()) {
+                        currentBalance = userDoc.data().accountBalance || 0;
+                        printInfo(`Current balance: ${currentBalance}`);
+                    } else {
+                        printError("User document not found");
+                        return false;
+                    }
+                } catch (readError) {
+                    printError(`Couldn't read current balance: ${readError.message}`);
+                    return false;
+                }
+                
+                // Check if user has enough coins
+                if (currentBalance < amount) {
+                    printError(`User only has ${currentBalance} coins, cannot remove ${amount}`);
+                    return false;
+                }
+                
+                const newBalance = currentBalance - parseInt(amount);
+                
+                // Try to update balance
+                try {
+                    await updateDoc(userRef, { 
+                        accountBalance: newBalance 
+                    });
+                    printInfo(`Successfully updated balance. New balance: ${newBalance}`);
+                    return true;
+                } catch (updateError) {
+                    printError(`Error updating balance: ${updateError.message}`);
+                    return false;
+                }
+            } catch (error) {
+                printError(`Error removing coins: ${error.message}`);
+                throw error;
+            }
+        }
+        
+        // Look up user ID by email
+        async function lookupUserIdByEmail(email) {
+            try {
+                printInfo(`Looking up user ID for email: ${email}...`);
+                
+                // Check if this is the admin email
+                if (email === ADMIN_EMAIL.toLowerCase() && currentUserId) {
+                    printSuccess(`User ID for ${email}: ${currentUserId}`);
+                    return;
+                }
+                
+                // Try to query users collection (might fail due to security rules)
+                try {
+                    const usersRef = collection(db, 'users');
+                    const q = query(usersRef, where("email", "==", email));
+                    const querySnapshot = await getDocs(q);
+                    
+                    if (querySnapshot.empty) {
+                        printError(`No user found with email: ${email}`);
+                        return;
+                    }
+                    
+                    const userId = querySnapshot.docs[0].id;
+                    printSuccess(`User ID for ${email}: ${userId}`);
+                } catch (queryError) {
+                    printError(`Query error: ${queryError.message}`);
+                    printInfo('Cannot directly query by email due to security rules.');
+                    printInfo('Consider creating a lookup table or using the config collection for this purpose.');
+                    
+                    // Try alternative lookup methods
+                    try {
+                        // Try config collection which might be readable
+                        const configRef = doc(db, 'config', 'userEmails');
+                        const configDoc = await getDoc(configRef);
+                        
+                        if (configDoc.exists() && configDoc.data()[email]) {
+                            printSuccess(`User ID for ${email} (from config): ${configDoc.data()[email]}`);
+                            return;
+                        }
+                    } catch (configError) {
+                        printInfo('Alternative lookup methods also failed.');
+                    }
+                }
+            } catch (error) {
+                printError(`Error looking up user: ${error.message}`);
                 throw error;
             }
         }
