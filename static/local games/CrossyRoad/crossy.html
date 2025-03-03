@@ -1217,6 +1217,18 @@ function createLanes() {
         const multiplierValue = (GAME_CONFIG.baseMultiplier + (i * GAME_CONFIG.multiplierStep)).toFixed(2);
         multiplier.textContent = multiplierValue + '×';
         
+        // Add click event to multiplier (but only for the next lane)
+        if (i === 1) { // Only add click for the first lane ahead
+            multiplier.style.cursor = 'pointer';
+            multiplier.addEventListener('click', (e) => {
+                if (!gameActive) return;
+                e.stopPropagation();
+                
+                const clickedLaneIndex = parseInt(e.currentTarget.dataset.laneIndex);
+                tryToAdvance(clickedLaneIndex);
+            });
+        }
+        
         lane.appendChild(multiplier);
         gameWorld.appendChild(lane);
     }
@@ -1231,12 +1243,10 @@ function enableNextMultiplier() {
     const multipliers = document.querySelectorAll('.multiplier');
     multipliers.forEach(multiplier => {
         multiplier.style.cursor = 'default';
-        multiplier.style.animation = 'none';
-        const clone = multiplier.cloneNode(true);
-        multiplier.parentNode.replaceChild(clone, multiplier);
+        multiplier.removeEventListener('click', handleMultiplierClick);
     });
     
-    // Only enable the NEXT lane's multiplier
+    // Only enable the next lane's multiplier if there's a next lane
     const nextLaneIndex = currentLane + 1;
     if (nextLaneIndex >= GAME_CONFIG.laneCount) {
         console.log("No more lanes ahead!");
@@ -1247,17 +1257,20 @@ function enableNextMultiplier() {
     const nextLaneMultiplier = document.querySelector(`.multiplier[data-lane-index="${nextLaneIndex}"]`);
     if (nextLaneMultiplier) {
         nextLaneMultiplier.style.cursor = 'pointer';
-        nextLaneMultiplier.style.animation = 'pulseCircle 1.5s infinite alternate';
+        nextLaneMultiplier.addEventListener('click', handleMultiplierClick);
         
-        // Add click event listener
-        nextLaneMultiplier.addEventListener('click', function handleClick(e) {
-            if (!gameActive) return;
-            e.stopPropagation();
-            
-            const clickedLaneIndex = parseInt(e.currentTarget.dataset.laneIndex);
-            tryToAdvance(clickedLaneIndex);
-        });
+        // Add a pulse animation to make it stand out
+        nextLaneMultiplier.style.animation = 'pulseCircle 1.5s infinite alternate';
     }
+}
+
+// Handle multiplier click
+function handleMultiplierClick(e) {
+    if (!gameActive) return;
+    e.stopPropagation();
+    
+    const clickedLaneIndex = parseInt(e.currentTarget.dataset.laneIndex);
+    tryToAdvance(clickedLaneIndex);
 }
 
 // Update camera position
@@ -1301,9 +1314,9 @@ function updateCamera() {
 function tryToAdvance(targetLaneIndex) {
     if (!gameActive) return;
     
-    // Check if the target lane is exactly one lane ahead (can't skip)
-    if (targetLaneIndex !== currentLane + 1) {
-        console.log("Can only move one lane at a time!");
+    // Check if the target lane is ahead of current lane
+    if (targetLaneIndex <= currentLane) {
+        console.log("Can only move forward!");
         return;
     }
     
