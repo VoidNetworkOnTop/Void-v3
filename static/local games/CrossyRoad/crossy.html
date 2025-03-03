@@ -508,7 +508,7 @@
    <div class="game-container">
        <div class="game-header">
            <h1 class="game-title">Crossy Road</h1>
-           <p class="game-subtitle">Cross all 50 roads without getting hit</p>
+           <p class="game-subtitle">Cross all 100 roads without getting hit</p>
            <div class="coin-tracker">
                <div class="coin-icon"></div>
                <span class="coin-amount" id="coinDisplay">0</span>
@@ -532,7 +532,7 @@
            <div class="game-overlay visible" id="start-screen">
                <div class="overlay-content">
                    <h2 class="overlay-title">Crossy Road</h2>
-                   <p class="overlay-message">Cross all 50 roads without getting hit.<br>Cost to play: 5 coins<br><span style="font-size: 0.9em; opacity: 0.8;">Roads get faster and more dangerous as you progress!</span></p>
+                   <p class="overlay-message">Cross all 100 roads without getting hit.<br>Cost to play: 5 coins<br><span style="font-size: 0.9em; opacity: 0.8;">Roads get faster and more dangerous as you progress!</span></p>
                    <button id="start-btn" class="game-btn">Start Game</button>
                </div>
            </div>
@@ -541,7 +541,7 @@
            <div class="game-overlay" id="game-over-screen">
                <div class="overlay-content">
                    <h2 class="overlay-title lose">Game Over</h2>
-                   <p class="overlay-message">You were hit by a car!<br>Lost: <span class="lose-amount">10 coins</span><br>You reached level <span id="final-level">0</span>/50</p>
+                   <p class="overlay-message">You were hit by a car!<br>Lost: <span class="lose-amount">10 coins</span><br>You reached level <span id="final-level">0</span>/100</p>
                    <button id="restart-btn" class="game-btn">Play Again</button>
                </div>
            </div>
@@ -550,7 +550,7 @@
            <div class="game-overlay" id="win-screen">
                <div class="overlay-content">
                    <h2 class="overlay-title win">You Won!</h2>
-                   <p class="overlay-message">You crossed all 50 roads!<br>Reward: <span class="win-amount">25 coins</span><br>A true Void Network champion!</p>
+                   <p class="overlay-message">You crossed all 100 roads!<br>Reward: <span class="win-amount">25 coins</span><br>A true Void Network champion!</p>
                    <button id="continue-btn" class="game-btn">Play Again</button>
                </div>
            </div>
@@ -855,17 +855,18 @@ const GAME_CONFIG = {
     startCost: 5,           // Cost to start the game
     deathPenalty: 10,       // Coins lost on death
     winReward: 25,          // Coins earned on win
-    totalRoads: 50,         // Number of roads to cross to win
+    totalRoads: 100,        // Number of roads to cross to win (increased from 50 to 100)
     playerSize: 20,         // Size of player square
     roadHeight: 60,         // Height of each road
     safeZoneHeight: 60,     // Height of safe zones between roads
-    carMinSpeed: 2,         // Minimum car speed
-    carMaxSpeed: 12,        // Maximum car speed (increased)
+    carMinSpeed: 3,         // Minimum car speed (increased from 2)
+    carMaxSpeed: 15,        // Maximum car speed (increased from 12)
     carWidth: 60,           // Width of cars
     carHeight: 30,          // Height of cars
-    carSpawnRate: 0.015,    // Chance of car spawning each frame (0-1)
+    carSpawnRate: 0.018,    // Chance of car spawning each frame (increased from 0.015)
     gameId: 'crossy_road',  // ID for Firebase transactions
-    difficultyScaling: 0.12 // Higher difficulty scaling per road
+    difficultyScaling: 0.18, // Higher difficulty scaling per road (increased from 0.12)
+    obstacleRate: 0.3       // Chance of obstacles in safe zones
 };
 
 // Game state
@@ -970,12 +971,14 @@ function initGame() {
         height: GAME_CONFIG.playerSize,
         speed: 5,
         color: '#4CAF50',
-        trail: [] // Add trail for visual effect
+        trail: [], // Add trail for visual effect
+        lives: 1   // Player only has one life
     };
     
     // Generate roads and safe zones
     roads = [];
     cars = [];
+    obstacles = []; // Add obstacles array
     currentLevel = 0;
     
     // Create road layouts
@@ -989,17 +992,56 @@ function initGame() {
     // Create roads from bottom to top
     for (let i = 0; i < numRoadSections; i++) {
         // Add a road
+        const roadType = Math.floor(Math.random() * 3); // 0: normal, 1: highway, 2: city
+        const laneCount = Math.floor(Math.random() * 3) + 1; // 1-3 lanes (increased max from 2)
+        
+        // Higher roads have more lanes and higher speeds
+        const levelFactor = 1 + (i * 0.05);
+        const adjustedLaneCount = Math.min(3, Math.floor(laneCount * levelFactor));
+        
+        // Base speed increases with level
+        const baseSpeedMin = GAME_CONFIG.carMinSpeed * (1 + (i * 0.02));
+        const baseSpeedMax = GAME_CONFIG.carMinSpeed + 
+            (GAME_CONFIG.carMaxSpeed - GAME_CONFIG.carMinSpeed) * 
+            Math.min(1, i / (GAME_CONFIG.totalRoads * 0.7)); // Gradually reach max speed
+        
         roads.push({
             y: yPosition - GAME_CONFIG.roadHeight,
             height: GAME_CONFIG.roadHeight,
             direction: Math.random() > 0.5 ? 1 : -1, // Random direction
-            speed: GAME_CONFIG.carMinSpeed + Math.random() * (GAME_CONFIG.carMaxSpeed - GAME_CONFIG.carMinSpeed),
+            speed: baseSpeedMin + Math.random() * (baseSpeedMax - baseSpeedMin),
             // Difficulty scaling - more cars on later roads
             spawnRate: GAME_CONFIG.carSpawnRate * (1 + i * 0.1),
             // Visual enhancements
-            roadType: Math.floor(Math.random() * 3), // 0: normal, 1: highway, 2: city
-            laneCount: Math.floor(Math.random() * 2) + 1, // 1-2 lanes
+            roadType: roadType,
+            laneCount: adjustedLaneCount,
+            
+            // Special road types (higher levels)
+            doubleDirection: i > 30 && Math.random() > 0.7, // Some roads have cars in both directions
+            speedLimit: i > 50 ? Math.random() * 3 + 0.8 : 1, // Speed multiplier for very fast roads
+            
+            // Additional hazards
+            hazardType: i > 60 ? Math.floor(Math.random() * 3) : 0, // 0: none, 1: slippery, 2: bumpy
         });
+        
+        // Add obstacles to safe zones (only in higher levels)
+        if (i > 20 && Math.random() < GAME_CONFIG.obstacleRate) {
+            // Number of obstacles increases with level
+            const obstacleCount = Math.floor(Math.random() * 3) + 1;
+            
+            for (let o = 0; o < obstacleCount; o++) {
+                const obstacleX = Math.random() * (canvasWidth - 30);
+                const obstacleY = yPosition - GAME_CONFIG.safeZoneHeight / 2;
+                
+                obstacles.push({
+                    x: obstacleX,
+                    y: obstacleY,
+                    width: 30,
+                    height: 30,
+                    type: Math.floor(Math.random() * 3) // 0: rock, 1: tree, 2: water
+                });
+            }
+        }
         
         // Move up for next road
         yPosition -= (GAME_CONFIG.roadHeight + GAME_CONFIG.safeZoneHeight);
@@ -1034,7 +1076,7 @@ function createProgressMarkers() {
     existingMarkers.forEach(marker => marker.remove());
     
     // Create markers for difficulty levels
-    const markerPositions = [10, 20, 35]; // Easy, Medium, Hard thresholds
+    const markerPositions = [20, 40, 70]; // Easy, Medium, Hard thresholds
     
     markerPositions.forEach(pos => {
         const markerPercentage = (pos / GAME_CONFIG.totalRoads) * 100;
@@ -1094,13 +1136,13 @@ function updateScoreDisplay() {
     const difficultyIndicator = document.getElementById('difficulty-indicator');
     if (difficultyIndicator) {
         let difficulty;
-        if (currentLevel < 10) {
+        if (currentLevel < 20) {
             difficulty = "Easy";
             difficultyIndicator.style.color = "#4CAF50";
-        } else if (currentLevel < 20) {
+        } else if (currentLevel < 40) {
             difficulty = "Medium";
             difficultyIndicator.style.color = "#FFC107";
-        } else if (currentLevel < 35) {
+        } else if (currentLevel < 70) {
             difficulty = "Hard";
             difficultyIndicator.style.color = "#FF9800";
         } else {
@@ -1127,33 +1169,108 @@ function spawnCars() {
         const levelFactor = 1 + (roadLevel * GAME_CONFIG.difficultyScaling / 10);
         const adjustedSpawnRate = road.spawnRate * levelFactor;
         
-        // Random chance to spawn a car based on the road's spawn rate
-        if (Math.random() < adjustedSpawnRate) {
-            // Determine spawn position based on direction
-            let carX;
-            if (road.direction > 0) {
-                carX = -GAME_CONFIG.carWidth; // Spawn from left
-            } else {
-                carX = canvasWidth; // Spawn from right
+        // Handle double direction roads
+        if (road.doubleDirection) {
+            // Spawn cars in both directions
+            if (Math.random() < adjustedSpawnRate * 0.6) { // Slightly lower spawn rate for each direction
+                spawnCar(road, 1); // Right direction
             }
             
-            // Create car object with variation based on level
-            const speedVariation = 1 + (roadLevel * GAME_CONFIG.difficultyScaling / 20);
-            const car = {
-                x: carX,
-                y: road.y + (road.height - GAME_CONFIG.carHeight) / 2,
-                width: GAME_CONFIG.carWidth,
-                height: GAME_CONFIG.carHeight,
-                speed: road.speed * road.direction * speedVariation,
-                color: getRandomCarColor(),
-                // Add headlights for visual enhancement
-                headlights: Math.random() > 0.3, // 70% chance to have headlights
-                brake: Math.random() > 0.8, // 20% chance to have brake lights
-                windowTint: Math.floor(Math.random() * 50) + 30 // Random window darkness
-            };
-            
-            cars.push(car);
+            if (Math.random() < adjustedSpawnRate * 0.6) {
+                spawnCar(road, -1); // Left direction
+            }
+        } else {
+            // Normal single direction road
+            if (Math.random() < adjustedSpawnRate) {
+                spawnCar(road, road.direction);
+            }
         }
+    }
+}
+
+// Helper function to spawn a car
+function spawnCar(road, direction) {
+    // Determine spawn position based on direction
+    let carX;
+    if (direction > 0) {
+        carX = -GAME_CONFIG.carWidth; // Spawn from left
+    } else {
+        carX = canvasWidth; // Spawn from right
+    }
+    
+    // Determine vertical position based on lane
+    const laneHeight = road.height / (road.laneCount || 1);
+    const lane = Math.floor(Math.random() * road.laneCount);
+    const carY = road.y + lane * laneHeight + (laneHeight - GAME_CONFIG.carHeight) / 2;
+    
+    // Create car object with variation based on level
+    const roadLevel = GAME_CONFIG.totalRoads - (roads.length - roads.indexOf(road)) - 1;
+    const speedVariation = 1 + (roadLevel * GAME_CONFIG.difficultyScaling / 20);
+    
+    // Apply speed limit multiplier for very fast roads
+    const finalSpeed = road.speed * direction * speedVariation * (road.speedLimit || 1);
+    
+    // Random car type - more variety
+    const carType = Math.floor(Math.random() * 5); // 0: normal, 1: truck, 2: sports car, 3: bus, 4: motorcycle
+    
+    // Adjust car dimensions based on type
+    let carWidth = GAME_CONFIG.carWidth;
+    let carHeight = GAME_CONFIG.carHeight;
+    
+    switch(carType) {
+        case 1: // Truck - longer
+            carWidth = GAME_CONFIG.carWidth * 1.7;
+            break;
+        case 2: // Sports car - sleeker
+            carHeight = GAME_CONFIG.carHeight * 0.8;
+            break;
+        case 3: // Bus - much longer
+            carWidth = GAME_CONFIG.carWidth * 2.2;
+            break;
+        case 4: // Motorcycle - smaller
+            carWidth = GAME_CONFIG.carWidth * 0.5;
+            carHeight = GAME_CONFIG.carHeight * 0.7;
+            break;
+    }
+    
+    const car = {
+        x: carX,
+        y: carY,
+        width: carWidth,
+        height: carHeight,
+        speed: finalSpeed,
+        color: getRandomCarColor(carType),
+        type: carType,
+        // Add headlights for visual enhancement
+        headlights: Math.random() > 0.3, // 70% chance to have headlights
+        brake: Math.random() > 0.8, // 20% chance to have brake lights
+        windowTint: Math.floor(Math.random() * 50) + 30, // Random window darkness
+        // Hazard effect
+        hazardEffect: road.hazardType > 0
+    };
+    
+    cars.push(car);
+}
+
+// Get random car color based on car type
+function getRandomCarColor(carType) {
+    const normalColors = ['#f44336', '#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4', '#009688'];
+    const truckColors = ['#795548', '#607D8B', '#6D4C41', '#546E7A']; 
+    const sportsCarColors = ['#F44336', '#FFEB3B', '#2196F3', '#000000', '#FFFFFF'];
+    const busColors = ['#FFC107', '#CDDC39', '#4CAF50'];
+    const motorcycleColors = ['#000000', '#212121', '#424242', '#1A237E'];
+    
+    switch(carType) {
+        case 1: // Truck
+            return truckColors[Math.floor(Math.random() * truckColors.length)];
+        case 2: // Sports car
+            return sportsCarColors[Math.floor(Math.random() * sportsCarColors.length)];
+        case 3: // Bus
+            return busColors[Math.floor(Math.random() * busColors.length)];
+        case 4: // Motorcycle
+            return motorcycleColors[Math.floor(Math.random() * motorcycleColors.length)];
+        default: // Normal car
+            return normalColors[Math.floor(Math.random() * normalColors.length)];
     }
 }
 
@@ -1236,8 +1353,9 @@ function checkLevelProgress() {
     }
 }
 
-// Check collisions
+// Check collisions with cars and obstacles
 function checkCollisions() {
+    // Check collisions with cars
     for (const car of cars) {
         if (
             player.x < car.x + car.width &&
@@ -1249,6 +1367,9 @@ function checkCollisions() {
             gameOver = true;
             gameActive = false;
             
+            // Visual effect for collision
+            createExplosion(player.x + player.width / 2, player.y + player.height / 2);
+            
             // Lose coins
             updateCoins(-GAME_CONFIG.deathPenalty);
             
@@ -1256,6 +1377,190 @@ function checkCollisions() {
             gameOverScreen.classList.add('visible');
             return;
         }
+    }
+    
+    // Check collisions with obstacles
+    for (const obstacle of obstacles) {
+        if (
+            player.x < obstacle.x + obstacle.width &&
+            player.x + player.width > obstacle.x &&
+            player.y < obstacle.y + obstacle.height &&
+            player.y + player.height > obstacle.y
+        ) {
+            // Different effects based on obstacle type
+            switch(obstacle.type) {
+                case 0: // Rock - immovable
+                    // Push player back
+                    const centerX = player.x + player.width / 2;
+                    const centerY = player.y + player.height / 2;
+                    const obstacleCenterX = obstacle.x + obstacle.width / 2;
+                    const obstacleCenterY = obstacle.y + obstacle.height / 2;
+                    
+                    // Calculate direction to push
+                    const dx = centerX - obstacleCenterX;
+                    const dy = centerY - obstacleCenterY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Normalize and apply push
+                    if (dist > 0) {
+                        player.x += (dx / dist) * player.speed;
+                        player.y += (dy / dist) * player.speed;
+                    }
+                    break;
+                    
+                case 1: // Tree - similar to rock but less pushback
+                    // Slightly push player
+                    const treeDx = (player.x + player.width / 2) - (obstacle.x + obstacle.width / 2);
+                    const treeDy = (player.y + player.height / 2) - (obstacle.y + obstacle.height / 2);
+                    const treeDist = Math.sqrt(treeDx * treeDx + treeDy * treeDy);
+                    
+                    if (treeDist > 0) {
+                        player.x += (treeDx / treeDist) * (player.speed * 0.7);
+                        player.y += (treeDy / treeDist) * (player.speed * 0.7);
+                    }
+                    break;
+                    
+                case 2: // Water - instant game over
+                    gameOver = true;
+                    gameActive = false;
+                    
+                    // Visual effect for drowning
+                    createRippleEffect(player.x + player.width / 2, player.y + player.height / 2);
+                    
+                    // Lose coins
+                    updateCoins(-GAME_CONFIG.deathPenalty);
+                    
+                    // Show game over screen with special message
+                    const gameOverMessage = document.querySelector('#game-over-screen .overlay-message');
+                    if (gameOverMessage) {
+                        gameOverMessage.innerHTML = `You drowned!<br>Lost: <span class="lose-amount">10 coins</span><br>You reached level <span id="final-level">${currentLevel + 1}</span>/100`;
+                    }
+                    
+                    gameOverScreen.classList.add('visible');
+                    return;
+            }
+        }
+    }
+}
+
+// Create explosion effect
+function createExplosion(x, y) {
+    // Create multiple particles for explosion
+    for (let i = 0; i < 20; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        
+        // Position at collision point
+        particle.style.left = `${x}px`;
+        particle.style.top = `${y}px`;
+        
+        // Larger size for explosion particles
+        const size = Math.random() * 6 + 3;
+        particle.style.width = `${size}px`;
+        particle.style.height = `${size}px`;
+        
+        // Different colors for explosion
+        const colors = ['#f44336', '#ffeb3b', '#ff9800'];
+        particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        
+        // Random direction
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 5 + 3;
+        const xVelocity = Math.cos(angle) * speed;
+        const yVelocity = Math.sin(angle) * speed;
+        
+        // Animation
+        particle.style.transition = 'all 0.5s ease-out';
+        
+        const gameBoard = document.querySelector('.game-board');
+        if (gameBoard) {
+            gameBoard.appendChild(particle);
+            
+            // Animate explosion
+            setTimeout(() => {
+                particle.style.left = `${x + xVelocity * 20}px`;
+                particle.style.top = `${y + yVelocity * 20}px`;
+                particle.style.opacity = '0';
+            }, 10);
+            
+            // Remove particles after animation
+            setTimeout(() => {
+                if (particle.parentNode) {
+                    particle.parentNode.removeChild(particle);
+                }
+            }, 1000);
+        }
+    }
+}
+
+// Create ripple effect for water
+function createRippleEffect(x, y) {
+    // Create ripple circles
+    for (let i = 0; i < 3; i++) {
+        const ripple = document.createElement('div');
+        ripple.style.position = 'absolute';
+        ripple.style.left = `${x}px`;
+        ripple.style.top = `${y}px`;
+        ripple.style.width = '10px';
+        ripple.style.height = '10px';
+        ripple.style.borderRadius = '50%';
+        ripple.style.border = '2px solid #03a9f4';
+        ripple.style.backgroundColor = 'transparent';
+        ripple.style.transform = 'translate(-50%, -50%)';
+        ripple.style.zIndex = '10';
+        
+        // Animation
+        ripple.style.transition = `all ${0.5 + i * 0.3}s ease-out`;
+        
+        const gameBoard = document.querySelector('.game-board');
+        if (gameBoard) {
+            gameBoard.appendChild(ripple);
+            
+            // Start animation after a delay
+            setTimeout(() => {
+                ripple.style.width = '100px';
+                ripple.style.height = '100px';
+                ripple.style.opacity = '0';
+            }, i * 200);
+            
+            // Remove ripple after animation
+            setTimeout(() => {
+                if (ripple.parentNode) {
+                    ripple.parentNode.removeChild(ripple);
+                }
+            }, (i * 200) + 1000);
+        }
+    }
+}
+
+// Flash warning for extreme levels
+function flashWarning() {
+    const warningOverlay = document.createElement('div');
+    warningOverlay.style.position = 'absolute';
+    warningOverlay.style.top = '0';
+    warningOverlay.style.left = '0';
+    warningOverlay.style.width = '100%';
+    warningOverlay.style.height = '100%';
+    warningOverlay.style.backgroundColor = 'rgba(244, 67, 54, 0.2)';
+    warningOverlay.style.zIndex = '5';
+    warningOverlay.style.pointerEvents = 'none';
+    
+    const gameBoard = document.querySelector('.game-board');
+    if (gameBoard) {
+        gameBoard.appendChild(warningOverlay);
+        
+        // Fade out
+        setTimeout(() => {
+            warningOverlay.style.transition = 'all 0.5s ease-out';
+            warningOverlay.style.opacity = '0';
+        }, 100);
+        
+        // Remove after animation
+        setTimeout(() => {
+            if (warningOverlay.parentNode) {
+                warningOverlay.parentNode.removeChild(warningOverlay);
+            }
+        }, 600);
     }
 }
 
@@ -1617,14 +1922,37 @@ function gameLoop() {
 
 // Adapt difficulty based on level progression
 function adaptDifficulty() {
-    // Increase player speed slightly as levels progress
-    if (currentLevel > 10 && currentLevel < 40) {
-        player.speed = 5 + (currentLevel - 10) * 0.05;
+    // Increase player speed slightly as levels progress, but cap it
+    if (currentLevel > 10 && currentLevel < 60) {
+        player.speed = 5 + (currentLevel - 10) * 0.04;
+    } else if (currentLevel >= 60) {
+        // Slightly reduce speed at extreme levels to maintain control
+        player.speed = 5 + 50 * 0.04 - (currentLevel - 60) * 0.01;
+        player.speed = Math.max(5, player.speed); // Don't go below base speed
     }
     
-    // Create particle effects at higher levels
-    if (currentLevel > 30 && Math.random() < 0.02) {
-        createParticles(5); // Add more particles
+    // Make obstacles shift positions sometimes in higher levels
+    if (currentLevel > 50 && obstacles.length > 0 && Math.random() < 0.01) {
+        for (const obstacle of obstacles) {
+            if (Math.random() < 0.3) { // 30% chance for each obstacle
+                obstacle.x += (Math.random() - 0.5) * 5; // Shift left or right slightly
+                
+                // Keep within bounds
+                obstacle.x = Math.max(0, Math.min(canvasWidth - obstacle.width, obstacle.x));
+            }
+        }
+    }
+    
+    // Create particle effects at higher levels - more at higher levels
+    const particleChance = currentLevel > 30 ? 0.02 + (currentLevel / 500) : 0;
+    if (Math.random() < particleChance) {
+        const particleCount = Math.floor(currentLevel / 20) + 5;
+        createParticles(particleCount);
+    }
+    
+    // Flash warning on extreme levels
+    if (currentLevel > 80 && Math.random() < 0.05) {
+        flashWarning();
     }
 }
 
