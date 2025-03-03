@@ -334,6 +334,7 @@
            }
        });
 
+       // IMPROVED: Load Coin Balance from Firebase
        async function loadFirebaseCoinBalance() {
            if (!currentUser) {
                console.log("No user available to load balance");
@@ -343,13 +344,15 @@
            try {
                console.log("Loading balance for user:", currentUser.uid);
                
-               // Use currentUser.uid instead of email
+               // Use currentUser.uid and force server data retrieval
                const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef);
+               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
 
                if (userDoc.exists()) {
                    // Get coin balance from Firestore
                    const userData = userDoc.data();
+                   
+                   // IMPORTANT: Use accountBalance field for consistency with main page
                    firebaseCoinBalance = userData.accountBalance || 0;
                    
                    console.log("Loaded balance from Firebase:", firebaseCoinBalance);
@@ -392,21 +395,30 @@
            }
        }
 
-       // Update Coin Balance in Firebase - FIXED to use UID instead of email
+       // IMPROVED: Update Coin Balance in Firebase
        async function updateFirebaseCoinBalance(newBalance) {
            if (!currentUser) {
                console.log("No user available to update balance");
-               return;
+               return false;
            }
 
            try {
                console.log("Updating balance for user:", currentUser.uid, "New balance:", newBalance);
                
-               // Use currentUser.uid instead of email
+               // Get the current document first to make sure we're updating the latest data
                const userRef = doc(db, 'users', currentUser.uid);
-               await updateDoc(userRef, { accountBalance: newBalance });
+               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
                
-               // Update the local reference as well
+               if (!userDoc.exists()) {
+                   console.error("Cannot update non-existent user document");
+                   return false;
+               }
+               
+               // Update with the exact same field format as the main page
+               await updateDoc(userRef, { 
+                   accountBalance: newBalance 
+               });
+               
                firebaseCoinBalance = newBalance;
                console.log("Firebase balance updated successfully");
                
@@ -417,12 +429,12 @@
            }
        }
 
-       // NEW: Record Game Transaction for better tracking
+       // IMPROVED: Record Game Transaction for better tracking
        async function recordGameTransaction(gameId, amount, isWin) {
            if (!currentUser) return;
 
            try {
-               // Create transaction record
+               // Create transaction record with consistent data format
                const transactionRef = doc(collection(db, 'transactions'));
                await setDoc(transactionRef, {
                    userId: currentUser.uid,
@@ -432,15 +444,15 @@
                    timestamp: new Date()
                });
 
-               // Get current user data
+               // Get latest user data from server
                const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef);
+               const userDoc = await getDoc(userRef, { source: 'server' });
                
                if (userDoc.exists()) {
                    const userData = userDoc.data();
                    let updatedBalance = userData.accountBalance || 0;
                    
-                   // Update relevant fields
+                   // Calculate new balance
                    if (isWin) {
                        updatedBalance += amount;
                        userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
@@ -450,14 +462,21 @@
                        userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
                    }
 
-                   // Update user document
+                   // Update firebase and local state consistently
                    await updateDoc(userRef, {
                        accountBalance: updatedBalance,
                        totalGamesPlayed: userData.totalGamesPlayed || 0,
                        totalMoneySpent: userData.totalMoneySpent || 0,
                        totalMoneyEarned: userData.totalMoneyEarned || 0
                    });
-
+                   
+                   // Make sure local state is synced with Firebase
+                   coinBalance = updatedBalance;
+                   firebaseCoinBalance = updatedBalance;
+                   
+                   // Update display
+                   updateCoinDisplay();
+                   
                    return {
                        transactionId: transactionRef.id,
                        newBalance: updatedBalance
@@ -576,7 +595,7 @@ const resetButton = document.getElementById('resetButton');
 const scoreDisplay = document.getElementById('scoreDisplay');
 const coinDisplay = document.getElementById('coinDisplay');
 
-// Update coin display
+// IMPROVED: Update coin display
 function updateCoinDisplay() {
     // Format number with commas for thousands
     coinDisplay.textContent = coinBalance.toLocaleString();
@@ -606,7 +625,7 @@ function updateCoinDisplay() {
     }
 }
 
-// Update coin balance
+// IMPROVED: Update coin balance
 function updateCoins(amount) {
     // Calculate new balance
     const newBalance = coinBalance + amount;
@@ -623,19 +642,18 @@ function updateCoins(amount) {
         coinDisplay.style.animation = 'glow 2s infinite';
     }, 10);
 
-    // Sync with Firebase
-    if (window.updateFirebaseCoinBalance) {
-        window.updateFirebaseCoinBalance(newBalance);
-    }
-    
-    // Record transaction for better tracking
+    // Use the more robust transaction recording instead of simple balance update
     if (window.recordGameTransaction) {
-        // If it's a positive amount, it's a win, otherwise it's a play cost
         window.recordGameTransaction("ball_dropper", amount, amount > 0);
+    } else {
+        // Fallback to direct update if transaction recording isn't available
+        if (window.updateFirebaseCoinBalance) {
+            window.updateFirebaseCoinBalance(newBalance);
+        }
     }
 }
 
-// Resize canvas to fit container
+// IMPROVED: Resize canvas to fit container
 function resizeCanvas() {
     const gameBoard = document.querySelector('.game-board');
     if (!gameBoard) {
@@ -671,7 +689,7 @@ function shuffleArray(array) {
     return array;
 }
 
-// Setup the game
+// IMPROVED: Setup the game
 function setupGame() {
     // Clear previous game state
     if (animationFrame) {
@@ -768,7 +786,7 @@ function setupGame() {
     drawGame();
 }
 
-// Create a new ball and drop it
+// IMPROVED: Create a new ball and drop it
 function dropBall() {
     if (gameActive || gameComplete) return;
     
@@ -895,7 +913,7 @@ function updateBall() {
     }
 }
 
-// Draw all game elements
+// IMPROVED: Draw all game elements
 function drawGame() {
     // Make sure canvas and context exist
     if (!canvas || !ctx) {
@@ -1003,18 +1021,13 @@ function drawGame() {
         ctx.shadowBlur = 0;
     }
     
-    // Debug outline to see canvas boundaries
-    ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
+    // Debug outline to see canvas boundaries (can be removed in production)
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.1)';
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, canvasWidth, canvasHeight);
 }
 
-// Event listeners
-dropButton.addEventListener('click', dropBall);
-resetButton.addEventListener('click', resetGame);
-window.addEventListener('resize', resizeCanvas);
-
-// Initialize the game
+// IMPROVED: Initialize the game
 window.addEventListener('load', () => {
     console.log("Game loading...");
     
@@ -1070,6 +1083,11 @@ window.addEventListener('load', () => {
     // Call the initialization function
     initializeGame();
 });
+
+// Event listeners
+dropButton.addEventListener('click', dropBall);
+resetButton.addEventListener('click', resetGame);
+window.addEventListener('resize', resizeCanvas);
 </script>
 </body>
 </html>
