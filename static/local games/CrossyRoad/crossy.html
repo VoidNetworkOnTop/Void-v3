@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>The Void Games - Crossy Road</title>
+   
+   <!-- Favicon -->
+   <link rel="shortcut icon" href="./assets/favicon.png" type="image/png">
+   
+   <style>
+       body, html {
+           margin: 0;
+           padding: 0;
+           width: 100%;
+           height: 100%;
+           background: #000;
+           color: #fff;
+           font-family: Arial, sans-serif;
+           overflow: hidden;
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           justify-content: center;
+       }
+
+       .game-container {
+           background: #000;
+           border-radius: 10px;
+           width: 90%;
+           max-width: 800px;
+           height: 90vh;
+           max-height: 800px;
+           display: flex;
+           flex-direction: column;
+           position: relative;
+           padding: 1rem;
+           box-shadow: 
+               0 0 2px #fff,
+               0 0 4px #fff,
+               0 0 6px #fff,
+               0 0 8px #fff,
+               inset 0 0 2px rgba(255, 255, 255, 0.2);
+           z-index: 3;
+       }
+
+       .game-container::before {
+           content: '';
+           position: absolute;
+           inset: -1px;
+           background: transparent;
+           border-radius: 10px;
+           z-index: -1;
+           box-shadow: 
+               0 0 15px #fff,
+               0 0 30px rgba(255, 255, 255, 0.8),
+               0 0 40px rgba(255, 255, 255, 0.6),
+               0 0 50px rgba(255, 255, 255, 0.4);
+           opacity: 0.5;
+       }
+
+       .game-header {
+           text-align: center;
+           padding-bottom: 1rem;
+           border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+           position: relative;
+       }
+
+       .game-title {
+           font-size: 2rem;
+           margin: 0 0 0.5rem 0;
+           background: linear-gradient(45deg, #fff, #a0a0a0);
+           -webkit-background-clip: text;
+           -webkit-text-fill-color: transparent;
+           font-weight: bold;
+           text-transform: uppercase;
+           letter-spacing: 2px;
+       }
+
+       .game-subtitle {
+           font-size: 1rem;
+           color: #888;
+           margin: 0;
+       }
+
+       .coin-tracker {
+           position: absolute;
+           top: 0;
+           right: 0;
+           background: linear-gradient(135deg, #333, #222);
+           border: 1px solid rgba(255, 255, 255, 0.3);
+           border-radius: 30px;
+           padding: 0.5rem 1rem;
+           display: flex;
+           align-items: center;
+           gap: 0.5rem;
+           box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+           animation: glow 2s infinite;
+       }
+
+       .coin-icon {
+           width: 20px;
+           height: 20px;
+           background: linear-gradient(135deg, #FFD700, #FFA500);
+           border-radius: 50%;
+           box-shadow: 0 0 5px rgba(255, 215, 0, 0.8);
+       }
+
+       .coin-amount {
+           font-weight: bold;
+           font-size: 1.1rem;
+           color: #FFD700;
+       }
+
+       .game-board {
+           flex-grow: 1;
+           position: relative;
+           overflow: hidden;
+           display: flex;
+           flex-direction: column;
+           background-color: rgba(0, 0, 0, 0.5);
+           border-radius: 8px;
+           margin: 1rem 0;
+           min-height: 60vh;
+       }
+
+       #game-canvas {
+           position: absolute;
+           top: 0;
+           left: 0;
+           width: 100%;
+           height: 100%;
+           background: #1a1a1a;
+           z-index: 1;
+           display: block;
+       }
+
+       .game-overlay {
+           position: absolute;
+           top: 0;
+           left: 0;
+           width: 100%;
+           height: 100%;
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           justify-content: center;
+           background: rgba(0, 0, 0, 0.7);
+           z-index: 10;
+           opacity: 0;
+           pointer-events: none;
+           transition: opacity 0.3s ease;
+       }
+
+       .game-overlay.visible {
+           opacity: 1;
+           pointer-events: all;
+       }
+
+       .overlay-content {
+           text-align: center;
+           padding: 2rem;
+           background: rgba(0, 0, 0, 0.8);
+           border-radius: 10px;
+           border: 1px solid rgba(255, 255, 255, 0.2);
+           box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+       }
+
+       .overlay-title {
+           font-size: 2.5rem;
+           margin-bottom: 1rem;
+           text-transform: uppercase;
+           letter-spacing: 2px;
+       }
+
+       .overlay-title.win {
+           color: #4caf50;
+           text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+       }
+
+       .overlay-title.lose {
+           color: #f44336;
+           text-shadow: 0 0 10px rgba(244, 67, 54, 0.5);
+       }
+
+       .overlay-message {
+           font-size: 1.2rem;
+           margin-bottom: 2rem;
+           color: #ddd;
+       }
+
+       .controls {
+           display: flex;
+           justify-content: center;
+           align-items: center;
+           padding: 1rem 0;
+           gap: 1rem;
+       }
+
+       .game-btn {
+           padding: 0.75rem 2rem;
+           font-size: 1.2rem;
+           background: linear-gradient(135deg, #333, #222);
+           color: #fff;
+           border: 1px solid rgba(255, 255, 255, 0.3);
+           border-radius: 30px;
+           cursor: pointer;
+           box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+           transition: all 0.3s ease;
+           text-transform: uppercase;
+           letter-spacing: 2px;
+           font-weight: bold;
+       }
+
+       .game-btn:hover {
+           background: linear-gradient(135deg, #444, #333);
+           transform: translateY(-2px);
+           box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+       }
+
+       .game-btn:active {
+           transform: translateY(1px);
+       }
+
+       .game-btn:disabled {
+           opacity: 0.5;
+           cursor: not-allowed;
+           background: linear-gradient(135deg, #444, #333);
+       }
+       
+       .game-btn.insufficient {
+           background: linear-gradient(135deg, #800, #600);
+           color: #ffcccc;
+       }
+
+       .restart-btn {
+           padding: 0.75rem 1.5rem;
+           font-size: 1rem;
+           background: linear-gradient(135deg, #222, #111);
+           color: #888;
+           border: 1px solid rgba(255, 255, 255, 0.1);
+           border-radius: 30px;
+           cursor: pointer;
+           transition: all 0.3s ease;
+           text-transform: uppercase;
+           letter-spacing: 1px;
+       }
+
+       .restart-btn:hover {
+           color: #fff;
+           border-color: rgba(255, 255, 255, 0.3);
+       }
+
+       .score-display {
+           text-align: center;
+           margin-top: 1rem;
+           font-size: 1.2rem;
+           height: 1.5rem;
+       }
+
+       .win-amount {
+           font-weight: bold;
+           font-size: 1.4rem;
+           color: #4caf50;
+       }
+
+       .lose-amount {
+           font-weight: bold;
+           font-size: 1.4rem;
+           color: #f44336;
+       }
+
+       .back-link {
+           margin-top: 1rem;
+           color: rgba(255, 255, 255, 0.7);
+           text-decoration: none;
+           font-size: 0.9rem;
+           transition: color 0.3s ease;
+       }
+
+       .back-link:hover {
+           color: #fff;
+           text-decoration: underline;
+       }
+
+       .controls-info {
+           position: absolute;
+           bottom: 10px;
+           left: 50%;
+           transform: translateX(-50%);
+           font-size: 0.9rem;
+           color: rgba(255, 255, 255, 0.6);
+           text-align: center;
+           padding: 5px 10px;
+           background: rgba(0, 0, 0, 0.5);
+           border-radius: 20px;
+       }
+
+       @media (max-width: 768px) {
+           .game-container {
+               width: 95%;
+               height: 80vh;
+           }
+           
+           .game-title {
+               font-size: 1.5rem;
+           }
+           
+           .game-btn, .restart-btn {
+               padding: 0.6rem 1.5rem;
+               font-size: 1rem;
+           }
+
+           .coin-tracker {
+               padding: 0.3rem 0.8rem;
+           }
+
+           .coin-icon {
+               width: 16px;
+               height: 16px;
+           }
+
+           .coin-amount {
+               font-size: 0.9rem;
+           }
+       }
+
+       /* Special Effects */
+       @keyframes glow {
+           0% { filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.7)); }
+           50% { filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.9)); }
+           100% { filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.7)); }
+       }
+   </style>
+</head>
+
+<body>
+   <div class="game-container">
+       <div class="game-header">
+           <h1 class="game-title">Crossy Road</h1>
+           <p class="game-subtitle">Cross all 10 roads without getting hit</p>
+           <div class="coin-tracker">
+               <div class="coin-icon"></div>
+               <span class="coin-amount" id="coinDisplay">0</span>
+           </div>
+       </div>
+       
+       <div class="game-board">
+           <canvas id="game-canvas"></canvas>
+           <div class="controls-info">Use arrow keys or WASD to move</div>
+           
+           <!-- Start Screen Overlay -->
+           <div class="game-overlay visible" id="start-screen">
+               <div class="overlay-content">
+                   <h2 class="overlay-title">Crossy Road</h2>
+                   <p class="overlay-message">Cross all 10 roads without getting hit.<br>Cost to play: 5 coins</p>
+                   <button id="start-btn" class="game-btn">Start Game</button>
+               </div>
+           </div>
+           
+           <!-- Game Over Overlay -->
+           <div class="game-overlay" id="game-over-screen">
+               <div class="overlay-content">
+                   <h2 class="overlay-title lose">Game Over</h2>
+                   <p class="overlay-message">You were hit by a car!<br>Lost: <span class="lose-amount">10 coins</span></p>
+                   <button id="restart-btn" class="game-btn">Play Again</button>
+               </div>
+           </div>
+           
+           <!-- Win Overlay -->
+           <div class="game-overlay" id="win-screen">
+               <div class="overlay-content">
+                   <h2 class="overlay-title win">You Won!</h2>
+                   <p class="overlay-message">You crossed all 10 roads!<br>Reward: <span class="win-amount">25 coins</span></p>
+                   <button id="continue-btn" class="game-btn">Play Again</button>
+               </div>
+           </div>
+       </div>
+       
+       <div class="score-display" id="scoreDisplay">Level: 1/10</div>
+       
+       <div class="controls">
+           <button id="back-btn" class="restart-btn">Back to Games</button>
+       </div>
+   </div>
+   
+   <a href="index.html" class="back-link">← Return to Void Network</a>
+
+   <!-- Firebase SDK -->
+   <script type="module">
+       // Firebase Imports
+       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+       import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+       import { getFirestore, doc, getDoc, updateDoc, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+
+       // Firebase Configuration
+       const firebaseConfig = {
+           apiKey: "AIzaSyB04yFuvFnJrTa4FYgvRIUJFp0Qvk9JHDQ",
+           authDomain: "void-network-games.firebaseapp.com",
+           projectId: "void-network-games",
+           storageBucket: "void-network-games.appspot.com",
+           messagingSenderId: "878896483861",
+           appId: "1:878896483861:web:a876f521a8fc0faed0881c",
+           measurementId: "G-0PV8WC36X7"
+       };
+
+       // Initialize Firebase
+       const app = initializeApp(firebaseConfig);
+       const auth = getAuth(app);
+       const db = getFirestore(app);
+
+       // Authentication and Coin Management
+       let currentUser = null;
+       let firebaseCoinBalance = 0;
+
+       // Authentication State Listener
+       onAuthStateChanged(auth, async (user) => {
+           if (user) {
+               // User is signed in
+               currentUser = user;
+               console.log("User signed in:", user.uid);
+               await loadFirebaseCoinBalance();
+           } else {
+               // No user is signed in
+               currentUser = null;
+               console.log("No user signed in");
+               showLoginPrompt();
+           }
+       });
+
+       // Load Coin Balance from Firebase
+       async function loadFirebaseCoinBalance() {
+           if (!currentUser) {
+               console.log("No user available to load balance");
+               return;
+           }
+
+           try {
+               console.log("Loading balance for user:", currentUser.uid);
+               
+               // Use currentUser.uid and force server data retrieval
+               const userRef = doc(db, 'users', currentUser.uid);
+               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
+
+               if (userDoc.exists()) {
+                   // Get coin balance from Firestore
+                   const userData = userDoc.data();
+                   
+                   // IMPORTANT: Use accountBalance field for consistency with main page
+                   firebaseCoinBalance = userData.accountBalance || 0;
+                   
+                   console.log("Loaded balance from Firebase:", firebaseCoinBalance);
+                   
+                   // Update local coin display and game state
+                   window.coinBalance = firebaseCoinBalance;
+                   
+                   // Make sure the global variable is also set
+                   coinBalance = firebaseCoinBalance;
+                   
+                   // Update UI and game state
+                   window.updateCoinDisplay();
+                   
+                   // Enable/disable start button based on balance
+                   const startBtn = document.getElementById('start-btn');
+                   if (startBtn) {
+                       if (coinBalance < 5) {
+                           startBtn.disabled = true;
+                           startBtn.classList.add('insufficient');
+                           startBtn.textContent = "Need 5 Coins";
+                       } else {
+                           startBtn.disabled = false;
+                           startBtn.classList.remove('insufficient');
+                           startBtn.textContent = "Start Game";
+                       }
+                   }
+                   
+                   console.log("Updated local balance:", coinBalance);
+                   return firebaseCoinBalance;
+               } else {
+                   console.log("User document doesn't exist, creating new one");
+                   // Create initial balance if no document exists
+                   await setDoc(userRef, { 
+                     accountBalance: 1000,
+                     username: currentUser.displayName || "Player",
+                     email: currentUser.email,
+                     createdAt: new Date(),
+                     totalGamesPlayed: 0,
+                     totalMoneySpent: 0,
+                     totalMoneyEarned: 0
+                   });
+                   
+                   firebaseCoinBalance = 1000;
+                   window.coinBalance = 1000;
+                   coinBalance = 1000;
+                   window.updateCoinDisplay();
+                   return 1000;
+               }
+           } catch (error) {
+               console.error("Error loading coin balance:", error);
+               showLoginPrompt();
+               return 0;
+           }
+       }
+
+       // Update Coin Balance in Firebase
+       async function updateFirebaseCoinBalance(newBalance) {
+           if (!currentUser) {
+               console.log("No user available to update balance");
+               return false;
+           }
+
+           try {
+               console.log("Updating balance for user:", currentUser.uid, "New balance:", newBalance);
+               
+               // Get the current document first to make sure we're updating the latest data
+               const userRef = doc(db, 'users', currentUser.uid);
+               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
+               
+               if (!userDoc.exists()) {
+                   console.error("Cannot update non-existent user document");
+                   return false;
+               }
+               
+               // Update with the exact same field format as the main page
+               await updateDoc(userRef, { 
+                   accountBalance: newBalance 
+               });
+               
+               firebaseCoinBalance = newBalance;
+               console.log("Firebase balance updated successfully");
+               
+               return true;
+           } catch (error) {
+               console.error("Error updating coin balance:", error);
+               return false;
+           }
+       }
+
+       // Record Game Transaction for better tracking
+       async function recordGameTransaction(gameId, amount, isWin) {
+           if (!currentUser) return;
+
+           try {
+               // Create transaction record with consistent data format
+               const transactionRef = doc(collection(db, 'transactions'));
+               await setDoc(transactionRef, {
+                   userId: currentUser.uid,
+                   gameId: gameId,
+                   transactionType: isWin ? 'game_win' : 'game_play',
+                   amount: Math.abs(amount),
+                   timestamp: new Date()
+               });
+
+               // Get latest user data from server
+               const userRef = doc(db, 'users', currentUser.uid);
+               const userDoc = await getDoc(userRef, { source: 'server' });
+               
+               if (userDoc.exists()) {
+                   const userData = userDoc.data();
+                   let updatedBalance = userData.accountBalance || 0;
+                   
+                   // Calculate new balance
+                   if (isWin) {
+                       updatedBalance += amount;
+                       userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
+                   } else {
+                       updatedBalance -= Math.abs(amount);
+                       userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
+                       userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
+                   }
+
+                   // Update firebase and local state consistently
+                   await updateDoc(userRef, {
+                       accountBalance: updatedBalance,
+                       totalGamesPlayed: userData.totalGamesPlayed || 0,
+                       totalMoneySpent: userData.totalMoneySpent || 0,
+                       totalMoneyEarned: userData.totalMoneyEarned || 0
+                   });
+                   
+                   // Make sure local state is synced with Firebase
+                   coinBalance = updatedBalance;
+                   firebaseCoinBalance = updatedBalance;
+                   
+                   // Update display
+                   updateCoinDisplay();
+                   
+                   return {
+                       transactionId: transactionRef.id,
+                       newBalance: updatedBalance
+                   };
+               }
+           } catch (error) {
+               console.error("Transaction Error:", error);
+           }
+       }
+
+       // Show Login Prompt
+       function showLoginPrompt() {
+           // Create a modal overlay
+           const overlay = document.createElement('div');
+           overlay.style.position = 'fixed';
+           overlay.style.top = '0';
+           overlay.style.left = '0';
+           overlay.style.width = '100%';
+           overlay.style.height = '100%';
+           overlay.style.background = 'rgba(0,0,0,0.8)';
+           overlay.style.display = 'flex';
+           overlay.style.justifyContent = 'center';
+           overlay.style.alignItems = 'center';
+           overlay.style.zIndex = '1000';
+
+           const modalContent = document.createElement('div');
+           modalContent.style.background = '#222';
+           modalContent.style.padding = '2rem';
+           modalContent.style.borderRadius = '10px';
+           modalContent.style.textAlign = 'center';
+           modalContent.style.color = 'white';
+
+           modalContent.innerHTML = `
+               <h2>Login Required</h2>
+               <p>Please log in to play Crossy Road and track your coins.</p>
+               <div>
+                   <button id="loginBtn" style="
+                       background: #4CAF50;
+                       color: white;
+                       border: none;
+                       padding: 10px 20px;
+                       margin: 10px;
+                       border-radius: 5px;
+                       cursor: pointer;
+                   ">Go to Login</button>
+                   <button id="cancelBtn" style="
+                       background: #f44336;
+                       color: white;
+                       border: none;
+                       padding: 10px 20px;
+                       margin: 10px;
+                       border-radius: 5px;
+                       cursor: pointer;
+                   ">Cancel</button>
+               </div>
+           `;
+
+           overlay.appendChild(modalContent);
+           document.body.appendChild(overlay);
+
+           // Add event listeners
+           document.getElementById('loginBtn').addEventListener('click', () => {
+               // Redirect to main page where login is possible
+               window.location.href = 'index.html';
+           });
+
+           document.getElementById('cancelBtn').addEventListener('click', () => {
+               document.body.removeChild(overlay);
+               // Disable game interactions
+               const startBtn = document.getElementById('start-btn');
+               if (startBtn) {
+                   startBtn.disabled = true;
+                   startBtn.textContent = 'Login to Play';
+               }
+           });
+       }
+
+       // Attach functions to window for game script access
+       window.loadFirebaseCoinBalance = loadFirebaseCoinBalance;
+       window.updateFirebaseCoinBalance = updateFirebaseCoinBalance;
+       window.recordGameTransaction = recordGameTransaction;
+       window.showLoginPrompt = showLoginPrompt;
+       window.currentUser = currentUser;
+   </script>
+
+   <script>
+// Game Configuration
+const GAME_CONFIG = {
+    startCost: 5,           // Cost to start the game
+    deathPenalty: 10,       // Coins lost on death
+    winReward: 25,          // Coins earned on win
+    totalRoads: 10,         // Number of roads to cross to win
+    playerSize: 20,         // Size of player square
+    roadHeight: 60,         // Height of each road
+    safeZoneHeight: 60,     // Height of safe zones between roads
+    carMinSpeed: 2,         // Minimum car speed
+    carMaxSpeed: 6,         // Maximum car speed
+    carWidth: 60,           // Width of cars
+    carHeight: 30,          // Height of cars
+    carSpawnRate: 0.015,    // Chance of car spawning each frame (0-1)
+    gameId: 'crossy_road'   // ID for Firebase transactions
+};
+
+// Game state
+let canvas, ctx;
+let canvasWidth, canvasHeight;
+let player;
+let roads = [];
+let cars = [];
+let gameActive = false;
+let currentLevel = 0;
+let gameOver = false;
+let gameWon = false;
+let coinBalance = 0;
+let animationFrame;
+let keysPressed = {};
+
+// DOM elements
+const scoreDisplay = document.getElementById('scoreDisplay');
+const coinDisplay = document.getElementById('coinDisplay');
+const startScreen = document.getElementById('start-screen');
+const gameOverScreen = document.getElementById('game-over-screen');
+const winScreen = document.getElementById('win-screen');
+const startBtn = document.getElementById('start-btn');
+const restartBtn = document.getElementById('restart-btn');
+const continueBtn = document.getElementById('continue-btn');
+const backBtn = document.getElementById('back-btn');
+
+// Update coin display
+function updateCoinDisplay() {
+    coinDisplay.textContent = coinBalance.toLocaleString();
+    
+    // Update start button state based on balance
+    if (startBtn) {
+        if (coinBalance < GAME_CONFIG.startCost) {
+            startBtn.disabled = true;
+            startBtn.classList.add('insufficient');
+            startBtn.textContent = `Need ${GAME_CONFIG.startCost} Coins`;
+        } else {
+            startBtn.disabled = false;
+            startBtn.classList.remove('insufficient');
+            startBtn.textContent = "Start Game";
+        }
+    }
+}
+
+// Update coin balance (local)
+function updateCoins(amount) {
+    const newBalance = coinBalance + amount;
+    coinBalance = newBalance;
+    
+    console.log(`Updating coins: ${amount > 0 ? '+' : ''}${amount}, New balance: ${newBalance}`);
+    
+    // Update the display
+    updateCoinDisplay();
+    
+    // Record transaction in Firebase
+    if (window.recordGameTransaction) {
+        window.recordGameTransaction(GAME_CONFIG.gameId, amount, amount > 0);
+    } else {
+        // Fallback to direct update if transaction recording isn't available
+        if (window.updateFirebaseCoinBalance) {
+            window.updateFirebaseCoinBalance(newBalance);
+        }
+    }
+}
+
+// Initialize canvas
+function initCanvas() {
+    canvas = document.getElementById('game-canvas');
+    ctx = canvas.getContext('2d');
+    
+    const gameBoard = document.querySelector('.game-board');
+    if (!gameBoard) {
+        console.error("Game board element not found!");
+        return;
+    }
+    
+    // Get actual dimensions of the game board
+    canvasWidth = gameBoard.clientWidth;
+    canvasHeight = gameBoard.clientHeight;
+    
+    console.log("Setting canvas dimensions:", canvasWidth, "x", canvasHeight);
+    
+    // Set canvas dimensions
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    canvas.style.width = canvasWidth + "px";
+    canvas.style.height = canvasHeight + "px";
+}
+
+// Initialize game
+function initGame() {
+    // Deduct the cost to play
+    updateCoins(-GAME_CONFIG.startCost);
+    
+    // Set up player
+    player = {
+        x: canvasWidth / 2 - GAME_CONFIG.playerSize / 2,
+        y: canvasHeight - GAME_CONFIG.playerSize - 20,
+        width: GAME_CONFIG.playerSize,
+        height: GAME_CONFIG.playerSize,
+        speed: 5,
+        color: '#4CAF50'
+    };
+    
+    // Generate roads and safe zones
+    roads = [];
+    cars = [];
+    currentLevel = 0;
+    
+    // Create road layouts
+    const totalHeight = canvasHeight;
+    const roadAndSafeZoneHeight = GAME_CONFIG.roadHeight + GAME_CONFIG.safeZoneHeight;
+    const numRoadSections = Math.min(GAME_CONFIG.totalRoads, Math.floor(totalHeight / roadAndSafeZoneHeight));
+    
+    // Player starts at the bottom in a safe zone
+    let yPosition = canvasHeight - GAME_CONFIG.safeZoneHeight;
+    
+    // Create roads from bottom to top
+    for (let i = 0; i < numRoadSections; i++) {
+        // Add a road
+        roads.push({
+            y: yPosition - GAME_CONFIG.roadHeight,
+            height: GAME_CONFIG.roadHeight,
+            direction: Math.random() > 0.5 ? 1 : -1, // Random direction
+            speed: GAME_CONFIG.carMinSpeed + Math.random() * (GAME_CONFIG.carMaxSpeed - GAME_CONFIG.carMinSpeed),
+            // Difficulty scaling - more cars on later roads
+            spawnRate: GAME_CONFIG.carSpawnRate * (1 + i * 0.1)
+        });
+        
+        // Move up for next road
+        yPosition -= (GAME_CONFIG.roadHeight + GAME_CONFIG.safeZoneHeight);
+    }
+    
+    // Set game state
+    gameActive = true;
+    gameOver = false;
+    gameWon = false;
+    
+    // Update score display
+    updateScoreDisplay();
+    
+    // Start game loop
+    window.cancelAnimationFrame(animationFrame);
+    gameLoop();
+}
+
+// Update score display
+function updateScoreDisplay() {
+    scoreDisplay.textContent = `Level: ${currentLevel + 1}/${GAME_CONFIG.totalRoads}`;
+}
+
+// Spawn cars on roads
+function spawnCars() {
+    for (let i = 0; i < roads.length; i++) {
+        const road = roads[i];
+        
+        // Random chance to spawn a car based on the road's spawn rate
+        if (Math.random() < road.spawnRate) {
+            // Determine spawn position based on direction
+            let carX;
+            if (road.direction > 0) {
+                carX = -GAME_CONFIG.carWidth; // Spawn from left
+            } else {
+                carX = canvasWidth; // Spawn from right
+            }
+            
+            // Create car object
+            const car = {
+                x: carX,
+                y: road.y + (road.height - GAME_CONFIG.carHeight) / 2,
+                width: GAME_CONFIG.carWidth,
+                height: GAME_CONFIG.carHeight,
+                speed: road.speed * road.direction,
+                color: getRandomCarColor()
+            };
+            
+            cars.push(car);
+        }
+    }
+}
+
+// Get random car color
+function getRandomCarColor() {
+    const colors = ['#f44336', '#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4', '#009688'];
+    return colors[Math.floor(Math.random() * colors.length)];
+}
+
+// Move cars
+function moveCars() {
+    for (let i = cars.length - 1; i >= 0; i--) {
+        const car = cars[i];
+        car.x += car.speed;
+        
+        // Remove cars that are off-screen
+        if ((car.speed > 0 && car.x > canvasWidth) || (car.speed < 0 && car.x + car.width < 0)) {
+            cars.splice(i, 1);
+        }
+    }
+}
+
+// Move player
+function movePlayer() {
+    // Move based on key presses
+    if ((keysPressed['ArrowUp'] || keysPressed['w'] || keysPressed['W']) && player.y > 0) {
+        player.y -= player.speed;
+        checkLevelProgress();
+    }
+    
+    if ((keysPressed['ArrowDown'] || keysPressed['s'] || keysPressed['S']) && player.y + player.height < canvasHeight) {
+        player.y += player.speed;
+    }
+    
+    if ((keysPressed['ArrowLeft'] || keysPressed['a'] || keysPressed['A']) && player.x > 0) {
+        player.x -= player.speed;
+    }
+    
+    if ((keysPressed['ArrowRight'] || keysPressed['d'] || keysPressed['D']) && player.x + player.width < canvasWidth) {
+        player.x += player.speed;
+    }
+}
+
+// Check level progress
+function checkLevelProgress() {
+    // Calculate which level (road) the player is at
+    const roadAndSafeZoneHeight = GAME_CONFIG.roadHeight + GAME_CONFIG.safeZoneHeight;
+    const playerLevel = GAME_CONFIG.totalRoads - Math.floor(player.y / roadAndSafeZoneHeight);
+    
+    // Update current level if player has advanced
+    if (playerLevel > currentLevel) {
+        currentLevel = playerLevel;
+        updateScoreDisplay();
+        
+        // Check for win condition
+        if (currentLevel >= GAME_CONFIG.totalRoads) {
+            winGame();
+        }
+    }
+}
+
+// Check collisions
+function checkCollisions() {
+    for (const car of cars) {
+        if (
+            player.x < car.x + car.width &&
+            player.x + player.width > car.x &&
+            player.y < car.y + car.height &&
+            player.y + player.height > car.y
+        ) {
+            // Collision detected
+            gameOver = true;
+            gameActive = false;
+            
+            // Lose coins
+            updateCoins(-GAME_CONFIG.deathPenalty);
+            
+            // Show game over screen
+            gameOverScreen.classList.add('visible');
+            return;
+        }
+    }
+}
+
+// Win the game
+function winGame() {
+    gameWon = true;
+    gameActive = false;
+    
+    // Award coins
+    updateCoins(GAME_CONFIG.winReward);
+    
+    // Show win screen
+    winScreen.classList.add('visible');
+}
+
+// Draw game elements
+function drawGame() {
+    // Clear canvas
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    
+    // Draw roads and safe zones
+    for (let i = 0; i < roads.length; i++) {
+        const road = roads[i];
+        
+        // Draw road
+        ctx.fillStyle = '#333';
+        ctx.fillRect(0, road.y, canvasWidth, road.height);
+        
+        // Draw road markings
+        ctx.setLineDash([20, 10]);
+        ctx.beginPath();
+        ctx.moveTo(0, road.y + road.height / 2);
+        ctx.lineTo(canvasWidth, road.y + road.height / 2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        // Draw direction indicator
+        const arrowSize = 10;
+        const arrowX = road.direction > 0 ? 20 : canvasWidth - 20;
+        const arrowY = road.y + road.height / 2;
+        
+        ctx.beginPath();
+        if (road.direction > 0) {
+            // Right arrow
+            ctx.moveTo(arrowX - arrowSize, arrowY - arrowSize);
+            ctx.lineTo(arrowX + arrowSize, arrowY);
+            ctx.lineTo(arrowX - arrowSize, arrowY + arrowSize);
+        } else {
+            // Left arrow
+            ctx.moveTo(arrowX + arrowSize, arrowY - arrowSize);
+            ctx.lineTo(arrowX - arrowSize, arrowY);
+            ctx.lineTo(arrowX + arrowSize, arrowY + arrowSize);
+        }
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+    }
+    
+    // Draw cars
+    for (const car of cars) {
+        ctx.fillStyle = car.color;
+        ctx.fillRect(car.x, car.y, car.width, car.height);
+        
+        // Add headlights
+        if (car.speed > 0) {
+            // Moving right - headlights on the right
+            ctx.fillStyle = 'rgba(255, 255, 150, 0.8)';
+            ctx.fillRect(car.x + car.width - 5, car.y + 5, 5, 5);
+            ctx.fillRect(car.x + car.width - 5, car.y + car.height - 10, 5, 5);
+        } else {
+            // Moving left - headlights on the left
+            ctx.fillStyle = 'rgba(255, 255, 150, 0.8)';
+            ctx.fillRect(car.x, car.y + 5, 5, 5);
+            ctx.fillRect(car.x, car.y + car.height - 10, 5, 5);
+        }
+    }
+    
+    // Draw player
+    ctx.fillStyle = player.color;
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+    
+    // Add player details (eyes)
+    ctx.fillStyle = '#000';
+    const eyeSize = 4;
+    ctx.fillRect(player.x + player.width / 4 - eyeSize / 2, player.y + player.height / 3, eyeSize, eyeSize);
+    ctx.fillRect(player.x + 3 * player.width / 4 - eyeSize / 2, player.y + player.height / 3, eyeSize, eyeSize);
+}
+
+// Game loop
+function gameLoop() {
+    if (gameActive) {
+        // Game logic
+        spawnCars();
+        moveCars();
+        movePlayer();
+        checkCollisions();
+        
+        // Draw game
+        drawGame();
+        
+        // Continue game loop
+        animationFrame = requestAnimationFrame(gameLoop);
+    }
+}
+
+// Event Listeners
+document.addEventListener('keydown', (e) => {
+    keysPressed[e.key] = true;
+    
+    // Prevent scrolling when using arrow keys
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.key)) {
+        e.preventDefault();
+    }
+});
+
+document.addEventListener('keyup', (e) => {
+    keysPressed[e.key] = false;
+});
+
+startBtn.addEventListener('click', () => {
+    if (coinBalance >= GAME_CONFIG.startCost) {
+        startScreen.classList.remove('visible');
+        initGame();
+    } else {
+        alert(`You need at least ${GAME_CONFIG.startCost} coins to play!`);
+    }
+});
+
+restartBtn.addEventListener('click', () => {
+    if (coinBalance >= GAME_CONFIG.startCost) {
+        gameOverScreen.classList.remove('visible');
+        initGame();
+    } else {
+        alert(`You need at least ${GAME_CONFIG.startCost} coins to play!`);
+        gameOverScreen.classList.remove('visible');
+        startScreen.classList.add('visible');
+    }
+});
+
+continueBtn.addEventListener('click', () => {
+    if (coinBalance >= GAME_CONFIG.startCost) {
+        winScreen.classList.remove('visible');
+        initGame();
+    } else {
+        alert(`You need at least ${GAME_CONFIG.startCost} coins to play!`);
+        winScreen.classList.remove('visible');
+        startScreen.classList.add('visible');
+    }
+});
+
+backBtn.addEventListener('click', () => {
+    window.location.href = 'index.html';
+});
+
+// Add window focus event to stop game when tabbing away
+window.addEventListener('blur', () => {
+    // Clear all key presses to prevent stuck movement
+    keysPressed = {};
+});
+
+// Initialize on load
+window.addEventListener('load', () => {
+    console.log("Crossy Road game initializing...");
+    
+    // Initialize canvas
+    initCanvas();
+    
+    // Add resize event listener
+    window.addEventListener('resize', () => {
+        initCanvas();
+        if (gameActive) {
+            drawGame();
+        }
+    });
+    
+    // Check if user is already signed in
+    const initializer = async () => {
+        if (window.currentUser) {
+            console.log("User already authenticated on load");
+            await window.loadFirebaseCoinBalance();
+        } else if (window.loadFirebaseCoinBalance) {
+            await window.loadFirebaseCoinBalance();
+        } else {
+            // Set initial coin balance for testing if Firebase is not connected
+            coinBalance = 1000;
+            updateCoinDisplay();
+        }
+    };
+    
+    initializer();
+});
+</script>
+</body>
+</html>
