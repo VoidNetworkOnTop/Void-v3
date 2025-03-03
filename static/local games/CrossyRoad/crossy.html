@@ -762,291 +762,697 @@
        </div>
    </div>
    
-   
-   <!-- Firebase SDK -->
-   <script type="module">
-       // Firebase Imports
-       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-       import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-       import { getFirestore, doc, getDoc, updateDoc, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+   <script>
+// Game Configuration
+const GAME_CONFIG = {
+    startCost: 5,           // Cost to start the game
+    playerSize: 40,         // Size of player (chicken)
+    laneCount: 100,         // Number of lanes to pre-generate
+    laneWidth: 100,         // Width of each lane
+    cameraOffset: 300,      // Keep the player this many pixels from the left edge
+    surviveProbability: 0.7, // 70% chance to survive (30% to die)
+    baseMultiplier: 2.00,   // Base multiplier for first lane (where chicken starts)
+    multiplierStep: 0.40,   // Increase in multiplier per lane
+    gameId: 'lucky_chicken'  // ID for Firebase transactions
+};
 
-       // Firebase Configuration
-       const firebaseConfig = {
-           apiKey: "AIzaSyB04yFuvFnJrTa4FYgvRIUJFp0Qvk9JHDQ",
-           authDomain: "void-network-games.firebaseapp.com",
-           projectId: "void-network-games",
-           storageBucket: "void-network-games.appspot.com",
-           messagingSenderId: "878896483861",
-           appId: "1:878896483861:web:a876f521a8fc0faed0881c",
-           measurementId: "G-0PV8WC36X7"
-       };
+// Game state
+let canvas, ctx;
+let canvasWidth, canvasHeight;
+let chickenElem;
+let gameWorld;
+let gameActive = false;
+let currentLane = 0;
+let gameOver = false;
+let coinBalance = 1000; // Start with 1000 coins by default
+let animationFrame;
+let totalCoinsWon = 0;
+let clickCoin = null;
+let viewportWidth = 0;
+let currentBet = 5;
 
-       // Initialize Firebase
-       const app = initializeApp(firebaseConfig);
-       const auth = getAuth(app);
-       const db = getFirestore(app);
+// DOM elements
+const scoreDisplay = document.getElementById('scoreDisplay');
+const coinDisplay = document.getElementById('coinDisplay');
+const nextRewardDisplay = document.getElementById('next-reward');
+const startScreen = document.getElementById('start-screen');
+const gameOverScreen = document.getElementById('game-over-screen');
+const cashoutScreen = document.getElementById('cashout-screen');
+const startBtn = document.getElementById('start-btn');
+const restartBtn = document.getElementById('restart-btn');
+const backBtn = document.getElementById('back-btn');
+const cashoutBtn = document.getElementById('cashout-btn');
+const playAgainBtn = document.getElementById('play-again-btn');
+const betAmountInput = document.getElementById('bet-amount');
+const decreaseBetBtn = document.getElementById('decrease-bet');
+const increaseBetBtn = document.getElementById('increase-bet');
 
-       // Authentication and Coin Management
-       let currentUser = null;
-       let firebaseCoinBalance = 0;
+// Update coin display
+function updateCoinDisplay() {
+    coinDisplay.textContent = coinBalance.toLocaleString();
+    
+    // Update start button appearance
+    if (startBtn) {
+        if (coinBalance < currentBet) {
+            startBtn.classList.add('insufficient');
+            startBtn.textContent = `Play (Negative Balance)`;
+        } else {
+            startBtn.classList.remove('insufficient');
+            startBtn.textContent = "Start Game";
+        }
+    }
+}
 
-       // Authentication State Listener
-       onAuthStateChanged(auth, async (user) => {
-           if (user) {
-               // User is signed in
-               currentUser = user;
-               console.log("User signed in:", user.uid);
-               await loadFirebaseCoinBalance();
-           } else {
-               // No user is signed in
-               currentUser = null;
-               console.log("No user signed in");
-               showLoginPrompt();
-           }
-       });
+// Update coin balance (local)
+function updateCoins(amount) {
+    coinBalance += amount;
+    updateCoinDisplay();
+}
 
-       // Load Coin Balance from Firebase
-       async function loadFirebaseCoinBalance() {
-           if (!currentUser) {
-               console.log("No user available to load balance");
-               return;
-           }
+// Initialize canvas
+function initCanvas() {
+    canvas = document.getElementById('game-canvas');
+    ctx = canvas.getContext('2d');
+    
+    const gameBoard = document.querySelector('.game-board');
+    if (!gameBoard) {
+        console.error("Game board element not found!");
+        return;
+    }
+    
+    // Get actual dimensions of the game board
+    canvasWidth = gameBoard.clientWidth;
+    canvasHeight = gameBoard.clientHeight;
+    
+    // Set canvas dimensions
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    canvas.style.width = canvasWidth + "px";
+    canvas.style.height = canvasHeight + "px";
+    
+    // Store viewport width for camera calculations
+    viewportWidth = canvasWidth;
+    
+    // Remove any existing event listeners to prevent duplicates
+    canvas.removeEventListener('click', handleCanvasClick);
+    
+    // Add canvas click listener
+    canvas.addEventListener('click', handleCanvasClick);
+}
 
-           try {
-               console.log("Loading balance for user:", currentUser.uid);
-               
-               // Use currentUser.uid and force server data retrieval
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
+// Initialize game
+function initGame() {
+    // Get current bet
+    currentBet = parseInt(betAmountInput.value, 10);
+    
+    // Deduct the bet amount
+    updateCoins(-currentBet);
+    
+    // Clear any existing elements
+    clearGameElements();
+    
+    // Get game world element
+    gameWorld = document.getElementById('game-lanes');
+    
+    // Initialize chicken element
+    chickenElem = document.getElementById('chicken');
+    chickenElem.style.width = `${GAME_CONFIG.playerSize}px`;
+    chickenElem.style.height = `${GAME_CONFIG.playerSize}px`;
+    
+    // Set chicken position in the first lane (2.00x multiplier lane)
+    chickenElem.style.left = `${GAME_CONFIG.laneWidth / 2 - GAME_CONFIG.playerSize / 2}px`;
+    chickenElem.style.top = `${canvasHeight / 2 - GAME_CONFIG.playerSize / 2}px`;
+    
+    // Set chicken image using CSS
+    chickenElem.style.background = 'url("data:image/svg+xml;charset=utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Cellipse cx=\'50\' cy=\'50\' rx=\'40\' ry=\'45\' fill=\'%23FFFFFF\'/%3E%3Ccircle cx=\'70\' cy=\'35\' r=\'8\' fill=\'%23000\'/%3E%3Cpath d=\'M80 40 L100 50 L80 60 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M30 70 L20 85 L30 85 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M70 70 L80 85 L70 85 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M70 10 L80 0 L90 10 Z\' fill=\'%23F44336\'/%3E%3C/svg%3E") center/contain no-repeat';
+    
+    // Create lanes
+    createLanes();
+    
+    // Create clickable coin
+    createClickCoin();
+    
+    // Reset game state
+    currentLane = 0;
+    totalCoinsWon = 0;
+    gameOver = false;
+    
+    // Show cashout button
+    cashoutBtn.style.display = 'block';
+    
+    // Set game state
+    gameActive = true;
+    
+    // Update multiplier highlights
+    updateMultiplierHighlights(currentLane);
+    
+    // Update camera position
+    updateCamera();
+    
+    // Update displays
+    updateScoreDisplay();
+    updateNextRewardDisplay();
+    
+    // Start game loop
+    window.cancelAnimationFrame(animationFrame);
+    gameLoop();
+}
 
-               if (userDoc.exists()) {
-                   // Get coin balance from Firestore
-                   const userData = userDoc.data();
-                   
-                   // IMPORTANT: Use accountBalance field for consistency with main page
-                   firebaseCoinBalance = userData.accountBalance || 0;
-                   
-                   console.log("Loaded balance from Firebase:", firebaseCoinBalance);
-                   
-                   // Update local coin display and game state
-                   window.coinBalance = firebaseCoinBalance;
-                   
-                   // Make sure the global variable is also set
-                   coinBalance = firebaseCoinBalance;
-                   
-                   // Update UI and game state
-                   window.updateCoinDisplay();
-                   
-                   // Update start button appearance (but always allow play)
-                   const startBtn = document.getElementById('start-btn');
-                   if (startBtn) {
-                       if (coinBalance < 5) {
-                           startBtn.classList.add('insufficient');
-                           startBtn.textContent = "Play (Negative Balance)";
-                       } else {
-                           startBtn.classList.remove('insufficient');
-                           startBtn.textContent = "Start Game";
-                       }
-                       
-                       // Always enable the button
-                       startBtn.disabled = false;
-                   }
-                   
-                   console.log("Updated local balance:", coinBalance);
-                   return firebaseCoinBalance;
-               } else {
-                   console.log("User document doesn't exist, creating new one");
-                   // Create initial balance if no document exists
-                   await setDoc(userRef, { 
-                     accountBalance: 1000,
-                     username: currentUser.displayName || "Player",
-                     email: currentUser.email,
-                     createdAt: new Date(),
-                     totalGamesPlayed: 0,
-                     totalMoneySpent: 0,
-                     totalMoneyEarned: 0
-                   });
-                   
-                   firebaseCoinBalance = 1000;
-                   window.coinBalance = 1000;
-                   coinBalance = 1000;
-                   window.updateCoinDisplay();
-                   return 1000;
-               }
-           } catch (error) {
-               console.error("Error loading coin balance:", error);
-               showLoginPrompt();
-               return 0;
-           }
-       }
+// Clear any existing game elements
+function clearGameElements() {
+    // Clear game world
+    if (gameWorld) {
+        gameWorld.innerHTML = '';
+    }
+    
+    // Remove existing coins
+    const existingCoins = document.querySelectorAll('.coin');
+    existingCoins.forEach(coin => coin.remove());
+    
+    // Remove existing cars
+    const existingCars = document.querySelectorAll('.car');
+    existingCars.forEach(car => car.remove());
+    
+    // Remove any particle effects
+    const existingParticles = document.querySelectorAll('.particle');
+    existingParticles.forEach(particle => particle.remove());
+    
+    // Remove any reward text animations
+    const rewardTexts = document.querySelectorAll('.reward-text');
+    rewardTexts.forEach(text => text.remove());
+}
 
-       // Update Coin Balance in Firebase
-       async function updateFirebaseCoinBalance(newBalance) {
-           if (!currentUser) {
-               console.log("No user available to update balance");
-               return false;
-           }
+// Create lanes
+function createLanes() {
+    for (let i = 0; i < GAME_CONFIG.laneCount; i++) {
+        // Create lane element
+        const lane = document.createElement('div');
+        lane.className = 'lane';
+        lane.dataset.index = i;
+        lane.style.width = `${GAME_CONFIG.laneWidth}px`;
+        
+        // Add multiplier display
+        const multiplier = document.createElement('div');
+        multiplier.className = 'multiplier';
+        
+        // Calculate multiplier value
+        const multiplierValue = (GAME_CONFIG.baseMultiplier + (i * GAME_CONFIG.multiplierStep)).toFixed(2);
+        multiplier.textContent = multiplierValue + '×';
+        
+        lane.appendChild(multiplier);
+        gameWorld.appendChild(lane);
+    }
+    
+    // Set initial width of game world
+    gameWorld.style.width = `${GAME_CONFIG.laneCount * GAME_CONFIG.laneWidth}px`;
+}
 
-           try {
-               console.log("Updating balance for user:", currentUser.uid, "New balance:", newBalance);
-               
-               // Get the current document first to make sure we're updating the latest data
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
-               
-               if (!userDoc.exists()) {
-                   console.error("Cannot update non-existent user document");
-                   return false;
-               }
-               
-               // Update with the exact same field format as the main page
-               await updateDoc(userRef, { 
-                   accountBalance: newBalance 
-               });
-               
-               firebaseCoinBalance = newBalance;
-               console.log("Firebase balance updated successfully");
-               
-               return true;
-           } catch (error) {
-               console.error("Error updating coin balance:", error);
-               return false;
-           }
-       }
+// Create clickable coin
+function createClickCoin() {
+    // Remove existing coin if there is one
+    if (clickCoin) {
+        clickCoin.remove();
+        clickCoin = null;
+    }
+    
+    // Only create a coin if there's a next lane available
+    if (currentLane + 1 >= GAME_CONFIG.laneCount) {
+        console.log("No more lanes ahead!");
+        return;
+    }
+    
+    // Create new coin
+    clickCoin = document.createElement('div');
+    clickCoin.className = 'coin';
+    
+    // Position coin in the next lane
+    const nextLaneX = (currentLane + 1) * GAME_CONFIG.laneWidth + GAME_CONFIG.laneWidth / 2 - 20;
+    const coinY = canvasHeight / 2 - 20;
+    
+    clickCoin.style.left = `${nextLaneX}px`;
+    clickCoin.style.top = `${coinY}px`;
+    
+    // Add data attribute for lane index
+    clickCoin.dataset.laneIndex = currentLane + 1;
+    
+    // Add click event
+    clickCoin.addEventListener('click', (e) => {
+        if (!gameActive) return;
+        e.stopPropagation();
+        
+        const clickedLaneIndex = parseInt(e.currentTarget.dataset.laneIndex);
+        tryToAdvance(clickedLaneIndex);
+    });
+    
+    // Add coin to game board
+    const gameBoard = document.querySelector('.game-board');
+    if (gameBoard) {
+        gameBoard.appendChild(clickCoin);
+    }
+}
 
-       // Record Game Transaction for better tracking
-       async function recordGameTransaction(gameId, amount, isWin) {
-           if (!currentUser) return;
+// Update camera position
+function updateCamera() {
+    if (!gameActive || !gameWorld) return;
+    
+    // Calculate camera position to keep chicken at fixed position from left
+    const targetX = currentLane * GAME_CONFIG.laneWidth - GAME_CONFIG.cameraOffset;
+    gameWorld.style.transform = `translateX(${-targetX}px)`;
+    
+    // Check if we need to generate more lanes
+    if (currentLane + 10 > GAME_CONFIG.laneCount) {
+        // Generate more lanes
+        const additionalLanes = 20;
+        for (let i = GAME_CONFIG.laneCount; i < GAME_CONFIG.laneCount + additionalLanes; i++) {
+            // Create lane element
+            const lane = document.createElement('div');
+            lane.className = 'lane';
+            lane.dataset.index = i;
+            lane.style.width = `${GAME_CONFIG.laneWidth}px`;
+            
+            // Add multiplier display
+            const multiplier = document.createElement('div');
+            multiplier.className = 'multiplier';
+            
+            // Calculate multiplier value
+            const multiplierValue = (GAME_CONFIG.baseMultiplier + (i * GAME_CONFIG.multiplierStep)).toFixed(2);
+            multiplier.textContent = multiplierValue + '×';
+            
+            lane.appendChild(multiplier);
+            gameWorld.appendChild(lane);
+        }
+        
+        // Update lane count and game world width
+        GAME_CONFIG.laneCount += additionalLanes;
+        gameWorld.style.width = `${GAME_CONFIG.laneCount * GAME_CONFIG.laneWidth}px`;
+    }
+}
 
-           try {
-               // Create transaction record with consistent data format
-               const transactionRef = doc(collection(db, 'transactions'));
-               await setDoc(transactionRef, {
-                   userId: currentUser.uid,
-                   gameId: gameId,
-                   transactionType: isWin ? 'game_win' : 'game_play',
-                   amount: Math.abs(amount),
-                   timestamp: new Date()
-               });
+// Try to advance to next lane
+function tryToAdvance(targetLaneIndex) {
+    if (!gameActive) return;
+    
+    // Check if the target lane is ahead of current lane
+    if (targetLaneIndex <= currentLane) {
+        console.log("Can only move forward!");
+        return;
+    }
+    
+    // Check if we survive (70% chance)
+    const roll = Math.random();
+    const survived = roll <= GAME_CONFIG.surviveProbability;
+    
+    if (survived) {
+        // Success! Move to next lane
+        const previousLane = currentLane;
+        currentLane = targetLaneIndex;
+        
+        // Update chicken position
+        chickenElem.style.left = `${currentLane * GAME_CONFIG.laneWidth + GAME_CONFIG.laneWidth / 2 - GAME_CONFIG.playerSize / 2}px`;
+        
+        // Calculate multiplier value
+        const multiplier = (GAME_CONFIG.baseMultiplier + (currentLane * GAME_CONFIG.multiplierStep)).toFixed(2);
+        const reward = Math.floor(currentBet * parseFloat(multiplier));
+        totalCoinsWon += reward;
+        
+        // Update multiplier highlights
+        updateMultiplierHighlights(currentLane);
+        
+        // Update camera position
+        updateCamera();
+        
+        // Create success animation
+        createSuccessAnimation();
+        
+        // Create new clickable coin
+        createClickCoin();
+        
+        // Update displays
+        updateScoreDisplay();
+        updateNextRewardDisplay();
+    } else {
+        // Failed! Game over
+        createCarAnimation(targetLaneIndex);
+        
+        // Allow time for car animation before showing game over
+        setTimeout(() => {
+            gameOver = true;
+            gameActive = false;
+            showGameOver();
+        }, 2000);
+    }
+}
 
-               // Get latest user data from server
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' });
-               
-               if (userDoc.exists()) {
-                   const userData = userDoc.data();
-                   let updatedBalance = userData.accountBalance || 0;
-                   
-                   // Calculate new balance
-                   if (isWin) {
-                       updatedBalance += amount;
-                       userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
-                   } else {
-                       updatedBalance -= Math.abs(amount);
-                       userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
-                       userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
-                   }
+// Update multiplier highlights
+function updateMultiplierHighlights(activeLaneIndex) {
+    const multipliers = document.querySelectorAll('.multiplier');
+    multipliers.forEach((multiplier, index) => {
+        if (index === activeLaneIndex) {
+            multiplier.classList.add('active-multiplier');
+        } else {
+            multiplier.classList.remove('active-multiplier');
+        }
+    });
+}
 
-                   // Update firebase and local state consistently
-                   await updateDoc(userRef, {
-                       accountBalance: updatedBalance,
-                       totalGamesPlayed: userData.totalGamesPlayed || 0,
-                       totalMoneySpent: userData.totalMoneySpent || 0,
-                       totalMoneyEarned: userData.totalMoneyEarned || 0
-                   });
-                   
-                   // Make sure local state is synced with Firebase
-                   coinBalance = updatedBalance;
-                   firebaseCoinBalance = updatedBalance;
-                   
-                   // Update display
-                   updateCoinDisplay();
-                   
-                   return {
-                       transactionId: transactionRef.id,
-                       newBalance: updatedBalance
-                   };
-               }
-           } catch (error) {
-               console.error("Transaction Error:", error);
-           }
-       }
+// Create car animation
+function createCarAnimation(targetLaneIndex) {
+    // Remove coin
+    if (clickCoin) {
+        clickCoin.remove();
+        clickCoin = null;
+    }
+    
+    // Calculate lane center
+    const laneCenter = targetLaneIndex * GAME_CONFIG.laneWidth + GAME_CONFIG.laneWidth / 2;
+    
+    // Create car elements (one from top, one from bottom)
+    const carTop = document.createElement('div');
+    carTop.className = 'car car-top';
+    carTop.style.left = `${laneCenter - 40}px`; // Center in lane
+    carTop.style.top = `-50px`;
+    
+    const carBottom = document.createElement('div');
+    carBottom.className = 'car car-bottom';
+    carBottom.style.left = `${laneCenter - 40}px`; // Center in lane
+    carBottom.style.bottom = `-50px`;
+    
+    // Add to game board
+    const gameBoard = document.querySelector('.game-board');
+    if (gameBoard) {
+        gameBoard.appendChild(carTop);
+        gameBoard.appendChild(carBottom);
+    }
+    
+    // No sound
+    
+    // Remove cars after animation completes
+    setTimeout(() => {
+        if (carTop && carTop.parentNode) {
+            carTop.parentNode.removeChild(carTop);
+        }
+        if (carBottom && carBottom.parentNode) {
+            carBottom.parentNode.removeChild(carBottom);
+        }
+    }, 2500);
+}
 
-       // Show Login Prompt
-       function showLoginPrompt() {
-           // Create a modal overlay
-           const overlay = document.createElement('div');
-           overlay.style.position = 'fixed';
-           overlay.style.top = '0';
-           overlay.style.left = '0';
-           overlay.style.width = '100%';
-           overlay.style.height = '100%';
-           overlay.style.background = 'rgba(0,0,0,0.8)';
-           overlay.style.display = 'flex';
-           overlay.style.justifyContent = 'center';
-           overlay.style.alignItems = 'center';
-           overlay.style.zIndex = '1000';
+// Create success animation
+function createSuccessAnimation() {
+    // Create particles for celebration
+    for (let i = 0; i < 20; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        
+        // Position at chicken
+        const chickenX = currentLane * GAME_CONFIG.laneWidth + GAME_CONFIG.laneWidth / 2;
+        const chickenY = canvasHeight / 2;
+        
+        particle.style.left = `${chickenX}px`;
+        particle.style.top = `${chickenY}px`;
+        
+        // Random size
+        const size = Math.random() * 6 + 3;
+        particle.style.width = `${size}px`;
+        particle.style.height = `${size}px`;
+        
+        // Gold/yellow colors for coins
+        const colors = ['#FFD700', '#FFC107', '#FFEB3B', '#FFECB3'];
+        particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+        
+        // Random direction
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 5 + 3;
+        const xVelocity = Math.cos(angle) * speed;
+        const yVelocity = Math.sin(angle) * speed;
+        
+        // Animation
+        particle.style.transition = 'all 0.8s ease-out';
+        
+        // Add to game world
+        gameWorld.appendChild(particle);
+        
+        // Animate
+        setTimeout(() => {
+            particle.style.left = `${chickenX + xVelocity * 40}px`;
+            particle.style.top = `${chickenY + yVelocity * 40}px`;
+            particle.style.opacity = '0';
+        }, 10);
+        
+        // Remove particles
+        setTimeout(() => {
+            if (particle.parentNode) {
+                particle.parentNode.removeChild(particle);
+            }
+        }, 1000);
+    }
+    
+    // No sound effects
+    
+    // Show reward animation
+    const multiplier = (GAME_CONFIG.baseMultiplier + (currentLane * GAME_CONFIG.multiplierStep)).toFixed(2);
+    const reward = Math.floor(currentBet * parseFloat(multiplier));
+    
+    const rewardText = document.createElement('div');
+    rewardText.className = 'reward-text';
+    rewardText.style.position = 'absolute';
+    rewardText.style.left = `${currentLane * GAME_CONFIG.laneWidth + GAME_CONFIG.laneWidth / 2}px`;
+    rewardText.style.top = `${canvasHeight / 2 - 50}px`;
+    rewardText.style.transform = 'translate(-50%, -50%)';
+    rewardText.style.color = '#FFD700';
+    rewardText.style.fontSize = '1.5rem';
+    rewardText.style.fontWeight = 'bold';
+    rewardText.style.textShadow = '0 0 10px rgba(255, 215, 0, 0.8)';
+    rewardText.style.zIndex = '10';
+    rewardText.textContent = `+${reward}`;
+    rewardText.style.transition = 'all 1s ease-out';
+    
+    // Add to game world
+    gameWorld.appendChild(rewardText);
+    
+    // Animate up and fade out
+    setTimeout(() => {
+        rewardText.style.top = `${canvasHeight / 2 - 100}px`;
+        rewardText.style.opacity = '0';
+    }, 10);
+    
+    // Remove text
+    setTimeout(() => {
+        if (rewardText.parentNode) {
+            rewardText.parentNode.removeChild(rewardText);
+        }
+    }, 1000);
+}
 
-           const modalContent = document.createElement('div');
-           modalContent.style.background = '#222';
-           modalContent.style.padding = '2rem';
-           modalContent.style.borderRadius = '10px';
-           modalContent.style.textAlign = 'center';
-           modalContent.style.color = 'white';
+// Show game over screen
+function showGameOver() {
+    // Hide cashout button
+    cashoutBtn.style.display = 'none';
+    
+    // Update final level and lost bet
+    const finalLevelDisplay = document.getElementById('final-level');
+    if (finalLevelDisplay) {
+        finalLevelDisplay.textContent = currentLane;
+    }
+    
+    const lostBetDisplay = document.getElementById('lost-bet');
+    if (lostBetDisplay) {
+        lostBetDisplay.textContent = currentBet;
+    }
+    
+    // Show game over screen
+    gameOverScreen.classList.add('visible');
+}
 
-           modalContent.innerHTML = `
-               <h2>Login Required</h2>
-               <p>Please log in to play Lucky Chicken and track your coins.</p>
-               <div>
-                   <button id="loginBtn" style="
-                       background: #4CAF50;
-                       color: white;
-                       border: none;
-                       padding: 10px 20px;
-                       margin: 10px;
-                       border-radius: 5px;
-                       cursor: pointer;
-                   ">Go to Login</button>
-                   <button id="cancelBtn" style="
-                       background: #f44336;
-                       color: white;
-                       border: none;
-                       padding: 10px 20px;
-                       margin: 10px;
-                       border-radius: 5px;
-                       cursor: pointer;
-                   ">Cancel</button>
-               </div>
-           `;
+// Show cashout screen
+function showCashoutScreen() {
+    // Hide cashout button
+    cashoutBtn.style.display = 'none';
+    
+    // Add the total coins won to the balance
+    updateCoins(totalCoinsWon);
+    
+    // Update cashout level and reward
+    const cashoutLevelDisplay = document.getElementById('cashout-level');
+    if (cashoutLevelDisplay) {
+        cashoutLevelDisplay.textContent = currentLane;
+    }
+    
+    const cashoutRewardDisplay = document.getElementById('cashout-reward');
+    if (cashoutRewardDisplay) {
+        cashoutRewardDisplay.textContent = totalCoinsWon;
+    }
+    
+    // Show cashout screen
+    cashoutScreen.classList.add('visible');
+    
+    // End the game
+    gameActive = false;
+    gameOver = true;
+}
 
-           overlay.appendChild(modalContent);
-           document.body.appendChild(overlay);
+// Update score display
+function updateScoreDisplay() {
+    scoreDisplay.textContent = `Lanes Crossed: ${currentLane}`;
+}
 
-           // Add event listeners
-           document.getElementById('loginBtn').addEventListener('click', () => {
-               // Redirect to main page where login is possible
-               window.location.href = 'index.html';
-           });
+// Update next reward display
+function updateNextRewardDisplay() {
+    const nextMultiplier = (GAME_CONFIG.baseMultiplier + ((currentLane + 1) * GAME_CONFIG.multiplierStep)).toFixed(2);
+    const nextReward = Math.floor(currentBet * parseFloat(nextMultiplier));
+    nextRewardDisplay.textContent = `Next Reward: ${nextReward} coins`;
+}
 
-           document.getElementById('cancelBtn').addEventListener('click', () => {
-               document.body.removeChild(overlay);
-               // Disable game interactions
-               const startBtn = document.getElementById('start-btn');
-               if (startBtn) {
-                   startBtn.disabled = true;
-                   startBtn.textContent = 'Login to Play';
-               }
-           });
-       }
+// Handle canvas click
+function handleCanvasClick(event) {
+    // If there's a coin, check if we clicked near it
+    if (clickCoin && gameActive && !gameOver) {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+        
+        // Get coin position relative to viewport
+        const coinRect = clickCoin.getBoundingClientRect();
+        const coinCenterX = coinRect.left + coinRect.width / 2 - rect.left;
+        const coinCenterY = coinRect.top + coinRect.height / 2 - rect.top;
+        
+        // Calculate distance from click to coin center
+        const distance = Math.sqrt(Math.pow(clickX - coinCenterX, 2) + Math.pow(clickY - coinCenterY, 2));
+        
+        // If click is near the coin, trigger advancement
+        if (distance < 60) { // Allowing some leeway for clicking
+            const nextLane = currentLane + 1;
+            tryToAdvance(nextLane);
+        }
+    }
+}
 
-       // Attach functions to window for game script access
-       window.loadFirebaseCoinBalance = loadFirebaseCoinBalance;
-       window.updateFirebaseCoinBalance = updateFirebaseCoinBalance;
-       window.recordGameTransaction = recordGameTransaction;
-       window.showLoginPrompt = showLoginPrompt;
-       window.currentUser = currentUser;
-   </script>
+// Draw game elements
+function drawGame() {
+    // Clear canvas
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    
+    // We're using DOM elements for most of the visuals now
+    // The canvas is just for background effects
+    
+    // Draw stars in background
+    drawStars();
+    
+    // Continue game loop
+    if (gameActive) {
+        animationFrame = requestAnimationFrame(drawGame);
+    }
+}
 
-<script>
+// Draw stars in background
+function drawStars() {
+    ctx.fillStyle = '#FFFFFF';
+    
+    // Use current lane to create scrolling effect
+    const offsetX = currentLane * 0.5;
+    
+    for (let i = 0; i < 100; i++) {
+        // Create a deterministic but varied star pattern
+        const seed = i * 12437; // Large prime number
+        const x = (seed % canvasWidth + offsetX * (i % 3)) % canvasWidth;
+        const y = (seed * 23 % canvasHeight) % canvasHeight;
+        
+        // Vary the star sizes
+        const size = (i % 3) + 1;
+        
+        // Make stars twinkle
+        const alpha = 0.3 + 0.7 * Math.sin(Date.now() * 0.001 + i);
+        
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    ctx.globalAlpha = 1.0;
+}
+
+// Handle bet amount changes
+function handleBetDecrease() {
+    let value = parseInt(betAmountInput.value) || 5;
+    value = Math.max(5, value - 5);
+    betAmountInput.value = value;
+    currentBet = value;
+}
+
+function handleBetIncrease() {
+    let value = parseInt(betAmountInput.value) || 5;
+    value = Math.min(100, value + 5);
+    betAmountInput.value = value;
+    currentBet = value;
+}
+
+function handleBetInput() {
+    let value = parseInt(betAmountInput.value) || 5;
+    value = Math.max(5, Math.min(100, value));
+    betAmountInput.value = value;
+    currentBet = value;
+}
+
+// Game loop
+function gameLoop() {
+    if (gameActive) {
+        // Draw game
+        drawGame();
+    }
+}
+
+// Event Listeners
+startBtn.addEventListener('click', () => {
+    startScreen.classList.remove('visible');
+    initGame();
+});
+
+restartBtn.addEventListener('click', () => {
+    gameOverScreen.classList.remove('visible');
+    initGame();
+});
+
+playAgainBtn.addEventListener('click', () => {
+    cashoutScreen.classList.remove('visible');
+    initGame();
+});
+
+backBtn.addEventListener('click', () => {
+    window.location.href = '/betavngames.html';
+});
+
+cashoutBtn.addEventListener('click', () => {
+    if (gameActive) {
+        showCashoutScreen();
+    }
+});
+
+decreaseBetBtn.addEventListener('click', handleBetDecrease);
+increaseBetBtn.addEventListener('click', handleBetIncrease);
+betAmountInput.addEventListener('change', handleBetInput);
+betAmountInput.addEventListener('input', handleBetInput);
+
+// Initialize on load
+window.addEventListener('load', () => {
+    console.log("Lucky Chicken game initializing...");
+    
+    // Initialize canvas
+    initCanvas();
+    
+    // Add resize event listener
+    window.addEventListener('resize', () => {
+        initCanvas();
+        if (gameActive) {
+            drawGame();
+            updateCamera();
+        }
+    });
+    
+    // Initialize with default coin balance
+    coinBalance = 1000;
+    updateCoinDisplay();
+});
+</script>
 </body>
 </html>
