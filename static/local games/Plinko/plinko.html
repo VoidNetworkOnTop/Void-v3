@@ -291,7 +291,7 @@
        // Firebase Imports
        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-       import { getFirestore, doc, getDoc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+       import { getFirestore, doc, getDoc, updateDoc, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
        // Firebase Configuration
        const firebaseConfig = {
@@ -326,12 +326,13 @@
            }
        });
 
-       // Load Coin Balance from Firebase
+       // Load Coin Balance from Firebase - FIXED to use UID instead of email
        async function loadFirebaseCoinBalance() {
            if (!currentUser) return;
 
            try {
-               const userRef = doc(db, 'users', currentUser.email);
+               // Use currentUser.uid instead of email
+               const userRef = doc(db, 'users', currentUser.uid);
                const userDoc = await getDoc(userRef);
 
                if (userDoc.exists()) {
@@ -354,15 +355,67 @@
            }
        }
 
-       // Update Coin Balance in Firebase
+       // Update Coin Balance in Firebase - FIXED to use UID instead of email
        async function updateFirebaseCoinBalance(newBalance) {
            if (!currentUser) return;
 
            try {
-               const userRef = doc(db, 'users', currentUser.email);
+               // Use currentUser.uid instead of email
+               const userRef = doc(db, 'users', currentUser.uid);
                await updateDoc(userRef, { accountBalance: newBalance });
            } catch (error) {
                console.error("Error updating coin balance:", error);
+           }
+       }
+
+       // NEW: Record Game Transaction for better tracking
+       async function recordGameTransaction(gameId, amount, isWin) {
+           if (!currentUser) return;
+
+           try {
+               // Create transaction record
+               const transactionRef = doc(collection(db, 'transactions'));
+               await setDoc(transactionRef, {
+                   userId: currentUser.uid,
+                   gameId: gameId,
+                   transactionType: isWin ? 'game_win' : 'game_play',
+                   amount: Math.abs(amount),
+                   timestamp: new Date()
+               });
+
+               // Get current user data
+               const userRef = doc(db, 'users', currentUser.uid);
+               const userDoc = await getDoc(userRef);
+               
+               if (userDoc.exists()) {
+                   const userData = userDoc.data();
+                   let updatedBalance = userData.accountBalance || 0;
+                   
+                   // Update relevant fields
+                   if (isWin) {
+                       updatedBalance += amount;
+                       userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
+                   } else {
+                       updatedBalance -= Math.abs(amount);
+                       userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
+                       userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
+                   }
+
+                   // Update user document
+                   await updateDoc(userRef, {
+                       accountBalance: updatedBalance,
+                       totalGamesPlayed: userData.totalGamesPlayed || 0,
+                       totalMoneySpent: userData.totalMoneySpent || 0,
+                       totalMoneyEarned: userData.totalMoneyEarned || 0
+                   });
+
+                   return {
+                       transactionId: transactionRef.id,
+                       newBalance: updatedBalance
+                   };
+               }
+           } catch (error) {
+               console.error("Transaction Error:", error);
            }
        }
 
@@ -433,6 +486,7 @@
        // Attach functions to window for game script access
        window.loadFirebaseCoinBalance = loadFirebaseCoinBalance;
        window.updateFirebaseCoinBalance = updateFirebaseCoinBalance;
+       window.recordGameTransaction = recordGameTransaction;
        window.showLoginPrompt = showLoginPrompt;
    </script>
 
@@ -504,6 +558,12 @@ function updateCoins(amount) {
     // Sync with Firebase
     if (window.updateFirebaseCoinBalance) {
         window.updateFirebaseCoinBalance(coinBalance);
+    }
+    
+    // NEW: Record transaction for better tracking
+    if (window.recordGameTransaction) {
+        // If it's a positive amount, it's a win, otherwise it's a play cost
+        window.recordGameTransaction("ball_dropper", amount, amount > 0);
     }
 }
 
