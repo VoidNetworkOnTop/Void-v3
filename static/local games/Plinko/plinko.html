@@ -328,7 +328,6 @@
            }
        });
 
-       // Load Coin Balance from Firebase - FIXED to use UID instead of email
        async function loadFirebaseCoinBalance() {
            if (!currentUser) {
                console.log("No user available to load balance");
@@ -546,8 +545,9 @@ const config = {
     friction: 0.9,
     bounceSpeed: 0.6,
     buckets: 5,
-    minReward: -600,
-    maxReward: 500
+    minReward: -100,  // Reduced negative rewards for better play experience
+    maxReward: 200,   // Adjusted max reward
+    dropCost: 50      // NEW: Explicit config for drop cost
 };
 
 // Initialize canvas
@@ -576,25 +576,27 @@ function updateCoinDisplay() {
     coinDisplay.textContent = coinBalance.toLocaleString();
     console.log("Updated coin display:", coinBalance);
     
-    // Update drop button state based on coin balance
-    if (coinBalance < 300) {
-        dropButton.title = "Low on coins";
+    // Update drop button appearance based on coin balance
+    if (coinBalance < config.dropCost) {
+        dropButton.title = "Low on coins - will go negative if you play";
         dropButton.classList.add('insufficient');
         
-        // Disable the button if we don't have enough coins
+        // Still allow dropping, just with a warning
         if (!gameActive && !gameComplete) {
-            dropButton.disabled = true;
-            dropButton.textContent = `Need 300 Coins (${coinBalance})`;
+            dropButton.textContent = "Drop (Negative Balance)";
         }
     } else {
         dropButton.title = "Drop a ball";
         dropButton.classList.remove('insufficient');
         
-        // Enable the button if we have enough coins and the game isn't active
         if (!gameActive && !gameComplete) {
-            dropButton.disabled = false;
             dropButton.textContent = "Drop";
         }
+    }
+    
+    // Always enable the button if the game isn't active
+    if (!gameActive && !gameComplete) {
+        dropButton.disabled = false;
     }
 }
 
@@ -712,6 +714,11 @@ function setupGame() {
         rewards.push(reward);
     }
     
+    // Ensure rewards are multiples of 10 for cleaner numbers
+    for (let i = 0; i < rewards.length; i++) {
+        rewards[i] = Math.round(rewards[i] / 10) * 10;
+    }
+    
     // Shuffle the rewards to randomize their positions
     shuffleArray(rewards);
     
@@ -736,8 +743,8 @@ function setupGame() {
 function dropBall() {
     if (gameActive || gameComplete) return;
     
-    // Deduct 300 coins for dropping a ball
-    updateCoins(-300);
+    // Deduct the cost for dropping a ball (from config)
+    updateCoins(-config.dropCost);
     
     ball = {
         x: canvasWidth / 2,
