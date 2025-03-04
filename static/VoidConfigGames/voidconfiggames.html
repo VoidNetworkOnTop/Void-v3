@@ -145,6 +145,9 @@
             EMAIL_TO_ID[email.toLowerCase()] = id;
         }
         
+        // Cache of username data
+        const userDataCache = {};
+        
         // Terminal output functions
         function printToTerminal(message, className = '') {
             const line = document.createElement('div');
@@ -176,7 +179,7 @@
             printToTerminal('<user ID> coin amount - Check coins by user ID');
             printToTerminal('<user ID> add coins <amount> - Add coins by user ID');
             printToTerminal('<user ID> remove coins <amount> - Remove coins from user');
-            printToTerminal('<user email> - Look up user ID by email');
+            printToTerminal('<user email> - Look up user ID, username, and balance by email');
             printToTerminal('----------------------------------');
             printSuccess(`Authenticated as admin: ${userEmail}`);
             printInfo(`Your user ID: ${userId}`);
@@ -248,7 +251,7 @@
                 printInfo('<user ID> coin amount - Check a user\'s coin balance by ID');
                 printInfo('<user ID> add coins <amount> - Add coins to a user by ID');
                 printInfo('<user ID> remove coins <amount> - Remove coins from a user by ID');
-                printInfo('<user email> - Look up user ID by email');
+                printInfo('<user email> - Look up user ID, username, and balance by email');
                 printInfo('me - Show your own user ID (for reference)');
                 return;
             }
@@ -269,7 +272,14 @@
             if (command.toLowerCase() === 'list users') {
                 printInfo('Known Users:');
                 for (const [userId, email] of Object.entries(KNOWN_USERS)) {
-                    printInfo(`${email} (ID: ${userId})`);
+                    let userInfo = `${email} (ID: ${userId})`;
+                    
+                    // Add username if cached
+                    if (userDataCache[userId] && userDataCache[userId].username) {
+                        userInfo += ` | Username: ${userDataCache[userId].username}`;
+                    }
+                    
+                    printInfo(userInfo);
                 }
                 return;
             }
@@ -290,9 +300,20 @@
                 }
                 
                 try {
-                    const coins = await checkUserCoins(userId);
-                    if (coins !== null) {
-                        printSuccess(`User with ID ${userId} has ${coins} coins.`);
+                    const userData = await getUserData(userId);
+                    if (userData) {
+                        // Display user's information
+                        printSuccess(`User with ID ${userId} has ${userData.accountBalance || 0} coins.`);
+                        
+                        if (userData.email) {
+                            printInfo(`User email: ${userData.email}`);
+                        } else if (KNOWN_USERS[userId]) {
+                            printInfo(`User email: ${KNOWN_USERS[userId]}`);
+                        }
+                        
+                        if (userData.username) {
+                            printInfo(`Username: ${userData.username}`);
+                        }
                     }
                 } catch (error) {
                     printError(`Error checking user coins: ${error.message}`);
@@ -368,6 +389,44 @@
                 
                 if (userId) {
                     printSuccess(`User ID for ${email}: ${userId}`);
+                    
+                    // Get and display user data including username
+                    try {
+                        const userData = await getUserData(userId);
+                        if (userData) {
+                            if (userData.username) {
+                                printInfo(`Username: ${userData.username}`);
+                            } else {
+                                printInfo(`Username: Not set`);
+                            }
+                            
+                            printInfo(`Account Balance: ${userData.accountBalance || 0} coins`);
+                            
+                            // Show additional user data if available
+                            if (userData.totalGamesPlayed) {
+                                printInfo(`Total Games Played: ${userData.totalGamesPlayed}`);
+                            }
+                            
+                            if (userData.totalMoneySpent) {
+                                printInfo(`Total Money Spent: ${userData.totalMoneySpent}`);
+                            }
+                            
+                            if (userData.totalMoneyEarned) {
+                                printInfo(`Total Money Earned: ${userData.totalMoneyEarned}`);
+                            }
+                            
+                            if (userData.createdAt) {
+                                // Format date if it's a Firebase timestamp
+                                let dateStr = userData.createdAt;
+                                if (userData.createdAt.toDate) {
+                                    dateStr = userData.createdAt.toDate().toLocaleString();
+                                }
+                                printInfo(`Account Created: ${dateStr}`);
+                            }
+                        }
+                    } catch (error) {
+                        printError(`Error fetching user data: ${error.message}`);
+                    }
                 } else {
                     printError(`No user ID found for email: ${email}`);
                 }
@@ -376,11 +435,14 @@
                 printError('Invalid command. Type "help" for available commands.');
             }
         }
-
-        // Check user's coin balance
-        async function checkUserCoins(userId) {
+        
+        // Get full user data
+        async function getUserData(userId) {
             try {
-                printInfo(`Checking coin balance for user ID: ${userId}...`);
+                // Check cache first
+                if (userDataCache[userId]) {
+                    return userDataCache[userId];
+                }
                 
                 // Get the user document
                 const userRef = doc(db, 'users', userId);
@@ -392,16 +454,28 @@
                 }
                 
                 const userData = userDoc.data();
-                const coinBalance = userData.accountBalance || 0;
                 
-                // Show user email if available
-                if (userData.email) {
-                    printInfo(`User email: ${userData.email}`);
-                } else if (KNOWN_USERS[userId]) {
-                    printInfo(`User email: ${KNOWN_USERS[userId]}`);
+                // Cache for later use
+                userDataCache[userId] = userData;
+                
+                return userData;
+            } catch (error) {
+                printError(`Error getting user data: ${error.message}`);
+                throw error;
+            }
+        }
+
+        // Check user's coin balance
+        async function checkUserCoins(userId) {
+            try {
+                printInfo(`Checking coin balance for user ID: ${userId}...`);
+                
+                const userData = await getUserData(userId);
+                if (!userData) {
+                    return null;
                 }
                 
-                return coinBalance;
+                return userData.accountBalance || 0;
             } catch (error) {
                 printError(`Error checking user coins: ${error.message}`);
                 throw error;
@@ -430,6 +504,11 @@
                 await updateDoc(userRef, { 
                     accountBalance: newBalance 
                 });
+                
+                // Update cache
+                if (userDataCache[userId]) {
+                    userDataCache[userId].accountBalance = newBalance;
+                }
                 
                 printInfo(`Updated balance. New balance: ${newBalance}`);
                 return true;
@@ -468,6 +547,11 @@
                 await updateDoc(userRef, { 
                     accountBalance: newBalance 
                 });
+                
+                // Update cache
+                if (userDataCache[userId]) {
+                    userDataCache[userId].accountBalance = newBalance;
+                }
                 
                 printInfo(`Updated balance. New balance: ${newBalance}`);
                 return true;
