@@ -858,14 +858,14 @@
                <div class="overlay-content">
                    <h2 class="overlay-title">Mines</h2>
                    <p class="overlay-message">Select the number of squares to play with:<br>
-                   24 Squares: 5 coins per safe square<br>
-                   44 Squares: 3 coins per safe square<br>
-                   64 Squares: 2 coins per safe square</p>
+                   24 Squares: Higher risk, higher reward<br>
+                   44 Squares: Balanced risk and reward<br>
+                   64 Squares: Lower risk, lower reward</p>
 
                    <div class="option-selector">
-                       <button class="option-btn selected" data-squares="24" data-base-reward="5">24 Squares</button>
-                       <button class="option-btn" data-squares="44" data-base-reward="3">44 Squares</button>
-                       <button class="option-btn" data-squares="64" data-base-reward="2">64 Squares</button>
+                       <button class="option-btn selected" data-squares="24" data-base-reward="1">24 Squares</button>
+                       <button class="option-btn" data-squares="44" data-base-reward="1">44 Squares</button>
+                       <button class="option-btn" data-squares="64" data-base-reward="1">64 Squares</button>
                    </div>
 
                    <button id="next-btn" class="game-btn">Next</button>
@@ -877,11 +877,11 @@
                <div class="overlay-content">
                    <h2 class="overlay-title">Select Bombs</h2>
                    <p class="overlay-message">More bombs = higher reward per safe square!<br>
-                   Each additional bomb doubles your reward.</p>
+                   Maximum reward is 100,000,000 coins with almost all bombs.</p>
 
                    <div class="bomb-count-selector">
                        <div class="bomb-count-display" id="bomb-count-display">Bombs: 1</div>
-                       <div class="reward-display" id="reward-display">Reward per square: 5 coins</div>
+                       <div class="reward-display" id="reward-display">Reward per square: 1 coin</div>
 
                        <div class="bomb-slider-container">
                            <input type="range" min="1" max="23" value="1" class="bomb-slider" id="bomb-slider">
@@ -1141,7 +1141,8 @@ const GAME_CONFIG = {
     startCost: 5,           // Cost to start the game
     gameId: 'mines_game',   // ID for Firebase transactions
     maxWinnings: 1000000,   // Maximum winnings per game
-    bombPenalty: 1000       // Penalty for hitting a bomb
+    bombPenalty: 50000,     // Penalty for hitting a bomb (Updated from 1000 to 50000)
+    maxReward: 100000000    // Maximum reward per safe square with maximum bombs
 };
 
 // Game state
@@ -1154,8 +1155,8 @@ let gameActive = false;
 let totalSquares = 24; // Default grid size
 let bombIndices = []; // Positions of bombs
 let bombCount = 1; // Default bomb count
-let rewardPerSquare = 5; // Default reward per square
-let baseRewardPerSquare = 5; // Base reward for the selected grid size
+let rewardPerSquare = 1; // Default reward per square
+let baseRewardPerSquare = 1; // Base reward for the selected grid size
 let revealedSquares = []; // Tracks revealed squares 
 let safeSquaresRevealed = 0; // Count of safe squares revealed
 
@@ -1386,11 +1387,18 @@ function updateBombCountDisplay() {
     bombCountDisplay.textContent = `Bombs: ${bombCount}`;
 
     // Calculate reward per square based on bomb count
-    // Base reward is set by grid size, then doubles for each additional bomb
-    const additionalBombs = bombCount - 1;
-    rewardPerSquare = baseRewardPerSquare * Math.pow(2, additionalBombs);
-
-    rewardDisplay.textContent = `Reward per square: ${rewardPerSquare} coins`;
+    // Using a formula that scales exponentially from 1 to 100,000,000
+    const maxBombs = totalSquares - 1;
+    const bombRatio = bombCount / maxBombs;
+    
+    // Calculate reward per square - exponential scaling
+    rewardPerSquare = Math.round(Math.pow(GAME_CONFIG.maxReward, bombRatio));
+    
+    // Ensure minimum reward is 1
+    rewardPerSquare = Math.max(1, rewardPerSquare);
+    
+    // Format the reward display with commas for readability
+    rewardDisplay.textContent = `Reward per square: ${rewardPerSquare.toLocaleString()} coins`;
 }
 
 // Initialize game
@@ -1424,7 +1432,7 @@ function initGame() {
 
     // Update game info
     if (gameInfo) {
-        gameInfo.textContent = `Find safe squares to earn ${rewardPerSquare} coins each! Avoid the ${bombCount} bomb${bombCount > 1 ? 's' : ''}!`;
+        gameInfo.textContent = `Find safe squares to earn ${rewardPerSquare.toLocaleString()} coins each! Avoid the ${bombCount} bomb${bombCount > 1 ? 's' : ''}!`;
     }
 
     // Reset cashout button
@@ -1541,7 +1549,7 @@ function handleCellClick(event) {
         
         // Update game info
         if (gameInfo) {
-            gameInfo.textContent = `You hit a bomb! ${GAME_CONFIG.bombPenalty} coins penalty applied.`;
+            gameInfo.textContent = `You hit a bomb! ${GAME_CONFIG.bombPenalty.toLocaleString()} coins penalty applied.`;
         }
 
         // Reveal all other bombs
@@ -1612,7 +1620,7 @@ function showGameOver() {
 
     if (lostEarningsEl) {
         // Show both the potential earnings and the bomb penalty
-        lostEarningsEl.textContent = `${currentEarnings} + ${GAME_CONFIG.bombPenalty} bomb penalty`;
+        lostEarningsEl.textContent = `${currentEarnings.toLocaleString()} + ${GAME_CONFIG.bombPenalty.toLocaleString()} bomb penalty`;
     }
 
     // Show game over screen
@@ -1632,7 +1640,7 @@ function showCashoutScreen() {
     }
 
     if (cashoutRewardEl) {
-        cashoutRewardEl.textContent = currentEarnings.toString();
+        cashoutRewardEl.textContent = currentEarnings.toLocaleString();
     }
 
     // Add the earnings to the balance
