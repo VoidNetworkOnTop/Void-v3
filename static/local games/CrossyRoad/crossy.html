@@ -505,6 +505,7 @@
            width: 10000px; /* Very long to accommodate infinite scrolling */
            height: 100%;
            transition: transform 0.5s ease-out;
+           will-change: transform; /* Performance optimization */
        }
 
        .road {
@@ -527,7 +528,7 @@
            transform: translateY(-50%);
        }
 
-       /* UPDATED: Node z-index to ensure it's below chicken */
+       /* FIXED: Updated node styling */
        .node {
            position: absolute;
            width: 60px;
@@ -537,7 +538,7 @@
            border: 2px solid rgba(255, 255, 255, 0.5);
            top: 50%;
            transform: translate(-50%, -50%);
-           z-index: 2; /* Ensure this is lower than chicken's z-index */
+           z-index: 2; /* Lower than chicken's z-index */
            display: flex;
            align-items: center;
            justify-content: center;
@@ -546,7 +547,7 @@
            font-size: 1.2rem;
        }
 
-       /* UPDATED: Improved active node visibility */
+       /* FIXED: Improved active node visibility */
        .node.active {
            background: rgba(76, 175, 80, 0.3);
            box-shadow: 0 0 15px rgba(76, 175, 80, 0.8); /* Brighter glow */
@@ -565,15 +566,16 @@
            box-shadow: 0 0 10px rgba(25, 118, 210, 0.5);
        }
 
-       /* UPDATED: Chicken z-index to be above nodes */
+       /* FIXED: Improved chicken styling */
        .chicken {
            position: absolute;
            width: 50px;
            height: 50px;
-           z-index: 5; /* Increased from 3 to 5 to be above nodes */
-           top: 50%;
-           transform: translate(-50%, -50%);
+           z-index: 5; /* Higher than nodes to appear on top */
+           top: 50% !important; /* Force center alignment */
+           transform: translate(-50%, -50%) !important; /* Ensure perfect centering */
            transition: left 0.5s ease-out;
+           pointer-events: none; /* Let clicks go through to nodes */
        }
 
        .car {
@@ -922,7 +924,7 @@ const GAME_CONFIG = {
     gameId: 'lucky_chicken' // ID for Firebase transactions
 };
 
-// Game state
+// Game state - reset these on each game start
 let canvas, ctx;
 let canvasWidth, canvasHeight;
 let chickenElem, gameWorld;
@@ -1008,8 +1010,53 @@ function initCanvas() {
     canvas.style.height = canvasHeight + "px";
 }
 
+// FIXED: Complete game reset function
+function resetGame() {
+    // Reset game state variables
+    currentNode = 0;
+    gameOver = false;
+    gameActive = false;
+    currentReward = 0;
+    
+    // Clear the game board
+    clearGameElements();
+    
+    // Return to start screen
+    startScreen.classList.add('visible');
+    gameOverScreen.classList.remove('visible');
+    cashoutScreen.classList.remove('visible');
+    
+    // Hide cashout button
+    if (cashoutBtn) {
+        cashoutBtn.style.display = 'none';
+        cashoutBtn.disabled = true;
+    }
+    
+    // Reset displays
+    if (scoreDisplay) {
+        scoreDisplay.textContent = 'Steps Taken: 0';
+    }
+    
+    if (nextRewardDisplay) {
+        nextRewardDisplay.textContent = 'Current Reward: 0 coins';
+    }
+    
+    // Cancel any animation frames
+    if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame);
+    }
+    
+    console.log("Game fully reset");
+}
+
 // Initialize game
 function initGame() {
+    console.log("Initializing new game...");
+    
+    // Reset game state completely
+    gameOver = false;
+    currentNode = 0;
+    
     // Get current bet
     currentBet = parseInt(betAmountInput.value, 10);
     
@@ -1024,19 +1071,18 @@ function initGame() {
     gameWorld = document.getElementById('game-world');
     chickenElem = document.getElementById('chicken');
     
-    // FIX: Make sure chicken is visible and has proper z-index
+    // FIXED: Make sure chicken is visible and has proper z-index
     chickenElem.style.zIndex = "5";
+    chickenElem.style.display = "block";
     
     // Generate road and nodes
     generateRoad();
     
-    // Position chicken at starting position
+    // FIXED: Position chicken at starting position
     positionChicken(0);
     
     // Reset game state
-    currentNode = 0;
-    currentReward = currentBet;
-    gameOver = false;
+    currentReward = currentBet; // Start with bet amount
     
     // Show cashout button but disable initially
     cashoutBtn.style.display = 'block';
@@ -1050,16 +1096,20 @@ function initGame() {
     updateScoreDisplay();
     updateRewardDisplay();
     
-    // FIX: Ensure camera is properly positioned at start
+    // FIXED: Ensure camera is properly positioned at start
     updateCamera();
     
     // Start game loop
     window.cancelAnimationFrame(animationFrame);
     gameLoop();
+    
+    console.log("Game initialized with node at position 0");
 }
 
 // Clear game elements
 function clearGameElements() {
+    console.log("Clearing game elements");
+    
     // Clear game world
     if (gameWorld) {
         gameWorld.innerHTML = '';
@@ -1072,6 +1122,12 @@ function clearGameElements() {
     // Remove any particle effects
     const existingParticles = document.querySelectorAll('.particle');
     existingParticles.forEach(particle => particle.remove());
+    
+    // FIXED: Remove all event listeners from nodes
+    const nodes = document.querySelectorAll('.node');
+    nodes.forEach(node => {
+        node.removeEventListener('click', handleNodeClick);
+    });
 }
 
 // Generate the road and nodes
@@ -1104,35 +1160,41 @@ function createNode(nodeIndex) {
     // Add to game world
     gameWorld.appendChild(node);
     
-    // FIX: Only make node 1 active initially
-    if (nodeIndex === 1) {
+    // FIXED: Only make node 1 active initially when at start
+    if (nodeIndex === 1 && currentNode === 0) {
         node.classList.add('active');
         
-        // FIX: Make sure we add event listener properly and only once
+        // FIXED: Make sure we add event listener properly and only once
         node.removeEventListener('click', handleNodeClick); // Remove any existing listeners
         node.addEventListener('click', handleNodeClick);
+        console.log("Set up node 1 as active and clickable");
     }
     
     return node;
 }
 
-// Position the chicken at a specific node
+// FIXED: Improved positioning function for the chicken
 function positionChicken(nodeIndex) {
+    // Get exact position based on node
     const xPos = nodeIndex * GAME_CONFIG.nodeSpacing + GAME_CONFIG.nodeSpacing / 2;
     
-    // FIX: Ensure chicken is displayed correctly
+    // FIXED: Ensure chicken is displayed correctly with explicit positioning
     chickenElem.style.left = `${xPos}px`;
+    chickenElem.style.top = '50%';
+    chickenElem.style.transform = 'translate(-50%, -50%)';
     chickenElem.style.display = 'block';
     
-    // Set chicken image using SVG
+    // Set chicken image using SVG (adjusted to center the chicken)
     chickenElem.style.background = 'url("data:image/svg+xml;charset=utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Cellipse cx=\'50\' cy=\'50\' rx=\'40\' ry=\'45\' fill=\'%23FFFFFF\'/%3E%3Ccircle cx=\'70\' cy=\'35\' r=\'8\' fill=\'%23000\'/%3E%3Cpath d=\'M80 40 L100 50 L80 60 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M30 70 L20 85 L30 85 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M70 70 L80 85 L70 85 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M70 10 L80 0 L90 10 Z\' fill=\'%23F44336\'/%3E%3C/svg%3E") center/contain no-repeat';
+    
+    console.log(`Positioned chicken at node ${nodeIndex}, x-position: ${xPos}px`);
 }
 
 // Update camera position to follow the chicken
 function updateCamera() {
     if (!gameWorld) return;
     
-    // FIX: Improved camera follow logic
+    // FIXED: Improved camera follow logic
     // Calculate the position to center the chicken
     const xPos = currentNode * GAME_CONFIG.nodeSpacing;
     const offset = Math.min(canvasWidth / 2, 300); // More dynamic offset based on screen size
@@ -1147,13 +1209,18 @@ function updateCamera() {
         }
         GAME_CONFIG.initialNodes += 10;
     }
+    
+    console.log(`Camera updated to focus on node ${currentNode}`);
 }
 
 // Handle node click
 function handleNodeClick(event) {
-    if (!gameActive) return;
+    if (!gameActive) {
+        console.log("Game not active, ignoring click");
+        return;
+    }
     
-    // FIX: Add debugging to ensure click is registered
+    // FIXED: Add debugging to ensure click is registered
     console.log("Node clicked!");
     
     const clickedNode = event.currentTarget;
@@ -1196,10 +1263,10 @@ function tryToAdvance(targetNodeIndex) {
             prevNodeElem.removeEventListener('click', handleNodeClick);
         }
         
-        // Move chicken to new position
+        // FIXED: Move chicken to new position with improved positioning
         positionChicken(currentNode);
         
-        // Update the camera to follow - FIX: Camera update right after position change
+        // Update the camera to follow - FIXED: Camera update right after position change
         updateCamera();
         
         // Update current reward (doubles with each step)
@@ -1211,7 +1278,7 @@ function tryToAdvance(targetNodeIndex) {
             cashoutBtn.textContent = 'Cash Out';
         }
         
-        // FIX: Make next node active - improved selector and added check
+        // FIXED: Make next node active - improved selector and added check
         const nextNodeElem = document.querySelector(`.node[data-index="${currentNode + 1}"]`);
         console.log("Next node element:", nextNodeElem);
         
@@ -1475,7 +1542,7 @@ function handleBetInput() {
     currentBet = value;
 }
 
-// Event Listeners
+// FIXED: Event Listeners - Ensure they fully reset the game
 startBtn.addEventListener('click', () => {
     startScreen.classList.remove('visible');
     initGame();
@@ -1483,12 +1550,22 @@ startBtn.addEventListener('click', () => {
 
 restartBtn.addEventListener('click', () => {
     gameOverScreen.classList.remove('visible');
-    initGame();
+    // FIXED: Complete reset before starting a new game
+    resetGame();
+    setTimeout(() => {
+        startScreen.classList.remove('visible');
+        initGame();
+    }, 100);
 });
 
 playAgainBtn.addEventListener('click', () => {
     cashoutScreen.classList.remove('visible');
-    initGame();
+    // FIXED: Complete reset before starting a new game
+    resetGame();
+    setTimeout(() => {
+        startScreen.classList.remove('visible');
+        initGame();
+    }, 100);
 });
 
 backBtn.addEventListener('click', () => {
@@ -1506,12 +1583,20 @@ increaseBetBtn.addEventListener('click', handleBetIncrease);
 betAmountInput.addEventListener('change', handleBetInput);
 betAmountInput.addEventListener('input', handleBetInput);
 
+// FIXED: Reload handler - ensure the game fully resets
+window.addEventListener('beforeunload', () => {
+    resetGame();
+});
+
 // Initialize on load
 window.addEventListener('load', () => {
     console.log("Lucky Chicken game initializing...");
     
     // Initialize canvas
     initCanvas();
+    
+    // FIXED: Ensure the game is fully reset on load
+    resetGame();
     
     // Add resize event listener
     window.addEventListener('resize', () => {
