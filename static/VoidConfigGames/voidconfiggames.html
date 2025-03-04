@@ -126,17 +126,23 @@
         // Admin email constant
         const ADMIN_EMAIL = "six7588@gmail.com";
         
-        // Hardcoded known user IDs from Firebase Auth UI
+        // Hardcoded known user IDs from Firebase Auth UI - with corrected spelling
         const KNOWN_USERS = {
             "KIsAtjOwRpdVDOL3VPrDBACSxdw1": "six7588@gmail.com",
             "GU9JmuJistfcjKLwtJLmj5BELHs2": "nigatikler@gmail.com",
             "mtl6j5MsEwYhfVfT1yw9JmrSfMV2": "1q2w3e4r5t6y7u8i9o0p@gmail.com",
-            "ku8A1MuC6jWJxEnPIb9nYCY2MnH2": "mjbalkovski@gmail.com",
+            "ku8A1MuC6jWJxEnPIb9nYCY2MnH2": "mjbalkovski@gmail.com", // Corrected spelling
             "Ga450aQRGGMqUOgFVGs62fRnZ6l1": "svalenciarivera@isdkids.org",
             "3qJsAc8TsbZzx0SZdfduH7ijLuP2": "dfsgdsgr@gamil.comsd",
             "dcxtOHGcfrQ12XBrSz04MhQzEbq1": "shrey436@proton.me",
             "44b4NFWyEnSPhCsofxMkbkIP1vt1": "gvrelectrodude@gmail.com",
-            "Wtc6hcUIzmORUJxJFc5nJVPgjRE2": "shrey150436@gmail.com"
+            "Wtc6hcUIzmORUJxJFc5nJVPgjRE2": "shrey150436@gmail.com",
+            "QC8YOG6kCNZTg5QMyIHnXZoJ0cH2": "unknown@example.com" // Added the unknown ID you mentioned
+        };
+        
+        // Add any possible spelling variations
+        const EMAIL_VARIATIONS = {
+            "mjbalkovsk@gmail.com": "mjbalkovski@gmail.com"
         };
         
         // Reverse lookup for emails to IDs
@@ -145,8 +151,16 @@
             EMAIL_TO_ID[email.toLowerCase()] = id;
         }
         
-        // Cache of username data
+        // Add variations to lookup
+        for (const [variation, original] of Object.entries(EMAIL_VARIATIONS)) {
+            if (EMAIL_TO_ID[original.toLowerCase()]) {
+                EMAIL_TO_ID[variation.toLowerCase()] = EMAIL_TO_ID[original.toLowerCase()];
+            }
+        }
+        
+        // Cache of username data and info
         const userDataCache = {};
+        const usernameToIDMap = new Map();
         
         // Terminal output functions
         function printToTerminal(message, className = '') {
@@ -176,10 +190,12 @@
             printToTerminal('Available commands:');
             printToTerminal('help - Show available commands');
             printToTerminal('list users - List all known users');
-            printToTerminal('<user ID> coin amount - Check coins by user ID');
-            printToTerminal('<user ID> add coins <amount> - Add coins by user ID');
-            printToTerminal('<user ID> remove coins <amount> - Remove coins from user');
-            printToTerminal('<user email> - Look up user ID, username, and balance by email');
+            printToTerminal('<user ID> - Look up user by ID');
+            printToTerminal('<email> - Look up user by email');
+            printToTerminal('<username> - Look up user by username');
+            printToTerminal('<user ID/email> coin amount - Check coins');
+            printToTerminal('<user ID/email> add coins <amount> - Add coins');
+            printToTerminal('<user ID/email> remove coins <amount> - Remove coins');
             printToTerminal('----------------------------------');
             printSuccess(`Authenticated as admin: ${userEmail}`);
             printInfo(`Your user ID: ${userId}`);
@@ -223,8 +239,52 @@
                 
                 // Initialize the admin console
                 initConsole(user.email, user.uid);
+                
+                // Pre-load some user data
+                loadAllUsersData();
             }
         });
+        
+        // Helper function to preload some user data
+        async function loadAllUsersData() {
+            try {
+                printInfo("Loading user data in background...");
+                
+                // Try to directly list users
+                const usersRef = collection(db, 'users');
+                const usersQuery = query(usersRef, limit(50)); // Get up to 50 users
+                
+                try {
+                    const querySnapshot = await getDocs(usersQuery);
+                    let count = 0;
+                    
+                    if (!querySnapshot.empty) {
+                        querySnapshot.forEach((userDoc) => {
+                            const userData = userDoc.data();
+                            const userId = userDoc.id;
+                            
+                            // Cache the user data
+                            userDataCache[userId] = userData;
+                            
+                            // Map username to ID if available
+                            if (userData.username) {
+                                usernameToIDMap.set(userData.username.toLowerCase(), userId);
+                            }
+                            
+                            count++;
+                        });
+                    }
+                    
+                    printInfo(`Loaded data for ${count} users`);
+                } catch (listError) {
+                    console.error("Error loading users:", listError);
+                    // Silent fail, this is just preloading
+                }
+            } catch (error) {
+                console.error("Error in preloading:", error);
+                // Silent fail, this is just preloading
+            }
+        }
         
         // Process command input
         commandInput.addEventListener('keypress', async (e) => {
@@ -248,10 +308,12 @@
                 printInfo('Available commands:');
                 printInfo('help - Show this help information');
                 printInfo('list users - List all known users');
-                printInfo('<user ID> coin amount - Check a user\'s coin balance by ID');
-                printInfo('<user ID> add coins <amount> - Add coins to a user by ID');
-                printInfo('<user ID> remove coins <amount> - Remove coins from a user by ID');
-                printInfo('<user email> - Look up user ID, username, and balance by email');
+                printInfo('<user ID> - Look up user by ID');
+                printInfo('<email> - Look up user by email');
+                printInfo('<username> - Look up user by username');
+                printInfo('<user ID/email> coin amount - Check coins');
+                printInfo('<user ID/email> add coins <amount> - Add coins');
+                printInfo('<user ID/email> remove coins <amount> - Remove coins');
                 printInfo('me - Show your own user ID (for reference)');
                 return;
             }
@@ -292,7 +354,10 @@
                 
                 // If it looks like an email, convert to ID
                 if (userId.includes('@')) {
-                    userId = EMAIL_TO_ID[userId.toLowerCase()];
+                    const email = userId.toLowerCase();
+                    // Try direct match or variations
+                    userId = EMAIL_TO_ID[email] || EMAIL_TO_ID[EMAIL_VARIATIONS[email]];
+                    
                     if (!userId) {
                         printError(`No user ID found for email: ${parts[0]}`);
                         return;
@@ -325,7 +390,10 @@
                 
                 // If it looks like an email, convert to ID
                 if (userId.includes('@')) {
-                    userId = EMAIL_TO_ID[userId.toLowerCase()];
+                    const email = userId.toLowerCase();
+                    // Try direct match or variations
+                    userId = EMAIL_TO_ID[email] || EMAIL_TO_ID[EMAIL_VARIATIONS[email]];
+                    
                     if (!userId) {
                         printError(`No user ID found for email: ${parts[0]}`);
                         return;
@@ -354,7 +422,10 @@
                 
                 // If it looks like an email, convert to ID
                 if (userId.includes('@')) {
-                    userId = EMAIL_TO_ID[userId.toLowerCase()];
+                    const email = userId.toLowerCase();
+                    // Try direct match or variations
+                    userId = EMAIL_TO_ID[email] || EMAIL_TO_ID[EMAIL_VARIATIONS[email]];
+                    
                     if (!userId) {
                         printError(`No user ID found for email: ${parts[0]}`);
                         return;
@@ -382,57 +453,145 @@
                     printError(`Error removing coins: ${error.message}`);
                 }
             }
-            // Look up user ID by email
-            else if (parts.length === 1 && parts[0].includes('@')) {
-                const email = parts[0].toLowerCase();
-                const userId = EMAIL_TO_ID[email];
+            // Single parameter commands (lookup by ID, email, or username)
+            else if (parts.length === 1) {
+                const lookup = parts[0];
                 
-                if (userId) {
-                    printSuccess(`User ID for ${email}: ${userId}`);
+                // Determine the type of lookup
+                if (lookup.includes('@')) {
+                    // Email lookup
+                    const email = lookup.toLowerCase();
+                    // Try to find in known emails, including variations
+                    let userId = EMAIL_TO_ID[email];
                     
-                    // Get and display user data including username
-                    try {
-                        const userData = await getUserData(userId);
-                        if (userData) {
-                            if (userData.username) {
-                                printInfo(`Username: ${userData.username}`);
-                            } else {
-                                printInfo(`Username: Not set`);
-                            }
-                            
-                            printInfo(`Account Balance: ${userData.accountBalance || 0} coins`);
-                            
-                            // Show additional user data if available
-                            if (userData.totalGamesPlayed) {
-                                printInfo(`Total Games Played: ${userData.totalGamesPlayed}`);
-                            }
-                            
-                            if (userData.totalMoneySpent) {
-                                printInfo(`Total Money Spent: ${userData.totalMoneySpent}`);
-                            }
-                            
-                            if (userData.totalMoneyEarned) {
-                                printInfo(`Total Money Earned: ${userData.totalMoneyEarned}`);
-                            }
-                            
-                            if (userData.createdAt) {
-                                // Format date if it's a Firebase timestamp
-                                let dateStr = userData.createdAt;
-                                if (userData.createdAt.toDate) {
-                                    dateStr = userData.createdAt.toDate().toLocaleString();
-                                }
-                                printInfo(`Account Created: ${dateStr}`);
-                            }
-                        }
-                    } catch (error) {
-                        printError(`Error fetching user data: ${error.message}`);
+                    // Check for email variations
+                    if (!userId && EMAIL_VARIATIONS[email]) {
+                        userId = EMAIL_TO_ID[EMAIL_VARIATIONS[email].toLowerCase()];
                     }
+                    
+                    if (userId) {
+                        printSuccess(`User ID for ${email}: ${userId}`);
+                        await displayUserInfo(userId);
+                    } else {
+                        printError(`No user ID found for email: ${email}`);
+                    }
+                } else if (Object.keys(KNOWN_USERS).includes(lookup)) {
+                    // User ID lookup
+                    printSuccess(`Looking up info for user ID: ${lookup}`);
+                    await displayUserInfo(lookup);
                 } else {
-                    printError(`No user ID found for email: ${email}`);
+                    // Try username lookup
+                    const lowercaseLookup = lookup.toLowerCase();
+                    const userId = usernameToIDMap.get(lowercaseLookup);
+                    
+                    if (userId) {
+                        printSuccess(`Found user with username: ${lookup}`);
+                        printInfo(`User ID: ${userId}`);
+                        await displayUserInfo(userId);
+                    } else {
+                        // Try to find by ID one more time
+                        try {
+                            const userData = await getUserData(lookup);
+                            if (userData) {
+                                printSuccess(`Found user with ID: ${lookup}`);
+                                await displayUserInfo(lookup);
+                                return;
+                            }
+                        } catch (e) {
+                            // Not found as ID either
+                        }
+                        
+                        printError(`No user found with ID, email, or username: ${lookup}`);
+                    }
                 }
             }
             else {
                 printError('Invalid command. Type "help" for available commands.');
+            }
+        }
+        
+        // Display comprehensive user info
+        async function displayUserInfo(userId) {
+            try {
+                const userData = await getUserData(userId);
+                if (!userData) {
+                    printError("Could not retrieve user data");
+                    return;
+                }
+                
+                // Display core information
+                if (userData.email) {
+                    printInfo(`Email: ${userData.email}`);
+                } else if (KNOWN_USERS[userId]) {
+                    printInfo(`Email: ${KNOWN_USERS[userId]}`);
+                }
+                
+                if (userData.username) {
+                    printInfo(`Username: ${userData.username}`);
+                } else {
+                    printInfo(`Username: Not set`);
+                }
+                
+                // Financial information
+                printInfo(`Account Balance: ${userData.accountBalance || 0} coins`);
+                
+                // Game statistics
+                if (userData.totalGamesPlayed) {
+                    printInfo(`Total Games Played: ${userData.totalGamesPlayed}`);
+                }
+                
+                if (userData.totalMoneySpent) {
+                    printInfo(`Total Money Spent: ${userData.totalMoneySpent}`);
+                }
+                
+                if (userData.totalMoneyEarned) {
+                    printInfo(`Total Money Earned: ${userData.totalMoneyEarned}`);
+                }
+                
+                // Account information
+                if (userData.createdAt) {
+                    // Format date if it's a Firebase timestamp
+                    let dateStr = userData.createdAt;
+                    if (userData.createdAt.toDate) {
+                        dateStr = userData.createdAt.toDate().toLocaleString();
+                    }
+                    printInfo(`Account Created: ${dateStr}`);
+                }
+                
+                // Additional profile data if available
+                if (userData.displayName) {
+                    printInfo(`Display Name: ${userData.displayName}`);
+                }
+                
+                if (userData.photoURL) {
+                    printInfo(`Profile Photo URL: ${userData.photoURL}`);
+                }
+                
+                // Any custom properties
+                const standardFields = [
+                    'email', 'username', 'accountBalance', 'totalGamesPlayed', 
+                    'totalMoneySpent', 'totalMoneyEarned', 'createdAt',
+                    'displayName', 'photoURL', 'uid'
+                ];
+                
+                // Show any additional fields
+                const extraFields = Object.keys(userData).filter(key => !standardFields.includes(key));
+                if (extraFields.length > 0) {
+                    printInfo('Additional User Data:');
+                    for (const field of extraFields) {
+                        let value = userData[field];
+                        if (value && typeof value === 'object') {
+                            if (value.toDate) {
+                                value = value.toDate().toLocaleString();
+                            } else {
+                                value = JSON.stringify(value);
+                            }
+                        }
+                        printInfo(`- ${field}: ${value}`);
+                    }
+                }
+            } catch (error) {
+                printError(`Error displaying user info: ${error.message}`);
             }
         }
         
@@ -458,26 +617,14 @@
                 // Cache for later use
                 userDataCache[userId] = userData;
                 
+                // Update username map if available
+                if (userData.username) {
+                    usernameToIDMap.set(userData.username.toLowerCase(), userId);
+                }
+                
                 return userData;
             } catch (error) {
                 printError(`Error getting user data: ${error.message}`);
-                throw error;
-            }
-        }
-
-        // Check user's coin balance
-        async function checkUserCoins(userId) {
-            try {
-                printInfo(`Checking coin balance for user ID: ${userId}...`);
-                
-                const userData = await getUserData(userId);
-                if (!userData) {
-                    return null;
-                }
-                
-                return userData.accountBalance || 0;
-            } catch (error) {
-                printError(`Error checking user coins: ${error.message}`);
                 throw error;
             }
         }
