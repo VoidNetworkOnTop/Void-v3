@@ -295,6 +295,38 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             color: #fff;
             text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
         }
+        
+        .network-status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            display: none;
+            z-index: 1000;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .status-online {
+            background-color: #4caf50;
+        }
+
+        .status-offline {
+            background-color: #f44336;
+        }
+
+        .status-rate-limited {
+            background-color: #ff9800;
+        }
 
         @media (max-width: 768px) {
             .games-box {
@@ -335,6 +367,12 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
             </svg>
         </div>
+    </div>
+
+    <!-- Network Status Indicator -->
+    <div id="network-status" class="network-status">
+        <span id="status-indicator" class="status-indicator status-online"></span>
+        <span id="status-text">Online</span>
     </div>
 
     <!-- Authentication Container -->
@@ -396,7 +434,10 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             getDocs, 
             runTransaction, 
             serverTimestamp,
-            deleteDoc
+            deleteDoc,
+            enableIndexedDbPersistence,
+            onSnapshotsInSync,
+            CACHE_SIZE_UNLIMITED
         } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration
@@ -410,11 +451,234 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             measurementId: "G-0PV8WC36X7"
         };
 
+        // Constants for application behavior
+        const FIRESTORE_SETTINGS = {
+            cacheSizeBytes: CACHE_SIZE_UNLIMITED, // Maximum cache size
+            experimentalAutoDetectLongPolling: true,
+            experimentalForceLongPolling: true
+        };
+
+        // ======== Network Status Tracking ========
+        const networkStatus = {
+            isOnline: navigator.onLine,
+            isRateLimited: false,
+            statusElement: document.getElementById('network-status'),
+            indicatorElement: document.getElementById('status-indicator'),
+            textElement: document.getElementById('status-text'),
+            
+            updateStatus() {
+                this.statusElement.style.display = 'block';
+                
+                if (!this.isOnline) {
+                    this.indicatorElement.className = 'status-indicator status-offline';
+                    this.textElement.textContent = 'Offline Mode';
+                } else if (this.isRateLimited) {
+                    this.indicatorElement.className = 'status-indicator status-rate-limited';
+                    this.textElement.textContent = 'Rate Limited';
+                } else {
+                    this.indicatorElement.className = 'status-indicator status-online';
+                    this.textElement.textContent = 'Online';
+                    
+                    // Hide after 5 seconds if everything is normal
+                    setTimeout(() => {
+                        if (this.isOnline && !this.isRateLimited) {
+                            this.statusElement.style.display = 'none';
+                        }
+                    }, 5000);
+                }
+            },
+            
+            setOnline(isOnline) {
+                this.isOnline = isOnline;
+                this.updateStatus();
+            },
+            
+            setRateLimited(isLimited) {
+                this.isRateLimited = isLimited;
+                this.updateStatus();
+            }
+        };
+
+        // ======== Offline Support and Pending Transactions ========
+        const pendingTransactions = {
+            queue: [],
+            isProcessing: false,
+            
+            add(transaction) {
+                this.queue.push({
+                    ...transaction,
+                    timestamp: Date.now()
+                });
+                
+                // Store in localStorage to persist across page refreshes
+                try {
+                    localStorage.setItem('pendingTransactions', JSON.stringify(this.queue));
+                } catch (e) {
+                    console.error("Could not save pending transactions to localStorage", e);
+                }
+            },
+            
+            loadFromStorage() {
+                try {
+                    const stored = localStorage.getItem('pendingTransactions');
+                    if (stored) {
+                        this.queue = JSON.parse(stored);
+                        console.log(`Loaded ${this.queue.length} pending transactions from storage`);
+                    }
+                } catch (e) {
+                    console.error("Could not load pending transactions from localStorage", e);
+                }
+            },
+            
+            async processQueue(voidAccounting) {
+                if (this.isProcessing || this.queue.length === 0 || !navigator.onLine) return;
+                
+                this.isProcessing = true;
+                console.log(`Processing ${this.queue.length} pending transactions`);
+                
+                // Process oldest transactions first
+                const sortedQueue = [...this.queue].sort((a, b) => a.timestamp - b.timestamp);
+                
+                for (const transaction of sortedQueue) {
+                    try {
+                        // Skip if more than 24 hours old
+                        if (Date.now() - transaction.timestamp > 86400000) {
+                            console.log("Skipping expired transaction", transaction);
+                            const index = this.queue.findIndex(t => 
+                                t.gameId === transaction.gameId && 
+                                t.timestamp === transaction.timestamp);
+                            if (index >= 0) this.queue.splice(index, 1);
+                            continue;
+                        }
+                        
+                        // Try to execute the transaction
+                        await voidAccounting.recordGameTransaction(
+                            transaction.gameId,
+                            transaction.userId,
+                            transaction.type,
+                            transaction.amount
+                        );
+                        
+                        // If successful, remove from queue
+                        const index = this.queue.findIndex(t => 
+                            t.gameId === transaction.gameId && 
+                            t.timestamp === transaction.timestamp);
+                        if (index >= 0) this.queue.splice(index, 1);
+                        
+                    } catch (error) {
+                        console.warn("Failed to process transaction", transaction, error);
+                        // Stop processing if we hit a rate limit
+                        if (error.code === 'resource-exhausted') {
+                            networkStatus.setRateLimited(true);
+                            break;
+                        }
+                    }
+                }
+                
+                // Update localStorage
+                try {
+                    localStorage.setItem('pendingTransactions', JSON.stringify(this.queue));
+                } catch (e) {
+                    console.error("Could not save pending transactions to localStorage", e);
+                }
+                
+                this.isProcessing = false;
+            }
+        };
+
+        // ======== Rate Limit Tracking ========
+        const rateLimitTracker = {
+            lastError: 0,
+            cooldownPeriod: 10000, // 10 seconds cooldown after a rate limit hit
+            isInCooldown() {
+                return Date.now() - this.lastError < this.cooldownPeriod;
+            },
+            markRateLimited() {
+                this.lastError = Date.now();
+                // Increase cooldown period if we're getting rate limited frequently
+                this.cooldownPeriod = Math.min(60000, this.cooldownPeriod * 1.5);
+                console.log(`Rate limit cooldown set to ${this.cooldownPeriod/1000} seconds`);
+                networkStatus.setRateLimited(true);
+            },
+            reset() {
+                // If we haven't had an error in a while, gradually reduce the cooldown
+                if (Date.now() - this.lastError > 60000) { // After a minute with no errors
+                    this.cooldownPeriod = Math.max(10000, this.cooldownPeriod * 0.8);
+                    networkStatus.setRateLimited(false);
+                }
+            }
+        };
+
+        // ======== Throttling for User Operations ========
+        const userOperationThrottling = {
+            operations: {},
+            minInterval: 5000, // Minimum 5 seconds between identical operations
+            
+            canExecute(userId, operation) {
+                const key = `${userId}:${operation}`;
+                const now = Date.now();
+                const lastTime = this.operations[key] || 0;
+                
+                if (now - lastTime < this.minInterval) {
+                    return false;
+                }
+                
+                this.operations[key] = now;
+                return true;
+            }
+        };
+
+        // ======== Setup Firebase ========
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const analytics = getAnalytics(app);
         const auth = getAuth(app);
-        const db = getFirestore(app);
+        
+        // Firestore with offline support
+        const firestoreSetup = () => {
+            const db = getFirestore(app);
+            
+            // Configure Firestore for offline usage
+            db.settings(FIRESTORE_SETTINGS);
+            
+            // Enable offline persistence
+            enableIndexedDbPersistence(db).catch((err) => {
+                if (err.code === 'failed-precondition') {
+                    console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
+                } else if (err.code === 'unimplemented') {
+                    console.warn('The current browser does not support offline persistence');
+                }
+            });
+            
+            // Monitor sync status with server
+            onSnapshotsInSync(db, () => {
+                console.log("Firestore data synced with server");
+                networkStatus.setOnline(true);
+                networkStatus.setRateLimited(false);
+            });
+            
+            return db;
+        };
+        
+        const db = firestoreSetup();
+        
+        // Helper to get cached user data when online fails
+        const getCachedUserData = async (userId) => {
+            try {
+                const userRef = doc(db, 'users', userId);
+                // Try to get from cache first
+                const userDoc = await getDoc(userRef, { source: 'cache' });
+                
+                if (userDoc.exists()) {
+                    console.log("Retrieved user data from cache");
+                    return userDoc.data();
+                }
+                return null;
+            } catch (error) {
+                console.error("Error getting cached user data:", error);
+                return null;
+            }
+        };
 
         // Profile Icon Toggle Functionality
         const profileIcon = document.getElementById('profile-icon');
@@ -432,12 +696,19 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                     voidAccounting.getUserAccountDetails(auth.currentUser.uid)
                         .then(userDetails => {
                             if (userDetails) {
-                                document.getElementById('username-display').textContent = userDetails.username;
+                                document.getElementById('username-display').textContent = userDetails.username || 'User';
                                 document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
                             }
                         })
                         .catch(error => {
                             console.error("Error refreshing balance:", error);
+                            // Try to get from cache
+                            getCachedUserData(auth.currentUser.uid).then(cachedData => {
+                                if (cachedData) {
+                                    document.getElementById('username-display').textContent = cachedData.username || 'User';
+                                    document.getElementById('balance-display').textContent = cachedData.accountBalance.toLocaleString();
+                                }
+                            });
                         });
                 }
             }
@@ -449,6 +720,19 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                 !authContainer.contains(event.target)) {
                 authContainer.style.display = 'none';
             }
+        });
+
+        // Network status listeners
+        window.addEventListener('online', () => {
+            console.log("App is online");
+            networkStatus.setOnline(true);
+            // Try to process pending transactions
+            pendingTransactions.processQueue(voidAccounting);
+        });
+        
+        window.addEventListener('offline', () => {
+            console.log("App is offline");
+            networkStatus.setOnline(false);
         });
 
 // IMPROVED: Void Network Accounting Class
@@ -463,6 +747,11 @@ class VoidNetworkAccounting {
     async registerUser(email, password, username) {
         try {
             console.log("Registering new user:", email);
+            
+            if (!navigator.onLine) {
+                throw new Error('Cannot register new users while offline');
+            }
+            
             const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
             const user = userCredential.user;
 
@@ -476,7 +765,8 @@ class VoidNetworkAccounting {
                 totalMoneySpent: 0,
                 totalMoneyEarned: 0,
                 active: true,
-                status: 'active'
+                status: 'active',
+                lastLogin: serverTimestamp()
             });
 
             console.log("User registered successfully:", user.uid);
@@ -491,6 +781,10 @@ class VoidNetworkAccounting {
     async loginUser(email, password) {
         try {
             console.log("Attempting to log in user:", email);
+            
+            if (!navigator.onLine) {
+                throw new Error('Cannot log in while offline. Please check your connection and try again.');
+            }
             
             // First attempt to authenticate with Firebase Auth
             const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
@@ -521,6 +815,16 @@ class VoidNetworkAccounting {
                 throw new Error('This account has been deleted or deactivated. Please contact support.');
             }
             
+            // Update last login time
+            try {
+                await updateDoc(userRef, {
+                    lastLogin: serverTimestamp()
+                });
+            } catch (updateError) {
+                console.warn("Could not update last login time", updateError);
+                // Non-critical, continue without failing
+            }
+            
             console.log("User verified in both Auth and Firestore:", user.uid);
             return user;
         } catch (error) {
@@ -535,6 +839,8 @@ class VoidNetworkAccounting {
                 throw new Error('Too many login attempts. Please try again later.');
             } else if (error.code === 'auth/invalid-credential') {
                 throw new Error('Invalid login credentials. Please try again.');
+            } else if (error.code === 'auth/network-request-failed') {
+                throw new Error('Network error. Please check your connection and try again.');
             }
             
             throw error;
@@ -558,68 +864,64 @@ class VoidNetworkAccounting {
         return this.auth.currentUser;
     }
 
-    // Get User Account Details - IMPROVED with forced server data and status check
-    async getUserAccountDetails(userId) {
-        try {
-            console.log("Getting account details for user:", userId);
-            
-            // First check if account is valid and active
-            const isValid = await this.handleAccountDeletion(userId);
-            if (!isValid) {
-                console.error("Account is no longer valid");
-                return null;
-            }
-            
-            const userRef = doc(this.db, 'users', userId);
-            // Force fresh data from server, not cache
-            const userDoc = await getDoc(userRef, { source: 'server' });
-
-            if (!userDoc.exists()) {
-                console.error("User document not found");
-                throw new Error('User not found');
-            }
-
-            const userData = userDoc.data();
-            console.log("Retrieved user data:", userData.username, "Balance:", userData.accountBalance);
-            return userData;
-        } catch (error) {
-            console.error("Account Details Error:", error);
-            throw error;
-        }
-    }
-
     // Handle account deletion and validation
     async handleAccountDeletion(userId) {
         try {
             console.log("Checking account status for user:", userId);
             
-            // Check if user exists in Firestore
-            const userRef = doc(this.db, 'users', userId);
-            const userDoc = await getDoc(userRef);
-            
-            if (!userDoc.exists()) {
-                console.error("User doesn't exist in Firestore");
-                
-                // Force sign out
-                await this.auth.signOut();
-                return false;
+            // If offline or in rate limit cooldown, skip validation
+            if (!navigator.onLine || rateLimitTracker.isInCooldown()) {
+                console.log("Skipping account validation - offline or rate limited");
+                return true; // Assume valid in offline/rate-limited mode
             }
             
-            // Check if user is marked as deleted in Firestore
-            const userData = userDoc.data();
-            if (userData.status === 'deleted' || userData.active === false) {
-                console.warn("User account is marked as deleted or inactive");
+            // Don't check too frequently for the same user
+            if (!userOperationThrottling.canExecute(userId, 'account-check')) {
+                return true; // Skip excessive checks
+            }
+            
+            // Check if user exists in Firestore
+            const userRef = doc(this.db, 'users', userId);
+            
+            try {
+                const userDoc = await getDoc(userRef);
                 
-                // Force sign out
-                await this.auth.signOut();
-                return false;
+                if (!userDoc.exists()) {
+                    console.error("User doesn't exist in Firestore");
+                    
+                    // Force sign out
+                    await this.auth.signOut();
+                    return false;
+                }
+                
+                // Check if user is marked as deleted in Firestore
+                const userData = userDoc.data();
+                if (userData.status === 'deleted' || userData.active === false) {
+                    console.warn("User account is marked as deleted or inactive");
+                    
+                    // Force sign out
+                    await this.auth.signOut();
+                    return false;
+                }
+            } catch (error) {
+                // If we get a rate limit error during check, assume account is valid
+                if (error.code === 'resource-exhausted') {
+                    rateLimitTracker.markRateLimited();
+                    return true;
+                }
+                throw error;
             }
             
             return true;
         } catch (error) {
             console.error("Error checking account status:", error);
             
-            // If there's any error, default to logging the user out for safety
+            // In case of network errors, don't block the user
+            if (error.code === 'unavailable' || error.code === 'network-request-failed') {
+                return true;
+            }
+            
+            // If there's any other error, default to logging the user out for safety
             try {
                 await this.auth.signOut();
             } catch (signOutError) {
@@ -630,9 +932,99 @@ class VoidNetworkAccounting {
         }
     }
 
-    // Track Game Transaction - IMPROVED for better sync with transactions
+    // Get User Account Details - IMPROVED with forced server data and status check
+    async getUserAccountDetails(userId) {
+        try {
+            console.log("Getting account details for user:", userId);
+            
+            // First check if account is valid and active (unless in rate limit cooldown)
+            if (!rateLimitTracker.isInCooldown()) {
+                const isValid = await this.handleAccountDeletion(userId);
+                if (!isValid) {
+                    console.error("Account is no longer valid");
+                    return null;
+                }
+            }
+            
+            // Try getting data from server first, fall back to cache
+            let userDoc;
+            try {
+                // Only try server if online and not rate limited
+                if (navigator.onLine && !rateLimitTracker.isInCooldown()) {
+                    const userRef = doc(this.db, 'users', userId);
+                    userDoc = await getDoc(userRef, { source: 'server' });
+                }
+            } catch (error) {
+                console.warn("Error getting data from server:", error);
+                
+                if (error.code === 'resource-exhausted') {
+                    rateLimitTracker.markRateLimited();
+                }
+                
+                // Falling back to cache
+                userDoc = null;
+            }
+            
+            // If server failed or we're offline/rate-limited, try cache
+            if (!userDoc) {
+                const cachedData = await getCachedUserData(userId);
+                if (cachedData) {
+                    return cachedData;
+                }
+            } else if (userDoc.exists()) {
+                const userData = userDoc.data();
+                console.log("Retrieved user data:", userData.username, "Balance:", userData.accountBalance);
+                return userData;
+            }
+            
+            console.error("User document not found in server or cache");
+            return null;
+        } catch (error) {
+            console.error("Account Details Error:", error);
+            
+            // For network errors, try cache
+            if (error.code === 'unavailable' || error.code === 'network-request-failed') {
+                return await getCachedUserData(userId);
+            }
+            
+            throw error;
+        }
+    }
+
+    // Track Game Transaction - IMPROVED for better sync and rate limiting
     async recordGameTransaction(gameId, userId, transactionType, amount) {
         try {
+            // Check if we're in a rate limit cooldown period
+            if (rateLimitTracker.isInCooldown()) {
+                console.log("In rate limit cooldown, skipping transaction recording");
+                // Rather than failing, return a mock successful transaction during cooldown
+                return {
+                    transactionId: "rate-limited-" + Date.now(),
+                    newBalance: -1, // Signal that this is an estimated value
+                    wasRateLimited: true
+                };
+            }
+            
+            rateLimitTracker.reset();
+            
+            // If we're offline, queue the transaction for later
+            if (!navigator.onLine) {
+                console.log(`Offline: Queueing transaction: ${transactionType} for ${amount} coins in ${gameId}`);
+                pendingTransactions.add({
+                    gameId,
+                    userId,
+                    type: transactionType,
+                    amount
+                });
+                
+                // Return mock success to allow user to continue
+                return {
+                    transactionId: "offline-" + Date.now(),
+                    newBalance: -1,
+                    wasOffline: true
+                };
+            }
+            
             console.log(`Recording transaction: ${transactionType} for ${amount} coins in ${gameId}`);
             
             // Validate inputs
@@ -641,98 +1033,139 @@ class VoidNetworkAccounting {
                 throw new Error('Invalid transaction parameters');
             }
             
-            // Validate account first
-            const isValid = await this.handleAccountDeletion(userId);
-            if (!isValid) {
-                throw new Error('Account no longer valid');
+            // Validate account first (unless this is just a visit tracking)
+            if (!(transactionType === 'game_play' && amount === 0)) {
+                const isValid = await this.handleAccountDeletion(userId);
+                if (!isValid) {
+                    throw new Error('Account no longer valid');
+                }
             }
             
             // Convert amount to number to ensure proper calculation
             amount = Number(amount) || 0;
             
             // Use a transaction for atomicity
-            return await runTransaction(this.db, async (transaction) => {
-                // Get user document in transaction
-                const userRef = doc(this.db, 'users', userId);
-                const userDoc = await transaction.get(userRef);
-                
-                if (!userDoc.exists()) {
-                    console.error("Cannot update non-existent user");
-                    throw new Error('User document not found');
-                }
-                
-                // Create transaction record with a unique ID
-                const transactionRef = doc(collection(this.db, 'transactions'));
-                
-                // Prepare transaction data
-                const transactionData = {
-                    userId: userId,
-                    gameId: gameId,
-                    transactionType: transactionType,
-                    amount: amount,
-                    timestamp: serverTimestamp() // Use server timestamp for consistency
-                };
-                
-                // Set transaction data
-                transaction.set(transactionRef, transactionData);
-                
-                // Get user data and calculate new balance
-                const userData = userDoc.data();
-                let updatedBalance = userData.accountBalance || 0;
-                let totalGamesPlayed = userData.totalGamesPlayed || 0;
-                let totalMoneySpent = userData.totalMoneySpent || 0;
-                let totalMoneyEarned = userData.totalMoneyEarned || 0;
-                
-                // Update user metrics based on transaction type
-                switch(transactionType) {
-                    case 'deposit':
-                        updatedBalance += amount;
-                        break;
-                    case 'withdrawal':
-                        if (updatedBalance < amount) {
-                            throw new Error('Insufficient balance');
-                        }
-                        updatedBalance -= amount;
-                        break;
-                    case 'game_play':
-                        if (amount > 0 && updatedBalance < amount) {
-                            throw new Error('Insufficient balance to play game');
-                        }
-                        updatedBalance -= amount;
-                        totalGamesPlayed += 1;
-                        totalMoneySpent += amount;
-                        break;
-                    case 'game_win':
-                        updatedBalance += amount;
-                        totalMoneyEarned += amount;
-                        break;
-                    default:
-                        console.warn(`Unknown transaction type: ${transactionType}`);
-                }
-                
-                // Update user document with new values
-                transaction.update(userRef, {
-                    accountBalance: updatedBalance,
-                    totalGamesPlayed: totalGamesPlayed,
-                    totalMoneySpent: totalMoneySpent,
-                    totalMoneyEarned: totalMoneyEarned,
-                    lastUpdated: serverTimestamp()
+            try {
+                return await runTransaction(this.db, async (transaction) => {
+                    // Get user document in transaction
+                    const userRef = doc(this.db, 'users', userId);
+                    const userDoc = await transaction.get(userRef);
+                    
+                    if (!userDoc.exists()) {
+                        console.error("Cannot update non-existent user");
+                        throw new Error('User document not found');
+                    }
+                    
+                    // Create transaction record with a unique ID
+                    const transactionRef = doc(collection(this.db, 'transactions'));
+                    
+                    // Prepare transaction data
+                    const transactionData = {
+                        userId: userId,
+                        gameId: gameId,
+                        transactionType: transactionType,
+                        amount: amount,
+                        timestamp: serverTimestamp() // Use server timestamp for consistency
+                    };
+                    
+                    // Set transaction data
+                    transaction.set(transactionRef, transactionData);
+                    
+                    // Get user data and calculate new balance
+                    const userData = userDoc.data();
+                    let updatedBalance = userData.accountBalance || 0;
+                    let totalGamesPlayed = userData.totalGamesPlayed || 0;
+                    let totalMoneySpent = userData.totalMoneySpent || 0;
+                    let totalMoneyEarned = userData.totalMoneyEarned || 0;
+                    
+                    // Update user metrics based on transaction type
+                    switch(transactionType) {
+                        case 'deposit':
+                            updatedBalance += amount;
+                            break;
+                        case 'withdrawal':
+                            if (updatedBalance < amount) {
+                                throw new Error('Insufficient balance');
+                            }
+                            updatedBalance -= amount;
+                            break;
+                        case 'game_play':
+                            if (amount > 0 && updatedBalance < amount) {
+                                throw new Error('Insufficient balance to play game');
+                            }
+                            updatedBalance -= amount;
+                            totalGamesPlayed += 1;
+                            totalMoneySpent += amount;
+                            break;
+                        case 'game_win':
+                            updatedBalance += amount;
+                            totalMoneyEarned += amount;
+                            break;
+                        default:
+                            console.warn(`Unknown transaction type: ${transactionType}`);
+                    }
+                    
+                    // Update user document with new values
+                    transaction.update(userRef, {
+                        accountBalance: updatedBalance,
+                        totalGamesPlayed: totalGamesPlayed,
+                        totalMoneySpent: totalMoneySpent,
+                        totalMoneyEarned: totalMoneyEarned,
+                        lastUpdated: serverTimestamp()
+                    });
+                    
+                    console.log(`Transaction prepared. New balance will be: ${updatedBalance}`);
+                    
+                    return {
+                        transactionId: transactionRef.id,
+                        newBalance: updatedBalance
+                    };
                 });
+            } catch (transactionError) {
+                // Handle rate limiting errors specifically
+                if (transactionError.code === 'resource-exhausted') {
+                    console.warn("Firebase rate limit hit, entering cooldown mode");
+                    rateLimitTracker.markRateLimited();
+                    
+                    // During rate limits, return mock success for game_play with 0 amount
+                    // This allows navigation to continue without blocking the user
+                    if (transactionType === 'game_play' && amount === 0) {
+                        return {
+                            transactionId: "rate-limited-" + Date.now(),
+                            newBalance: -1,
+                            wasRateLimited: true
+                        };
+                    } else {
+                        // For transactions that would affect balance, queue for later
+                        pendingTransactions.add({
+                            gameId,
+                            userId,
+                            type: transactionType,
+                            amount
+                        });
+                        
+                        throw new Error('The service is currently busy. Please try again in a few moments.');
+                    }
+                }
                 
-                console.log(`Transaction prepared. New balance will be: ${updatedBalance}`);
-                
-                return {
-                    transactionId: transactionRef.id,
-                    newBalance: updatedBalance
-                };
-            });
+                throw transactionError;
+            }
         } catch (error) {
             console.error("Transaction Error:", error);
+            
             // Add more specific error information
             if (error.code === 'permission-denied') {
                 throw new Error('You do not have permission to perform this action');
-            } else if (error.code === 'resource-exhausted') {
-                throw new Error('Too many requests. Please try again later');
+            } else if (error.code === 'unavailable') {
+                // Add to queue if network is unavailable
+                pendingTransactions.add({
+                    gameId,
+                    userId,
+                    type: transactionType,
+                    amount
+                });
+                
+                throw new Error('Network unavailable. The action will be completed when you\'re back online.');
             } else {
                 throw error;
             }
@@ -754,12 +1187,22 @@ document.getElementById('login-btn')?.addEventListener('click', async () => {
     }
     
     try {
+        // Disable login button to prevent multiple clicks
+        const loginBtn = document.getElementById('login-btn');
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Logging in...';
+        
         const user = await voidAccounting.loginUser(email, password);
         console.log('Logged in user:', user);
         await updateUIForLoggedInUser(user);
         authContainer.style.display = 'none'; // Hide auth container after login
     } catch (error) {
         alert('Login failed: ' + error.message);
+    } finally {
+        // Re-enable login button
+        const loginBtn = document.getElementById('login-btn');
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Login';
     }
 });
 
@@ -774,12 +1217,22 @@ document.getElementById('register-btn')?.addEventListener('click', async () => {
     }
     
     try {
+        // Disable register button to prevent multiple clicks
+        const registerBtn = document.getElementById('register-btn');
+        registerBtn.disabled = true;
+        registerBtn.textContent = 'Creating account...';
+        
         const user = await voidAccounting.registerUser(email, password, username);
         console.log('Registered user:', user);
         await updateUIForLoggedInUser(user);
         authContainer.style.display = 'none'; // Hide auth container after registration
     } catch (error) {
         alert('Registration failed: ' + error.message);
+    } finally {
+        // Re-enable register button
+        const registerBtn = document.getElementById('register-btn');
+        registerBtn.disabled = false;
+        registerBtn.textContent = 'Register';
     }
 });
 
@@ -808,15 +1261,24 @@ async function updateUIForLoggedInUser(user) {
             return;
         }
         
-        document.getElementById('username-display').textContent = userDetails.username;
+        document.getElementById('username-display').textContent = userDetails.username || 'User';
         document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
         console.log("Updated UI with balance:", userDetails.accountBalance);
     } catch (error) {
         console.error("Error updating UI:", error);
-        alert('Could not load user details. Please try again.');
-        // If there's an error loading details, best to log out
-        await voidAccounting.logout();
-        updateUIForLoggedOutUser();
+        
+        // Try to get from cache
+        const cachedData = await getCachedUserData(user.uid);
+        if (cachedData) {
+            document.getElementById('username-display').textContent = cachedData.username || 'User';
+            document.getElementById('balance-display').textContent = cachedData.accountBalance.toLocaleString();
+            console.log("Updated UI with cached balance:", cachedData.accountBalance);
+        } else {
+            alert('Could not load user details. Please try again.');
+            // If there's an error loading details, best to log out
+            await voidAccounting.logout();
+            updateUIForLoggedOutUser();
+        }
     }
 }
 
@@ -832,26 +1294,46 @@ onAuthStateChanged(auth, async (user) => {
         console.log("Auth state changed: User is signed in", user.uid);
         
         try {
-            // Verify the user still exists in Firestore
-            const userRef = doc(db, 'users', user.uid);
-            const userDoc = await getDoc(userRef);
-            
-            if (!userDoc.exists()) {
-                console.error("User authenticated but no Firestore record found - logging out");
-                await auth.signOut();
-                alert('Your account data could not be found. Please contact support.');
-                updateUIForLoggedOutUser();
+            // Skip detailed verification if we're offline or rate-limited
+            if (!navigator.onLine || rateLimitTracker.isInCooldown()) {
+                console.log("Skipping detailed verification - offline or rate limited");
+                await updateUIForLoggedInUser(user);
                 return;
             }
             
-            // Check if account is marked as deleted or inactive
-            const userData = userDoc.data();
-            if (userData.status === 'deleted' || userData.active === false) {
-                console.error("User account is marked as deleted or inactive - logging out");
-                await auth.signOut();
-                alert('Your account has been deleted or deactivated. Please contact support if this is unexpected.');
-                updateUIForLoggedOutUser();
-                return;
+            // Verify the user still exists in Firestore
+            const userRef = doc(db, 'users', user.uid);
+            
+            try {
+                const userDoc = await getDoc(userRef);
+                
+                if (!userDoc.exists()) {
+                    console.error("User authenticated but no Firestore record found - logging out");
+                    await auth.signOut();
+                    alert('Your account data could not be found. Please contact support.');
+                    updateUIForLoggedOutUser();
+                    return;
+                }
+                
+                // Check if account is marked as deleted or inactive
+                const userData = userDoc.data();
+                if (userData.status === 'deleted' || userData.active === false) {
+                    console.error("User account is marked as deleted or inactive - logging out");
+                    await auth.signOut();
+                    alert('Your account has been deleted or deactivated. Please contact support if this is unexpected.');
+                    updateUIForLoggedOutUser();
+                    return;
+                }
+            } catch (error) {
+                // If we hit a rate limit, just continue
+                if (error.code === 'resource-exhausted') {
+                    rateLimitTracker.markRateLimited();
+                } else if (error.code === 'unavailable' || error.code === 'network-request-failed') {
+                    // Network issues, continue with cached data
+                    console.warn("Network issue during verification, continuing with cached data");
+                } else {
+                    throw error;
+                }
             }
             
             // User exists in both Auth and Firestore, update UI
@@ -859,9 +1341,17 @@ onAuthStateChanged(auth, async (user) => {
         } catch (error) {
             console.error("Error verifying user in Firestore:", error);
             // Handle any other errors that might occur during verification
-            alert('There was a problem verifying your account. Please try signing in again.');
-            await auth.signOut();
-            updateUIForLoggedOutUser();
+            
+            // For critical errors, log out
+            if (error.code !== 'unavailable' && error.code !== 'network-request-failed' && 
+                error.code !== 'resource-exhausted') {
+                alert('There was a problem verifying your account. Please try signing in again.');
+                await auth.signOut();
+                updateUIForLoggedOutUser();
+            } else {
+                // For network issues, still try to update UI with cached data
+                await updateUIForLoggedInUser(user);
+            }
         }
     } else {
         console.log("Auth state changed: User is signed out");
@@ -910,7 +1400,7 @@ function renderAppsList() {
         
         appElement.innerHTML = `
             <div class="game-icon">
-                <img src="${app.imgSrc}" alt="${app.title} icon">
+                <img src="${app.imgSrc}" alt="${app.title} icon" onerror="this.src='/assets/placeholder.png'">
             </div>
             <h3 class="game-title">${app.title}</h3>
         `;
@@ -926,49 +1416,58 @@ function renderAppsList() {
                     appElement.style.opacity = "0.7";
                     appElement.style.pointerEvents = "none";
                     
-                    // First verify account is still valid
-                    const userDetails = await voidAccounting.getUserAccountDetails(currentUser.uid);
-                    if (!userDetails) {
-                        throw new Error('Your account was not found or has been deactivated.');
+                    // User verification is more lightweight now - we'll skip if we hit rate limits
+                    let userDetails = null;
+                    try {
+                        // Try to get user details, but don't block on failure
+                        userDetails = await voidAccounting.getUserAccountDetails(currentUser.uid);
+                        if (userDetails) {
+                            console.log("User verified:", userDetails.username || 'User');
+                        }
+                    } catch (error) {
+                        // Only block navigation if this is specifically an account problem
+                        // For rate limits or network issues, we'll continue anyway
+                        if (error.code !== 'resource-exhausted' && 
+                            error.code !== 'unavailable' && 
+                            error.code !== 'network-request-failed' && 
+                            error.message && 
+                            (error.message.includes('account') || error.message.includes('User'))) {
+                            throw error;
+                        }
+                        console.warn("Couldn't verify user details due to:", error.message || error);
                     }
                     
-                    console.log("User verified:", userDetails.username);
-                    
-                    // Record the game play attempt - with retry logic
-                    let retryCount = 0;
-                    let success = false;
-                    
-                    while (!success && retryCount < 3) {
-                        try {
-                            await voidAccounting.recordGameTransaction(
-                                app.title.toLowerCase().replace(/\s+/g, '_'), 
-                                currentUser.uid,
-                                'game_play',
-                                0 // Just tracking the visit, not charging coins here
-                            );
-                            success = true;
-                        } catch (error) {
-                            retryCount++;
-                            console.warn(`Transaction attempt ${retryCount} failed:`, error);
-                            
-                            // If the error is because account no longer exists, stop retrying
-                            if (error.message.includes('Account no longer valid')) {
-                                alert('Your account is no longer active. Please sign in again.');
-                                await voidAccounting.logout();
-                                updateUIForLoggedOutUser();
-                                appElement.style.opacity = "1";
-                                appElement.style.pointerEvents = "auto";
-                                return;
-                            }
-                            
-                            // Wait before retry with exponential backoff
-                            if (retryCount < 3) {
-                                await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+                    // Try to record the game transaction, but don't block navigation on rate limit errors
+                    try {
+                        const result = await voidAccounting.recordGameTransaction(
+                            app.title.toLowerCase().replace(/\s+/g, '_'), 
+                            currentUser.uid,
+                            'game_play',
+                            0 // Just tracking the visit, not charging coins here
+                        );
+                        
+                        if (result) {
+                            if (result.wasRateLimited) {
+                                console.log("Transaction recording was rate limited but continuing navigation");
+                                networkStatus.setRateLimited(true);
+                            } else if (result.wasOffline) {
+                                console.log("Transaction queued for offline processing");
+                                networkStatus.setOnline(false);
                             }
                         }
+                    } catch (error) {
+                        // Only block for specific, critical errors - not rate limits or network issues
+                        if (error.code !== 'resource-exhausted' && 
+                            error.code !== 'unavailable' && 
+                            error.code !== 'network-request-failed' && 
+                            error.message && 
+                            (error.message.includes('account') || error.message.includes('insufficient'))) {
+                            throw error;
+                        }
+                        console.warn("Couldn't record transaction but continuing:", error.message || error);
                     }
                     
-                    // Navigate to the game even if transaction recording fails after retries
+                    // Navigate to the game
                     window.location.href = app.link;
                 } catch (error) {
                     // Reset the button state
@@ -976,10 +1475,21 @@ function renderAppsList() {
                     appElement.style.pointerEvents = "auto";
                     
                     console.error("Error accessing game:", error);
-                    alert(`There was a problem: ${error.message || 'Could not access game'}`);
+                    
+                    // Customize message based on error type
+                    let errorMessage = 'Could not access game';
+                    if (error.code === 'resource-exhausted') {
+                        errorMessage = 'The service is currently busy. Please try again in a few moments.';
+                    } else if (error.code === 'unavailable' || error.code === 'network-request-failed') {
+                        errorMessage = 'Network error. Please check your connection and try again.';
+                    } else if (error.message) {
+                        errorMessage = error.message;
+                    }
+                    
+                    alert(`There was a problem: ${errorMessage}`);
                     
                     // If it's an account issue, log out
-                    if (error.message.includes('account')) {
+                    if (error.message && error.message.includes('account')) {
                         await voidAccounting.logout();
                         updateUIForLoggedOutUser();
                     }
@@ -1009,7 +1519,7 @@ document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
             
             appElement.innerHTML = `
                 <div class="game-icon">
-                    <img src="${app.imgSrc}" alt="${app.title} icon">
+                    <img src="${app.imgSrc}" alt="${app.title} icon" onerror="this.src='/assets/placeholder.png'">
                 </div>
                 <h3 class="game-title">${app.title}</h3>
             `;
@@ -1025,49 +1535,58 @@ document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
                         appElement.style.opacity = "0.7";
                         appElement.style.pointerEvents = "none";
                         
-                        // First verify account is still valid
-                        const userDetails = await voidAccounting.getUserAccountDetails(currentUser.uid);
-                        if (!userDetails) {
-                            throw new Error('Your account was not found or has been deactivated.');
+                        // User verification is more lightweight now - we'll skip if we hit rate limits
+                        let userDetails = null;
+                        try {
+                            // Try to get user details, but don't block on failure
+                            userDetails = await voidAccounting.getUserAccountDetails(currentUser.uid);
+                            if (userDetails) {
+                                console.log("User verified:", userDetails.username || 'User');
+                            }
+                        } catch (error) {
+                            // Only block navigation if this is specifically an account problem
+                            // For rate limits or network issues, we'll continue anyway
+                            if (error.code !== 'resource-exhausted' && 
+                                error.code !== 'unavailable' && 
+                                error.code !== 'network-request-failed' && 
+                                error.message && 
+                                (error.message.includes('account') || error.message.includes('User'))) {
+                                throw error;
+                            }
+                            console.warn("Couldn't verify user details due to:", error.message || error);
                         }
                         
-                        console.log("User verified:", userDetails.username);
-                        
-                        // Record the game play attempt - with retry logic
-                        let retryCount = 0;
-                        let success = false;
-                        
-                        while (!success && retryCount < 3) {
-                            try {
-                                await voidAccounting.recordGameTransaction(
-                                    app.title.toLowerCase().replace(/\s+/g, '_'), 
-                                    currentUser.uid,
-                                    'game_play',
-                                    0 // Just tracking the visit, not charging coins here
-                                );
-                                success = true;
-                            } catch (error) {
-                                retryCount++;
-                                console.warn(`Transaction attempt ${retryCount} failed:`, error);
-                                
-                                // If the error is because account no longer exists, stop retrying
-                                if (error.message.includes('Account no longer valid')) {
-                                    alert('Your account is no longer active. Please sign in again.');
-                                    await voidAccounting.logout();
-                                    updateUIForLoggedOutUser();
-                                    appElement.style.opacity = "1";
-                                    appElement.style.pointerEvents = "auto";
-                                    return;
-                                }
-                                
-                                // Wait before retry with exponential backoff
-                                if (retryCount < 3) {
-                                    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+                        // Try to record the game transaction, but don't block navigation on rate limit errors
+                        try {
+                            const result = await voidAccounting.recordGameTransaction(
+                                app.title.toLowerCase().replace(/\s+/g, '_'), 
+                                currentUser.uid,
+                                'game_play',
+                                0 // Just tracking the visit, not charging coins here
+                            );
+                            
+                            if (result) {
+                                if (result.wasRateLimited) {
+                                    console.log("Transaction recording was rate limited but continuing navigation");
+                                    networkStatus.setRateLimited(true);
+                                } else if (result.wasOffline) {
+                                    console.log("Transaction queued for offline processing");
+                                    networkStatus.setOnline(false);
                                 }
                             }
+                        } catch (error) {
+                            // Only block for specific, critical errors - not rate limits or network issues
+                            if (error.code !== 'resource-exhausted' && 
+                                error.code !== 'unavailable' && 
+                                error.code !== 'network-request-failed' && 
+                                error.message && 
+                                (error.message.includes('account') || error.message.includes('insufficient'))) {
+                                throw error;
+                            }
+                            console.warn("Couldn't record transaction but continuing:", error.message || error);
                         }
                         
-                        // Navigate to the game even if transaction recording fails after retries
+                        // Navigate to the game
                         window.location.href = app.link;
                     } catch (error) {
                         // Reset the button state
@@ -1075,10 +1594,21 @@ document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
                         appElement.style.pointerEvents = "auto";
                         
                         console.error("Error accessing game:", error);
-                        alert(`There was a problem: ${error.message || 'Could not access game'}`);
+                        
+                        // Customize message based on error type
+                        let errorMessage = 'Could not access game';
+                        if (error.code === 'resource-exhausted') {
+                            errorMessage = 'The service is currently busy. Please try again in a few moments.';
+                        } else if (error.code === 'unavailable' || error.code === 'network-request-failed') {
+                            errorMessage = 'Network error. Please check your connection and try again.';
+                        } else if (error.message) {
+                            errorMessage = error.message;
+                        }
+                        
+                        alert(`There was a problem: ${errorMessage}`);
                         
                         // If it's an account issue, log out
-                        if (error.message.includes('account')) {
+                        if (error.message && error.message.includes('account')) {
                             await voidAccounting.logout();
                             updateUIForLoggedOutUser();
                         }
@@ -1098,6 +1628,21 @@ document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
 window.addEventListener('load', async () => {
     try {
         console.log("Page loaded, initializing app");
+        
+        // Update network status
+        networkStatus.setOnline(navigator.onLine);
+        networkStatus.updateStatus();
+        
+        // Load any pending transactions
+        pendingTransactions.loadFromStorage();
+        
+        // Process queue periodically
+        setInterval(() => {
+            if (navigator.onLine && !rateLimitTracker.isInCooldown()) {
+                pendingTransactions.processQueue(voidAccounting);
+            }
+        }, 60000); // Try to process every minute
+        
         renderAppsList();
         
         // Check if user is already logged in
