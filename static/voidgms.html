@@ -435,9 +435,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             runTransaction, 
             serverTimestamp,
             deleteDoc,
+            writeBatch,
             enableIndexedDbPersistence,
-            onSnapshotsInSync,
-            CACHE_SIZE_UNLIMITED
+            onSnapshotsInSync
         } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration
@@ -449,13 +449,6 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             messagingSenderId: "878896483861",
             appId: "1:878896483861:web:a876f521a8fc0faed0881c",
             measurementId: "G-0PV8WC36X7"
-        };
-
-        // Constants for application behavior
-        const FIRESTORE_SETTINGS = {
-            cacheSizeBytes: CACHE_SIZE_UNLIMITED, // Maximum cache size
-            experimentalAutoDetectLongPolling: true,
-            experimentalForceLongPolling: true
         };
 
         // ======== Network Status Tracking ========
@@ -633,15 +626,10 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         const app = initializeApp(firebaseConfig);
         const analytics = getAnalytics(app);
         const auth = getAuth(app);
+        const db = getFirestore(app);
         
-        // Firestore with offline support
-        const firestoreSetup = () => {
-            const db = getFirestore(app);
-            
-            // Configure Firestore for offline usage
-            db.settings(FIRESTORE_SETTINGS);
-            
-            // Enable offline persistence
+        // Try to enable offline persistence
+        try {
             enableIndexedDbPersistence(db).catch((err) => {
                 if (err.code === 'failed-precondition') {
                     console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
@@ -650,17 +638,17 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                 }
             });
             
-            // Monitor sync status with server
-            onSnapshotsInSync(db, () => {
-                console.log("Firestore data synced with server");
-                networkStatus.setOnline(true);
-                networkStatus.setRateLimited(false);
-            });
-            
-            return db;
-        };
-        
-        const db = firestoreSetup();
+            // Monitor sync status with server if available
+            if (typeof onSnapshotsInSync === 'function') {
+                onSnapshotsInSync(db, () => {
+                    console.log("Firestore data synced with server");
+                    networkStatus.setOnline(true);
+                    networkStatus.setRateLimited(false);
+                });
+            }
+        } catch (error) {
+            console.warn("Error setting up Firestore:", error);
+        }
         
         // Helper to get cached user data when online fails
         const getCachedUserData = async (userId) => {
@@ -952,7 +940,7 @@ class VoidNetworkAccounting {
                 // Only try server if online and not rate limited
                 if (navigator.onLine && !rateLimitTracker.isInCooldown()) {
                     const userRef = doc(this.db, 'users', userId);
-                    userDoc = await getDoc(userRef, { source: 'server' });
+                    userDoc = await getDoc(userRef);
                 }
             } catch (error) {
                 console.warn("Error getting data from server:", error);
@@ -991,23 +979,20 @@ class VoidNetworkAccounting {
         }
     }
 
-    // Track Game Transaction - IMPROVED for better sync and rate limiting
+    // UPDATED: Track Game Transaction - More efficient implementation to reduce quota usage
     async recordGameTransaction(gameId, userId, transactionType, amount) {
         try {
-            // Check if we're in a rate limit cooldown period
+            // Check for rate limiting
             if (rateLimitTracker.isInCooldown()) {
                 console.log("In rate limit cooldown, skipping transaction recording");
-                // Rather than failing, return a mock successful transaction during cooldown
                 return {
                     transactionId: "rate-limited-" + Date.now(),
-                    newBalance: -1, // Signal that this is an estimated value
+                    newBalance: -1,
                     wasRateLimited: true
                 };
             }
             
-            rateLimitTracker.reset();
-            
-            // If we're offline, queue the transaction for later
+            // If we're offline, queue for later
             if (!navigator.onLine) {
                 console.log(`Offline: Queueing transaction: ${transactionType} for ${amount} coins in ${gameId}`);
                 pendingTransactions.add({
@@ -1016,8 +1001,6 @@ class VoidNetworkAccounting {
                     type: transactionType,
                     amount
                 });
-                
-                // Return mock success to allow user to continue
                 return {
                     transactionId: "offline-" + Date.now(),
                     newBalance: -1,
@@ -1027,148 +1010,167 @@ class VoidNetworkAccounting {
             
             console.log(`Recording transaction: ${transactionType} for ${amount} coins in ${gameId}`);
             
-            // Validate inputs
-            if (!gameId || !userId || !transactionType) {
-                console.error("Missing required parameters for transaction");
-                throw new Error('Invalid transaction parameters');
-            }
-            
-            // Validate account first (unless this is just a visit tracking)
-            if (!(transactionType === 'game_play' && amount === 0)) {
-                const isValid = await this.handleAccountDeletion(userId);
-                if (!isValid) {
-                    throw new Error('Account no longer valid');
-                }
-            }
-            
-            // Convert amount to number to ensure proper calculation
-            amount = Number(amount) || 0;
-            
-            // Use a transaction for atomicity
-            try {
-                return await runTransaction(this.db, async (transaction) => {
-                    // Get user document in transaction
-                    const userRef = doc(this.db, 'users', userId);
-                    const userDoc = await transaction.get(userRef);
-                    
-                    if (!userDoc.exists()) {
-                        console.error("Cannot update non-existent user");
-                        throw new Error('User document not found');
-                    }
-                    
-                    // Create transaction record with a unique ID
-                    const transactionRef = doc(collection(this.db, 'transactions'));
-                    
-                    // Prepare transaction data
-                    const transactionData = {
+            // Zero-amount game plays don't need to update the user document
+            // This significantly reduces Firestore operations for simple game visits
+            if (transactionType === 'game_play' && amount === 0) {
+                // Just log the visit without updating user stats
+                try {
+                    const visitRef = doc(collection(this.db, 'game_visits'));
+                    await setDoc(visitRef, {
                         userId: userId,
                         gameId: gameId,
-                        transactionType: transactionType,
-                        amount: amount,
-                        timestamp: serverTimestamp() // Use server timestamp for consistency
-                    };
-                    
-                    // Set transaction data
-                    transaction.set(transactionRef, transactionData);
-                    
-                    // Get user data and calculate new balance
-                    const userData = userDoc.data();
-                    let updatedBalance = userData.accountBalance || 0;
-                    let totalGamesPlayed = userData.totalGamesPlayed || 0;
-                    let totalMoneySpent = userData.totalMoneySpent || 0;
-                    let totalMoneyEarned = userData.totalMoneyEarned || 0;
-                    
-                    // Update user metrics based on transaction type
-                    switch(transactionType) {
-                        case 'deposit':
-                            updatedBalance += amount;
-                            break;
-                        case 'withdrawal':
-                            if (updatedBalance < amount) {
-                                throw new Error('Insufficient balance');
-                            }
-                            updatedBalance -= amount;
-                            break;
-                        case 'game_play':
-                            if (amount > 0 && updatedBalance < amount) {
-                                throw new Error('Insufficient balance to play game');
-                            }
-                            updatedBalance -= amount;
-                            totalGamesPlayed += 1;
-                            totalMoneySpent += amount;
-                            break;
-                        case 'game_win':
-                            updatedBalance += amount;
-                            totalMoneyEarned += amount;
-                            break;
-                        default:
-                            console.warn(`Unknown transaction type: ${transactionType}`);
-                    }
-                    
-                    // Update user document with new values
-                    transaction.update(userRef, {
-                        accountBalance: updatedBalance,
-                        totalGamesPlayed: totalGamesPlayed,
-                        totalMoneySpent: totalMoneySpent,
-                        totalMoneyEarned: totalMoneyEarned,
-                        lastUpdated: serverTimestamp()
+                        timestamp: serverTimestamp()
                     });
                     
-                    console.log(`Transaction prepared. New balance will be: ${updatedBalance}`);
-                    
                     return {
-                        transactionId: transactionRef.id,
-                        newBalance: updatedBalance
+                        transactionId: visitRef.id,
+                        newBalance: -1 // Unknown without reading user doc
                     };
-                });
-            } catch (transactionError) {
-                // Handle rate limiting errors specifically
-                if (transactionError.code === 'resource-exhausted') {
-                    console.warn("Firebase rate limit hit, entering cooldown mode");
-                    rateLimitTracker.markRateLimited();
-                    
-                    // During rate limits, return mock success for game_play with 0 amount
-                    // This allows navigation to continue without blocking the user
-                    if (transactionType === 'game_play' && amount === 0) {
+                } catch (error) {
+                    if (error.code === 'resource-exhausted') {
+                        rateLimitTracker.markRateLimited();
                         return {
                             transactionId: "rate-limited-" + Date.now(),
                             newBalance: -1,
                             wasRateLimited: true
                         };
-                    } else {
-                        // For transactions that would affect balance, queue for later
-                        pendingTransactions.add({
-                            gameId,
-                            userId,
-                            type: transactionType,
-                            amount
-                        });
-                        
-                        throw new Error('The service is currently busy. Please try again in a few moments.');
                     }
+                    throw error;
+                }
+            }
+            
+            // For real transactions that affect balance, use a transaction
+            // Convert amount to number
+            amount = Number(amount) || 0;
+            
+            try {
+                // Get current user data first
+                const userRef = doc(this.db, 'users', userId);
+                const userDoc = await getDoc(userRef);
+                
+                if (!userDoc.exists()) {
+                    throw new Error('User document not found');
                 }
                 
-                throw transactionError;
+                const userData = userDoc.data();
+                let updatedBalance = userData.accountBalance || 0;
+                let totalGamesPlayed = userData.totalGamesPlayed || 0;
+                let totalMoneySpent = userData.totalMoneySpent || 0;
+                let totalMoneyEarned = userData.totalMoneyEarned || 0;
+                
+                // Update metrics based on transaction type
+                switch(transactionType) {
+                    case 'deposit':
+                        updatedBalance += amount;
+                        break;
+                    case 'withdrawal':
+                        if (updatedBalance < amount) {
+                            throw new Error('Insufficient balance');
+                        }
+                        updatedBalance -= amount;
+                        break;
+                    case 'game_play':
+                        if (amount > 0 && updatedBalance < amount) {
+                            throw new Error('Insufficient balance to play game');
+                        }
+                        updatedBalance -= amount;
+                        totalGamesPlayed += 1;
+                        totalMoneySpent += amount;
+                        break;
+                    case 'game_win':
+                        updatedBalance += amount;
+                        totalMoneyEarned += amount;
+                        break;
+                    default:
+                        console.warn(`Unknown transaction type: ${transactionType}`);
+                }
+                
+                // Create the transaction record
+                const transactionRef = doc(collection(this.db, 'transactions'));
+                await setDoc(transactionRef, {
+                    userId: userId,
+                    gameId: gameId,
+                    transactionType: transactionType,
+                    amount: amount,
+                    timestamp: serverTimestamp()
+                });
+                
+                // Update user document
+                await updateDoc(userRef, {
+                    accountBalance: updatedBalance,
+                    totalGamesPlayed: totalGamesPlayed,
+                    totalMoneySpent: totalMoneySpent,
+                    totalMoneyEarned: totalMoneyEarned,
+                    lastUpdated: serverTimestamp()
+                });
+                
+                console.log(`Transaction completed. New balance: ${updatedBalance}`);
+                return {
+                    transactionId: transactionRef.id,
+                    newBalance: updatedBalance
+                };
+            } catch (error) {
+                if (error.code === 'resource-exhausted') {
+                    rateLimitTracker.markRateLimited();
+                    // Queue for later
+                    pendingTransactions.add({
+                        gameId,
+                        userId,
+                        type: transactionType,
+                        amount
+                    });
+                    
+                    return {
+                        transactionId: "rate-limited-" + Date.now(),
+                        newBalance: -1,
+                        wasRateLimited: true
+                    };
+                }
+                throw error;
             }
         } catch (error) {
             console.error("Transaction Error:", error);
-            
-            // Add more specific error information
-            if (error.code === 'permission-denied') {
-                throw new Error('You do not have permission to perform this action');
-            } else if (error.code === 'unavailable') {
-                // Add to queue if network is unavailable
-                pendingTransactions.add({
-                    gameId,
-                    userId,
-                    type: transactionType,
-                    amount
-                });
-                
-                throw new Error('Network unavailable. The action will be completed when you\'re back online.');
-            } else {
-                throw error;
+            throw error;
+        }
+    }
+    
+    // Batch processing for multiple operations
+    async processBatchedOperations(operations) {
+        try {
+            if (!navigator.onLine) {
+                console.log("Offline: Cannot process batched operations");
+                return false;
             }
+            
+            if (operations.length === 0) {
+                return true;
+            }
+            
+            // Create a batch
+            const batch = writeBatch(this.db);
+            
+            // Add all operations to the batch
+            operations.forEach(op => {
+                if (op.type === 'set') {
+                    batch.set(op.ref, op.data);
+                } else if (op.type === 'update') {
+                    batch.update(op.ref, op.data);
+                } else if (op.type === 'delete') {
+                    batch.delete(op.ref);
+                }
+            });
+            
+            // Commit the batch
+            await batch.commit();
+            return true;
+        } catch (error) {
+            console.error("Batch operation failed:", error);
+            
+            if (error.code === 'resource-exhausted') {
+                rateLimitTracker.markRateLimited();
+            }
+            
+            return false;
         }
     }
 }
