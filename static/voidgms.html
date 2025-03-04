@@ -438,52 +438,26 @@ class VoidNetworkAccounting {
         console.log("VoidNetworkAccounting initialized");
     }
 
-    // User Registration with username uniqueness handled via Firebase error
+    // User Registration - IMPROVED
     async registerUser(email, password, username) {
         try {
             console.log("Registering new user:", email);
-            
-            // First create the auth user
             const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
             const user = userCredential.user;
-            
-            try {
-                // Check if a user with this username already exists
-                const usernameRef = doc(this.db, 'usernames', username);
-                const usernameDoc = await getDoc(usernameRef);
-                
-                if (usernameDoc.exists()) {
-                    // Username exists, clean up and throw error
-                    await user.delete();
-                    throw new Error('Username already taken. Please choose a different username.');
-                }
-                
-                // Username is available, create the username doc
-                await setDoc(usernameRef, {
-                    uid: user.uid,
-                    createdAt: new Date()
-                });
-                
-                // Create the user profile
-                await setDoc(doc(this.db, 'users', user.uid), {
-                    username: username,
-                    email: email,
-                    createdAt: new Date(),
-                    accountBalance: 1000, // Starting balance
-                    totalGamesPlayed: 0,
-                    totalMoneySpent: 0,
-                    totalMoneyEarned: 0
-                });
-                
-                console.log("User registered successfully:", user.uid);
-                return user;
-            } catch (error) {
-                // If there was any error in the username/profile creation,
-                // delete the auth user to keep things clean
-                console.error("Error creating user profile:", error);
-                await user.delete();
-                throw error;
-            }
+
+            // Create user profile in Firestore
+            await setDoc(doc(this.db, 'users', user.uid), {
+                username: username,
+                email: email,
+                createdAt: new Date(),
+                accountBalance: 1000, // Starting balance
+                totalGamesPlayed: 0,
+                totalMoneySpent: 0,
+                totalMoneyEarned: 0
+            });
+
+            console.log("User registered successfully:", user.uid);
+            return user;
         } catch (error) {
             console.error("Registration Error:", error);
             throw error;
