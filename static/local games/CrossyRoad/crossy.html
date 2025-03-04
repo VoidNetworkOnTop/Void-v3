@@ -216,7 +216,7 @@
            align-items: center;
            justify-content: center;
            background: rgba(0, 8, 30, 0.85);
-           z-index: 10;
+           z-index: 100; /* Higher z-index to ensure it's above everything */
            opacity: 0;
            pointer-events: none;
            transition: opacity 0.3s ease;
@@ -493,6 +493,7 @@
            width: 100%;
            max-width: 600px;
            margin: 0 auto;
+           z-index: 10; /* Ensure grid is above the canvas */
        }
 
        .grid-24 {
@@ -507,6 +508,7 @@
            grid-template-columns: repeat(8, 1fr);
        }
 
+       /* FIXED: Improved mine cell style with better clickability */
        .mine-cell {
            aspect-ratio: 1/1;
            background: linear-gradient(135deg, #2a3656, #161d33);
@@ -519,6 +521,11 @@
            justify-content: center;
            font-size: 1.5rem;
            color: white;
+           position: relative;
+           z-index: 20; /* Make sure cells are clickable */
+           user-select: none; /* Prevent text selection */
+           min-height: 40px; /* Ensure minimum height for mobile */
+           min-width: 40px; /* Ensure minimum width for mobile */
        }
 
        .mine-cell:hover {
@@ -567,6 +574,7 @@
            text-align: center;
            margin-bottom: 20px;
            max-width: 80%;
+           z-index: 10;
        }
 
        .game-actions {
@@ -575,6 +583,7 @@
            align-items: center;
            gap: 10px;
            margin-top: 20px;
+           z-index: 10;
        }
 
        /* Special Effects */
@@ -598,6 +607,16 @@
            font-size: 18px;
            color: #FFD700;
        }
+
+       #mines-game-container {
+           z-index: 10;
+           width: 100%;
+           height: 100%;
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           justify-content: center;
+       }
    </style>
 </head>
 
@@ -618,7 +637,7 @@
        
        <div class="game-board">
            <canvas id="game-canvas"></canvas>
-           <div id="mines-game-container" style="display: none; width: 100%; height: 100%;">
+           <div id="mines-game-container" style="display: none;">
                <div class="game-info" id="game-info">Select squares to reveal. Find safe squares to earn 10 coins each!</div>
                <div id="mines-grid" class="mines-grid"></div>
                <div class="game-actions">
@@ -901,26 +920,48 @@ let totalSquares = 24; // Default grid size
 let bombIndex = -1; // Position of the bomb
 let revealedSquares = []; // Tracks revealed squares 
 
-// DOM elements
-const coinDisplay = document.getElementById('coinDisplay');
-const earningsDisplay = document.getElementById('earningsDisplay');
-const startScreen = document.getElementById('start-screen');
-const gameOverScreen = document.getElementById('game-over-screen');
-const cashoutScreen = document.getElementById('cashout-screen');
-const startBtn = document.getElementById('start-btn');
-const playAgainBtn = document.getElementById('play-again-btn');
-const newGameBtn = document.getElementById('new-game-btn');
-const backBtn = document.getElementById('back-btn');
-const cashoutBtn = document.getElementById('cashout-btn');
-const minesGameContainer = document.getElementById('mines-game-container');
-const minesGrid = document.getElementById('mines-grid');
-const gameInfo = document.getElementById('game-info');
-const optionBtns = document.querySelectorAll('.option-btn');
+// DOM elements - will initialize these after DOM is loaded
+let coinDisplay;
+let earningsDisplay;
+let startScreen;
+let gameOverScreen;
+let cashoutScreen;
+let startBtn;
+let playAgainBtn;
+let newGameBtn;
+let backBtn;
+let cashoutBtn;
+let minesGameContainer;
+let minesGrid;
+let gameInfo;
+let optionBtns;
+
+// Initialize DOM elements - FIXED: Wait for DOM to be ready
+function initDomElements() {
+    coinDisplay = document.getElementById('coinDisplay');
+    earningsDisplay = document.getElementById('earningsDisplay');
+    startScreen = document.getElementById('start-screen');
+    gameOverScreen = document.getElementById('game-over-screen');
+    cashoutScreen = document.getElementById('cashout-screen');
+    startBtn = document.getElementById('start-btn');
+    playAgainBtn = document.getElementById('play-again-btn');
+    newGameBtn = document.getElementById('new-game-btn');
+    backBtn = document.getElementById('back-btn');
+    cashoutBtn = document.getElementById('cashout-btn');
+    minesGameContainer = document.getElementById('mines-game-container');
+    minesGrid = document.getElementById('mines-grid');
+    gameInfo = document.getElementById('game-info');
+    optionBtns = document.querySelectorAll('.option-btn');
+    
+    console.log("DOM elements initialized:", minesGrid ? "Grid found" : "Grid not found");
+}
 
 // Update coin display
 function updateCoinDisplay() {
     if (coinDisplay) {
         coinDisplay.textContent = coinBalance.toLocaleString();
+    } else {
+        console.warn("Coin display element not found");
     }
     
     // Update start button appearance
@@ -941,6 +982,8 @@ function updateCoinDisplay() {
 function updateEarningsDisplay() {
     if (earningsDisplay) {
         earningsDisplay.textContent = currentEarnings.toLocaleString();
+    } else {
+        console.warn("Earnings display element not found");
     }
 }
 
@@ -976,6 +1019,11 @@ function recordTransaction(amount, isWin) {
 // Initialize canvas for background
 function initCanvas() {
     canvas = document.getElementById('game-canvas');
+    if (!canvas) {
+        console.error("Canvas element not found!");
+        return;
+    }
+    
     ctx = canvas.getContext('2d');
     
     const gameBoard = document.querySelector('.game-board');
@@ -993,6 +1041,8 @@ function initCanvas() {
     canvas.height = canvasHeight;
     canvas.style.width = canvasWidth + "px";
     canvas.style.height = canvasHeight + "px";
+    
+    console.log("Canvas initialized with dimensions:", canvasWidth, canvasHeight);
 }
 
 // Complete game reset
@@ -1007,7 +1057,9 @@ function resetGame() {
     updateEarningsDisplay();
     
     // Hide game elements
-    minesGameContainer.style.display = 'none';
+    if (minesGameContainer) {
+        minesGameContainer.style.display = 'none';
+    }
     
     // Clear any existing grid
     if (minesGrid) {
@@ -1020,9 +1072,15 @@ function resetGame() {
     }
     
     // Show start screen
-    startScreen.classList.add('visible');
-    gameOverScreen.classList.remove('visible');
-    cashoutScreen.classList.remove('visible');
+    if (startScreen) {
+        startScreen.classList.add('visible');
+    }
+    if (gameOverScreen) {
+        gameOverScreen.classList.remove('visible');
+    }
+    if (cashoutScreen) {
+        cashoutScreen.classList.remove('visible');
+    }
     
     // Cancel any animation frames
     if (animationFrame) {
@@ -1054,26 +1112,37 @@ function initGame() {
     createMinesGrid();
     
     // Show game container
-    minesGameContainer.style.display = 'flex';
-    minesGameContainer.style.flexDirection = 'column';
-    minesGameContainer.style.alignItems = 'center';
-    minesGameContainer.style.justifyContent = 'center';
+    if (minesGameContainer) {
+        minesGameContainer.style.display = 'flex';
+        minesGameContainer.style.flexDirection = 'column';
+        minesGameContainer.style.alignItems = 'center';
+        minesGameContainer.style.justifyContent = 'center';
+    }
     
     // Update game info
-    gameInfo.textContent = `Find safe squares to earn ${GAME_CONFIG.safeReward} coins each! Avoid the bomb!`;
+    if (gameInfo) {
+        gameInfo.textContent = `Find safe squares to earn ${GAME_CONFIG.safeReward} coins each! Avoid the bomb!`;
+    }
     
     // Reset cashout button
-    cashoutBtn.disabled = true;
+    if (cashoutBtn) {
+        cashoutBtn.disabled = true;
+    }
     
     // Start game loop for background effects
     window.cancelAnimationFrame(animationFrame);
     gameLoop();
     
-    console.log("Game initialized");
+    console.log("Game initialized with bomb at index:", bombIndex);
 }
 
-// Create the mines grid
+// FIXED: Improved cell creation with better click handling
 function createMinesGrid() {
+    if (!minesGrid) {
+        console.error("Mines grid element not found!");
+        return;
+    }
+    
     // Clear any existing grid
     minesGrid.innerHTML = '';
     
@@ -1086,26 +1155,46 @@ function createMinesGrid() {
         cell.className = 'mine-cell';
         cell.dataset.index = i;
         
-        // Add click event listener
-        cell.addEventListener('click', handleCellClick);
+        // FIXED: Add more direct click handling
+        cell.onclick = function(event) {
+            handleCellClick(event);
+        };
+        
+        // Add number to help with debugging
+        cell.innerHTML = `<span style="opacity: 0.2; font-size: 10px;">${i}</span>`;
         
         minesGrid.appendChild(cell);
     }
     
-    console.log(`Created grid with ${totalSquares} cells`);
+    console.log(`Created grid with ${totalSquares} cells, bomb is at cell ${bombIndex}`);
 }
 
-// Handle cell click
+// FIXED: Improved cell click handling with better error checking
 function handleCellClick(event) {
-    if (!gameActive) return;
+    // Prevent event bubbling
+    event.stopPropagation();
     
+    if (!gameActive) {
+        console.log("Game not active, ignoring click");
+        return;
+    }
+    
+    // Get the cell that was clicked
     const cell = event.currentTarget;
-    const index = parseInt(cell.dataset.index);
     
+    if (!cell || !cell.dataset || cell.dataset.index === undefined) {
+        console.error("Invalid cell clicked:", cell);
+        return;
+    }
+    
+    const index = parseInt(cell.dataset.index);
     console.log(`Clicked cell at index: ${index}`);
     
     // Check if already revealed
-    if (revealedSquares.includes(index)) return;
+    if (revealedSquares.includes(index)) {
+        console.log("Cell already revealed, ignoring click");
+        return;
+    }
     
     // Add to revealed squares
     revealedSquares.push(index);
@@ -1135,7 +1224,7 @@ function handleCellClick(event) {
         
         // Enable cashout if this is the first safe square
         if (revealedSquares.length === 1 || currentEarnings >= GAME_CONFIG.safeReward) {
-            cashoutBtn.disabled = false;
+            if (cashoutBtn) cashoutBtn.disabled = false;
         }
     }
 }
@@ -1147,8 +1236,9 @@ function showGameOver() {
     const lostEarningsEl = document.getElementById('lost-earnings');
     
     if (revealedCountEl) {
-        // Count only safe squares (all revealed minus the bomb)
-        revealedCountEl.textContent = (revealedSquares.length - 1).toString();
+        // Count only safe squares (exclude the bomb cell)
+        const safeSquaresRevealed = revealedSquares.length - (revealedSquares.includes(bombIndex) ? 1 : 0);
+        revealedCountEl.textContent = safeSquaresRevealed.toString();
     }
     
     if (lostEarningsEl) {
@@ -1156,7 +1246,9 @@ function showGameOver() {
     }
     
     // Show game over screen
-    gameOverScreen.classList.add('visible');
+    if (gameOverScreen) {
+        gameOverScreen.classList.add('visible');
+    }
 }
 
 // Show cashout screen
@@ -1182,7 +1274,9 @@ function showCashoutScreen() {
     updateEarningsDisplay();
     
     // Show cashout screen
-    cashoutScreen.classList.add('visible');
+    if (cashoutScreen) {
+        cashoutScreen.classList.add('visible');
+    }
     
     // End the game
     gameActive = false;
@@ -1190,6 +1284,8 @@ function showCashoutScreen() {
 
 // Draw stars in background
 function drawStars() {
+    if (!ctx || !canvas) return;
+    
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     ctx.fillStyle = '#FFFFFF';
     
@@ -1223,71 +1319,21 @@ function gameLoop() {
     animationFrame = requestAnimationFrame(gameLoop);
 }
 
-// Event Listeners
-startBtn.addEventListener('click', () => {
-    if (coinBalance < GAME_CONFIG.startCost) {
-        alert("You need at least 5 coins to play!");
-        return;
-    }
+// FIXED: Initialize game after DOM is fully loaded
+function initializeGame() {
+    console.log("Initializing game...");
     
-    startScreen.classList.remove('visible');
-    initGame();
-});
-
-playAgainBtn.addEventListener('click', () => {
-    gameOverScreen.classList.remove('visible');
-    resetGame();
-    startScreen.classList.add('visible');
-});
-
-newGameBtn.addEventListener('click', () => {
-    cashoutScreen.classList.remove('visible');
-    resetGame();
-    startScreen.classList.add('visible');
-});
-
-backBtn.addEventListener('click', () => {
-    window.location.href = '/betavngames.html';
-});
-
-cashoutBtn.addEventListener('click', () => {
-    if (gameActive && !cashoutBtn.disabled && currentEarnings > 0) {
-        showCashoutScreen();
-    }
-});
-
-// Grid size option buttons
-optionBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        // Remove selected class from all buttons
-        optionBtns.forEach(b => b.classList.remove('selected'));
-        
-        // Add selected class to clicked button
-        btn.classList.add('selected');
-        
-        // Update total squares
-        totalSquares = parseInt(btn.dataset.squares);
-        console.log(`Grid size changed to: ${totalSquares} squares`);
-    });
-});
-
-// Initialize on load
-window.addEventListener('load', () => {
-    console.log("Mines game initializing...");
+    // Initialize DOM elements
+    initDomElements();
     
     // Initialize canvas
     initCanvas();
     
+    // Setup event listeners
+    setupEventListeners();
+    
     // Initial reset
     resetGame();
-    
-    // Add resize event listener
-    window.addEventListener('resize', () => {
-        initCanvas();
-        if (gameActive) {
-            drawStars();
-        }
-    });
     
     // Initialize with default coin balance and check Firebase
     if (window.loadFirebaseCoinBalance) {
@@ -1298,6 +1344,94 @@ window.addEventListener('load', () => {
         coinBalance = 1000; // Default fallback
         updateCoinDisplay();
     }
+    
+    console.log("Game initialization complete");
+}
+
+// FIXED: Separate function for event listeners
+function setupEventListeners() {
+    console.log("Setting up event listeners");
+    
+    // Verify elements exist
+    if (!startBtn || !playAgainBtn || !newGameBtn || !backBtn || !cashoutBtn || !optionBtns) {
+        console.error("Required elements not found for event listeners");
+        return;
+    }
+    
+    // Start button
+    startBtn.addEventListener('click', function() {
+        console.log("Start button clicked");
+        if (coinBalance < GAME_CONFIG.startCost) {
+            alert("You need at least 5 coins to play!");
+            return;
+        }
+        
+        if (startScreen) startScreen.classList.remove('visible');
+        initGame();
+    });
+
+    // Play again button
+    playAgainBtn.addEventListener('click', function() {
+        console.log("Play again button clicked");
+        if (gameOverScreen) gameOverScreen.classList.remove('visible');
+        resetGame();
+        if (startScreen) startScreen.classList.add('visible');
+    });
+
+    // New game button
+    newGameBtn.addEventListener('click', function() {
+        console.log("New game button clicked");
+        if (cashoutScreen) cashoutScreen.classList.remove('visible');
+        resetGame();
+        if (startScreen) startScreen.classList.add('visible');
+    });
+
+    // Back button
+    backBtn.addEventListener('click', function() {
+        console.log("Back button clicked");
+        window.location.href = '/betavngames.html';
+    });
+
+    // Cashout button
+    cashoutBtn.addEventListener('click', function() {
+        console.log("Cashout button clicked");
+        if (gameActive && !cashoutBtn.disabled && currentEarnings > 0) {
+            showCashoutScreen();
+        }
+    });
+
+    // Grid size option buttons
+    optionBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            console.log("Option button clicked:", btn.dataset.squares);
+            // Remove selected class from all buttons
+            optionBtns.forEach(b => b.classList.remove('selected'));
+            
+            // Add selected class to clicked button
+            btn.classList.add('selected');
+            
+            // Update total squares
+            totalSquares = parseInt(btn.dataset.squares);
+            console.log(`Grid size changed to: ${totalSquares} squares`);
+        });
+    });
+    
+    // Add resize event listener
+    window.addEventListener('resize', function() {
+        console.log("Window resized");
+        initCanvas();
+        if (gameActive) {
+            drawStars();
+        }
+    });
+    
+    console.log("Event listeners set up successfully");
+}
+
+// Initialize the game after DOM is fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM fully loaded, starting game initialization");
+    initializeGame();
 });
 </script>
 </body>
