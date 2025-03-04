@@ -643,7 +643,6 @@
            <canvas id="game-canvas"></canvas>
            <div class="game-world" id="game-world">
                <!-- Will be dynamically generated -->
-               <div class="road"></div>
            </div>
            <div class="chicken" id="chicken"></div>
            <div class="game-instruction">Click on the next circle to move forward!</div>
@@ -924,7 +923,7 @@ const GAME_CONFIG = {
     gameId: 'lucky_chicken' // ID for Firebase transactions
 };
 
-// Game state - reset these on each game start
+// Game state variables - reset completely on game start
 let canvas, ctx;
 let canvasWidth, canvasHeight;
 let chickenElem, gameWorld;
@@ -991,6 +990,11 @@ function recordTransaction(amount, isWin) {
 // Initialize canvas
 function initCanvas() {
     canvas = document.getElementById('game-canvas');
+    if (!canvas) {
+        console.error("Canvas element not found!");
+        return;
+    }
+    
     ctx = canvas.getContext('2d');
     
     const gameBoard = document.querySelector('.game-board');
@@ -1008,23 +1012,27 @@ function initCanvas() {
     canvas.height = canvasHeight;
     canvas.style.width = canvasWidth + "px";
     canvas.style.height = canvasHeight + "px";
+    
+    console.log(`Canvas initialized with dimensions: ${canvasWidth}x${canvasHeight}`);
 }
 
-// FIXED: Complete game reset function
+// COMPLETELY RESET THE GAME - major fix for reset issues
 function resetGame() {
-    // Reset game state variables
+    console.log("==== COMPLETE GAME RESET ====");
+    
+    // Reset all game state variables
     currentNode = 0;
     gameOver = false;
     gameActive = false;
     currentReward = 0;
     
-    // Clear the game board
+    // Clear the game elements
     clearGameElements();
     
-    // Return to start screen
-    startScreen.classList.add('visible');
+    // Hide all game screens except start screen
     gameOverScreen.classList.remove('visible');
     cashoutScreen.classList.remove('visible');
+    startScreen.classList.add('visible');
     
     // Hide cashout button
     if (cashoutBtn) {
@@ -1046,19 +1054,30 @@ function resetGame() {
         window.cancelAnimationFrame(animationFrame);
     }
     
-    console.log("Game fully reset");
+    // Reset chicken position - major fix
+    const chicken = document.getElementById('chicken');
+    if (chicken) {
+        // This is critical - ensure chicken is positioned at initial position
+        chicken.style.left = `${GAME_CONFIG.nodeSpacing / 2}px`;
+        chicken.style.top = '50%';
+        chicken.style.transform = 'translate(-50%, -50%)';
+        chicken.style.display = 'block';
+    }
+    
+    console.log("Game state fully reset");
 }
 
 // Initialize game
 function initGame() {
-    console.log("Initializing new game...");
+    console.log("==== INITIALIZING NEW GAME ====");
     
-    // Reset game state completely
-    gameOver = false;
+    // Ensure game is completely reset
     currentNode = 0;
+    gameOver = false;
     
     // Get current bet
-    currentBet = parseInt(betAmountInput.value, 10);
+    currentBet = parseInt(betAmountInput.value, 10) || 5;
+    console.log(`Starting game with bet: ${currentBet}`);
     
     // Deduct the bet amount
     updateCoins(-currentBet);
@@ -1071,20 +1090,36 @@ function initGame() {
     gameWorld = document.getElementById('game-world');
     chickenElem = document.getElementById('chicken');
     
-    // FIXED: Make sure chicken is visible and has proper z-index
-    chickenElem.style.zIndex = "5";
+    if (!gameWorld || !chickenElem) {
+        console.error("Required game elements not found!");
+        return;
+    }
+    
+    console.log("Creating road and nodes");
+    
+    // Create the road (essential first step)
+    const road = document.createElement('div');
+    road.className = 'road';
+    gameWorld.appendChild(road);
+    
+    // Generate nodes
+    for (let i = 0; i < GAME_CONFIG.initialNodes; i++) {
+        createNode(i);
+    }
+    
+    // CRITICAL FIX: Ensure chicken has proper styling
+    chickenElem.style.zIndex = "5";  
     chickenElem.style.display = "block";
+    chickenElem.style.top = "50%";
+    chickenElem.style.transform = "translate(-50%, -50%)";
     
-    // Generate road and nodes
-    generateRoad();
-    
-    // FIXED: Position chicken at starting position
+    // CRITICAL FIX: Position chicken at node 0 with exact coordinates
     positionChicken(0);
     
     // Reset game state
     currentReward = currentBet; // Start with bet amount
     
-    // Show cashout button but disable initially
+    // Update cashout button
     cashoutBtn.style.display = 'block';
     cashoutBtn.disabled = true;
     cashoutBtn.textContent = 'Cash Out (after 3 steps)';
@@ -1096,19 +1131,22 @@ function initGame() {
     updateScoreDisplay();
     updateRewardDisplay();
     
-    // FIXED: Ensure camera is properly positioned at start
+    // CRITICAL FIX: Position camera at start
     updateCamera();
     
     // Start game loop
     window.cancelAnimationFrame(animationFrame);
     gameLoop();
     
-    console.log("Game initialized with node at position 0");
+    console.log("Game initialized and ready to play");
 }
 
 // Clear game elements
 function clearGameElements() {
-    console.log("Clearing game elements");
+    console.log("Clearing all game elements");
+    
+    // Get current game world 
+    const gameWorld = document.getElementById('game-world');
     
     // Clear game world
     if (gameWorld) {
@@ -1123,24 +1161,11 @@ function clearGameElements() {
     const existingParticles = document.querySelectorAll('.particle');
     existingParticles.forEach(particle => particle.remove());
     
-    // FIXED: Remove all event listeners from nodes
+    // FIXED: Remove all node event listeners
     const nodes = document.querySelectorAll('.node');
     nodes.forEach(node => {
         node.removeEventListener('click', handleNodeClick);
     });
-}
-
-// Generate the road and nodes
-function generateRoad() {
-    // Create the road
-    const road = document.createElement('div');
-    road.className = 'road';
-    gameWorld.appendChild(road);
-    
-    // Create nodes
-    for (let i = 0; i < GAME_CONFIG.initialNodes; i++) {
-        createNode(i);
-    }
 }
 
 // Create a single node
@@ -1160,31 +1185,33 @@ function createNode(nodeIndex) {
     // Add to game world
     gameWorld.appendChild(node);
     
-    // FIXED: Only make node 1 active initially when at start
+    // FIXED: Make node 1 active and clickable when we're at node 0
     if (nodeIndex === 1 && currentNode === 0) {
         node.classList.add('active');
         
-        // FIXED: Make sure we add event listener properly and only once
+        // Make sure we add event listener properly and only once
         node.removeEventListener('click', handleNodeClick); // Remove any existing listeners
         node.addEventListener('click', handleNodeClick);
-        console.log("Set up node 1 as active and clickable");
+        console.log(`Set up node ${nodeIndex} as active and clickable`);
     }
     
     return node;
 }
 
-// FIXED: Improved positioning function for the chicken
+// CRITICAL FIX: Improved positioning function for the chicken
 function positionChicken(nodeIndex) {
-    // Get exact position based on node
+    if (!chickenElem) return;
+    
+    // Calculate the exact position based on node
     const xPos = nodeIndex * GAME_CONFIG.nodeSpacing + GAME_CONFIG.nodeSpacing / 2;
     
-    // FIXED: Ensure chicken is displayed correctly with explicit positioning
+    // CRITICAL FIX: Explicitly set all positioning properties
     chickenElem.style.left = `${xPos}px`;
     chickenElem.style.top = '50%';
     chickenElem.style.transform = 'translate(-50%, -50%)';
     chickenElem.style.display = 'block';
     
-    // Set chicken image using SVG (adjusted to center the chicken)
+    // Set chicken image using SVG
     chickenElem.style.background = 'url("data:image/svg+xml;charset=utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Cellipse cx=\'50\' cy=\'50\' rx=\'40\' ry=\'45\' fill=\'%23FFFFFF\'/%3E%3Ccircle cx=\'70\' cy=\'35\' r=\'8\' fill=\'%23000\'/%3E%3Cpath d=\'M80 40 L100 50 L80 60 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M30 70 L20 85 L30 85 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M70 70 L80 85 L70 85 Z\' fill=\'%23FFA500\'/%3E%3Cpath d=\'M70 10 L80 0 L90 10 Z\' fill=\'%23F44336\'/%3E%3C/svg%3E") center/contain no-repeat';
     
     console.log(`Positioned chicken at node ${nodeIndex}, x-position: ${xPos}px`);
@@ -1194,7 +1221,6 @@ function positionChicken(nodeIndex) {
 function updateCamera() {
     if (!gameWorld) return;
     
-    // FIXED: Improved camera follow logic
     // Calculate the position to center the chicken
     const xPos = currentNode * GAME_CONFIG.nodeSpacing;
     const offset = Math.min(canvasWidth / 2, 300); // More dynamic offset based on screen size
@@ -1213,18 +1239,19 @@ function updateCamera() {
     console.log(`Camera updated to focus on node ${currentNode}`);
 }
 
-// Handle node click
+// CRITICAL FIX: Improved node click handler
 function handleNodeClick(event) {
+    event.preventDefault(); // Prevent any default actions
+    
     if (!gameActive) {
         console.log("Game not active, ignoring click");
         return;
     }
     
-    // FIXED: Add debugging to ensure click is registered
     console.log("Node clicked!");
     
     const clickedNode = event.currentTarget;
-    const nodeIndex = parseInt(clickedNode.dataset.index);
+    const nodeIndex = parseInt(clickedNode.dataset.index, 10);
     
     console.log("Clicked node index:", nodeIndex, "Current node:", currentNode);
     
@@ -1244,7 +1271,7 @@ function tryToAdvance(targetNodeIndex) {
     const roll = Math.random();
     const survived = roll <= GAME_CONFIG.surviveProbability;
     
-    console.log(`Rolled ${roll.toFixed(2)}, needed <= ${GAME_CONFIG.surviveProbability} to survive, result: ${survived}`);
+    console.log(`Rolled ${roll.toFixed(2)}, need <= ${GAME_CONFIG.surviveProbability} to survive, result: ${survived ? "SUCCESS" : "FAILURE"}`);
     
     if (survived) {
         // Success! Move forward
@@ -1263,10 +1290,10 @@ function tryToAdvance(targetNodeIndex) {
             prevNodeElem.removeEventListener('click', handleNodeClick);
         }
         
-        // FIXED: Move chicken to new position with improved positioning
+        // CRITICAL FIX: Move chicken to new position with explicit positioning
         positionChicken(currentNode);
         
-        // Update the camera to follow - FIXED: Camera update right after position change
+        // CRITICAL FIX: Update camera immediately
         updateCamera();
         
         // Update current reward (doubles with each step)
@@ -1278,9 +1305,9 @@ function tryToAdvance(targetNodeIndex) {
             cashoutBtn.textContent = 'Cash Out';
         }
         
-        // FIXED: Make next node active - improved selector and added check
+        // CRITICAL FIX: Make next node active with proper event handling
         const nextNodeElem = document.querySelector(`.node[data-index="${currentNode + 1}"]`);
-        console.log("Next node element:", nextNodeElem);
+        console.log("Next node element:", nextNodeElem ? "Found" : "Not found");
         
         if (nextNodeElem) {
             // Properly manage event listeners to prevent duplicates
@@ -1482,6 +1509,8 @@ function updateRewardDisplay() {
 
 // Draw stars in background
 function drawStars() {
+    if (!ctx || !canvas) return;
+    
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     ctx.fillStyle = '#FFFFFF';
     
@@ -1542,37 +1571,41 @@ function handleBetInput() {
     currentBet = value;
 }
 
-// FIXED: Event Listeners - Ensure they fully reset the game
-startBtn.addEventListener('click', () => {
+// CRITICAL FIX: Restructured event listeners with complete reset
+startBtn.addEventListener('click', function(e) {
+    console.log("Start button clicked");
     startScreen.classList.remove('visible');
-    initGame();
+    resetGame(); // Ensure game is reset first
+    setTimeout(initGame, 50); // Short delay to ensure DOM is ready
 });
 
-restartBtn.addEventListener('click', () => {
+restartBtn.addEventListener('click', function(e) {
+    console.log("Restart button clicked");
     gameOverScreen.classList.remove('visible');
-    // FIXED: Complete reset before starting a new game
     resetGame();
-    setTimeout(() => {
+    setTimeout(function() {
         startScreen.classList.remove('visible');
         initGame();
-    }, 100);
+    }, 50);
 });
 
-playAgainBtn.addEventListener('click', () => {
+playAgainBtn.addEventListener('click', function(e) {
+    console.log("Play again button clicked");
     cashoutScreen.classList.remove('visible');
-    // FIXED: Complete reset before starting a new game
     resetGame();
-    setTimeout(() => {
+    setTimeout(function() {
         startScreen.classList.remove('visible');
         initGame();
-    }, 100);
+    }, 50);
 });
 
-backBtn.addEventListener('click', () => {
+backBtn.addEventListener('click', function(e) {
+    console.log("Back button clicked");
     window.location.href = '/betavngames.html';
 });
 
-cashoutBtn.addEventListener('click', () => {
+cashoutBtn.addEventListener('click', function(e) {
+    console.log("Cashout button clicked");
     if (gameActive && !cashoutBtn.disabled) {
         showCashoutScreen();
     }
@@ -1583,23 +1616,19 @@ increaseBetBtn.addEventListener('click', handleBetIncrease);
 betAmountInput.addEventListener('change', handleBetInput);
 betAmountInput.addEventListener('input', handleBetInput);
 
-// FIXED: Reload handler - ensure the game fully resets
-window.addEventListener('beforeunload', () => {
-    resetGame();
-});
-
-// Initialize on load
-window.addEventListener('load', () => {
-    console.log("Lucky Chicken game initializing...");
+// CRITICAL FIX: Ensure the game resets on page load/reload
+window.addEventListener('load', function() {
+    console.log("==== PAGE LOADED ====");
     
-    // Initialize canvas
+    // Initialize canvas first
     initCanvas();
     
-    // FIXED: Ensure the game is fully reset on load
+    // Reset game state
     resetGame();
     
     // Add resize event listener
-    window.addEventListener('resize', () => {
+    window.addEventListener('resize', function() {
+        console.log("Window resized");
         initCanvas();
         if (gameActive) {
             drawStars();
@@ -1607,13 +1636,22 @@ window.addEventListener('load', () => {
         }
     });
     
-    // Initialize with default coin balance and check Firebase
+    // Load Firebase balance or use default
     if (window.loadFirebaseCoinBalance) {
-        window.loadFirebaseCoinBalance();
+        window.loadFirebaseCoinBalance().then(() => {
+            console.log("Firebase balance loaded");
+            updateCoinDisplay();
+        });
     } else {
         coinBalance = 1000; // Default fallback
         updateCoinDisplay();
     }
+});
+
+// CRITICAL FIX: Add unload handler to ensure clean state on refresh
+window.addEventListener('beforeunload', function() {
+    console.log("Page unloading - resetting game state");
+    resetGame();
 });
 </script>
 </body>
