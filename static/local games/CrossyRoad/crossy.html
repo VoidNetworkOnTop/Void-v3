@@ -1520,21 +1520,19 @@ function handleCellClick(event) {
         cell.classList.add('revealed-bomb');
         cell.innerHTML = '<span class="bomb-icon">💣</span>';
         
-        // Deduct 1000 coins for hitting a bomb
-        updateCoins(-1000);
+        // Deduct 2000 coins for hitting a bomb
+        updateCoins(-2000);
         
-        // Show notification about the coin loss
-        gameInfo.textContent = `HIT A BOMB! Lost 1000 coins. Current safe squares: ${getSafeSquaresRevealed()}`;
+        // Reveal all other bombs
+        revealAllBombs(index);
         
-        // Check if player still has coins to continue
-        if (coinBalance <= 0) {
-            // Game over - out of coins
-            gameActive = false;
-            setTimeout(() => {
-                revealAllBombs(index);
-                showGameOver();
-            }, 1000);
-        }
+        // Game over immediately
+        gameActive = false;
+        
+        // Show game over with delay
+        setTimeout(() => {
+            showGameOver();
+        }, 1500);
     } else {
         // Safe square
         console.log("Safe square revealed!");
@@ -1553,10 +1551,21 @@ function handleCellClick(event) {
             cashoutBtn.disabled = false;
         }
         
-        // Check if reached maximum win limit of 1,000,000
-        if (currentEarnings >= 1000000) {
+        // Check if reached maximum win limit (now much lower)
+        // Set max win based on grid size
+        let maxWin = 10000; // default max
+        
+        if (totalSquares === 24) {
+            maxWin = 10000; // Max for 24 grid
+        } else if (totalSquares === 44) {
+            maxWin = 20000; // Max for 44 grid
+        } else if (totalSquares === 64) {
+            maxWin = 30000; // Max for 64 grid
+        }
+        
+        if (currentEarnings >= maxWin) {
             // Force cashout at max win
-            gameInfo.textContent = `Reached maximum win of 1,000,000 coins! Cashing out...`;
+            gameInfo.textContent = `Reached maximum win of ${maxWin.toLocaleString()} coins! Cashing out...`;
             setTimeout(() => {
                 showCashoutScreen();
             }, 1500);
@@ -1583,7 +1592,7 @@ function revealAllBombs(hitIndex) {
     });
 }
 
-// Show game over screen
+// Show game over screen - updated with additional message about the 2000 coin penalty
 function showGameOver() {
     // Update game over screen details
     const revealedCountEl = document.getElementById('revealed-count');
@@ -1596,7 +1605,8 @@ function showGameOver() {
     }
     
     if (lostEarningsEl) {
-        lostEarningsEl.textContent = currentEarnings.toString();
+        // Add mention of the 2000 coin penalty
+        lostEarningsEl.textContent = (currentEarnings + 2000).toString();
     }
     
     // Show game over screen
@@ -1605,7 +1615,7 @@ function showGameOver() {
     }
 }
 
-// Show cashout screen
+// Show cashout screen with max win limits
 function showCashoutScreen() {
     // Update cashout screen details
     const cashoutCountEl = document.getElementById('cashout-count');
@@ -1618,14 +1628,24 @@ function showCashoutScreen() {
         cashoutCountEl.textContent = safeSquaresRevealed.toString();
     }
     
-    // Apply the maximum win limit of 1,000,000
-    const finalEarnings = Math.min(currentEarnings, 1000000);
+    // Apply the maximum win limit based on grid size
+    let maxWin = 10000; // default max
+    
+    if (totalSquares === 24) {
+        maxWin = 10000; // Max for 24 grid
+    } else if (totalSquares === 44) {
+        maxWin = 20000; // Max for 44 grid
+    } else if (totalSquares === 64) {
+        maxWin = 30000; // Max for 64 grid
+    }
+    
+    const finalEarnings = Math.min(currentEarnings, maxWin);
     
     if (cashoutRewardEl) {
         cashoutRewardEl.textContent = finalEarnings.toString();
     }
     
-    // Add the earnings to the balance (capped at 1,000,000)
+    // Add the earnings to the balance (capped at max)
     updateCoins(finalEarnings);
     recordTransaction(finalEarnings, true);
     
