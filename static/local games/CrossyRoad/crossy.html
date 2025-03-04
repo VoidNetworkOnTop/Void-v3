@@ -1478,6 +1478,11 @@ function createMinesGrid() {
     console.log(`Created grid with ${totalSquares} cells, bombs at:`, bombIndices);
 }
 
+// Helper function to count revealed safe squares
+function getSafeSquaresRevealed() {
+    return revealedSquares.filter(index => !bombIndices.includes(index)).length;
+}
+
 // Handle cell click
 function handleCellClick(event) {
     // Prevent event bubbling
@@ -1515,16 +1520,21 @@ function handleCellClick(event) {
         cell.classList.add('revealed-bomb');
         cell.innerHTML = '<span class="bomb-icon">💣</span>';
         
-        // Reveal all other bombs
-        revealAllBombs(index);
+        // Deduct 1000 coins for hitting a bomb
+        updateCoins(-1000);
         
-        // Game over
-        gameActive = false;
+        // Show notification about the coin loss
+        gameInfo.textContent = `HIT A BOMB! Lost 1000 coins. Current safe squares: ${getSafeSquaresRevealed()}`;
         
-        // Show game over with delay
-        setTimeout(() => {
-            showGameOver();
-        }, 1500); // Longer delay to show all bombs
+        // Check if player still has coins to continue
+        if (coinBalance <= 0) {
+            // Game over - out of coins
+            gameActive = false;
+            setTimeout(() => {
+                revealAllBombs(index);
+                showGameOver();
+            }, 1000);
+        }
     } else {
         // Safe square
         console.log("Safe square revealed!");
@@ -1534,9 +1544,22 @@ function handleCellClick(event) {
         // Award coins based on the calculated reward
         updateEarnings(rewardPerSquare);
         
+        // Update game info to show safe squares count
+        const safeSquaresRevealed = getSafeSquaresRevealed();
+        gameInfo.textContent = `Safe squares revealed: ${safeSquaresRevealed}. Earning ${rewardPerSquare} coins per square!`;
+        
         // Enable cashout if there are earnings
         if (currentEarnings > 0 && cashoutBtn) {
             cashoutBtn.disabled = false;
+        }
+        
+        // Check if reached maximum win limit of 1,000,000
+        if (currentEarnings >= 1000000) {
+            // Force cashout at max win
+            gameInfo.textContent = `Reached maximum win of 1,000,000 coins! Cashing out...`;
+            setTimeout(() => {
+                showCashoutScreen();
+            }, 1500);
         }
     }
 }
@@ -1568,7 +1591,7 @@ function showGameOver() {
     
     if (revealedCountEl) {
         // Count only safe squares (exclude bombs)
-        const safeSquaresRevealed = revealedSquares.filter(index => !bombIndices.includes(index)).length;
+        const safeSquaresRevealed = getSafeSquaresRevealed();
         revealedCountEl.textContent = safeSquaresRevealed.toString();
     }
     
@@ -1588,17 +1611,23 @@ function showCashoutScreen() {
     const cashoutCountEl = document.getElementById('cashout-count');
     const cashoutRewardEl = document.getElementById('cashout-reward');
     
+    // Get count of safe squares (exclude bombs)
+    const safeSquaresRevealed = getSafeSquaresRevealed();
+    
     if (cashoutCountEl) {
-        cashoutCountEl.textContent = revealedSquares.length.toString();
+        cashoutCountEl.textContent = safeSquaresRevealed.toString();
     }
+    
+    // Apply the maximum win limit of 1,000,000
+    const finalEarnings = Math.min(currentEarnings, 1000000);
     
     if (cashoutRewardEl) {
-        cashoutRewardEl.textContent = currentEarnings.toString();
+        cashoutRewardEl.textContent = finalEarnings.toString();
     }
     
-    // Add the earnings to the balance
-    updateCoins(currentEarnings);
-    recordTransaction(currentEarnings, true);
+    // Add the earnings to the balance (capped at 1,000,000)
+    updateCoins(finalEarnings);
+    recordTransaction(finalEarnings, true);
     
     // Reset current earnings
     currentEarnings = 0;
