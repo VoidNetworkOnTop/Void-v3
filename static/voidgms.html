@@ -377,8 +377,27 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+        import { 
+            getAuth, 
+            createUserWithEmailAndPassword, 
+            signInWithEmailAndPassword, 
+            onAuthStateChanged,
+            deleteUser 
+        } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+        import { 
+            getFirestore, 
+            collection, 
+            doc, 
+            setDoc, 
+            updateDoc, 
+            getDoc, 
+            query, 
+            where, 
+            getDocs, 
+            runTransaction, 
+            serverTimestamp,
+            deleteDoc
+        } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration
         const firebaseConfig = {
@@ -412,8 +431,10 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                 if (auth.currentUser) {
                     voidAccounting.getUserAccountDetails(auth.currentUser.uid)
                         .then(userDetails => {
-                            document.getElementById('username-display').textContent = userDetails.username;
-                            document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
+                            if (userDetails) {
+                                document.getElementById('username-display').textContent = userDetails.username;
+                                document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
+                            }
                         })
                         .catch(error => {
                             console.error("Error refreshing balance:", error);
@@ -449,11 +470,13 @@ class VoidNetworkAccounting {
             await setDoc(doc(this.db, 'users', user.uid), {
                 username: username,
                 email: email,
-                createdAt: new Date(),
+                createdAt: serverTimestamp(),
                 accountBalance: 1000, // Starting balance
                 totalGamesPlayed: 0,
                 totalMoneySpent: 0,
-                totalMoneyEarned: 0
+                totalMoneyEarned: 0,
+                active: true,
+                status: 'active'
             });
 
             console.log("User registered successfully:", user.uid);
@@ -464,15 +487,56 @@ class VoidNetworkAccounting {
         }
     }
 
-    // User Login - IMPROVED
+    // User Login - IMPROVED with account validation
     async loginUser(email, password) {
         try {
-            console.log("Logging in user:", email);
+            console.log("Attempting to log in user:", email);
+            
+            // First attempt to authenticate with Firebase Auth
             const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
-            console.log("User logged in successfully:", userCredential.user.uid);
-            return userCredential.user;
+            const user = userCredential.user;
+            
+            if (!user) {
+                throw new Error("Authentication failed - no user returned");
+            }
+            
+            console.log("Auth successful, checking if user exists in Firestore:", user.uid);
+            
+            // Next, verify the user exists in Firestore
+            const userRef = doc(this.db, 'users', user.uid);
+            const userDoc = await getDoc(userRef);
+            
+            // If user doesn't exist in Firestore, sign them out and throw error
+            if (!userDoc.exists()) {
+                console.error("User authenticated but no Firestore record found - logging out");
+                await this.auth.signOut();
+                throw new Error('Account not found in database. Please contact support.');
+            }
+            
+            // Check if account is marked as deleted or inactive
+            const userData = userDoc.data();
+            if (userData.status === 'deleted' || userData.active === false) {
+                console.error("User account is marked as deleted or inactive - logging out");
+                await this.auth.signOut();
+                throw new Error('This account has been deleted or deactivated. Please contact support.');
+            }
+            
+            console.log("User verified in both Auth and Firestore:", user.uid);
+            return user;
         } catch (error) {
             console.error("Login Error:", error);
+            
+            // Check for specific Firebase Auth errors and provide clearer messages
+            if (error.code === 'auth/user-not-found' || error.code === 'auth/user-disabled') {
+                throw new Error('Account not found or disabled. Please contact support.');
+            } else if (error.code === 'auth/wrong-password') {
+                throw new Error('Incorrect password. Please try again.');
+            } else if (error.code === 'auth/too-many-requests') {
+                throw new Error('Too many login attempts. Please try again later.');
+            } else if (error.code === 'auth/invalid-credential') {
+                throw new Error('Invalid login credentials. Please try again.');
+            }
+            
             throw error;
         }
     }
@@ -494,10 +558,18 @@ class VoidNetworkAccounting {
         return this.auth.currentUser;
     }
 
-    // Get User Account Details - IMPROVED with forced server data
+    // Get User Account Details - IMPROVED with forced server data and status check
     async getUserAccountDetails(userId) {
         try {
             console.log("Getting account details for user:", userId);
+            
+            // First check if account is valid and active
+            const isValid = await this.handleAccountDeletion(userId);
+            if (!isValid) {
+                console.error("Account is no longer valid");
+                return null;
+            }
+            
             const userRef = doc(this.db, 'users', userId);
             // Force fresh data from server, not cache
             const userDoc = await getDoc(userRef, { source: 'server' });
@@ -516,63 +588,154 @@ class VoidNetworkAccounting {
         }
     }
 
-    // Track Game Transaction - IMPROVED for better sync
+    // Handle account deletion and validation
+    async handleAccountDeletion(userId) {
+        try {
+            console.log("Checking account status for user:", userId);
+            
+            // Check if user exists in Firestore
+            const userRef = doc(this.db, 'users', userId);
+            const userDoc = await getDoc(userRef);
+            
+            if (!userDoc.exists()) {
+                console.error("User doesn't exist in Firestore");
+                
+                // Force sign out
+                await this.auth.signOut();
+                return false;
+            }
+            
+            // Check if user is marked as deleted in Firestore
+            const userData = userDoc.data();
+            if (userData.status === 'deleted' || userData.active === false) {
+                console.warn("User account is marked as deleted or inactive");
+                
+                // Force sign out
+                await this.auth.signOut();
+                return false;
+            }
+            
+            return true;
+        } catch (error) {
+            console.error("Error checking account status:", error);
+            
+            // If there's any error, default to logging the user out for safety
+            try {
+                await this.auth.signOut();
+            } catch (signOutError) {
+                console.error("Error signing out:", signOutError);
+            }
+            
+            return false;
+        }
+    }
+
+    // Track Game Transaction - IMPROVED for better sync with transactions
     async recordGameTransaction(gameId, userId, transactionType, amount) {
         try {
             console.log(`Recording transaction: ${transactionType} for ${amount} coins in ${gameId}`);
             
-            // Create transaction record
-            const transactionRef = doc(collection(this.db, 'transactions'));
-            await setDoc(transactionRef, {
-                userId: userId,
-                gameId: gameId,
-                transactionType: transactionType,
-                amount: amount,
-                timestamp: new Date()
-            });
-
-            // Get the latest data from server
-            const userRef = doc(this.db, 'users', userId);
-            const userDoc = await getDoc(userRef, { source: 'server' });
-            
-            if (!userDoc.exists()) {
-                console.error("Cannot update non-existent user");
-                throw new Error('User document not found');
+            // Validate inputs
+            if (!gameId || !userId || !transactionType) {
+                console.error("Missing required parameters for transaction");
+                throw new Error('Invalid transaction parameters');
             }
             
-            const userData = userDoc.data();
-            let updatedBalance = userData.accountBalance || 0;
-            
-            // Update user metrics based on transaction type
-            if (transactionType === 'deposit') {
-                updatedBalance += amount;
-            } else if (transactionType === 'withdrawal') {
-                updatedBalance -= amount;
-            } else if (transactionType === 'game_play') {
-                updatedBalance -= amount;
-                userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
-                userData.totalMoneySpent = (userData.totalMoneySpent || 0) + amount;
-            } else if (transactionType === 'game_win') {
-                updatedBalance += amount;
-                userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + amount;
+            // Validate account first
+            const isValid = await this.handleAccountDeletion(userId);
+            if (!isValid) {
+                throw new Error('Account no longer valid');
             }
-
-            // Update user document with new balance and stats
-            await updateDoc(userRef, {
-                accountBalance: updatedBalance,
-                totalGamesPlayed: userData.totalGamesPlayed || 0,
-                totalMoneySpent: userData.totalMoneySpent || 0,
-                totalMoneyEarned: userData.totalMoneyEarned || 0
+            
+            // Convert amount to number to ensure proper calculation
+            amount = Number(amount) || 0;
+            
+            // Use a transaction for atomicity
+            return await runTransaction(this.db, async (transaction) => {
+                // Get user document in transaction
+                const userRef = doc(this.db, 'users', userId);
+                const userDoc = await transaction.get(userRef);
+                
+                if (!userDoc.exists()) {
+                    console.error("Cannot update non-existent user");
+                    throw new Error('User document not found');
+                }
+                
+                // Create transaction record with a unique ID
+                const transactionRef = doc(collection(this.db, 'transactions'));
+                
+                // Prepare transaction data
+                const transactionData = {
+                    userId: userId,
+                    gameId: gameId,
+                    transactionType: transactionType,
+                    amount: amount,
+                    timestamp: serverTimestamp() // Use server timestamp for consistency
+                };
+                
+                // Set transaction data
+                transaction.set(transactionRef, transactionData);
+                
+                // Get user data and calculate new balance
+                const userData = userDoc.data();
+                let updatedBalance = userData.accountBalance || 0;
+                let totalGamesPlayed = userData.totalGamesPlayed || 0;
+                let totalMoneySpent = userData.totalMoneySpent || 0;
+                let totalMoneyEarned = userData.totalMoneyEarned || 0;
+                
+                // Update user metrics based on transaction type
+                switch(transactionType) {
+                    case 'deposit':
+                        updatedBalance += amount;
+                        break;
+                    case 'withdrawal':
+                        if (updatedBalance < amount) {
+                            throw new Error('Insufficient balance');
+                        }
+                        updatedBalance -= amount;
+                        break;
+                    case 'game_play':
+                        if (amount > 0 && updatedBalance < amount) {
+                            throw new Error('Insufficient balance to play game');
+                        }
+                        updatedBalance -= amount;
+                        totalGamesPlayed += 1;
+                        totalMoneySpent += amount;
+                        break;
+                    case 'game_win':
+                        updatedBalance += amount;
+                        totalMoneyEarned += amount;
+                        break;
+                    default:
+                        console.warn(`Unknown transaction type: ${transactionType}`);
+                }
+                
+                // Update user document with new values
+                transaction.update(userRef, {
+                    accountBalance: updatedBalance,
+                    totalGamesPlayed: totalGamesPlayed,
+                    totalMoneySpent: totalMoneySpent,
+                    totalMoneyEarned: totalMoneyEarned,
+                    lastUpdated: serverTimestamp()
+                });
+                
+                console.log(`Transaction prepared. New balance will be: ${updatedBalance}`);
+                
+                return {
+                    transactionId: transactionRef.id,
+                    newBalance: updatedBalance
+                };
             });
-
-            console.log(`Transaction completed. New balance: ${updatedBalance}`);
-            return {
-                transactionId: transactionRef.id,
-                newBalance: updatedBalance
-            };
         } catch (error) {
             console.error("Transaction Error:", error);
-            throw error;
+            // Add more specific error information
+            if (error.code === 'permission-denied') {
+                throw new Error('You do not have permission to perform this action');
+            } else if (error.code === 'resource-exhausted') {
+                throw new Error('Too many requests. Please try again later');
+            } else {
+                throw error;
+            }
         }
     }
 }
@@ -638,12 +801,22 @@ async function updateUIForLoggedInUser(user) {
     try {
         // Fetch fresh user details from server
         const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
+        if (!userDetails) {
+            // Account no longer valid
+            updateUIForLoggedOutUser();
+            alert('Your account was not found or has been deactivated. Please contact support.');
+            return;
+        }
+        
         document.getElementById('username-display').textContent = userDetails.username;
         document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
         console.log("Updated UI with balance:", userDetails.accountBalance);
     } catch (error) {
         console.error("Error updating UI:", error);
         alert('Could not load user details. Please try again.');
+        // If there's an error loading details, best to log out
+        await voidAccounting.logout();
+        updateUIForLoggedOutUser();
     }
 }
 
@@ -653,11 +826,43 @@ function updateUIForLoggedOutUser() {
     document.getElementById('user-profile').style.display = 'none';
 }
 
-// IMPROVED: Listen for authentication state changes
+// IMPROVED: Enhanced auth state change listener with verification
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         console.log("Auth state changed: User is signed in", user.uid);
-        await updateUIForLoggedInUser(user);
+        
+        try {
+            // Verify the user still exists in Firestore
+            const userRef = doc(db, 'users', user.uid);
+            const userDoc = await getDoc(userRef);
+            
+            if (!userDoc.exists()) {
+                console.error("User authenticated but no Firestore record found - logging out");
+                await auth.signOut();
+                alert('Your account data could not be found. Please contact support.');
+                updateUIForLoggedOutUser();
+                return;
+            }
+            
+            // Check if account is marked as deleted or inactive
+            const userData = userDoc.data();
+            if (userData.status === 'deleted' || userData.active === false) {
+                console.error("User account is marked as deleted or inactive - logging out");
+                await auth.signOut();
+                alert('Your account has been deleted or deactivated. Please contact support if this is unexpected.');
+                updateUIForLoggedOutUser();
+                return;
+            }
+            
+            // User exists in both Auth and Firestore, update UI
+            await updateUIForLoggedInUser(user);
+        } catch (error) {
+            console.error("Error verifying user in Firestore:", error);
+            // Handle any other errors that might occur during verification
+            alert('There was a problem verifying your account. Please try signing in again.');
+            await auth.signOut();
+            updateUIForLoggedOutUser();
+        }
     } else {
         console.log("Auth state changed: User is signed out");
         updateUIForLoggedOutUser();
@@ -710,26 +915,75 @@ function renderAppsList() {
             <h3 class="game-title">${app.title}</h3>
         `;
 
-        appElement.onclick = () => {
+        appElement.onclick = async () => {
             // Check if user is logged in before navigating to game
             const currentUser = voidAccounting.getCurrentUser();
             if (currentUser) {
-                console.log("Navigating to game:", app.title);
-                
-                // Record the game play attempt
-                voidAccounting.recordGameTransaction(
-                    app.title.toLowerCase().replace(/\s+/g, '_'), 
-                    currentUser.uid,
-                    'game_play',
-                    0 // Just tracking the visit, not charging coins here
-                ).then(() => {
-                    // Navigate to the game after transaction is recorded
+                try {
+                    console.log("Navigating to game:", app.title);
+                    
+                    // Show loading indicator or disable button to prevent multiple clicks
+                    appElement.style.opacity = "0.7";
+                    appElement.style.pointerEvents = "none";
+                    
+                    // First verify account is still valid
+                    const userDetails = await voidAccounting.getUserAccountDetails(currentUser.uid);
+                    if (!userDetails) {
+                        throw new Error('Your account was not found or has been deactivated.');
+                    }
+                    
+                    console.log("User verified:", userDetails.username);
+                    
+                    // Record the game play attempt - with retry logic
+                    let retryCount = 0;
+                    let success = false;
+                    
+                    while (!success && retryCount < 3) {
+                        try {
+                            await voidAccounting.recordGameTransaction(
+                                app.title.toLowerCase().replace(/\s+/g, '_'), 
+                                currentUser.uid,
+                                'game_play',
+                                0 // Just tracking the visit, not charging coins here
+                            );
+                            success = true;
+                        } catch (error) {
+                            retryCount++;
+                            console.warn(`Transaction attempt ${retryCount} failed:`, error);
+                            
+                            // If the error is because account no longer exists, stop retrying
+                            if (error.message.includes('Account no longer valid')) {
+                                alert('Your account is no longer active. Please sign in again.');
+                                await voidAccounting.logout();
+                                updateUIForLoggedOutUser();
+                                appElement.style.opacity = "1";
+                                appElement.style.pointerEvents = "auto";
+                                return;
+                            }
+                            
+                            // Wait before retry with exponential backoff
+                            if (retryCount < 3) {
+                                await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+                            }
+                        }
+                    }
+                    
+                    // Navigate to the game even if transaction recording fails after retries
                     window.location.href = app.link;
-                }).catch(error => {
-                    console.error("Error recording game visit:", error);
-                    // Still navigate even if tracking fails
-                    window.location.href = app.link;
-                });
+                } catch (error) {
+                    // Reset the button state
+                    appElement.style.opacity = "1";
+                    appElement.style.pointerEvents = "auto";
+                    
+                    console.error("Error accessing game:", error);
+                    alert(`There was a problem: ${error.message || 'Could not access game'}`);
+                    
+                    // If it's an account issue, log out
+                    if (error.message.includes('account')) {
+                        await voidAccounting.logout();
+                        updateUIForLoggedOutUser();
+                    }
+                }
             } else {
                 alert('Please login to play games');
                 authContainer.style.display = 'block';
@@ -760,24 +1014,75 @@ document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
                 <h3 class="game-title">${app.title}</h3>
             `;
 
-            appElement.onclick = () => {
+            appElement.onclick = async () => {
                 // Check if user is logged in before navigating to game
                 const currentUser = voidAccounting.getCurrentUser();
                 if (currentUser) {
-                    // Record the game play attempt
-                    voidAccounting.recordGameTransaction(
-                        app.title.toLowerCase().replace(/\s+/g, '_'), 
-                        currentUser.uid,
-                        'game_play',
-                        0 // Just tracking the visit, not charging coins here
-                    ).then(() => {
-                        // Navigate to the game after transaction is recorded
+                    try {
+                        console.log("Navigating to game:", app.title);
+                        
+                        // Show loading indicator or disable button to prevent multiple clicks
+                        appElement.style.opacity = "0.7";
+                        appElement.style.pointerEvents = "none";
+                        
+                        // First verify account is still valid
+                        const userDetails = await voidAccounting.getUserAccountDetails(currentUser.uid);
+                        if (!userDetails) {
+                            throw new Error('Your account was not found or has been deactivated.');
+                        }
+                        
+                        console.log("User verified:", userDetails.username);
+                        
+                        // Record the game play attempt - with retry logic
+                        let retryCount = 0;
+                        let success = false;
+                        
+                        while (!success && retryCount < 3) {
+                            try {
+                                await voidAccounting.recordGameTransaction(
+                                    app.title.toLowerCase().replace(/\s+/g, '_'), 
+                                    currentUser.uid,
+                                    'game_play',
+                                    0 // Just tracking the visit, not charging coins here
+                                );
+                                success = true;
+                            } catch (error) {
+                                retryCount++;
+                                console.warn(`Transaction attempt ${retryCount} failed:`, error);
+                                
+                                // If the error is because account no longer exists, stop retrying
+                                if (error.message.includes('Account no longer valid')) {
+                                    alert('Your account is no longer active. Please sign in again.');
+                                    await voidAccounting.logout();
+                                    updateUIForLoggedOutUser();
+                                    appElement.style.opacity = "1";
+                                    appElement.style.pointerEvents = "auto";
+                                    return;
+                                }
+                                
+                                // Wait before retry with exponential backoff
+                                if (retryCount < 3) {
+                                    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount)));
+                                }
+                            }
+                        }
+                        
+                        // Navigate to the game even if transaction recording fails after retries
                         window.location.href = app.link;
-                    }).catch(error => {
-                        console.error("Error recording game visit:", error);
-                        // Still navigate even if tracking fails
-                        window.location.href = app.link;
-                    });
+                    } catch (error) {
+                        // Reset the button state
+                        appElement.style.opacity = "1";
+                        appElement.style.pointerEvents = "auto";
+                        
+                        console.error("Error accessing game:", error);
+                        alert(`There was a problem: ${error.message || 'Could not access game'}`);
+                        
+                        // If it's an account issue, log out
+                        if (error.message.includes('account')) {
+                            await voidAccounting.logout();
+                            updateUIForLoggedOutUser();
+                        }
+                    }
                 } else {
                     alert('Please login to play games');
                     authContainer.style.display = 'block';
