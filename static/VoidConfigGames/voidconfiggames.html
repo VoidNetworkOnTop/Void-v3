@@ -123,7 +123,7 @@
         const terminal = document.getElementById('terminal');
         const commandInput = document.getElementById('commandInput');
         
-        // Admin email constant
+        // Admin email constant - THE ONLY EMAIL ALLOWED TO ACCESS THE TERMINAL
         const ADMIN_EMAIL = "six7588@gmail.com";
         
         // Hardcoded known user IDs from Firebase Auth UI - with corrected spelling
@@ -204,7 +204,7 @@
         
         // Login functionality
         loginButton.addEventListener('click', async () => {
-            const email = emailInput.value.trim();
+            const email = emailInput.value.trim().toLowerCase();
             const password = passwordInput.value;
             
             if (!email || !password) {
@@ -213,6 +213,12 @@
             }
             
             try {
+                // Check if email is the authorized admin
+                if (email !== ADMIN_EMAIL.toLowerCase()) {
+                    showLoginMessage('Access denied: Only six7588@gmail.com can access this console', true);
+                    return;
+                }
+                
                 // Try to sign in with Firebase Authentication
                 showLoginMessage('Authenticating...', false);
                 await signInWithEmailAndPassword(auth, email, password);
@@ -234,6 +240,21 @@
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 // User is signed in
+                // Check if user email is authorized
+                if (user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+                    // Show access denied and keep login form visible
+                    showLoginMessage('Access denied: Only six7588@gmail.com can access this console', true);
+                    
+                    // Sign out the unauthorized user
+                    try {
+                        await auth.signOut();
+                    } catch (error) {
+                        console.error("Error signing out:", error);
+                    }
+                    return;
+                }
+                
+                // User is authorized, show admin console
                 loginForm.classList.add('hidden');
                 adminConsole.classList.remove('hidden');
                 
