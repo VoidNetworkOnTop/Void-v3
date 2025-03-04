@@ -1361,6 +1361,244 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
+// IMPROVED: Updated renderAppsList function with offline support
+function renderAppsList() {
+    const gamesList = document.getElementById("gamesList");
+    
+    if (!gamesList) {
+        console.error("Games list element not found");
+        return;
+    }
+    
+    gamesList.innerHTML = '';
+    console.log("Rendering games list");
+    
+    // Try to load cached game data first (in case we're offline)
+    try {
+        const cachedApps = localStorage.getItem('cachedGames');
+        if (cachedApps) {
+            const parsedApps = JSON.parse(cachedApps);
+            // Only use cache if it has valid game data
+            if (parsedApps && Array.isArray(parsedApps) && parsedApps.length > 0) {
+                renderGames(parsedApps);
+                return;
+            }
+        }
+    } catch (error) {
+        console.warn("Error reading cached games:", error);
+    }
+    
+    // Fall back to default games if cache is unavailable
+    renderGames(defaultApps);
+    
+    // Cache the default apps for future offline use
+    try {
+        localStorage.setItem('cachedGames', JSON.stringify(defaultApps));
+    } catch (error) {
+        console.warn("Failed to cache games:", error);
+    }
+    
+    // Helper function to actually render the games
+    function renderGames(apps) {
+        apps.forEach(app => {
+            const appElement = document.createElement("div");
+            appElement.className = "game-item";
+            
+            appElement.innerHTML = `
+                <div class="game-icon">
+                    <img src="${app.imgSrc}" alt="${app.title} icon" onerror="this.src='/assets/placeholder.png'">
+                </div>
+                <h3 class="game-title">${app.title}</h3>
+            `;
+
+            appElement.onclick = async () => {
+                // Log the navigation attempt regardless of login status
+                console.log("Navigating to game:", app.title);
+                
+                // Show loading indicator
+                appElement.style.opacity = "0.7";
+                appElement.style.pointerEvents = "none";
+                
+                try {
+                    // Check if user is logged in
+                    const currentUser = voidAccounting.getCurrentUser();
+                    
+                    // If user is logged in, try to record the visit, but don't block on failure
+                    if (currentUser) {
+                        try {
+                            // Try to record the transaction in the background, but don't await it
+                            // This prevents Firebase errors from blocking game access
+                            voidAccounting.recordGameTransaction(
+                                app.title.toLowerCase().replace(/\s+/g, '_'), 
+                                currentUser.uid,
+                                'game_play',
+                                0
+                            ).catch(error => {
+                                // Just log errors, don't block the game
+                                console.warn("Couldn't record game visit:", error.message || error);
+                                
+                                if (error.code === 'resource-exhausted') {
+                                    networkStatus.setRateLimited(true);
+                                }
+                                
+                                // Queue the transaction for later if appropriate
+                                if (error.code === 'resource-exhausted' || 
+                                    error.code === 'unavailable' || 
+                                    !navigator.onLine) {
+                                    pendingTransactions.add({
+                                        gameId: app.title.toLowerCase().replace(/\s+/g, '_'),
+                                        userId: currentUser.uid,
+                                        type: 'game_play',
+                                        amount: 0
+                                    });
+                                }
+                            });
+                        } catch (error) {
+                            // Just log errors, don't block the game
+                            console.warn("Error starting transaction:", error);
+                        }
+                    } else {
+                        // For non-logged in users, we'll track locally using localStorage
+                        try {
+                            const gamesPlayed = JSON.parse(localStorage.getItem('gamesPlayed') || '[]');
+                            gamesPlayed.push({
+                                game: app.title,
+                                timestamp: Date.now()
+                            });
+                            localStorage.setItem('gamesPlayed', JSON.stringify(gamesPlayed));
+                        } catch (e) {
+                            console.warn("Could not track game in localStorage:", e);
+                        }
+                    }
+                    
+                    // ALWAYS navigate to the game, regardless of login status or Firebase errors
+                    window.location.href = app.link;
+                } catch (error) {
+                    // Reset the button state if something unexpected happens
+                    appElement.style.opacity = "1";
+                    appElement.style.pointerEvents = "auto";
+                    console.error("Unexpected error accessing game:", error);
+                    alert(`There was a problem: ${error.message || 'Could not access game'}`);
+                }
+            };
+
+            gamesList.appendChild(appElement);
+        });
+    }
+}
+
+// Updated search function that works without requiring Firebase
+document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
+    const gamesList = document.getElementById("gamesList");
+    const searchTerm = this.value.toLowerCase();
+    
+    if (!gamesList) return;
+    
+    gamesList.innerHTML = '';
+    
+    // Try to get cached games first
+    let appsToSearch = defaultApps;
+    try {
+        const cachedApps = localStorage.getItem('cachedGames');
+        if (cachedApps) {
+            const parsedApps = JSON.parse(cachedApps);
+            if (parsedApps && Array.isArray(parsedApps) && parsedApps.length > 0) {
+                appsToSearch = parsedApps;
+            }
+        }
+    } catch (error) {
+        console.warn("Error reading cached games for search:", error);
+    }
+    
+    // Filter and display games
+    appsToSearch.forEach(app => {
+        if (app.title.toLowerCase().includes(searchTerm)) {
+            const appElement = document.createElement("div");
+            appElement.className = "game-item";
+            
+            appElement.innerHTML = `
+                <div class="game-icon">
+                    <img src="${app.imgSrc}" alt="${app.title} icon" onerror="this.src='/assets/placeholder.png'">
+                </div>
+                <h3 class="game-title">${app.title}</h3>
+            `;
+
+            appElement.onclick = async () => {
+                // Log the navigation attempt regardless of login status
+                console.log("Navigating to game:", app.title);
+                
+                // Show loading indicator
+                appElement.style.opacity = "0.7";
+                appElement.style.pointerEvents = "none";
+                
+                try {
+                    // Check if user is logged in
+                    const currentUser = voidAccounting.getCurrentUser();
+                    
+                    // If user is logged in, try to record the visit, but don't block on failure
+                    if (currentUser) {
+                        try {
+                            // Try to record the transaction in the background, but don't await it
+                            // This prevents Firebase errors from blocking game access
+                            voidAccounting.recordGameTransaction(
+                                app.title.toLowerCase().replace(/\s+/g, '_'), 
+                                currentUser.uid,
+                                'game_play',
+                                0
+                            ).catch(error => {
+                                // Just log errors, don't block the game
+                                console.warn("Couldn't record game visit:", error.message || error);
+                                
+                                if (error.code === 'resource-exhausted') {
+                                    networkStatus.setRateLimited(true);
+                                }
+                                
+                                // Queue the transaction for later if appropriate
+                                if (error.code === 'resource-exhausted' || 
+                                    error.code === 'unavailable' || 
+                                    !navigator.onLine) {
+                                    pendingTransactions.add({
+                                        gameId: app.title.toLowerCase().replace(/\s+/g, '_'),
+                                        userId: currentUser.uid,
+                                        type: 'game_play',
+                                        amount: 0
+                                    });
+                                }
+                            });
+                        } catch (error) {
+                            // Just log errors, don't block the game
+                            console.warn("Error starting transaction:", error);
+                        }
+                    } else {
+                        // For non-logged in users, we'll track locally using localStorage
+                        try {
+                            const gamesPlayed = JSON.parse(localStorage.getItem('gamesPlayed') || '[]');
+                            gamesPlayed.push({
+                                game: app.title,
+                                timestamp: Date.now()
+                            });
+                            localStorage.setItem('gamesPlayed', JSON.stringify(gamesPlayed));
+                        } catch (e) {
+                            console.warn("Could not track game in localStorage:", e);
+                        }
+                    }
+                    
+                    // ALWAYS navigate to the game, regardless of login status or Firebase errors
+                    window.location.href = app.link;
+                } catch (error) {
+                    // Reset the button state if something unexpected happens
+                    appElement.style.opacity = "1";
+                    appElement.style.pointerEvents = "auto";
+                    console.error("Unexpected error accessing game:", error);
+                    alert(`There was a problem: ${error.message || 'Could not access game'}`);
+                }
+            };
+
+            gamesList.appendChild(appElement);
+        }
+    });
+});
+
 // IMPROVED: Game loading logic
 const defaultApps = [
     {
@@ -1384,247 +1622,6 @@ const defaultApps = [
         link: "/local games/Void Snake/Voidsnake.html"
     },
 ];
-
-function renderAppsList() {
-    const gamesList = document.getElementById("gamesList");
-    
-    if (!gamesList) {
-        console.error("Games list element not found");
-        return;
-    }
-    
-    gamesList.innerHTML = '';
-    console.log("Rendering games list");
-    
-    defaultApps.forEach(app => {
-        const appElement = document.createElement("div");
-        appElement.className = "game-item";
-        
-        appElement.innerHTML = `
-            <div class="game-icon">
-                <img src="${app.imgSrc}" alt="${app.title} icon" onerror="this.src='/assets/placeholder.png'">
-            </div>
-            <h3 class="game-title">${app.title}</h3>
-        `;
-
-        appElement.onclick = async () => {
-            // Check if user is logged in before navigating to game
-            const currentUser = voidAccounting.getCurrentUser();
-            if (currentUser) {
-                try {
-                    console.log("Navigating to game:", app.title);
-                    
-                    // Show loading indicator or disable button to prevent multiple clicks
-                    appElement.style.opacity = "0.7";
-                    appElement.style.pointerEvents = "none";
-                    
-                    // User verification is more lightweight now - we'll skip if we hit rate limits
-                    let userDetails = null;
-                    try {
-                        // Try to get user details, but don't block on failure
-                        userDetails = await voidAccounting.getUserAccountDetails(currentUser.uid);
-                        if (userDetails) {
-                            console.log("User verified:", userDetails.username || 'User');
-                        }
-                    } catch (error) {
-                        // Only block navigation if this is specifically an account problem
-                        // For rate limits or network issues, we'll continue anyway
-                        if (error.code !== 'resource-exhausted' && 
-                            error.code !== 'unavailable' && 
-                            error.code !== 'network-request-failed' && 
-                            error.message && 
-                            (error.message.includes('account') || error.message.includes('User'))) {
-                            throw error;
-                        }
-                        console.warn("Couldn't verify user details due to:", error.message || error);
-                    }
-                    
-                    // Try to record the game transaction, but don't block navigation on rate limit errors
-                    try {
-                        const result = await voidAccounting.recordGameTransaction(
-                            app.title.toLowerCase().replace(/\s+/g, '_'), 
-                            currentUser.uid,
-                            'game_play',
-                            0 // Just tracking the visit, not charging coins here
-                        );
-                        
-                        if (result) {
-                            if (result.wasRateLimited) {
-                                console.log("Transaction recording was rate limited but continuing navigation");
-                                networkStatus.setRateLimited(true);
-                            } else if (result.wasOffline) {
-                                console.log("Transaction queued for offline processing");
-                                networkStatus.setOnline(false);
-                            }
-                        }
-                    } catch (error) {
-                        // Only block for specific, critical errors - not rate limits or network issues
-                        if (error.code !== 'resource-exhausted' && 
-                            error.code !== 'unavailable' && 
-                            error.code !== 'network-request-failed' && 
-                            error.message && 
-                            (error.message.includes('account') || error.message.includes('insufficient'))) {
-                            throw error;
-                        }
-                        console.warn("Couldn't record transaction but continuing:", error.message || error);
-                    }
-                    
-                    // Navigate to the game
-                    window.location.href = app.link;
-                } catch (error) {
-                    // Reset the button state
-                    appElement.style.opacity = "1";
-                    appElement.style.pointerEvents = "auto";
-                    
-                    console.error("Error accessing game:", error);
-                    
-                    // Customize message based on error type
-                    let errorMessage = 'Could not access game';
-                    if (error.code === 'resource-exhausted') {
-                        errorMessage = 'The service is currently busy. Please try again in a few moments.';
-                    } else if (error.code === 'unavailable' || error.code === 'network-request-failed') {
-                        errorMessage = 'Network error. Please check your connection and try again.';
-                    } else if (error.message) {
-                        errorMessage = error.message;
-                    }
-                    
-                    alert(`There was a problem: ${errorMessage}`);
-                    
-                    // If it's an account issue, log out
-                    if (error.message && error.message.includes('account')) {
-                        await voidAccounting.logout();
-                        updateUIForLoggedOutUser();
-                    }
-                }
-            } else {
-                alert('Please login to play games');
-                authContainer.style.display = 'block';
-            }
-        };
-
-        gamesList.appendChild(appElement);
-    });
-}
-
-document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
-    const gamesList = document.getElementById("gamesList");
-    const searchTerm = this.value.toLowerCase();
-    
-    if (!gamesList) return;
-    
-    gamesList.innerHTML = '';
-    
-    defaultApps.forEach(app => {
-        if (app.title.toLowerCase().includes(searchTerm)) {
-            const appElement = document.createElement("div");
-            appElement.className = "game-item";
-            
-            appElement.innerHTML = `
-                <div class="game-icon">
-                    <img src="${app.imgSrc}" alt="${app.title} icon" onerror="this.src='/assets/placeholder.png'">
-                </div>
-                <h3 class="game-title">${app.title}</h3>
-            `;
-
-            appElement.onclick = async () => {
-                // Check if user is logged in before navigating to game
-                const currentUser = voidAccounting.getCurrentUser();
-                if (currentUser) {
-                    try {
-                        console.log("Navigating to game:", app.title);
-                        
-                        // Show loading indicator or disable button to prevent multiple clicks
-                        appElement.style.opacity = "0.7";
-                        appElement.style.pointerEvents = "none";
-                        
-                        // User verification is more lightweight now - we'll skip if we hit rate limits
-                        let userDetails = null;
-                        try {
-                            // Try to get user details, but don't block on failure
-                            userDetails = await voidAccounting.getUserAccountDetails(currentUser.uid);
-                            if (userDetails) {
-                                console.log("User verified:", userDetails.username || 'User');
-                            }
-                        } catch (error) {
-                            // Only block navigation if this is specifically an account problem
-                            // For rate limits or network issues, we'll continue anyway
-                            if (error.code !== 'resource-exhausted' && 
-                                error.code !== 'unavailable' && 
-                                error.code !== 'network-request-failed' && 
-                                error.message && 
-                                (error.message.includes('account') || error.message.includes('User'))) {
-                                throw error;
-                            }
-                            console.warn("Couldn't verify user details due to:", error.message || error);
-                        }
-                        
-                        // Try to record the game transaction, but don't block navigation on rate limit errors
-                        try {
-                            const result = await voidAccounting.recordGameTransaction(
-                                app.title.toLowerCase().replace(/\s+/g, '_'), 
-                                currentUser.uid,
-                                'game_play',
-                                0 // Just tracking the visit, not charging coins here
-                            );
-                            
-                            if (result) {
-                                if (result.wasRateLimited) {
-                                    console.log("Transaction recording was rate limited but continuing navigation");
-                                    networkStatus.setRateLimited(true);
-                                } else if (result.wasOffline) {
-                                    console.log("Transaction queued for offline processing");
-                                    networkStatus.setOnline(false);
-                                }
-                            }
-                        } catch (error) {
-                            // Only block for specific, critical errors - not rate limits or network issues
-                            if (error.code !== 'resource-exhausted' && 
-                                error.code !== 'unavailable' && 
-                                error.code !== 'network-request-failed' && 
-                                error.message && 
-                                (error.message.includes('account') || error.message.includes('insufficient'))) {
-                                throw error;
-                            }
-                            console.warn("Couldn't record transaction but continuing:", error.message || error);
-                        }
-                        
-                        // Navigate to the game
-                        window.location.href = app.link;
-                    } catch (error) {
-                        // Reset the button state
-                        appElement.style.opacity = "1";
-                        appElement.style.pointerEvents = "auto";
-                        
-                        console.error("Error accessing game:", error);
-                        
-                        // Customize message based on error type
-                        let errorMessage = 'Could not access game';
-                        if (error.code === 'resource-exhausted') {
-                            errorMessage = 'The service is currently busy. Please try again in a few moments.';
-                        } else if (error.code === 'unavailable' || error.code === 'network-request-failed') {
-                            errorMessage = 'Network error. Please check your connection and try again.';
-                        } else if (error.message) {
-                            errorMessage = error.message;
-                        }
-                        
-                        alert(`There was a problem: ${errorMessage}`);
-                        
-                        // If it's an account issue, log out
-                        if (error.message && error.message.includes('account')) {
-                            await voidAccounting.logout();
-                            updateUIForLoggedOutUser();
-                        }
-                    }
-                } else {
-                    alert('Please login to play games');
-                    authContainer.style.display = 'block';
-                }
-            };
-
-            gamesList.appendChild(appElement);
-        }
-    });
-});
 
 // Load apps on page load
 window.addEventListener('load', async () => {
@@ -1655,6 +1652,9 @@ window.addEventListener('load', async () => {
         }
     } catch (err) {
         console.error('Error during initialization:', err);
+        
+        // Even if there's an error, still render the games list
+        renderAppsList();
     }
 });
 </script>
