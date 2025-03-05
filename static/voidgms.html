@@ -394,7 +394,7 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Profile Icon Toggle Functionality
+        // FIXED: Profile Icon Toggle Functionality
         const profileIcon = document.getElementById('profile-icon');
         const authContainer = document.getElementById('auth-container');
         
@@ -407,14 +407,17 @@
                 
                 // If user is logged in, refresh balance display
                 if (auth.currentUser) {
-                    voidAccounting.getUserAccountDetails(auth.currentUser.uid)
-                        .then(userDetails => {
-                            document.getElementById('username-display').textContent = userDetails.username;
-                            document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
-                        })
-                        .catch(error => {
-                            console.error("Error refreshing balance:", error);
-                        });
+                    // Add a small delay to ensure any pending transactions are complete
+                    setTimeout(() => {
+                        voidAccounting.getUserAccountDetails(auth.currentUser.uid)
+                            .then(userDetails => {
+                                document.getElementById('username-display').textContent = userDetails.username;
+                                document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
+                            })
+                            .catch(error => {
+                                console.error("Error refreshing balance:", error);
+                            });
+                    }, 300);
                 }
             }
         });
@@ -427,15 +430,16 @@
             }
         });
 
-// IMPROVED: Void Network Accounting Class
+// FIXED: Void Network Accounting Class
 class VoidNetworkAccounting {
     constructor() {
         this.auth = auth;
         this.db = db;
+        this.transactionInProgress = false; // Add a transaction lock
         console.log("VoidNetworkAccounting initialized");
     }
 
-    // User Registration - IMPROVED
+    // User Registration
     async registerUser(email, password, username) {
         try {
             console.log("Registering new user:", email);
@@ -461,7 +465,7 @@ class VoidNetworkAccounting {
         }
     }
 
-    // User Login - IMPROVED
+    // User Login
     async loginUser(email, password) {
         try {
             console.log("Logging in user:", email);
@@ -474,7 +478,7 @@ class VoidNetworkAccounting {
         }
     }
 
-    // Logout - IMPROVED
+    // Logout
     async logout() {
         try {
             console.log("Logging out user");
@@ -491,9 +495,15 @@ class VoidNetworkAccounting {
         return this.auth.currentUser;
     }
 
-    // Get User Account Details - IMPROVED with forced server data
+    // Get User Account Details - With transaction-safe cache handling
     async getUserAccountDetails(userId) {
         try {
+            // If a transaction is in progress, wait a bit to ensure we get the latest data
+            if (this.transactionInProgress) {
+                console.log("Transaction in progress, waiting before fetching account details");
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
             console.log("Getting account details for user:", userId);
             const userRef = doc(this.db, 'users', userId);
             // Force fresh data from server, not cache
@@ -513,8 +523,16 @@ class VoidNetworkAccounting {
         }
     }
 
-    // Track Game Transaction - IMPROVED for better sync
+    // Track Game Transaction - FIXED with transaction lock
     async recordGameTransaction(gameId, userId, transactionType, amount) {
+        // Set transaction flag to prevent concurrent updates
+        if (this.transactionInProgress) {
+            console.log("Transaction already in progress, please wait");
+            return null;
+        }
+        
+        this.transactionInProgress = true;
+        
         try {
             console.log(`Recording transaction: ${transactionType} for ${amount} coins in ${gameId}`);
             
@@ -543,14 +561,20 @@ class VoidNetworkAccounting {
             // Update user metrics based on transaction type
             if (transactionType === 'deposit') {
                 updatedBalance += amount;
+                console.log(`Adding ${amount} coins, new balance will be ${updatedBalance}`);
             } else if (transactionType === 'withdrawal') {
                 updatedBalance -= amount;
+                console.log(`Removing ${amount} coins, new balance will be ${updatedBalance}`);
             } else if (transactionType === 'game_play') {
-                updatedBalance -= amount;
+                if (amount > 0) {
+                    updatedBalance -= amount;
+                    console.log(`Game play cost ${amount} coins, new balance will be ${updatedBalance}`);
+                }
                 userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
-                userData.totalMoneySpent = (userData.totalMoneySpent || 0) + amount;
+                userData.totalMoneySpent = (userData.totalMoneySpent || 0) + (amount > 0 ? amount : 0);
             } else if (transactionType === 'game_win') {
                 updatedBalance += amount;
+                console.log(`Game win added ${amount} coins, new balance will be ${updatedBalance}`);
                 userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + amount;
             }
 
@@ -559,10 +583,18 @@ class VoidNetworkAccounting {
                 accountBalance: updatedBalance,
                 totalGamesPlayed: userData.totalGamesPlayed || 0,
                 totalMoneySpent: userData.totalMoneySpent || 0,
-                totalMoneyEarned: userData.totalMoneyEarned || 0
+                totalMoneyEarned: userData.totalMoneyEarned || 0,
+                lastUpdated: new Date() // Add timestamp for tracking purposes
             });
 
+            // Wait to make sure Firestore has processed the update
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
             console.log(`Transaction completed. New balance: ${updatedBalance}`);
+            
+            // Update UI directly after transaction to ensure consistency
+            document.getElementById('balance-display').textContent = updatedBalance.toLocaleString();
+            
             return {
                 transactionId: transactionRef.id,
                 newBalance: updatedBalance
@@ -570,6 +602,9 @@ class VoidNetworkAccounting {
         } catch (error) {
             console.error("Transaction Error:", error);
             throw error;
+        } finally {
+            // Release transaction lock, even if there was an error
+            this.transactionInProgress = false;
         }
     }
 }
@@ -626,13 +661,16 @@ document.getElementById('logout-btn')?.addEventListener('click', async () => {
     }
 });
 
-// IMPROVED: Update UI based on authentication state - with fresh data
+// FIXED: Update UI based on authentication state - with transaction safety
 async function updateUIForLoggedInUser(user) {
     document.getElementById('login-form').style.display = 'none';
     document.getElementById('register-form').style.display = 'none';
     document.getElementById('user-profile').style.display = 'block';
     
     try {
+        // Wait a moment to ensure any pending transactions are complete
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
         // Fetch fresh user details from server
         const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
         document.getElementById('username-display').textContent = userDetails.username;
