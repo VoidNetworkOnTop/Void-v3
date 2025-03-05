@@ -295,38 +295,6 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             color: #fff;
             text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
         }
-        
-        .network-status {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.7);
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 12px;
-            display: none;
-            z-index: 1000;
-        }
-
-        .status-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-right: 5px;
-        }
-
-        .status-online {
-            background-color: #4caf50;
-        }
-
-        .status-offline {
-            background-color: #f44336;
-        }
-
-        .status-rate-limited {
-            background-color: #ff9800;
-        }
 
         @media (max-width: 768px) {
             .games-box {
@@ -369,12 +337,6 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         </div>
     </div>
 
-    <!-- Network Status Indicator -->
-    <div id="network-status" class="network-status">
-        <span id="status-indicator" class="status-indicator status-online"></span>
-        <span id="status-text">Online</span>
-    </div>
-
     <!-- Authentication Container -->
     <div id="auth-container">
         <div id="user-profile" style="display:none;">
@@ -415,30 +377,8 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
-        import { 
-            getAuth, 
-            createUserWithEmailAndPassword, 
-            signInWithEmailAndPassword, 
-            onAuthStateChanged,
-            deleteUser 
-        } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-        import { 
-            getFirestore, 
-            collection, 
-            doc, 
-            setDoc, 
-            updateDoc, 
-            getDoc, 
-            query, 
-            where, 
-            getDocs, 
-            runTransaction, 
-            serverTimestamp,
-            deleteDoc,
-            writeBatch,
-            enableIndexedDbPersistence,
-            onSnapshotsInSync
-        } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration
         const firebaseConfig = {
@@ -451,222 +391,11 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             measurementId: "G-0PV8WC36X7"
         };
 
-        // ======== Network Status Tracking ========
-        const networkStatus = {
-            isOnline: navigator.onLine,
-            isRateLimited: false,
-            statusElement: document.getElementById('network-status'),
-            indicatorElement: document.getElementById('status-indicator'),
-            textElement: document.getElementById('status-text'),
-            
-            updateStatus() {
-                this.statusElement.style.display = 'block';
-                
-                if (!this.isOnline) {
-                    this.indicatorElement.className = 'status-indicator status-offline';
-                    this.textElement.textContent = 'Offline Mode';
-                } else if (this.isRateLimited) {
-                    this.indicatorElement.className = 'status-indicator status-rate-limited';
-                    this.textElement.textContent = 'Rate Limited';
-                } else {
-                    this.indicatorElement.className = 'status-indicator status-online';
-                    this.textElement.textContent = 'Online';
-                    
-                    // Hide after 5 seconds if everything is normal
-                    setTimeout(() => {
-                        if (this.isOnline && !this.isRateLimited) {
-                            this.statusElement.style.display = 'none';
-                        }
-                    }, 5000);
-                }
-            },
-            
-            setOnline(isOnline) {
-                this.isOnline = isOnline;
-                this.updateStatus();
-            },
-            
-            setRateLimited(isLimited) {
-                this.isRateLimited = isLimited;
-                this.updateStatus();
-            }
-        };
-
-        // ======== Offline Support and Pending Transactions ========
-        const pendingTransactions = {
-            queue: [],
-            isProcessing: false,
-            
-            add(transaction) {
-                this.queue.push({
-                    ...transaction,
-                    timestamp: Date.now()
-                });
-                
-                // Store in localStorage to persist across page refreshes
-                try {
-                    localStorage.setItem('pendingTransactions', JSON.stringify(this.queue));
-                } catch (e) {
-                    console.error("Could not save pending transactions to localStorage", e);
-                }
-            },
-            
-            loadFromStorage() {
-                try {
-                    const stored = localStorage.getItem('pendingTransactions');
-                    if (stored) {
-                        this.queue = JSON.parse(stored);
-                        console.log(`Loaded ${this.queue.length} pending transactions from storage`);
-                    }
-                } catch (e) {
-                    console.error("Could not load pending transactions from localStorage", e);
-                }
-            },
-            
-            async processQueue(voidAccounting) {
-                if (this.isProcessing || this.queue.length === 0 || !navigator.onLine) return;
-                
-                this.isProcessing = true;
-                console.log(`Processing ${this.queue.length} pending transactions`);
-                
-                // Process oldest transactions first
-                const sortedQueue = [...this.queue].sort((a, b) => a.timestamp - b.timestamp);
-                
-                for (const transaction of sortedQueue) {
-                    try {
-                        // Skip if more than 24 hours old
-                        if (Date.now() - transaction.timestamp > 86400000) {
-                            console.log("Skipping expired transaction", transaction);
-                            const index = this.queue.findIndex(t => 
-                                t.gameId === transaction.gameId && 
-                                t.timestamp === transaction.timestamp);
-                            if (index >= 0) this.queue.splice(index, 1);
-                            continue;
-                        }
-                        
-                        // Try to execute the transaction
-                        await voidAccounting.recordGameTransaction(
-                            transaction.gameId,
-                            transaction.userId,
-                            transaction.type,
-                            transaction.amount
-                        );
-                        
-                        // If successful, remove from queue
-                        const index = this.queue.findIndex(t => 
-                            t.gameId === transaction.gameId && 
-                            t.timestamp === transaction.timestamp);
-                        if (index >= 0) this.queue.splice(index, 1);
-                        
-                    } catch (error) {
-                        console.warn("Failed to process transaction", transaction, error);
-                        // Stop processing if we hit a rate limit
-                        if (error.code === 'resource-exhausted') {
-                            networkStatus.setRateLimited(true);
-                            break;
-                        }
-                    }
-                }
-                
-                // Update localStorage
-                try {
-                    localStorage.setItem('pendingTransactions', JSON.stringify(this.queue));
-                } catch (e) {
-                    console.error("Could not save pending transactions to localStorage", e);
-                }
-                
-                this.isProcessing = false;
-            }
-        };
-
-        // ======== Rate Limit Tracking ========
-        const rateLimitTracker = {
-            lastError: 0,
-            cooldownPeriod: 10000, // 10 seconds cooldown after a rate limit hit
-            isInCooldown() {
-                return Date.now() - this.lastError < this.cooldownPeriod;
-            },
-            markRateLimited() {
-                this.lastError = Date.now();
-                // Increase cooldown period if we're getting rate limited frequently
-                this.cooldownPeriod = Math.min(60000, this.cooldownPeriod * 1.5);
-                console.log(`Rate limit cooldown set to ${this.cooldownPeriod/1000} seconds`);
-                networkStatus.setRateLimited(true);
-            },
-            reset() {
-                // If we haven't had an error in a while, gradually reduce the cooldown
-                if (Date.now() - this.lastError > 60000) { // After a minute with no errors
-                    this.cooldownPeriod = Math.max(10000, this.cooldownPeriod * 0.8);
-                    networkStatus.setRateLimited(false);
-                }
-            }
-        };
-
-        // ======== Throttling for User Operations ========
-        const userOperationThrottling = {
-            operations: {},
-            minInterval: 5000, // Minimum 5 seconds between identical operations
-            
-            canExecute(userId, operation) {
-                const key = `${userId}:${operation}`;
-                const now = Date.now();
-                const lastTime = this.operations[key] || 0;
-                
-                if (now - lastTime < this.minInterval) {
-                    return false;
-                }
-                
-                this.operations[key] = now;
-                return true;
-            }
-        };
-
-        // ======== Setup Firebase ========
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const analytics = getAnalytics(app);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        
-        // Try to enable offline persistence
-        try {
-            enableIndexedDbPersistence(db).catch((err) => {
-                if (err.code === 'failed-precondition') {
-                    console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
-                } else if (err.code === 'unimplemented') {
-                    console.warn('The current browser does not support offline persistence');
-                }
-            });
-            
-            // Monitor sync status with server if available
-            if (typeof onSnapshotsInSync === 'function') {
-                onSnapshotsInSync(db, () => {
-                    console.log("Firestore data synced with server");
-                    networkStatus.setOnline(true);
-                    networkStatus.setRateLimited(false);
-                });
-            }
-        } catch (error) {
-            console.warn("Error setting up Firestore:", error);
-        }
-        
-        // Helper to get cached user data when online fails
-        const getCachedUserData = async (userId) => {
-            try {
-                const userRef = doc(db, 'users', userId);
-                // Try to get from cache first
-                const userDoc = await getDoc(userRef, { source: 'cache' });
-                
-                if (userDoc.exists()) {
-                    console.log("Retrieved user data from cache");
-                    return userDoc.data();
-                }
-                return null;
-            } catch (error) {
-                console.error("Error getting cached user data:", error);
-                return null;
-            }
-        };
 
         // Profile Icon Toggle Functionality
         const profileIcon = document.getElementById('profile-icon');
@@ -683,20 +412,11 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                 if (auth.currentUser) {
                     voidAccounting.getUserAccountDetails(auth.currentUser.uid)
                         .then(userDetails => {
-                            if (userDetails) {
-                                document.getElementById('username-display').textContent = userDetails.username || 'User';
-                                document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
-                            }
+                            document.getElementById('username-display').textContent = userDetails.username;
+                            document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
                         })
                         .catch(error => {
                             console.error("Error refreshing balance:", error);
-                            // Try to get from cache
-                            getCachedUserData(auth.currentUser.uid).then(cachedData => {
-                                if (cachedData) {
-                                    document.getElementById('username-display').textContent = cachedData.username || 'User';
-                                    document.getElementById('balance-display').textContent = cachedData.accountBalance.toLocaleString();
-                                }
-                            });
                         });
                 }
             }
@@ -708,19 +428,6 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                 !authContainer.contains(event.target)) {
                 authContainer.style.display = 'none';
             }
-        });
-
-        // Network status listeners
-        window.addEventListener('online', () => {
-            console.log("App is online");
-            networkStatus.setOnline(true);
-            // Try to process pending transactions
-            pendingTransactions.processQueue(voidAccounting);
-        });
-        
-        window.addEventListener('offline', () => {
-            console.log("App is offline");
-            networkStatus.setOnline(false);
         });
 
 // IMPROVED: Void Network Accounting Class
@@ -735,11 +442,6 @@ class VoidNetworkAccounting {
     async registerUser(email, password, username) {
         try {
             console.log("Registering new user:", email);
-            
-            if (!navigator.onLine) {
-                throw new Error('Cannot register new users while offline');
-            }
-            
             const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
             const user = userCredential.user;
 
@@ -747,14 +449,11 @@ class VoidNetworkAccounting {
             await setDoc(doc(this.db, 'users', user.uid), {
                 username: username,
                 email: email,
-                createdAt: serverTimestamp(),
+                createdAt: new Date(),
                 accountBalance: 1000, // Starting balance
                 totalGamesPlayed: 0,
                 totalMoneySpent: 0,
-                totalMoneyEarned: 0,
-                active: true,
-                status: 'active',
-                lastLogin: serverTimestamp()
+                totalMoneyEarned: 0
             });
 
             console.log("User registered successfully:", user.uid);
@@ -765,72 +464,15 @@ class VoidNetworkAccounting {
         }
     }
 
-    // User Login - IMPROVED with account validation
+    // User Login - IMPROVED
     async loginUser(email, password) {
         try {
-            console.log("Attempting to log in user:", email);
-            
-            if (!navigator.onLine) {
-                throw new Error('Cannot log in while offline. Please check your connection and try again.');
-            }
-            
-            // First attempt to authenticate with Firebase Auth
+            console.log("Logging in user:", email);
             const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
-            const user = userCredential.user;
-            
-            if (!user) {
-                throw new Error("Authentication failed - no user returned");
-            }
-            
-            console.log("Auth successful, checking if user exists in Firestore:", user.uid);
-            
-            // Next, verify the user exists in Firestore
-            const userRef = doc(this.db, 'users', user.uid);
-            const userDoc = await getDoc(userRef);
-            
-            // If user doesn't exist in Firestore, sign them out and throw error
-            if (!userDoc.exists()) {
-                console.error("User authenticated but no Firestore record found - logging out");
-                await this.auth.signOut();
-                throw new Error('Account not found in database. Please contact support.');
-            }
-            
-            // Check if account is marked as deleted or inactive
-            const userData = userDoc.data();
-            if (userData.status === 'deleted' || userData.active === false) {
-                console.error("User account is marked as deleted or inactive - logging out");
-                await this.auth.signOut();
-                throw new Error('This account has been deleted or deactivated. Please contact support.');
-            }
-            
-            // Update last login time
-            try {
-                await updateDoc(userRef, {
-                    lastLogin: serverTimestamp()
-                });
-            } catch (updateError) {
-                console.warn("Could not update last login time", updateError);
-                // Non-critical, continue without failing
-            }
-            
-            console.log("User verified in both Auth and Firestore:", user.uid);
-            return user;
+            console.log("User logged in successfully:", userCredential.user.uid);
+            return userCredential.user;
         } catch (error) {
             console.error("Login Error:", error);
-            
-            // Check for specific Firebase Auth errors and provide clearer messages
-            if (error.code === 'auth/user-not-found' || error.code === 'auth/user-disabled') {
-                throw new Error('Account not found or disabled. Please contact support.');
-            } else if (error.code === 'auth/wrong-password') {
-                throw new Error('Incorrect password. Please try again.');
-            } else if (error.code === 'auth/too-many-requests') {
-                throw new Error('Too many login attempts. Please try again later.');
-            } else if (error.code === 'auth/invalid-credential') {
-                throw new Error('Invalid login credentials. Please try again.');
-            } else if (error.code === 'auth/network-request-failed') {
-                throw new Error('Network error. Please check your connection and try again.');
-            }
-            
             throw error;
         }
     }
@@ -852,325 +494,85 @@ class VoidNetworkAccounting {
         return this.auth.currentUser;
     }
 
-    // Handle account deletion and validation
-    async handleAccountDeletion(userId) {
-        try {
-            console.log("Checking account status for user:", userId);
-            
-            // If offline or in rate limit cooldown, skip validation
-            if (!navigator.onLine || rateLimitTracker.isInCooldown()) {
-                console.log("Skipping account validation - offline or rate limited");
-                return true; // Assume valid in offline/rate-limited mode
-            }
-            
-            // Don't check too frequently for the same user
-            if (!userOperationThrottling.canExecute(userId, 'account-check')) {
-                return true; // Skip excessive checks
-            }
-            
-            // Check if user exists in Firestore
-            const userRef = doc(this.db, 'users', userId);
-            
-            try {
-                const userDoc = await getDoc(userRef);
-                
-                if (!userDoc.exists()) {
-                    console.error("User doesn't exist in Firestore");
-                    
-                    // Force sign out
-                    await this.auth.signOut();
-                    return false;
-                }
-                
-                // Check if user is marked as deleted in Firestore
-                const userData = userDoc.data();
-                if (userData.status === 'deleted' || userData.active === false) {
-                    console.warn("User account is marked as deleted or inactive");
-                    
-                    // Force sign out
-                    await this.auth.signOut();
-                    return false;
-                }
-            } catch (error) {
-                // If we get a rate limit error during check, assume account is valid
-                if (error.code === 'resource-exhausted') {
-                    rateLimitTracker.markRateLimited();
-                    return true;
-                }
-                throw error;
-            }
-            
-            return true;
-        } catch (error) {
-            console.error("Error checking account status:", error);
-            
-            // In case of network errors, don't block the user
-            if (error.code === 'unavailable' || error.code === 'network-request-failed') {
-                return true;
-            }
-            
-            // If there's any other error, default to logging the user out for safety
-            try {
-                await this.auth.signOut();
-            } catch (signOutError) {
-                console.error("Error signing out:", signOutError);
-            }
-            
-            return false;
-        }
-    }
-
-    // Get User Account Details - IMPROVED with forced server data and status check
+    // Get User Account Details - IMPROVED with forced server data
     async getUserAccountDetails(userId) {
         try {
             console.log("Getting account details for user:", userId);
-            
-            // First check if account is valid and active (unless in rate limit cooldown)
-            if (!rateLimitTracker.isInCooldown()) {
-                const isValid = await this.handleAccountDeletion(userId);
-                if (!isValid) {
-                    console.error("Account is no longer valid");
-                    return null;
-                }
+            const userRef = doc(this.db, 'users', userId);
+            // Force fresh data from server, not cache
+            const userDoc = await getDoc(userRef, { source: 'server' });
+
+            if (!userDoc.exists()) {
+                console.error("User document not found");
+                throw new Error('User not found');
             }
-            
-            // Try getting data from server first, fall back to cache
-            let userDoc;
-            try {
-                // Only try server if online and not rate limited
-                if (navigator.onLine && !rateLimitTracker.isInCooldown()) {
-                    const userRef = doc(this.db, 'users', userId);
-                    userDoc = await getDoc(userRef);
-                }
-            } catch (error) {
-                console.warn("Error getting data from server:", error);
-                
-                if (error.code === 'resource-exhausted') {
-                    rateLimitTracker.markRateLimited();
-                }
-                
-                // Falling back to cache
-                userDoc = null;
-            }
-            
-            // If server failed or we're offline/rate-limited, try cache
-            if (!userDoc) {
-                const cachedData = await getCachedUserData(userId);
-                if (cachedData) {
-                    return cachedData;
-                }
-            } else if (userDoc.exists()) {
-                const userData = userDoc.data();
-                console.log("Retrieved user data:", userData.username, "Balance:", userData.accountBalance);
-                return userData;
-            }
-            
-            console.error("User document not found in server or cache");
-            return null;
+
+            const userData = userDoc.data();
+            console.log("Retrieved user data:", userData.username, "Balance:", userData.accountBalance);
+            return userData;
         } catch (error) {
             console.error("Account Details Error:", error);
-            
-            // For network errors, try cache
-            if (error.code === 'unavailable' || error.code === 'network-request-failed') {
-                return await getCachedUserData(userId);
-            }
-            
             throw error;
         }
     }
 
-    // UPDATED: Track Game Transaction - More efficient implementation to reduce quota usage
+    // Track Game Transaction - IMPROVED for better sync
     async recordGameTransaction(gameId, userId, transactionType, amount) {
         try {
-            // Check for rate limiting
-            if (rateLimitTracker.isInCooldown()) {
-                console.log("In rate limit cooldown, skipping transaction recording");
-                return {
-                    transactionId: "rate-limited-" + Date.now(),
-                    newBalance: -1,
-                    wasRateLimited: true
-                };
-            }
-            
-            // If we're offline, queue for later
-            if (!navigator.onLine) {
-                console.log(`Offline: Queueing transaction: ${transactionType} for ${amount} coins in ${gameId}`);
-                pendingTransactions.add({
-                    gameId,
-                    userId,
-                    type: transactionType,
-                    amount
-                });
-                return {
-                    transactionId: "offline-" + Date.now(),
-                    newBalance: -1,
-                    wasOffline: true
-                };
-            }
-            
             console.log(`Recording transaction: ${transactionType} for ${amount} coins in ${gameId}`);
             
-            // Zero-amount game plays don't need to update the user document
-            // This significantly reduces Firestore operations for simple game visits
-            if (transactionType === 'game_play' && amount === 0) {
-                // Just log the visit without updating user stats
-                try {
-                    const visitRef = doc(collection(this.db, 'game_visits'));
-                    await setDoc(visitRef, {
-                        userId: userId,
-                        gameId: gameId,
-                        timestamp: serverTimestamp()
-                    });
-                    
-                    return {
-                        transactionId: visitRef.id,
-                        newBalance: -1 // Unknown without reading user doc
-                    };
-                } catch (error) {
-                    if (error.code === 'resource-exhausted') {
-                        rateLimitTracker.markRateLimited();
-                        return {
-                            transactionId: "rate-limited-" + Date.now(),
-                            newBalance: -1,
-                            wasRateLimited: true
-                        };
-                    }
-                    throw error;
-                }
+            // Create transaction record
+            const transactionRef = doc(collection(this.db, 'transactions'));
+            await setDoc(transactionRef, {
+                userId: userId,
+                gameId: gameId,
+                transactionType: transactionType,
+                amount: amount,
+                timestamp: new Date()
+            });
+
+            // Get the latest data from server
+            const userRef = doc(this.db, 'users', userId);
+            const userDoc = await getDoc(userRef, { source: 'server' });
+            
+            if (!userDoc.exists()) {
+                console.error("Cannot update non-existent user");
+                throw new Error('User document not found');
             }
             
-            // For real transactions that affect balance, use a transaction
-            // Convert amount to number
-            amount = Number(amount) || 0;
+            const userData = userDoc.data();
+            let updatedBalance = userData.accountBalance || 0;
             
-            try {
-                // Get current user data first
-                const userRef = doc(this.db, 'users', userId);
-                const userDoc = await getDoc(userRef);
-                
-                if (!userDoc.exists()) {
-                    throw new Error('User document not found');
-                }
-                
-                const userData = userDoc.data();
-                let updatedBalance = userData.accountBalance || 0;
-                let totalGamesPlayed = userData.totalGamesPlayed || 0;
-                let totalMoneySpent = userData.totalMoneySpent || 0;
-                let totalMoneyEarned = userData.totalMoneyEarned || 0;
-                
-                // Update metrics based on transaction type
-                switch(transactionType) {
-                    case 'deposit':
-                        updatedBalance += amount;
-                        break;
-                    case 'withdrawal':
-                        if (updatedBalance < amount) {
-                            throw new Error('Insufficient balance');
-                        }
-                        updatedBalance -= amount;
-                        break;
-                    case 'game_play':
-                        if (amount > 0 && updatedBalance < amount) {
-                            throw new Error('Insufficient balance to play game');
-                        }
-                        updatedBalance -= amount;
-                        totalGamesPlayed += 1;
-                        totalMoneySpent += amount;
-                        break;
-                    case 'game_win':
-                        updatedBalance += amount;
-                        totalMoneyEarned += amount;
-                        break;
-                    default:
-                        console.warn(`Unknown transaction type: ${transactionType}`);
-                }
-                
-                // Create the transaction record
-                const transactionRef = doc(collection(this.db, 'transactions'));
-                await setDoc(transactionRef, {
-                    userId: userId,
-                    gameId: gameId,
-                    transactionType: transactionType,
-                    amount: amount,
-                    timestamp: serverTimestamp()
-                });
-                
-                // Update user document
-                await updateDoc(userRef, {
-                    accountBalance: updatedBalance,
-                    totalGamesPlayed: totalGamesPlayed,
-                    totalMoneySpent: totalMoneySpent,
-                    totalMoneyEarned: totalMoneyEarned,
-                    lastUpdated: serverTimestamp()
-                });
-                
-                console.log(`Transaction completed. New balance: ${updatedBalance}`);
-                return {
-                    transactionId: transactionRef.id,
-                    newBalance: updatedBalance
-                };
-            } catch (error) {
-                if (error.code === 'resource-exhausted') {
-                    rateLimitTracker.markRateLimited();
-                    // Queue for later
-                    pendingTransactions.add({
-                        gameId,
-                        userId,
-                        type: transactionType,
-                        amount
-                    });
-                    
-                    return {
-                        transactionId: "rate-limited-" + Date.now(),
-                        newBalance: -1,
-                        wasRateLimited: true
-                    };
-                }
-                throw error;
+            // Update user metrics based on transaction type
+            if (transactionType === 'deposit') {
+                updatedBalance += amount;
+            } else if (transactionType === 'withdrawal') {
+                updatedBalance -= amount;
+            } else if (transactionType === 'game_play') {
+                updatedBalance -= amount;
+                userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
+                userData.totalMoneySpent = (userData.totalMoneySpent || 0) + amount;
+            } else if (transactionType === 'game_win') {
+                updatedBalance += amount;
+                userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + amount;
             }
+
+            // Update user document with new balance and stats
+            await updateDoc(userRef, {
+                accountBalance: updatedBalance,
+                totalGamesPlayed: userData.totalGamesPlayed || 0,
+                totalMoneySpent: userData.totalMoneySpent || 0,
+                totalMoneyEarned: userData.totalMoneyEarned || 0
+            });
+
+            console.log(`Transaction completed. New balance: ${updatedBalance}`);
+            return {
+                transactionId: transactionRef.id,
+                newBalance: updatedBalance
+            };
         } catch (error) {
             console.error("Transaction Error:", error);
             throw error;
-        }
-    }
-    
-    // Batch processing for multiple operations
-    async processBatchedOperations(operations) {
-        try {
-            if (!navigator.onLine) {
-                console.log("Offline: Cannot process batched operations");
-                return false;
-            }
-            
-            if (operations.length === 0) {
-                return true;
-            }
-            
-            // Create a batch
-            const batch = writeBatch(this.db);
-            
-            // Add all operations to the batch
-            operations.forEach(op => {
-                if (op.type === 'set') {
-                    batch.set(op.ref, op.data);
-                } else if (op.type === 'update') {
-                    batch.update(op.ref, op.data);
-                } else if (op.type === 'delete') {
-                    batch.delete(op.ref);
-                }
-            });
-            
-            // Commit the batch
-            await batch.commit();
-            return true;
-        } catch (error) {
-            console.error("Batch operation failed:", error);
-            
-            if (error.code === 'resource-exhausted') {
-                rateLimitTracker.markRateLimited();
-            }
-            
-            return false;
         }
     }
 }
@@ -1189,22 +591,12 @@ document.getElementById('login-btn')?.addEventListener('click', async () => {
     }
     
     try {
-        // Disable login button to prevent multiple clicks
-        const loginBtn = document.getElementById('login-btn');
-        loginBtn.disabled = true;
-        loginBtn.textContent = 'Logging in...';
-        
         const user = await voidAccounting.loginUser(email, password);
         console.log('Logged in user:', user);
         await updateUIForLoggedInUser(user);
         authContainer.style.display = 'none'; // Hide auth container after login
     } catch (error) {
         alert('Login failed: ' + error.message);
-    } finally {
-        // Re-enable login button
-        const loginBtn = document.getElementById('login-btn');
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Login';
     }
 });
 
@@ -1219,22 +611,12 @@ document.getElementById('register-btn')?.addEventListener('click', async () => {
     }
     
     try {
-        // Disable register button to prevent multiple clicks
-        const registerBtn = document.getElementById('register-btn');
-        registerBtn.disabled = true;
-        registerBtn.textContent = 'Creating account...';
-        
         const user = await voidAccounting.registerUser(email, password, username);
         console.log('Registered user:', user);
         await updateUIForLoggedInUser(user);
         authContainer.style.display = 'none'; // Hide auth container after registration
     } catch (error) {
         alert('Registration failed: ' + error.message);
-    } finally {
-        // Re-enable register button
-        const registerBtn = document.getElementById('register-btn');
-        registerBtn.disabled = false;
-        registerBtn.textContent = 'Register';
     }
 });
 
@@ -1256,31 +638,12 @@ async function updateUIForLoggedInUser(user) {
     try {
         // Fetch fresh user details from server
         const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
-        if (!userDetails) {
-            // Account no longer valid
-            updateUIForLoggedOutUser();
-            alert('Your account was not found or has been deactivated. Please contact support.');
-            return;
-        }
-        
-        document.getElementById('username-display').textContent = userDetails.username || 'User';
+        document.getElementById('username-display').textContent = userDetails.username;
         document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
         console.log("Updated UI with balance:", userDetails.accountBalance);
     } catch (error) {
         console.error("Error updating UI:", error);
-        
-        // Try to get from cache
-        const cachedData = await getCachedUserData(user.uid);
-        if (cachedData) {
-            document.getElementById('username-display').textContent = cachedData.username || 'User';
-            document.getElementById('balance-display').textContent = cachedData.accountBalance.toLocaleString();
-            console.log("Updated UI with cached balance:", cachedData.accountBalance);
-        } else {
-            alert('Could not load user details. Please try again.');
-            // If there's an error loading details, best to log out
-            await voidAccounting.logout();
-            updateUIForLoggedOutUser();
-        }
+        alert('Could not load user details. Please try again.');
     }
 }
 
@@ -1290,313 +653,15 @@ function updateUIForLoggedOutUser() {
     document.getElementById('user-profile').style.display = 'none';
 }
 
-// IMPROVED: Enhanced auth state change listener with verification
+// IMPROVED: Listen for authentication state changes
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         console.log("Auth state changed: User is signed in", user.uid);
-        
-        try {
-            // Skip detailed verification if we're offline or rate-limited
-            if (!navigator.onLine || rateLimitTracker.isInCooldown()) {
-                console.log("Skipping detailed verification - offline or rate limited");
-                await updateUIForLoggedInUser(user);
-                return;
-            }
-            
-            // Verify the user still exists in Firestore
-            const userRef = doc(db, 'users', user.uid);
-            
-            try {
-                const userDoc = await getDoc(userRef);
-                
-                if (!userDoc.exists()) {
-                    console.error("User authenticated but no Firestore record found - logging out");
-                    await auth.signOut();
-                    alert('Your account data could not be found. Please contact support.');
-                    updateUIForLoggedOutUser();
-                    return;
-                }
-                
-                // Check if account is marked as deleted or inactive
-                const userData = userDoc.data();
-                if (userData.status === 'deleted' || userData.active === false) {
-                    console.error("User account is marked as deleted or inactive - logging out");
-                    await auth.signOut();
-                    alert('Your account has been deleted or deactivated. Please contact support if this is unexpected.');
-                    updateUIForLoggedOutUser();
-                    return;
-                }
-            } catch (error) {
-                // If we hit a rate limit, just continue
-                if (error.code === 'resource-exhausted') {
-                    rateLimitTracker.markRateLimited();
-                } else if (error.code === 'unavailable' || error.code === 'network-request-failed') {
-                    // Network issues, continue with cached data
-                    console.warn("Network issue during verification, continuing with cached data");
-                } else {
-                    throw error;
-                }
-            }
-            
-            // User exists in both Auth and Firestore, update UI
-            await updateUIForLoggedInUser(user);
-        } catch (error) {
-            console.error("Error verifying user in Firestore:", error);
-            // Handle any other errors that might occur during verification
-            
-            // For critical errors, log out
-            if (error.code !== 'unavailable' && error.code !== 'network-request-failed' && 
-                error.code !== 'resource-exhausted') {
-                alert('There was a problem verifying your account. Please try signing in again.');
-                await auth.signOut();
-                updateUIForLoggedOutUser();
-            } else {
-                // For network issues, still try to update UI with cached data
-                await updateUIForLoggedInUser(user);
-            }
-        }
+        await updateUIForLoggedInUser(user);
     } else {
         console.log("Auth state changed: User is signed out");
         updateUIForLoggedOutUser();
     }
-});
-
-// IMPROVED: Updated renderAppsList function with offline support
-function renderAppsList() {
-    const gamesList = document.getElementById("gamesList");
-    
-    if (!gamesList) {
-        console.error("Games list element not found");
-        return;
-    }
-    
-    gamesList.innerHTML = '';
-    console.log("Rendering games list");
-    
-    // Try to load cached game data first (in case we're offline)
-    try {
-        const cachedApps = localStorage.getItem('cachedGames');
-        if (cachedApps) {
-            const parsedApps = JSON.parse(cachedApps);
-            // Only use cache if it has valid game data
-            if (parsedApps && Array.isArray(parsedApps) && parsedApps.length > 0) {
-                renderGames(parsedApps);
-                return;
-            }
-        }
-    } catch (error) {
-        console.warn("Error reading cached games:", error);
-    }
-    
-    // Fall back to default games if cache is unavailable
-    renderGames(defaultApps);
-    
-    // Cache the default apps for future offline use
-    try {
-        localStorage.setItem('cachedGames', JSON.stringify(defaultApps));
-    } catch (error) {
-        console.warn("Failed to cache games:", error);
-    }
-    
-    // Helper function to actually render the games
-    function renderGames(apps) {
-        apps.forEach(app => {
-            const appElement = document.createElement("div");
-            appElement.className = "game-item";
-            
-            appElement.innerHTML = `
-                <div class="game-icon">
-                    <img src="${app.imgSrc}" alt="${app.title} icon" onerror="this.src='/assets/placeholder.png'">
-                </div>
-                <h3 class="game-title">${app.title}</h3>
-            `;
-
-            appElement.onclick = async () => {
-                // Log the navigation attempt regardless of login status
-                console.log("Navigating to game:", app.title);
-                
-                // Show loading indicator
-                appElement.style.opacity = "0.7";
-                appElement.style.pointerEvents = "none";
-                
-                try {
-                    // Check if user is logged in
-                    const currentUser = voidAccounting.getCurrentUser();
-                    
-                    // If user is logged in, try to record the visit, but don't block on failure
-                    if (currentUser) {
-                        try {
-                            // Try to record the transaction in the background, but don't await it
-                            // This prevents Firebase errors from blocking game access
-                            voidAccounting.recordGameTransaction(
-                                app.title.toLowerCase().replace(/\s+/g, '_'), 
-                                currentUser.uid,
-                                'game_play',
-                                0
-                            ).catch(error => {
-                                // Just log errors, don't block the game
-                                console.warn("Couldn't record game visit:", error.message || error);
-                                
-                                if (error.code === 'resource-exhausted') {
-                                    networkStatus.setRateLimited(true);
-                                }
-                                
-                                // Queue the transaction for later if appropriate
-                                if (error.code === 'resource-exhausted' || 
-                                    error.code === 'unavailable' || 
-                                    !navigator.onLine) {
-                                    pendingTransactions.add({
-                                        gameId: app.title.toLowerCase().replace(/\s+/g, '_'),
-                                        userId: currentUser.uid,
-                                        type: 'game_play',
-                                        amount: 0
-                                    });
-                                }
-                            });
-                        } catch (error) {
-                            // Just log errors, don't block the game
-                            console.warn("Error starting transaction:", error);
-                        }
-                    } else {
-                        // For non-logged in users, we'll track locally using localStorage
-                        try {
-                            const gamesPlayed = JSON.parse(localStorage.getItem('gamesPlayed') || '[]');
-                            gamesPlayed.push({
-                                game: app.title,
-                                timestamp: Date.now()
-                            });
-                            localStorage.setItem('gamesPlayed', JSON.stringify(gamesPlayed));
-                        } catch (e) {
-                            console.warn("Could not track game in localStorage:", e);
-                        }
-                    }
-                    
-                    // ALWAYS navigate to the game, regardless of login status or Firebase errors
-                    window.location.href = app.link;
-                } catch (error) {
-                    // Reset the button state if something unexpected happens
-                    appElement.style.opacity = "1";
-                    appElement.style.pointerEvents = "auto";
-                    console.error("Unexpected error accessing game:", error);
-                    alert(`There was a problem: ${error.message || 'Could not access game'}`);
-                }
-            };
-
-            gamesList.appendChild(appElement);
-        });
-    }
-}
-
-// Updated search function that works without requiring Firebase
-document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
-    const gamesList = document.getElementById("gamesList");
-    const searchTerm = this.value.toLowerCase();
-    
-    if (!gamesList) return;
-    
-    gamesList.innerHTML = '';
-    
-    // Try to get cached games first
-    let appsToSearch = defaultApps;
-    try {
-        const cachedApps = localStorage.getItem('cachedGames');
-        if (cachedApps) {
-            const parsedApps = JSON.parse(cachedApps);
-            if (parsedApps && Array.isArray(parsedApps) && parsedApps.length > 0) {
-                appsToSearch = parsedApps;
-            }
-        }
-    } catch (error) {
-        console.warn("Error reading cached games for search:", error);
-    }
-    
-    // Filter and display games
-    appsToSearch.forEach(app => {
-        if (app.title.toLowerCase().includes(searchTerm)) {
-            const appElement = document.createElement("div");
-            appElement.className = "game-item";
-            
-            appElement.innerHTML = `
-                <div class="game-icon">
-                    <img src="${app.imgSrc}" alt="${app.title} icon" onerror="this.src='/assets/placeholder.png'">
-                </div>
-                <h3 class="game-title">${app.title}</h3>
-            `;
-
-            appElement.onclick = async () => {
-                // Log the navigation attempt regardless of login status
-                console.log("Navigating to game:", app.title);
-                
-                // Show loading indicator
-                appElement.style.opacity = "0.7";
-                appElement.style.pointerEvents = "none";
-                
-                try {
-                    // Check if user is logged in
-                    const currentUser = voidAccounting.getCurrentUser();
-                    
-                    // If user is logged in, try to record the visit, but don't block on failure
-                    if (currentUser) {
-                        try {
-                            // Try to record the transaction in the background, but don't await it
-                            // This prevents Firebase errors from blocking game access
-                            voidAccounting.recordGameTransaction(
-                                app.title.toLowerCase().replace(/\s+/g, '_'), 
-                                currentUser.uid,
-                                'game_play',
-                                0
-                            ).catch(error => {
-                                // Just log errors, don't block the game
-                                console.warn("Couldn't record game visit:", error.message || error);
-                                
-                                if (error.code === 'resource-exhausted') {
-                                    networkStatus.setRateLimited(true);
-                                }
-                                
-                                // Queue the transaction for later if appropriate
-                                if (error.code === 'resource-exhausted' || 
-                                    error.code === 'unavailable' || 
-                                    !navigator.onLine) {
-                                    pendingTransactions.add({
-                                        gameId: app.title.toLowerCase().replace(/\s+/g, '_'),
-                                        userId: currentUser.uid,
-                                        type: 'game_play',
-                                        amount: 0
-                                    });
-                                }
-                            });
-                        } catch (error) {
-                            // Just log errors, don't block the game
-                            console.warn("Error starting transaction:", error);
-                        }
-                    } else {
-                        // For non-logged in users, we'll track locally using localStorage
-                        try {
-                            const gamesPlayed = JSON.parse(localStorage.getItem('gamesPlayed') || '[]');
-                            gamesPlayed.push({
-                                game: app.title,
-                                timestamp: Date.now()
-                            });
-                            localStorage.setItem('gamesPlayed', JSON.stringify(gamesPlayed));
-                        } catch (e) {
-                            console.warn("Could not track game in localStorage:", e);
-                        }
-                    }
-                    
-                    // ALWAYS navigate to the game, regardless of login status or Firebase errors
-                    window.location.href = app.link;
-                } catch (error) {
-                    // Reset the button state if something unexpected happens
-                    appElement.style.opacity = "1";
-                    appElement.style.pointerEvents = "auto";
-                    console.error("Unexpected error accessing game:", error);
-                    alert(`There was a problem: ${error.message || 'Could not access game'}`);
-                }
-            };
-
-            gamesList.appendChild(appElement);
-        }
-    });
 });
 
 // IMPROVED: Game loading logic
@@ -1623,25 +688,111 @@ const defaultApps = [
     },
 ];
 
+function renderAppsList() {
+    const gamesList = document.getElementById("gamesList");
+    
+    if (!gamesList) {
+        console.error("Games list element not found");
+        return;
+    }
+    
+    gamesList.innerHTML = '';
+    console.log("Rendering games list");
+    
+    defaultApps.forEach(app => {
+        const appElement = document.createElement("div");
+        appElement.className = "game-item";
+        
+        appElement.innerHTML = `
+            <div class="game-icon">
+                <img src="${app.imgSrc}" alt="${app.title} icon">
+            </div>
+            <h3 class="game-title">${app.title}</h3>
+        `;
+
+        appElement.onclick = () => {
+            // Check if user is logged in before navigating to game
+            const currentUser = voidAccounting.getCurrentUser();
+            if (currentUser) {
+                console.log("Navigating to game:", app.title);
+                
+                // Record the game play attempt
+                voidAccounting.recordGameTransaction(
+                    app.title.toLowerCase().replace(/\s+/g, '_'), 
+                    currentUser.uid,
+                    'game_play',
+                    0 // Just tracking the visit, not charging coins here
+                ).then(() => {
+                    // Navigate to the game after transaction is recorded
+                    window.location.href = app.link;
+                }).catch(error => {
+                    console.error("Error recording game visit:", error);
+                    // Still navigate even if tracking fails
+                    window.location.href = app.link;
+                });
+            } else {
+                alert('Please login to play games');
+                authContainer.style.display = 'block';
+            }
+        };
+
+        gamesList.appendChild(appElement);
+    });
+}
+
+document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
+    const gamesList = document.getElementById("gamesList");
+    const searchTerm = this.value.toLowerCase();
+    
+    if (!gamesList) return;
+    
+    gamesList.innerHTML = '';
+    
+    defaultApps.forEach(app => {
+        if (app.title.toLowerCase().includes(searchTerm)) {
+            const appElement = document.createElement("div");
+            appElement.className = "game-item";
+            
+            appElement.innerHTML = `
+                <div class="game-icon">
+                    <img src="${app.imgSrc}" alt="${app.title} icon">
+                </div>
+                <h3 class="game-title">${app.title}</h3>
+            `;
+
+            appElement.onclick = () => {
+                // Check if user is logged in before navigating to game
+                const currentUser = voidAccounting.getCurrentUser();
+                if (currentUser) {
+                    // Record the game play attempt
+                    voidAccounting.recordGameTransaction(
+                        app.title.toLowerCase().replace(/\s+/g, '_'), 
+                        currentUser.uid,
+                        'game_play',
+                        0 // Just tracking the visit, not charging coins here
+                    ).then(() => {
+                        // Navigate to the game after transaction is recorded
+                        window.location.href = app.link;
+                    }).catch(error => {
+                        console.error("Error recording game visit:", error);
+                        // Still navigate even if tracking fails
+                        window.location.href = app.link;
+                    });
+                } else {
+                    alert('Please login to play games');
+                    authContainer.style.display = 'block';
+                }
+            };
+
+            gamesList.appendChild(appElement);
+        }
+    });
+});
+
 // Load apps on page load
 window.addEventListener('load', async () => {
     try {
         console.log("Page loaded, initializing app");
-        
-        // Update network status
-        networkStatus.setOnline(navigator.onLine);
-        networkStatus.updateStatus();
-        
-        // Load any pending transactions
-        pendingTransactions.loadFromStorage();
-        
-        // Process queue periodically
-        setInterval(() => {
-            if (navigator.onLine && !rateLimitTracker.isInCooldown()) {
-                pendingTransactions.processQueue(voidAccounting);
-            }
-        }, 60000); // Try to process every minute
-        
         renderAppsList();
         
         // Check if user is already logged in
@@ -1652,9 +803,6 @@ window.addEventListener('load', async () => {
         }
     } catch (err) {
         console.error('Error during initialization:', err);
-        
-        // Even if there's an error, still render the games list
-        renderAppsList();
     }
 });
 </script>
