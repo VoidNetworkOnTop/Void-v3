@@ -947,6 +947,7 @@
        // Authentication and Coin Management
        let currentUser = null;
        let firebaseCoinBalance = 0;
+       window.transactionInProgress = false; // Add transaction lock
 
        // Authentication State Listener
        onAuthStateChanged(auth, async (user) => {
@@ -959,7 +960,7 @@
                // No user is signed in - use default balance
                currentUser = null;
                console.log("No user signed in, using default balance");
-               coinBalance = 1000;
+               coinBalance = 1000; // Default fallback
                window.updateCoinDisplay();
            }
        });
@@ -1071,61 +1072,80 @@
            }
        }
 
-       // Record Game Transaction for better tracking
+       // FIXED: Record Game Transaction with transaction lock for better tracking
        async function recordGameTransaction(gameId, amount, isWin) {
            if (!currentUser) return;
 
            try {
-               // Create transaction record with consistent data format
-               const transactionRef = doc(collection(db, 'transactions'));
-               await setDoc(transactionRef, {
-                   userId: currentUser.uid,
-                   gameId: gameId,
-                   transactionType: isWin ? 'game_win' : 'game_play',
-                   amount: Math.abs(amount),
-                   timestamp: new Date()
-               });
-
-               // Get latest user data from server
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' });
-
-               if (userDoc.exists()) {
-                   const userData = userDoc.data();
-                   let updatedBalance = userData.accountBalance || 0;
-
-                   // Calculate new balance
-                   if (isWin) {
-                       updatedBalance += amount;
-                       userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
-                   } else {
-                       updatedBalance -= Math.abs(amount);
-                       userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
-                       userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
-                   }
-
-                   // Update firebase and local state consistently
-                   await updateDoc(userRef, {
-                       accountBalance: updatedBalance,
-                       totalGamesPlayed: userData.totalGamesPlayed || 0,
-                       totalMoneySpent: userData.totalMoneySpent || 0,
-                       totalMoneyEarned: userData.totalMoneyEarned || 0
+               console.log(`Recording transaction: ${isWin ? 'win' : 'play'} for ${Math.abs(amount)} coins`);
+               
+               // Set a transaction lock to prevent duplicate updates
+               if (window.transactionInProgress) {
+                   console.log("Transaction already in progress, waiting...");
+                   await new Promise(resolve => setTimeout(resolve, 300));
+               }
+               
+               window.transactionInProgress = true;
+               
+               try {
+                   // Create transaction record with consistent data format
+                   const transactionRef = doc(collection(db, 'transactions'));
+                   await setDoc(transactionRef, {
+                       userId: currentUser.uid,
+                       gameId: gameId,
+                       transactionType: isWin ? 'game_win' : 'game_play',
+                       amount: Math.abs(amount),
+                       timestamp: new Date()
                    });
 
-                   // Make sure local state is synced with Firebase
-                   coinBalance = updatedBalance;
-                   firebaseCoinBalance = updatedBalance;
+                   // Get latest user data from server
+                   const userRef = doc(db, 'users', currentUser.uid);
+                   const userDoc = await getDoc(userRef, { source: 'server' });
 
-                   // Update display
-                   window.updateCoinDisplay();
+                   if (userDoc.exists()) {
+                       const userData = userDoc.data();
+                       let updatedBalance = userData.accountBalance || 0;
 
-                   return {
-                       transactionId: transactionRef.id,
-                       newBalance: updatedBalance
-                   };
+                       // Calculate new balance
+                       if (isWin) {
+                           updatedBalance += amount;
+                           console.log(`Adding ${amount} coins, new balance: ${updatedBalance}`);
+                           userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
+                       } else {
+                           updatedBalance -= Math.abs(amount);
+                           console.log(`Removing ${Math.abs(amount)} coins, new balance: ${updatedBalance}`);
+                           userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
+                           userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
+                       }
+
+                       // Update firebase and local state consistently
+                       await updateDoc(userRef, {
+                           accountBalance: updatedBalance,
+                           totalGamesPlayed: userData.totalGamesPlayed || 0,
+                           totalMoneySpent: userData.totalMoneySpent || 0,
+                           totalMoneyEarned: userData.totalMoneyEarned || 0,
+                           lastUpdated: new Date() // Add timestamp for tracking
+                       });
+
+                       // Make sure local state is synced with Firebase
+                       coinBalance = updatedBalance;
+                       firebaseCoinBalance = updatedBalance;
+
+                       // Update display
+                       window.updateCoinDisplay();
+
+                       return {
+                           transactionId: transactionRef.id,
+                           newBalance: updatedBalance
+                       };
+                   }
+               } finally {
+                   // Always release transaction lock
+                   window.transactionInProgress = false;
                }
            } catch (error) {
                console.error("Transaction Error:", error);
+               window.transactionInProgress = false; // Make sure lock is released
            }
        }
 
@@ -1241,14 +1261,25 @@ function updateEarningsDisplay() {
     }
 }
 
-// Update coin balance (local)
+// FIXED: Update coin balance (local) - Using only recordTransaction to update Firebase
 function updateCoins(amount) {
-    coinBalance += amount;
+    // Calculate the new balance
+    const newBalance = coinBalance + amount;
+    coinBalance = newBalance;
+    
+    console.log(`Updating coins: ${amount > 0 ? '+' : ''}${amount}, New balance: ${newBalance}`);
+    
+    // Update the display
     updateCoinDisplay();
 
-    // Update Firebase if available
-    if (window.updateFirebaseCoinBalance) {
-        window.updateFirebaseCoinBalance(coinBalance);
+    // FIXED: Only use recordGameTransaction which properly handles balance updates
+    // This prevents double-counting
+    if (window.recordGameTransaction) {
+        // If amount is positive, it's a win, otherwise it's a play cost
+        window.recordGameTransaction(GAME_CONFIG.gameId, amount, amount > 0);
+    } else if (window.updateFirebaseCoinBalance) {
+        // Fallback only if recordGameTransaction is not available
+        window.updateFirebaseCoinBalance(newBalance);
     }
 }
 
@@ -1276,13 +1307,6 @@ function updateEarnings(amount) {
     // Enable cashout button once there are earnings
     if (currentEarnings > 0 && cashoutBtn) {
         cashoutBtn.disabled = false;
-    }
-}
-
-// Record transaction in Firebase if available
-function recordTransaction(amount, isWin) {
-    if (window.recordGameTransaction) {
-        window.recordGameTransaction(GAME_CONFIG.gameId, amount, isWin);
     }
 }
 
@@ -1417,7 +1441,6 @@ function initGame() {
 
     // Deduct the start cost
     updateCoins(-GAME_CONFIG.startCost);
-    recordTransaction(GAME_CONFIG.startCost, false);
 
     // Place bombs
     placeBombs();
@@ -1629,7 +1652,7 @@ function showGameOver() {
     }
 }
 
-// Show cashout screen
+// FIXED: Show cashout screen - Now only using recordTransaction to update balance
 function showCashoutScreen() {
     // Update cashout screen details
     const cashoutCountEl = document.getElementById('cashout-count');
@@ -1643,9 +1666,8 @@ function showCashoutScreen() {
         cashoutRewardEl.textContent = currentEarnings.toLocaleString();
     }
 
-    // Add the earnings to the balance
+    // FIXED: Add the earnings to the balance, now only calling updateCoins which handles Firebase properly
     updateCoins(currentEarnings);
-    recordTransaction(currentEarnings, true);
 
     // Reset current earnings
     currentEarnings = 0;
