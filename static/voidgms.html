@@ -420,7 +420,8 @@ window.onload=function(){document.body.insertAdjacentHTML("beforeend",'<div id="
             createUserWithEmailAndPassword, 
             signInWithEmailAndPassword, 
             onAuthStateChanged,
-            deleteUser 
+            deleteUser,
+            signOut 
         } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
         import { 
             getFirestore, 
@@ -440,6 +441,43 @@ window.onload=function(){document.body.insertAdjacentHTML("beforeend",'<div id="
             onSnapshotsInSync
         } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
+        // Clear Firebase cache function
+        async function clearFirebaseCache() {
+            console.log("Clearing Firebase cache...");
+            
+            // List of Firebase-related IndexedDB databases to delete
+            const firebaseDBs = [
+                'firebaseLocalStorageDb',
+                'firestore',
+                'firebase-installations-database',
+                'firebase-auth-state'
+            ];
+            
+            // Request to get all IndexedDB databases
+            const deletePromises = firebaseDBs.map(dbName => {
+                return new Promise((resolve, reject) => {
+                    const req = indexedDB.deleteDatabase(dbName);
+                    req.onsuccess = () => resolve(`${dbName} deleted successfully`);
+                    req.onerror = () => reject(`Couldn't delete ${dbName}`);
+                    req.onblocked = () => console.warn(`${dbName} deletion was blocked`);
+                });
+            });
+            
+            // Also clear Firebase-related localStorage items
+            Object.keys(localStorage).forEach(key => {
+                if (key.includes('firebase') || key.includes('firestore') || key.includes('cache:user')) {
+                    localStorage.removeItem(key);
+                }
+            });
+            
+            return Promise.all(deletePromises)
+                .then(() => console.log('Firebase cache cleared successfully'))
+                .catch(err => console.error('Error clearing Firebase cache:', err));
+        }
+
+        // Wait for cache clearing before initializing
+        await clearFirebaseCache();
+
         // Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyCkAp_GCGCtw4zv7GgHJOE9GPgIaPEuOvQ",
@@ -449,6 +487,42 @@ window.onload=function(){document.body.insertAdjacentHTML("beforeend",'<div id="
             messagingSenderId: "1063089929776",
             appId: "1:1063089929776:web:8e226a23a4f3ab9c5777f5"
         };
+
+        // Initialize Firebase with a unique instance name to prevent cache issues
+        const app = initializeApp(firebaseConfig, 'void-games-app-' + Date.now());
+        const analytics = getAnalytics(app);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        // Force sign out any existing user
+        try {
+            await signOut(auth);
+            console.log("Signed out any previous user");
+        } catch (error) {
+            console.log("No user was signed in");
+        }
+        
+        // Try to enable offline persistence
+        try {
+            enableIndexedDbPersistence(db).catch((err) => {
+                if (err.code === 'failed-precondition') {
+                    console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
+                } else if (err.code === 'unimplemented') {
+                    console.warn('The current browser does not support offline persistence');
+                }
+            });
+            
+            // Monitor sync status with server if available
+            if (typeof onSnapshotsInSync === 'function') {
+                onSnapshotsInSync(db, () => {
+                    console.log("Firestore data synced with server");
+                    networkStatus.setOnline(true);
+                    networkStatus.setRateLimited(false);
+                });
+            }
+        } catch (error) {
+            console.warn("Error setting up Firestore:", error);
+        }
 
         // ======== Enhanced Cache Manager ========
         const cacheManager = {
@@ -948,35 +1022,6 @@ window.onload=function(){document.body.insertAdjacentHTML("beforeend",'<div id="
             }
         };
 
-        // ======== Setup Firebase ========
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const analytics = getAnalytics(app);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        
-        // Try to enable offline persistence
-        try {
-            enableIndexedDbPersistence(db).catch((err) => {
-                if (err.code === 'failed-precondition') {
-                    console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
-                } else if (err.code === 'unimplemented') {
-                    console.warn('The current browser does not support offline persistence');
-                }
-            });
-            
-            // Monitor sync status with server if available
-            if (typeof onSnapshotsInSync === 'function') {
-                onSnapshotsInSync(db, () => {
-                    console.log("Firestore data synced with server");
-                    networkStatus.setOnline(true);
-                    networkStatus.setRateLimited(false);
-                });
-            }
-        } catch (error) {
-            console.warn("Error setting up Firestore:", error);
-        }
-        
         // ======== Improved getCachedUserData Function ========
         const getCachedUserData = async (userId) => {
             const cacheKey = `cache:user:${userId}`;
@@ -1072,7 +1117,7 @@ class VoidNetworkAccounting {
         console.log("VoidNetworkAccounting initialized");
     }
 
-    // User Registration - IMPROVED
+    // User Registration - IMPROVED with retry logic
     async registerUser(email, password, username) {
         try {
             console.log("Registering new user:", email);
@@ -1081,22 +1126,49 @@ class VoidNetworkAccounting {
                 throw new Error('Cannot register new users while offline');
             }
             
+            // Create user with Firebase Auth
             const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
             const user = userCredential.user;
 
-            // Create user profile in Firestore
-            await setDoc(doc(this.db, 'users', user.uid), {
-                username: username,
-                email: email,
-                createdAt: serverTimestamp(),
-                accountBalance: 1000, // Starting balance
-                totalGamesPlayed: 0,
-                totalMoneySpent: 0,
-                totalMoneyEarned: 0,
-                active: true,
-                status: 'active',
-                lastLogin: serverTimestamp()
-            });
+            // Create user profile in Firestore with retry logic
+            let retryCount = 0;
+            const maxRetries = 3;
+            
+            while (retryCount < maxRetries) {
+                try {
+                    await setDoc(doc(this.db, 'users', user.uid), {
+                        username: username,
+                        email: email,
+                        createdAt: serverTimestamp(),
+                        accountBalance: 1000, // Starting balance
+                        totalGamesPlayed: 0,
+                        totalMoneySpent: 0,
+                        totalMoneyEarned: 0,
+                        active: true,
+                        status: 'active',
+                        lastLogin: serverTimestamp()
+                    });
+                    
+                    // Break out of retry loop if successful
+                    break;
+                } catch (error) {
+                    retryCount++;
+                    console.warn(`Retry ${retryCount}/${maxRetries} for creating user profile...`);
+                    
+                    if (retryCount >= maxRetries) {
+                        // If all retries fail, clean up by deleting auth user
+                        try {
+                            await deleteUser(user);
+                        } catch (deleteError) {
+                            console.error("Could not delete auth user after Firestore creation failure:", deleteError);
+                        }
+                        throw error;
+                    }
+                    
+                    // Wait before retrying
+                    await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                }
+            }
 
             // Cache the user data immediately 
             const userData = {
