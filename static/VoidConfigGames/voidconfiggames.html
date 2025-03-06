@@ -95,7 +95,7 @@
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-        import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, query, limit, where } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+        import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, setDoc, query, limit, where } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration - UPDATED
         const firebaseConfig = {
@@ -136,7 +136,8 @@
             "dcxtOHGcfrQ12XBrSz04MhQzEbq1": "shrey436@proton.me",
             "44b4NFWyEnSPhCsofxMkbkIP1vt1": "gvrelectrodude@gmail.com",
             "Wtc6hcUIzmORUJxJFc5nJVPgjRE2": "shrey150436@gmail.com",
-            "QC8YOG6kCNZTg5QMyIHnXZoJ0cH2": "unknown@example.com" // Added the unknown ID you mentioned
+            "QC8YOG6kCNZTg5QMyIHnXZoJ0cH2": "unknown@example.com", // Added the unknown ID you mentioned
+            "mVXU2RP0DcMktvrK55qBM2fnMGq2": "six7588@gmail.com" // Added your current user ID
         };
         
         // Add any possible spelling variations
@@ -195,10 +196,14 @@
             printToTerminal('<user ID/email> coin amount - Check coins');
             printToTerminal('<user ID/email> add coins <amount> - Add coins');
             printToTerminal('<user ID/email> remove coins <amount> - Remove coins');
+            printToTerminal('refresh users - Check for new users and update database');
             printToTerminal('----------------------------------');
             printSuccess(`Authenticated as admin: ${userEmail}`);
             printInfo(`Your user ID: ${userId}`);
             printInfo('Ready for commands.');
+            
+            // Auto-refresh users data on startup
+            refreshUserData();
         }
         
         // Login functionality
@@ -260,10 +265,62 @@
                 // Initialize the admin console
                 initConsole(user.email, user.uid);
                 
-                // Pre-load some user data
+                // Pre-load some user data and ensure all known users have documents
                 loadAllUsersData();
             }
         });
+        
+        // Function to refresh user data
+        async function refreshUserData() {
+            printInfo("Refreshing user data...");
+            
+            // Check each known user and create documents if needed
+            let created = 0;
+            let updated = 0;
+            
+            for (const [userId, email] of Object.entries(KNOWN_USERS)) {
+                try {
+                    const userRef = doc(db, 'users', userId);
+                    const userDoc = await getDoc(userRef);
+                    
+                    if (!userDoc.exists()) {
+                        // Create a new user document
+                        await setDoc(userRef, {
+                            email: email,
+                            accountBalance: 0,
+                            createdAt: new Date(),
+                            totalGamesPlayed: 0,
+                            totalMoneyEarned: 0,
+                            totalMoneySpent: 0
+                        });
+                        
+                        created++;
+                        printInfo(`Created user document for ${email} (${userId})`);
+                    } else {
+                        // Make sure the email field is up to date
+                        const userData = userDoc.data();
+                        if (!userData.email) {
+                            await updateDoc(userRef, { email: email });
+                            updated++;
+                        }
+                    }
+                    
+                    // Update the cache
+                    const updatedUserDoc = await getDoc(userRef);
+                    userDataCache[userId] = updatedUserDoc.data();
+                    
+                    // Map username if available
+                    if (userDataCache[userId].username) {
+                        usernameToIDMap.set(userDataCache[userId].username.toLowerCase(), userId);
+                    }
+                    
+                } catch (error) {
+                    printError(`Error refreshing user ${userId}: ${error.message}`);
+                }
+            }
+            
+            printSuccess(`Refresh complete. Created ${created} user documents, updated ${updated} users.`);
+        }
         
         // Helper function to preload some user data
         async function loadAllUsersData() {
@@ -296,13 +353,19 @@
                     }
                     
                     printInfo(`Loaded data for ${count} users`);
+                    
+                    // Now refresh the user data to make sure all known users have documents
+                    refreshUserData();
+                    
                 } catch (listError) {
                     console.error("Error loading users:", listError);
-                    // Silent fail, this is just preloading
+                    // Fallback to refresh
+                    refreshUserData();
                 }
             } catch (error) {
                 console.error("Error in preloading:", error);
-                // Silent fail, this is just preloading
+                // Fallback to refresh
+                refreshUserData();
             }
         }
         
@@ -335,6 +398,13 @@
                 printInfo('<user ID/email> add coins <amount> - Add coins');
                 printInfo('<user ID/email> remove coins <amount> - Remove coins');
                 printInfo('me - Show your own user ID (for reference)');
+                printInfo('refresh users - Check for new users and update database');
+                return;
+            }
+            
+            // Refresh users command
+            if (command.toLowerCase() === 'refresh users') {
+                await refreshUserData();
                 return;
             }
             
@@ -615,7 +685,7 @@
             }
         }
         
-        // Get full user data
+        // Get full user data - Modified to create user document if it doesn't exist
         async function getUserData(userId) {
             try {
                 // Check cache first
@@ -628,11 +698,40 @@
                 const userDoc = await getDoc(userRef);
                 
                 if (!userDoc.exists()) {
-                    printError("User document not found");
-                    return null;
+                    // If user ID is in KNOWN_USERS, create a document for them
+                    if (KNOWN_USERS[userId]) {
+                        printInfo(`User document not found for ${userId}. Creating a new document...`);
+                        
+                        const newUserData = {
+                            email: KNOWN_USERS[userId],
+                            accountBalance: 0,
+                            createdAt: new Date(),
+                            totalGamesPlayed: 0,
+                            totalMoneyEarned: 0,
+                            totalMoneySpent: 0
+                        };
+                        
+                        await setDoc(userRef, newUserData);
+                        
+                        // Cache for later use
+                        userDataCache[userId] = newUserData;
+                        
+                        printSuccess(`Created new user document for ${KNOWN_USERS[userId]}`);
+                        return newUserData;
+                    } else {
+                        printError("User document not found and user ID not in known users");
+                        return null;
+                    }
                 }
                 
                 const userData = userDoc.data();
+                
+                // Add email from KNOWN_USERS if missing
+                if (!userData.email && KNOWN_USERS[userId]) {
+                    userData.email = KNOWN_USERS[userId];
+                    await updateDoc(userRef, { email: KNOWN_USERS[userId] });
+                    printInfo(`Updated missing email for user ${userId}`);
+                }
                 
                 // Cache for later use
                 userDataCache[userId] = userData;
@@ -655,15 +754,14 @@
                 printInfo(`Adding ${amount} coins to user ID: ${userId}...`);
                 
                 // Get current balance
-                const userRef = doc(db, 'users', userId);
-                const userDoc = await getDoc(userRef);
+                const userData = await getUserData(userId);
                 
-                if (!userDoc.exists()) {
-                    printError("User document not found");
+                if (!userData) {
+                    printError("Could not retrieve or create user data");
                     return false;
                 }
                 
-                const userData = userDoc.data();
+                const userRef = doc(db, 'users', userId);
                 const currentBalance = userData.accountBalance || 0;
                 const newBalance = currentBalance + amount;
                 
@@ -691,15 +789,14 @@
                 printInfo(`Removing ${amount} coins from user ID: ${userId}...`);
                 
                 // Get current balance
-                const userRef = doc(db, 'users', userId);
-                const userDoc = await getDoc(userRef);
+                const userData = await getUserData(userId);
                 
-                if (!userDoc.exists()) {
-                    printError("User document not found");
+                if (!userData) {
+                    printError("Could not retrieve or create user data");
                     return false;
                 }
                 
-                const userData = userDoc.data();
+                const userRef = doc(db, 'users', userId);
                 const currentBalance = userData.accountBalance || 0;
                 
                 // Check if user has enough balance
