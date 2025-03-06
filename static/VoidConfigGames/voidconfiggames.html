@@ -41,6 +41,9 @@
         .info {
             color: #0ff;
         }
+        .warning {
+            color: #ff0;
+        }
         #loginForm {
             background-color: #111;
             border: 1px solid #0f0;
@@ -94,8 +97,8 @@
     <script type="module">
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-        import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, setDoc, query, limit, where } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, deleteUser } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+        import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, setDoc, query, limit, where, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration - UPDATED
         const firebaseConfig = {
@@ -183,9 +186,13 @@
             printToTerminal(message, 'info');
         }
         
+        function printWarning(message) {
+            printToTerminal(message, 'warning');
+        }
+        
         // Initialize admin console
         function initConsole(userEmail, userId) {
-            printToTerminal('Void Network Admin Console v1.0');
+            printToTerminal('Void Network Admin Console v1.1');
             printToTerminal('----------------------------------');
             printToTerminal('Available commands:');
             printToTerminal('help - Show available commands');
@@ -196,6 +203,8 @@
             printToTerminal('<user ID/email> coin amount - Check coins');
             printToTerminal('<user ID/email> add coins <amount> - Add coins');
             printToTerminal('<user ID/email> remove coins <amount> - Remove coins');
+            printToTerminal('kick <email> - Delete account and user data');
+            printToTerminal('/maxcoins - Show top 3 users with most coins');
             printToTerminal('refresh users - Check for new users and update database');
             printToTerminal('----------------------------------');
             printSuccess(`Authenticated as admin: ${userEmail}`);
@@ -397,6 +406,8 @@
                 printInfo('<user ID/email> coin amount - Check coins');
                 printInfo('<user ID/email> add coins <amount> - Add coins');
                 printInfo('<user ID/email> remove coins <amount> - Remove coins');
+                printInfo('kick <email> - Delete account and user data');
+                printInfo('/maxcoins - Show top 3 users with most coins');
                 printInfo('me - Show your own user ID (for reference)');
                 printInfo('refresh users - Check for new users and update database');
                 return;
@@ -436,7 +447,27 @@
                 return;
             }
             
+            // Max coins command
+            if (command.toLowerCase() === '/maxcoins') {
+                await findUsersWithMostCoins();
+                return;
+            }
+            
             const parts = command.split(' ');
+            
+            // Kick command
+            if (parts.length >= 2 && parts[0].toLowerCase() === 'kick') {
+                const targetEmail = parts[1].toLowerCase();
+                
+                // Safety check - don't kick admin
+                if (targetEmail === ADMIN_EMAIL.toLowerCase()) {
+                    printError(`Cannot kick admin account!`);
+                    return;
+                }
+                
+                await kickUser(targetEmail);
+                return;
+            }
             
             // Check if command is for checking coins
             if (parts.length >= 3 && parts[1] === 'coin' && parts[2] === 'amount') {
@@ -822,6 +853,130 @@
             } catch (error) {
                 printError(`Error removing coins: ${error.message}`);
                 throw error;
+            }
+        }
+        
+        // New function: Kick user (delete account and data)
+        async function kickUser(email) {
+            try {
+                printWarning(`Preparing to kick user with email: ${email}...`);
+                
+                // Check if this is the admin
+                if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+                    printError(`Cannot kick admin account!`);
+                    return false;
+                }
+                
+                // Find user ID from email
+                const userId = EMAIL_TO_ID[email.toLowerCase()];
+                
+                if (!userId) {
+                    printError(`Could not find user ID for email: ${email}`);
+                    return false;
+                }
+                
+                // Safety confirmation
+                printWarning(`WARNING: About to delete account and all data for ${email} (${userId})`);
+                printWarning(`This action cannot be undone.`);
+                
+                // Delete user document from Firestore
+                try {
+                    const userRef = doc(db, 'users', userId);
+                    await deleteDoc(userRef);
+                    printSuccess(`Deleted user document for ${email}`);
+                    
+                    // Remove from cache
+                    delete userDataCache[userId];
+                    
+                    // Update known users list
+                    if (KNOWN_USERS[userId]) {
+                        delete KNOWN_USERS[userId];
+                        delete EMAIL_TO_ID[email.toLowerCase()];
+                        printInfo(`Removed user from known users list`);
+                    }
+                    
+                    printSuccess(`Successfully kicked user: ${email}`);
+                    return true;
+                } catch (error) {
+                    printError(`Error deleting user document: ${error.message}`);
+                    return false;
+                }
+            } catch (error) {
+                printError(`Error kicking user: ${error.message}`);
+                return false;
+            }
+        }
+        
+        // New function: Find users with most coins
+        async function findUsersWithMostCoins() {
+            try {
+                printInfo(`Finding users with the most coins...`);
+                
+                // Create an array to store user coin data
+                const userCoins = [];
+                
+                // Try to query Firestore directly
+                try {
+                    const usersRef = collection(db, 'users');
+                    const usersQuery = query(usersRef, orderBy('accountBalance', 'desc'), limit(3));
+                    const querySnapshot = await getDocs(usersQuery);
+                    
+                    if (!querySnapshot.empty) {
+                        printSuccess(`Top 3 users with most coins:`);
+                        let rank = 1;
+                        
+                        querySnapshot.forEach((userDoc) => {
+                            const userData = userDoc.data();
+                            const userId = userDoc.id;
+                            const username = userData.username || "No Username";
+                            const email = userData.email || KNOWN_USERS[userId] || "Unknown";
+                            const coins = userData.accountBalance || 0;
+                            
+                            printInfo(`${rank}. ${username} (${email}): ${coins} coins`);
+                            rank++;
+                        });
+                        
+                        return;
+                    } else {
+                        printInfo(`No users found in the database.`);
+                    }
+                } catch (queryError) {
+                    printWarning(`Could not query database directly. Falling back to cached data...`);
+                    console.error("Query error:", queryError);
+                    
+                    // Fallback to cached data
+                    for (const [userId, userData] of Object.entries(userDataCache)) {
+                        if (userData) {
+                            const coins = userData.accountBalance || 0;
+                            const username = userData.username || "No Username";
+                            const email = userData.email || KNOWN_USERS[userId] || "Unknown";
+                            
+                            userCoins.push({
+                                userId,
+                                username,
+                                email,
+                                coins
+                            });
+                        }
+                    }
+                    
+                    // Sort by coins (descending)
+                    userCoins.sort((a, b) => b.coins - a.coins);
+                    
+                    // Display top 3 users
+                    const topUsers = userCoins.slice(0, 3);
+                    
+                    if (topUsers.length > 0) {
+                        printSuccess(`Top ${topUsers.length} users with most coins (from cache):`);
+                        topUsers.forEach((user, index) => {
+                            printInfo(`${index + 1}. ${user.username} (${user.email}): ${user.coins} coins`);
+                        });
+                    } else {
+                        printWarning(`No user data available in cache.`);
+                    }
+                }
+            } catch (error) {
+                printError(`Error finding users with most coins: ${error.message}`);
             }
         }
         
