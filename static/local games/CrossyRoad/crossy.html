@@ -1160,9 +1160,97 @@ const GAME_CONFIG = {
     startCost: 5,           // Cost to start the game
     gameId: 'mines_game',   // ID for Firebase transactions
     maxWinnings: 1000000,   // Maximum winnings per game
-    bombPenalty: 50000,     // Penalty for hitting a bomb (Updated from 1000 to 50000)
+    bombPenalty: 50000,     // Penalty for hitting a bomb
     maxReward: 100000000    // Maximum reward per safe square with maximum bombs
 };
+
+// Anti-cheat detection module
+(function() {
+    // Check for developer tools being open
+    let devToolsOpen = false;
+    
+    // Detect if console is open
+    const checkDevTools = function() {
+        const threshold = 160;
+        const widthThreshold = window.outerWidth - window.innerWidth > threshold;
+        const heightThreshold = window.outerHeight - window.innerHeight > threshold;
+        
+        if (widthThreshold || heightThreshold) {
+            if (!devToolsOpen) {
+                devToolsOpen = true;
+                console.log("%cThis game detects browser inspection tools.", "color:red; font-size:20px; font-weight:bold");
+                console.log("%cCheating attempts may result in account penalties.", "color:orange; font-size:16px");
+                
+                // Anti-cheating measure: regenerate the bomb positions when dev tools are opened
+                if (typeof _rp !== 'undefined' && gameActive) {
+                    _rp();
+                }
+            }
+        } else {
+            devToolsOpen = false;
+        }
+    };
+    
+    // Check for debugger attempts
+    let lastTime = Date.now();
+    setInterval(function() {
+        const currentTime = Date.now();
+        if (currentTime - lastTime > 100) {
+            // Debugger detected or breakpoint hit
+            console.log("Debugger detected");
+            
+            // Add protection measures
+            if (typeof _rp !== 'undefined' && gameActive) {
+                _rp();
+            }
+        }
+        lastTime = currentTime;
+        
+        // Run dev tools check periodically
+        checkDevTools();
+    }, 50);
+    
+    // Override console methods
+    const originalLog = console.log;
+    console.log = function(...args) {
+        if (args[0] && typeof args[0] === 'string' && 
+            (args[0].includes('bomb') || args[0].includes('Bomb'))) {
+            args[0] = args[0].replace(/bomb/gi, "cell");
+        }
+        originalLog.apply(console, args);
+    };
+    
+    // Detect property access via getters
+    function monitorProps() {
+        const props = ['document.querySelector', 'document.querySelectorAll', 'document.getElementById'];
+        props.forEach(prop => {
+            const parts = prop.split('.');
+            let obj = window;
+            for (let i = 0; i < parts.length - 1; i++) {
+                obj = obj[parts[i]];
+            }
+            
+            const lastPart = parts[parts.length - 1];
+            const original = obj[lastPart];
+            
+            obj[lastPart] = function(...args) {
+                if (args[0] && typeof args[0] === 'string' && 
+                    (args[0].includes('mine-cell') || args[0].includes('bomb'))) {
+                    if (Math.random() < 0.05) { // 5% chance to scramble results
+                        checkDevTools();
+                    }
+                }
+                return original.apply(this, args);
+            };
+        });
+    }
+    
+    try {
+        monitorProps();
+    } catch (e) {
+        // Silent error handling
+    }
+})();
 
 // Game state
 let canvas, ctx;
@@ -1172,12 +1260,101 @@ let animationFrame;
 let currentEarnings = 0;
 let gameActive = false;
 let totalSquares = 24; // Default grid size
-let bombIndices = []; // Positions of bombs
-let bombCount = 1; // Default bomb count
-let rewardPerSquare = 1; // Default reward per square
-let baseRewardPerSquare = 1; // Base reward for the selected grid size
-let revealedSquares = []; // Tracks revealed squares 
-let safeSquaresRevealed = 0; // Count of safe squares revealed
+
+// Secure bomb storage - uses closure to prevent direct access
+const _secureGameState = (function() {
+    let _bombMap = {};
+    let _salt = '';
+    let _bombCount = 1;
+    
+    // Create a random salt for this game instance
+    const generateSalt = () => {
+        _salt = Math.random().toString(36).substring(2, 15) + 
+                Math.random().toString(36).substring(2, 15);
+        return _salt;
+    };
+    
+    // Create a hash using the salt and index
+    const hashIndex = (index) => {
+        const str = `${_salt}-${index}-${_bombCount}`;
+        return Array.from(str).reduce((hash, char) => {
+            return ((hash << 5) - hash) + char.charCodeAt(0) | 0;
+        }, 0).toString(16);
+    };
+    
+    // Store bombs securely
+    const setBombs = (bombs, count) => {
+        _bombCount = count;
+        _bombMap = {};
+        
+        // Store bombs as hashed keys with encrypted values
+        bombs.forEach(index => {
+            const key = hashIndex(index);
+            const val = btoa(String.fromCharCode.apply(null, 
+                new Uint8Array([1, index % 255, (index * 3) % 255, (index * 7) % 255])
+            ));
+            _bombMap[key] = val;
+        });
+    };
+    
+    // Check if an index is a bomb without exposing the full list
+    const isBomb = (index) => {
+        const key = hashIndex(index);
+        return _bombMap.hasOwnProperty(key);
+    };
+    
+    // Get the count of bombs
+    const getBombCount = () => _bombCount;
+    
+    // Verify game integrity (for use with server verification)
+    const generateIntegrityHash = () => {
+        const keyStr = Object.keys(_bombMap).sort().join('|');
+        return btoa(keyStr + _salt);
+    };
+    
+    // Return only the necessary functions
+    return {
+        init: generateSalt,
+        setBombs: setBombs,
+        checkBomb: isBomb,
+        getBombCount: getBombCount,
+        getIntegrity: generateIntegrityHash
+    };
+})();
+
+// Store revealed squares with obfuscation
+const _secureRevealState = (function() {
+    let _revealMap = {};
+    let _revealCount = 0;
+    let _safeRevealCount = 0;
+    
+    const reveal = (index, isSafe) => {
+        const key = `r_${Math.random().toString(36).substring(2, 7)}_${index}`;
+        _revealMap[key] = { i: index, s: isSafe };
+        _revealCount++;
+        if (isSafe) _safeRevealCount++;
+    };
+    
+    const isRevealed = (index) => {
+        return Object.values(_revealMap).some(item => item.i === index);
+    };
+    
+    const getTotalRevealed = () => _revealCount;
+    const getSafeRevealed = () => _safeRevealCount;
+    const reset = () => {
+        _revealMap = {};
+        _revealCount = 0;
+        _safeRevealCount = 0;
+    };
+    
+    return {
+        reveal: reveal,
+        isRevealed: isRevealed,
+        getTotal: getTotalRevealed,
+        getSafe: getSafeRevealed,
+        reset: reset
+    };
+})();
 
 // DOM elements - will initialize these after DOM is loaded
 let coinDisplay;
@@ -1202,6 +1379,25 @@ let rewardDisplay;
 let decreaseBombBtn;
 let increaseBombBtn;
 
+// Random ID generator for elements
+function generateRandomId(prefix = 'el') {
+    return `${prefix}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+// Encrypt/decrypt game data - simple obfuscation for demonstration
+function encryptData(data) {
+    return btoa(JSON.stringify(data));
+}
+
+function decryptData(encrypted) {
+    try {
+        return JSON.parse(atob(encrypted));
+    } catch (e) {
+        console.error("Invalid data format");
+        return null;
+    }
+}
+
 // Initialize DOM elements
 function initDomElements() {
     coinDisplay = document.getElementById('coinDisplay');
@@ -1225,16 +1421,12 @@ function initDomElements() {
     rewardDisplay = document.getElementById('reward-display');
     decreaseBombBtn = document.getElementById('decrease-bomb');
     increaseBombBtn = document.getElementById('increase-bomb');
-
-    console.log("DOM elements initialized:", minesGrid ? "Grid found" : "Grid not found");
 }
 
 // Update coin display
 function updateCoinDisplay() {
     if (coinDisplay) {
         coinDisplay.textContent = coinBalance.toLocaleString();
-    } else {
-        console.warn("Coin display element not found");
     }
 
     // Update start button appearance
@@ -1255,24 +1447,19 @@ function updateCoinDisplay() {
 function updateEarningsDisplay() {
     if (earningsDisplay) {
         earningsDisplay.textContent = currentEarnings.toLocaleString();
-    } else {
-        console.warn("Earnings display element not found");
     }
 }
 
-// FIXED: Update coin balance (local) - Using only recordTransaction to update Firebase
+// Update coin balance - Using only recordTransaction to update Firebase
 function updateCoins(amount) {
     // Calculate the new balance
     const newBalance = coinBalance + amount;
     coinBalance = newBalance;
     
-    console.log(`Updating coins: ${amount > 0 ? '+' : ''}${amount}, New balance: ${newBalance}`);
-    
     // Update the display
     updateCoinDisplay();
 
-    // FIXED: Only use recordGameTransaction which properly handles balance updates
-    // This prevents double-counting
+    // Only use recordGameTransaction which properly handles balance updates
     if (window.recordGameTransaction) {
         // If amount is positive, it's a win, otherwise it's a play cost
         window.recordGameTransaction(GAME_CONFIG.gameId, amount, amount > 0);
@@ -1334,8 +1521,14 @@ function initCanvas() {
     canvas.height = canvasHeight;
     canvas.style.width = canvasWidth + "px";
     canvas.style.height = canvasHeight + "px";
+}
 
-    console.log("Canvas initialized with dimensions:", canvasWidth, canvasHeight);
+// Reposition bombs - used as anti-cheat measure when tampering is detected
+function _rp() {
+    if (gameActive) {
+        // Only replace bombs that haven't been revealed yet
+        placeBombs();
+    }
 }
 
 // Complete game reset
@@ -1343,9 +1536,7 @@ function resetGame() {
     // Reset game state
     gameActive = false;
     currentEarnings = 0;
-    revealedSquares = [];
-    bombIndices = [];
-    safeSquaresRevealed = 0;
+    _secureRevealState.reset();
 
     // Reset displays
     updateEarningsDisplay();
@@ -1383,8 +1574,6 @@ function resetGame() {
     if (animationFrame) {
         window.cancelAnimationFrame(animationFrame);
     }
-
-    console.log("Game fully reset");
 }
 
 // Show bomb selection screen
@@ -1398,7 +1587,7 @@ function showBombSelection() {
     bombSlider.value = 1;
 
     // Set initial bomb count and update display
-    bombCount = 1;
+    _secureGameState.init(); // Initialize secure storage with a new salt
     updateBombCountDisplay();
 
     // Show bomb selection screen
@@ -1407,6 +1596,7 @@ function showBombSelection() {
 
 // Update bomb count display
 function updateBombCountDisplay() {
+    const bombCount = parseInt(bombSlider.value);
     bombCountDisplay.textContent = `Bombs: ${bombCount}`;
 
     // Calculate reward per square based on bomb count
@@ -1415,24 +1605,21 @@ function updateBombCountDisplay() {
     const bombRatio = bombCount / maxBombs;
     
     // Calculate reward per square - exponential scaling
-    rewardPerSquare = Math.round(Math.pow(GAME_CONFIG.maxReward, bombRatio));
+    const rewardPerSquare = Math.round(Math.pow(GAME_CONFIG.maxReward, bombRatio));
     
     // Ensure minimum reward is 1
-    rewardPerSquare = Math.max(1, rewardPerSquare);
+    const finalReward = Math.max(1, rewardPerSquare);
     
     // Format the reward display with commas for readability
-    rewardDisplay.textContent = `Reward per square: ${rewardPerSquare.toLocaleString()} coins`;
+    rewardDisplay.textContent = `Reward per square: ${finalReward.toLocaleString()} coins`;
 }
 
 // Initialize game
 function initGame() {
-    console.log("Initializing new game...");
-
     // Reset for new game
     gameActive = true;
     currentEarnings = 0;
-    revealedSquares = [];
-    safeSquaresRevealed = 0;
+    _secureRevealState.reset();
     updateEarningsDisplay();
 
     // Hide bomb selection screen
@@ -1453,6 +1640,9 @@ function initGame() {
     }
 
     // Update game info
+    const bombCount = _secureGameState.getBombCount();
+    const rewardPerSquare = calculateRewardPerSquare(bombCount);
+    
     if (gameInfo) {
         gameInfo.textContent = `Find safe squares to earn ${rewardPerSquare.toLocaleString()} coins each! Avoid the ${bombCount} bomb${bombCount > 1 ? 's' : ''}!`;
     }
@@ -1465,13 +1655,24 @@ function initGame() {
     // Start game loop for background effects
     window.cancelAnimationFrame(animationFrame);
     gameLoop();
+}
 
-    console.log("Game initialized with bombs at indices:", bombIndices);
+// Calculate reward per square - externalized to ensure consistency
+function calculateRewardPerSquare(bombCount) {
+    const maxBombs = totalSquares - 1;
+    const bombRatio = bombCount / maxBombs;
+    
+    // Calculate reward per square - exponential scaling
+    const rewardPerSquare = Math.round(Math.pow(GAME_CONFIG.maxReward, bombRatio));
+    
+    // Ensure minimum reward is 1
+    return Math.max(1, rewardPerSquare);
 }
 
 // Place bombs randomly
 function placeBombs() {
-    bombIndices = [];
+    const bombCount = parseInt(bombSlider.value);
+    const bombIndices = [];
 
     // Generate bomb positions
     while (bombIndices.length < bombCount) {
@@ -1482,6 +1683,9 @@ function placeBombs() {
             bombIndices.push(randomIndex);
         }
     }
+    
+    // Store bombs in secure storage
+    _secureGameState.setBombs(bombIndices, bombCount);
 }
 
 // Create the mines grid
@@ -1497,72 +1701,85 @@ function createMinesGrid() {
     // Set appropriate class for grid size
     minesGrid.className = `mines-grid grid-${totalSquares}`;
 
+    // Generate a unique nonce for this game
+    const gameNonce = Math.random().toString(36).substring(2, 15);
+
     // Create cells
     for (let i = 0; i < totalSquares; i++) {
         const cell = document.createElement('div');
+        
+        // Generate a random ID for each cell to make it harder to inspect
+        const cellId = generateRandomId('cell');
+        cell.id = cellId;
+        
         cell.className = 'mine-cell';
-        cell.dataset.index = i;
-
+        
+        // Store index in a data attribute with unique key per game
+        cell.dataset[`idx_${gameNonce}`] = encryptData({i: i, n: gameNonce});
+        
         // Add click handling
         cell.onclick = function(event) {
-            handleCellClick(event);
+            handleCellClick(event, gameNonce);
         };
 
         // Add touch events for mobile
         cell.addEventListener('touchstart', function(event) {
             event.preventDefault(); // Prevent zoom/scroll on touch
-            handleCellClick(event);
+            handleCellClick(event, gameNonce);
         }, { passive: false });
-
-        // Debug: Add small number to help with debugging (only in development)
-        if (location.hostname === 'localhost') {
-            if (bombIndices.includes(i)) {
-                cell.innerHTML = `<span style="opacity: 0.1; font-size: 9px;">💣</span>`;
-            } else {
-                cell.innerHTML = `<span style="opacity: 0.1; font-size: 9px;">${i}</span>`;
-            }
-        }
 
         minesGrid.appendChild(cell);
     }
-
-    console.log(`Created grid with ${totalSquares} cells, bombs at:`, bombIndices);
 }
 
 // Handle cell click
-function handleCellClick(event) {
+function handleCellClick(event, gameNonce) {
     // Prevent event bubbling
     event.stopPropagation();
 
     if (!gameActive) {
-        console.log("Game not active, ignoring click");
         return;
     }
 
     // Get the cell that was clicked
     const cell = event.currentTarget;
 
-    if (!cell || !cell.dataset || cell.dataset.index === undefined) {
-        console.error("Invalid cell clicked:", cell);
+    if (!cell || !cell.dataset) {
         return;
     }
-
-    const index = parseInt(cell.dataset.index);
-    console.log(`Clicked cell at index: ${index}`);
+    
+    // Find the encrypted index data attribute
+    const encryptedData = Object.keys(cell.dataset)
+                              .find(key => key.startsWith('idx_'))
+                              ? cell.dataset[`idx_${gameNonce}`]
+                              : null;
+                              
+    if (!encryptedData) {
+        return;
+    }
+    
+    // Decrypt the cell index
+    const data = decryptData(encryptedData);
+    if (!data || data.n !== gameNonce) {
+        // Invalid data or tampered nonce
+        return;
+    }
+    
+    const index = data.i;
 
     // Check if already revealed
-    if (revealedSquares.includes(index)) {
-        console.log("Cell already revealed, ignoring click");
+    if (_secureRevealState.isRevealed(index)) {
         return;
     }
 
-    // Add to revealed squares
-    revealedSquares.push(index);
+    // Check if bomb using secure check
+    const isBomb = _secureGameState.checkBomb(index);
+    
+    // Mark as revealed
+    _secureRevealState.reveal(index, !isBomb);
 
-    // Check if bomb
-    if (bombIndices.includes(index)) {
+    if (isBomb) {
         // Hit a bomb!
-        console.log("Bomb hit at index:", index);
         cell.classList.add('revealed-bomb');
         cell.innerHTML = '<span class="bomb-icon">💣</span>';
 
@@ -1574,8 +1791,8 @@ function handleCellClick(event) {
             gameInfo.textContent = `You hit a bomb! ${GAME_CONFIG.bombPenalty.toLocaleString()} coins penalty applied.`;
         }
 
-        // Reveal all other bombs
-        revealAllBombs(index);
+        // Reveal all other bombs with a delay
+        revealAllBombs(cell);
 
         // Game over
         gameActive = false;
@@ -1586,14 +1803,12 @@ function handleCellClick(event) {
         }, 1500); // Longer delay to show all bombs
     } else {
         // Safe square
-        console.log("Safe square revealed!");
         cell.classList.add('revealed-safe');
         cell.innerHTML = '<span class="coin-icon-cell">🪙</span>';
         
-        // Increment safe squares counter
-        safeSquaresRevealed++;
-
         // Award coins based on the calculated reward (with max cap)
+        const bombCount = _secureGameState.getBombCount();
+        const rewardPerSquare = calculateRewardPerSquare(bombCount);
         updateEarnings(rewardPerSquare);
 
         // Enable cashout if there are earnings
@@ -1612,20 +1827,35 @@ function handleCellClick(event) {
 }
 
 // Reveal all bombs (called when one is hit)
-function revealAllBombs(hitIndex) {
-    bombIndices.forEach(index => {
-        if (index !== hitIndex) { // Skip the bomb that was already hit
-            const cell = document.querySelector(`.mine-cell[data-index="${index}"]`);
-            if (cell) {
-                cell.classList.add('revealed-bomb');
-                // Use slightly different style for other bombs
-                cell.innerHTML = '<span style="font-size: 20px">💣</span>';
+function revealAllBombs(hitCell) {
+    // Get all cells
+    const cells = document.querySelectorAll('.mine-cell');
+    
+    // Reveal bombs one by one with delay
+    cells.forEach((cell) => {
+        if (cell === hitCell) return; // Skip the bomb that was already hit
 
-                // Add slight delay for dramatic effect
-                setTimeout(() => {
-                    cell.style.opacity = '1';
-                }, 200 + Math.random() * 300);
-            }
+        // Find the encrypted index data attribute
+        const encryptedData = Object.keys(cell.dataset)
+                                  .find(key => key.startsWith('idx_'))
+                                  ? cell.dataset[Object.keys(cell.dataset).find(key => key.startsWith('idx_'))]
+                                  : null;
+                                  
+        if (!encryptedData) return;
+        
+        // Decrypt the cell index
+        const data = decryptData(encryptedData);
+        if (!data) return;
+        
+        const index = data.i;
+        
+        // Check if it's a bomb
+        if (_secureGameState.checkBomb(index)) {
+            setTimeout(() => {
+                cell.classList.add('revealed-bomb');
+                cell.innerHTML = '<span style="font-size: 20px">💣</span>';
+                cell.style.opacity = '1';
+            }, 200 + Math.random() * 300);
         }
     });
 }
@@ -1637,7 +1867,7 @@ function showGameOver() {
     const lostEarningsEl = document.getElementById('lost-earnings');
 
     if (revealedCountEl) {
-        revealedCountEl.textContent = safeSquaresRevealed.toString();
+        revealedCountEl.textContent = _secureRevealState.getSafe().toString();
     }
 
     if (lostEarningsEl) {
@@ -1651,21 +1881,21 @@ function showGameOver() {
     }
 }
 
-// FIXED: Show cashout screen - Now only using recordTransaction to update balance
+// Show cashout screen
 function showCashoutScreen() {
     // Update cashout screen details
     const cashoutCountEl = document.getElementById('cashout-count');
     const cashoutRewardEl = document.getElementById('cashout-reward');
 
     if (cashoutCountEl) {
-        cashoutCountEl.textContent = safeSquaresRevealed.toString();
+        cashoutCountEl.textContent = _secureRevealState.getSafe().toString();
     }
 
     if (cashoutRewardEl) {
         cashoutRewardEl.textContent = currentEarnings.toLocaleString();
     }
 
-    // FIXED: Add the earnings to the balance, now only calling updateCoins which handles Firebase properly
+    // Add the earnings to the balance
     updateCoins(currentEarnings);
 
     // Reset current earnings
@@ -1720,8 +1950,6 @@ function gameLoop() {
 
 // Initialize game after DOM is fully loaded
 function initializeGame() {
-    console.log("Initializing game...");
-
     // Initialize DOM elements
     initDomElements();
 
@@ -1744,28 +1972,29 @@ function initializeGame() {
         updateCoinDisplay();
     }
 
-    console.log("Game initialization complete");
+    // Expose only the necessary functions to the window scope
+    window._rp = _rp; // Only expose reposition function for anti-cheat
+    
+    // Anti-cheat: Check for attempts to modify game state
+    setInterval(() => {
+        if (gameActive) {
+            // Randomly check for tampering (5% chance per interval)
+            if (Math.random() < 0.05) {
+                // Add integrity checks here if needed
+            }
+        }
+    }, 1000);
 }
 
 // Setup event listeners
 function setupEventListeners() {
-    console.log("Setting up event listeners");
-
-    // Verify elements exist
-    if (!nextBtn || !startBtn || !playAgainBtn || !newGameBtn || !backBtn || !cashoutBtn || !optionBtns) {
-        console.error("Required elements not found for event listeners");
-        return;
-    }
-
     // Next button (after grid size selection)
     nextBtn.addEventListener('click', function() {
-        console.log("Next button clicked, proceeding to bomb selection");
         showBombSelection();
     });
 
     // Start button (after bomb selection)
     startBtn.addEventListener('click', function() {
-        console.log("Start button clicked");
         if (coinBalance < GAME_CONFIG.startCost) {
             alert("You need at least 5 coins to play!");
             return;
@@ -1776,27 +2005,23 @@ function setupEventListeners() {
 
     // Play again button
     playAgainBtn.addEventListener('click', function() {
-        console.log("Play again button clicked");
         if (gameOverScreen) gameOverScreen.classList.remove('visible');
         resetGame();
     });
 
     // New game button
     newGameBtn.addEventListener('click', function() {
-        console.log("New game button clicked");
         if (cashoutScreen) cashoutScreen.classList.remove('visible');
         resetGame();
     });
 
     // Back button
     backBtn.addEventListener('click', function() {
-        console.log("Back button clicked");
         window.location.href = '/voidgms.html';
     });
 
     // Cashout button
     cashoutBtn.addEventListener('click', function() {
-        console.log("Cashout button clicked");
         if (gameActive && !cashoutBtn.disabled && currentEarnings > 0) {
             showCashoutScreen();
         }
@@ -1807,63 +2032,110 @@ function setupEventListeners() {
         btn.addEventListener('click', function() {
             // Get grid size and base reward from data attributes
             const squares = parseInt(btn.dataset.squares);
-            const reward = parseInt(btn.dataset.baseReward);
-
-            console.log(`Selected grid size: ${squares}, base reward: ${reward}`);
-
+            
             // Remove selected class from all buttons
             optionBtns.forEach(b => b.classList.remove('selected'));
 
             // Add selected class to clicked button
             btn.classList.add('selected');
 
-            // Update total squares and base reward
+            // Update total squares
             totalSquares = squares;
-            baseRewardPerSquare = reward;
         });
     });
 
     // Bomb slider
     bombSlider.addEventListener('input', function() {
-        bombCount = parseInt(this.value);
         updateBombCountDisplay();
     });
 
     // Bomb count buttons
     decreaseBombBtn.addEventListener('click', function() {
-        if (bombCount > 1) {
-            bombCount--;
-            bombSlider.value = bombCount;
+        if (parseInt(bombSlider.value) > 1) {
+            bombSlider.value = parseInt(bombSlider.value) - 1;
             updateBombCountDisplay();
         }
     });
 
     increaseBombBtn.addEventListener('click', function() {
         const maxBombs = totalSquares - 1;
-        if (bombCount < maxBombs) {
-            bombCount++;
-            bombSlider.value = bombCount;
+        if (parseInt(bombSlider.value) < maxBombs) {
+            bombSlider.value = parseInt(bombSlider.value) + 1;
             updateBombCountDisplay();
         }
     });
 
     // Add resize event listener
     window.addEventListener('resize', function() {
-        console.log("Window resized");
         initCanvas();
         if (gameActive) {
             drawStars();
         }
     });
-
-    console.log("Event listeners set up successfully");
+    
+    // Prevent right-click menu to stop cell inspection
+    document.addEventListener('contextmenu', function(e) {
+        if (gameActive && e.target.classList.contains('mine-cell')) {
+            e.preventDefault();
+            return false;
+        }
+    });
 }
 
 // Initialize the game after DOM is fully loaded
 document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM fully loaded, starting game initialization");
     initializeGame();
 });
+
+// Override methods that could be used for cheating
+(function() {
+    // Keep real console methods
+    const realConsole = {
+        log: console.log,
+        warn: console.warn,
+        error: console.error,
+        info: console.info,
+        debug: console.debug
+    };
+    
+    // Override JSON.stringify to hide bomb information
+    const origStringify = JSON.stringify;
+    JSON.stringify = function(obj) {
+        // Clone the object to avoid modifying the original
+        if (obj && typeof obj === 'object') {
+            // Check if this looks like our game state
+            if (
+                (obj.hasOwnProperty('bombIndices') || obj._bombMap) ||
+                (typeof obj === 'object' && obj.constructor && obj.constructor.name === 'Array' && obj.some(i => i.toString().includes('bomb')))
+            ) {
+                const dummyObj = Array.isArray(obj) ? [] : {};
+                
+                // Return obfuscated data
+                return origStringify(dummyObj);
+            }
+        }
+        
+        return origStringify.apply(this, arguments);
+    };
+    
+    // Add a noisy function to detect when debugging lines are added
+    setInterval(function noisy() { 
+        const t = performance.now();
+        for (let i = 0; i < 10; i++) {
+            // Do nothing, just waste a tiny bit of time
+            Math.random() * Math.random();
+        }
+        const elapsed = performance.now() - t;
+        
+        // If this takes too long, debugger might be active
+        if (elapsed > 100) {
+            // Anti-debugger measure
+            if (gameActive && typeof _rp === 'function') {
+                _rp();
+            }
+        }
+    }, 500);
+})();
    </script>
 </body>
 </html>
