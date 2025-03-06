@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>The Void Games - Chicken Run</title>
+
+   <!-- Favicon -->
+   <link rel="shortcut icon" href="./assets/favicon.png" type="image/png">
+
+   <style>
+       body, html {
+           margin: 0;
+           padding: 0;
+           width: 100%;
+           height: 100%;
+           background: #000;
+           color: #fff;
+           font-family: 'Arial', sans-serif;
+           overflow: hidden;
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           justify-content: center;
+       }
+
+       .game-container {
+           background: linear-gradient(180deg, #000000, #0c0c1f, #000018);
+           border-radius: 10px;
+           width: 90%;
+           max-width: 800px;
+           height: 90vh;
+           max-height: 800px;
+           display: flex;
+           flex-direction: column;
+           position: relative;
+           padding: 1rem;
+           box-shadow: 
+               0 0 2px #fff,
+               0 0 4px #fff,
+               0 0 6px #4d7cff,
+               0 0 8px #4d7cff,
+               inset 0 0 2px rgba(255, 255, 255, 0.2);
+           z-index: 3;
+           overflow: hidden;
+       }
+
+       .game-header {
+           text-align: center;
+           padding-bottom: 1rem;
+           border-bottom: 1px solid rgba(77, 124, 255, 0.2);
+           position: relative;
+           background: linear-gradient(90deg, transparent, rgba(77, 124, 255, 0.05), transparent);
+           z-index: 10;
+       }
+
+       .game-title {
+           font-size: 2.2rem;
+           margin: 0 0 0.5rem 0;
+           background: linear-gradient(45deg, #fff, #4d7cff);
+           -webkit-background-clip: text;
+           -webkit-text-fill-color: transparent;
+           font-weight: bold;
+           text-transform: uppercase;
+           letter-spacing: 3px;
+           text-shadow: 0 0 10px rgba(77, 124, 255, 0.7);
+           animation: titleGlow 2s infinite alternate;
+       }
+
+       @keyframes titleGlow {
+           0% { text-shadow: 0 0 5px rgba(77, 124, 255, 0.7); }
+           100% { text-shadow: 0 0 15px rgba(77, 124, 255, 0.9), 0 0 30px rgba(77, 124, 255, 0.5); }
+       }
+
+       .game-subtitle {
+           font-size: 1rem;
+           color: #aac4ff;
+           margin: 0;
+           text-transform: uppercase;
+           letter-spacing: 2px;
+           opacity: 0.8;
+       }
+
+       .coin-tracker {
+           position: absolute;
+           top: 0;
+           right: 0;
+           background: linear-gradient(135deg, rgba(77, 124, 255, 0.1), rgba(20, 30, 60, 0.5));
+           border: 1px solid rgba(77, 124, 255, 0.4);
+           border-radius: 30px;
+           padding: 0.5rem 1rem;
+           display: flex;
+           align-items: center;
+           gap: 0.5rem;
+           box-shadow: 0 0 10px rgba(77, 124, 255, 0.3);
+           animation: glow 2s infinite;
+           backdrop-filter: blur(5px);
+           z-index: 10;
+       }
+
+       .coin-icon {
+           width: 20px;
+           height: 20px;
+           background: linear-gradient(135deg, #FFD700, #FFA500);
+           border-radius: 50%;
+           box-shadow: 0 0 5px rgba(255, 215, 0, 0.8);
+           position: relative;
+           overflow: hidden;
+       }
+
+       .coin-icon::after {
+           content: '';
+           position: absolute;
+           top: 3px;
+           left: 3px;
+           width: 6px;
+           height: 6px;
+           background: rgba(255, 255, 255, 0.8);
+           border-radius: 50%;
+       }
+
+       .coin-amount {
+           font-weight: bold;
+           font-size: 1.1rem;
+           color: #FFD700;
+           text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+       }
+
+       .game-board {
+           flex-grow: 1;
+           position: relative;
+           overflow: hidden;
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           justify-content: center;
+           background: #1a1a2e;
+           border-radius: 8px;
+           margin: 1rem 0;
+           min-height: 60vh;
+           border: 1px solid rgba(77, 124, 255, 0.2);
+           box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+           padding: 20px;
+       }
+
+       #game-canvas {
+           position: absolute;
+           top: 0;
+           left: 0;
+           width: 100%;
+           height: 100%;
+           background: transparent;
+           z-index: 1;
+           display: block;
+       }
+
+       .game-overlay {
+           position: absolute;
+           top: 0;
+           left: 0;
+           width: 100%;
+           height: 100%;
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           justify-content: center;
+           background: rgba(0, 8, 30, 0.85);
+           z-index: 100; /* Higher z-index to ensure it's above everything */
+           opacity: 0;
+           pointer-events: none;
+           transition: opacity 0.3s ease;
+           backdrop-filter: blur(4px);
+       }
+
+       .game-overlay.visible {
+           opacity: 1;
+           pointer-events: all;
+           animation: fadeIn 0.5s ease-out;
+       }
+
+       @keyframes fadeIn {
+           from { opacity: 0; }
+           to { opacity: 1; }
+       }
+
+       .overlay-content {
+           text-align: center;
+           padding: 2.5rem;
+           background: linear-gradient(135deg, rgba(13, 21, 40, 0.9), rgba(5, 10, 30, 0.9));
+           border-radius: 10px;
+           border: 1px solid rgba(77, 124, 255, 0.3);
+           box-shadow: 0 0 30px rgba(77, 124, 255, 0.2);
+           max-width: 80%;
+           animation: floatEffect 4s infinite ease-in-out;
+       }
+
+       @keyframes floatEffect {
+           0%, 100% { transform: translateY(0); }
+           50% { transform: translateY(-10px); }
+       }
+
+       .overlay-title {
+           font-size: 2.5rem;
+           margin-bottom: 1rem;
+           text-transform: uppercase;
+           letter-spacing: 3px;
+           font-weight: bold;
+       }
+
+       .overlay-title.win {
+           background: linear-gradient(45deg, #4CAF50, #8BC34A);
+           -webkit-background-clip: text;
+           -webkit-text-fill-color: transparent;
+           text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+       }
+
+       .overlay-title.lose {
+           background: linear-gradient(45deg, #f44336, #E91E63);
+           -webkit-background-clip: text;
+           -webkit-text-fill-color: transparent;
+           text-shadow: 0 0 10px rgba(244, 67, 54, 0.5);
+       }
+
+       .overlay-message {
+           font-size: 1.2rem;
+           margin-bottom: 2rem;
+           color: #aac4ff;
+           line-height: 1.6;
+       }
+
+       .game-btn {
+           padding: 0.75rem 2rem;
+           font-size: 1.2rem;
+           background: linear-gradient(135deg, #1f3a70, #0a1835);
+           color: #fff;
+           border: 1px solid rgba(77, 124, 255, 0.4);
+           border-radius: 30px;
+           cursor: pointer;
+           box-shadow: 0 0 10px rgba(77, 124, 255, 0.2);
+           transition: all 0.3s ease;
+           text-transform: uppercase;
+           letter-spacing: 2px;
+           font-weight: bold;
+           position: relative;
+           overflow: hidden;
+       }
+
+       .game-btn::before {
+           content: '';
+           position: absolute;
+           top: 0;
+           left: -100%;
+           width: 100%;
+           height: 100%;
+           background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+           transition: all 0.6s ease;
+       }
+
+       .game-btn:hover::before {
+           left: 100%;
+       }
+
+       .game-btn:hover {
+           background: linear-gradient(135deg, #2a4b8d, #132345);
+           transform: translateY(-2px);
+           box-shadow: 0 0 15px rgba(77, 124, 255, 0.3);
+       }
+
+       .game-btn:active {
+           transform: translateY(1px);
+       }
+
+       .game-btn:disabled {
+           opacity: 0.5;
+           cursor: not-allowed;
+           background: linear-gradient(135deg, #444, #333);
+       }
+
+       .game-btn.insufficient {
+           background: linear-gradient(135deg, #70283f, #350f1a);
+           color: #ffcccc;
+           border-color: rgba(244, 67, 54, 0.4);
+       }
+
+       .cashout-btn {
+           padding: 0.75rem 2rem;
+           font-size: 1.2rem;
+           background: linear-gradient(135deg, #2e7d32, #1b5e20);
+           color: #fff;
+           border: 1px solid rgba(76, 175, 80, 0.4);
+           border-radius: 30px;
+           cursor: pointer;
+           box-shadow: 0 0 10px rgba(76, 175, 80, 0.2);
+           transition: all 0.3s ease;
+           text-transform: uppercase;
+           letter-spacing: 2px;
+           font-weight: bold;
+           position: relative;
+           overflow: hidden;
+           margin-top: 15px;
+           margin-bottom: 10px;
+           z-index: 20;
+           width: 200px;
+           text-align: center;
+       }
+
+       .cashout-btn::before {
+           content: '';
+           position: absolute;
+           top: 0;
+           left: -100%;
+           width: 100%;
+           height: 100%;
+           background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+           transition: all 0.6s ease;
+       }
+
+       .cashout-btn:hover::before {
+           left: 100%;
+       }
+
+       .cashout-btn:hover {
+           background: linear-gradient(135deg, #388e3c, #2e7d32);
+           transform: translateY(-2px);
+           box-shadow: 0 0 15px rgba(76, 175, 80, 0.3);
+       }
+
+       .cashout-btn:active {
+           transform: translateY(1px);
+       }
+
+       .cashout-btn:disabled {
+           background: linear-gradient(135deg, #1b5e20, #0f3013);
+           opacity: 0.7;
+           cursor: not-allowed;
+       }
+
+       .controls {
+           display: flex;
+           justify-content: center;
+           align-items: center;
+           padding: 1rem 0;
+           gap: 1rem;
+           z-index: 10;
+       }
+
+       .restart-btn {
+           padding: 0.75rem 1.5rem;
+           font-size: 1rem;
+           background: linear-gradient(135deg, #192238, #0d1526);
+           color: #aac4ff;
+           border: 1px solid rgba(77, 124, 255, 0.2);
+           border-radius: 30px;
+           cursor: pointer;
+           transition: all 0.3s ease;
+           text-transform: uppercase;
+           letter-spacing: 1px;
+           position: relative;
+           overflow: hidden;
+       }
+
+       .restart-btn::before {
+           content: '';
+           position: absolute;
+           top: 0;
+           left: -100%;
+           width: 100%;
+           height: 100%;
+           background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+           transition: all 0.6s ease;
+       }
+
+       .restart-btn:hover::before {
+           left: 100%;
+       }
+
+       .restart-btn:hover {
+           color: #fff;
+           border-color: rgba(77, 124, 255, 0.4);
+           background: linear-gradient(135deg, #243252, #131e36);
+       }
+
+       .score-display {
+           text-align: center;
+           margin-top: 1rem;
+           font-size: 1.2rem;
+           height: 1.5rem;
+           color: #aac4ff;
+           text-shadow: 0 0 5px rgba(77, 124, 255, 0.5);
+           background: linear-gradient(90deg, transparent, rgba(77, 124, 255, 0.05), transparent);
+           padding: 0.2rem 0;
+           border-radius: 20px;
+           z-index: 10;
+       }
+
+       .win-amount {
+           font-weight: bold;
+           font-size: 1.4rem;
+           color: #4caf50;
+           text-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+       }
+
+       .lose-amount {
+           font-weight: bold;
+           font-size: 1.4rem;
+           color: #f44336;
+           text-shadow: 0 0 5px rgba(244, 67, 54, 0.5);
+       }
+
+       /* Chicken Run specific styles */
+       #chicken-run-container {
+           z-index: 10;
+           width: 100%;
+           height: 100%;
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           justify-content: center;
+           overflow: hidden;
+           position: relative;
+       }
+
+       .game-info {
+           background: rgba(10, 20, 40, 0.6);
+           border-radius: 20px;
+           border: 1px solid rgba(77, 124, 255, 0.2);
+           padding: 10px 20px;
+           color: white;
+           font-size: 1.1rem;
+           text-align: center;
+           margin-bottom: 15px;
+           max-width: 90%;
+           z-index: 10;
+       }
+
+       .chicken-path {
+           display: flex;
+           justify-content: space-between;
+           align-items: center;
+           width: 90%;
+           max-width: 700px;
+           height: 150px;
+           position: relative;
+           margin: 20px auto;
+           background: rgba(10, 20, 40, 0.3);
+           border-radius: 20px;
+           border: 1px solid rgba(77, 124, 255, 0.2);
+           padding: 10px;
+       }
+
+       .path-circle {
+           width: 40px;
+           height: 40px;
+           border-radius: 50%;
+           background: rgba(77, 124, 255, 0.3);
+           border: 2px solid rgba(77, 124, 255, 0.6);
+           cursor: pointer;
+           transition: all 0.3s ease;
+           display: flex;
+           align-items: center;
+           justify-content: center;
+           font-weight: bold;
+           color: white;
+           position: relative;
+           z-index: 5;
+       }
+
+       .path-circle:hover {
+           transform: scale(1.1);
+           background: rgba(77, 124, 255, 0.5);
+           box-shadow: 0 0 15px rgba(77, 124, 255, 0.7);
+       }
+
+       .path-circle.active {
+           background: rgba(76, 175, 80, 0.5);
+           border-color: rgba(76, 175, 80, 0.8);
+           box-shadow: 0 0 15px rgba(76, 175, 80, 0.7);
+       }
+
+       .path-circle.danger {
+           animation: dangerPulse 1s infinite alternate;
+       }
+
+       @keyframes dangerPulse {
+           0% { background: rgba(244, 67, 54, 0.3); border-color: rgba(244, 67, 54, 0.6); }
+           100% { background: rgba(244, 67, 54, 0.6); border-color: rgba(244, 67, 54, 0.9); box-shadow: 0 0 15px rgba(244, 67, 54, 0.7); }
+       }
+
+       .path-line {
+           height: 3px;
+           flex-grow: 1;
+           background: linear-gradient(90deg, rgba(77, 124, 255, 0.3), rgba(77, 124, 255, 0.5));
+           margin: 0 5px;
+       }
+
+       .chicken {
+           width: 50px;
+           height: 50px;
+           background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><path fill="%23FFCC4D" d="M36 18c0 9.941-8.059 18-18 18-9.94 0-18-8.059-18-18C0 8.06 8.06 0 18 0c9.941 0 18 8.06 18 18"/><path fill="%23F4900C" d="M18 21.849c-2.966 0-4.935-.346-7.369-.819-.557-.108-1.394.817-1.237 1.346.465 1.566 4.018 3.774 8.606 3.774 4.589 0 8.141-2.208 8.606-3.774.157-.529-.681-1.453-1.237-1.346-2.434.474-4.402.819-7.369.819"/><path fill="%23FFFFFF" d="M30.313 17.312c0 .803-.652 1.455-1.455 1.455-1.318 0-1.746-.059-2.388-.221-.642-.162-.642-1.795 0-1.957.642-.16 1.07-.22 2.388-.22.803 0 1.455.652 1.455 1.455m-24.626 0c0 .803.652 1.455 1.455 1.455 1.318 0 1.746-.059 2.388-.221.642-.162.642-1.795 0-1.957-.642-.16-1.07-.22-2.388-.22-.803 0-1.455.652-1.455 1.455"/><path fill="%23662113" d="M18 4.942c-2.347 0-2.348 1.667-4.696 2.113-1.594.303-4.525.036-4.525 2.613 0 .901 1.233 1.396 1.233 1.396s-.334.535-.334 1.339c0 .803.386 1.677 1.71 1.677 1.839 0 3.2.881 6.612.881 3.413 0 4.774-.881 6.612-.881 1.325 0 1.71-.874 1.71-1.677 0-.803-.334-1.339-.334-1.339s1.233-.495 1.233-1.396c0-2.577-2.931-2.309-4.525-2.613-2.347-.446-2.349-2.113-4.696-2.113"/><path fill="%23DF1F32" d="M21.219 14.078c-.452 0-1.339.732-3.219.732-1.88 0-2.767-.732-3.219-.732-.324 0-.584.263-.584.588 0 .324.26.732.584.732.452 0 1.532.732 3.219.732 1.687 0 2.767-.732 3.219-.732.324 0 .584-.408.584-.732 0-.325-.26-.588-.584-.588"/><path fill="%23F4900C" d="M17.976 20.697c-3.093 0-4.269-.445-4.269-.445s1.162.756 4.281.756c3.12 0 4.269-.756 4.269-.756s-1.189.445-4.281.445"/></svg>');
+           background-size: contain;
+           position: absolute;
+           top: 50%;
+           transform: translateY(-50%);
+           left: 10px; /* Starting position */
+           transition: left 0.5s ease;
+           z-index: 10;
+       }
+
+       .chicken.chicken-dead {
+           background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><path fill="%23FFCC4D" d="M36 18c0 9.941-8.059 18-18 18-9.94 0-18-8.059-18-18C0 8.06 8.06 0 18 0c9.941 0 18 8.06 18 18"/><path fill="%23F4900C" d="M32.755 16.353c-.759 0-1.626 1.318-1.626 2.422 0 .589.369 1.124.961 1.124.592 0 1.069-.38 1.069-.967 0-.79-.92-1.631-1.513-1.631.095-.345.679-.436.679-.947-.001-.213-.202-.329-.405-.329M21.204 28.57c-1.547 0-2.8-1.254-2.8-2.8s1.254-2.8 2.8-2.8 2.8 1.254 2.8 2.8-1.254 2.8-2.8 2.8z"/><path fill="%23292F33" d="M26.954 12.913c0 1.414-1.146 2.561-2.56 2.561-1.414 0-2.56-1.146-2.56-2.561 0-1.413 1.146-2.56 2.56-2.56 1.413 0 2.56 1.147 2.56 2.56m-12.789 0c0 1.414-1.146 2.561-2.56 2.561-1.414 0-2.56-1.146-2.56-2.561 0-1.413 1.146-2.56 2.56-2.56 1.413 0 2.56 1.147 2.56 2.56"/><path fill="%23E1E8ED" d="M25.751 13.203c0 .745-.604 1.349-1.349 1.349-.746 0-1.35-.604-1.35-1.349 0-.746.604-1.35 1.35-1.35.745 0 1.349.604 1.349 1.35m-11.389 0c0 .745-.604 1.349-1.349 1.349-.746 0-1.35-.604-1.35-1.349 0-.746.604-1.35 1.35-1.35.745 0 1.349.604 1.349 1.35"/><path fill="%23662113" d="M25.564 21.384c-.554 0-1.058-.078-1.483-.196-.463-.127-.837-.31-1.085-.554-.151-.148-.257-.319-.311-.515-.05-.182-.063-.367-.037-.562.043-.323.205-.658.478-.994.274-.334.668-.676 1.177-.994 1.015-.636 2.453-1.133 4.073-1.133.743 0 1.282.162 1.653.367.184.102.334.216.443.338.125.139.192.264.25.479.078.292.051.655-.079 1.059-.129.403-.352.842-.656 1.278-.608.872-1.613 1.674-2.932 2.176-.629.239-1.009.349-1.491.251z"/><path fill="%23C1694F" d="M28.376 16.711c.508 0 .873.161 1.064.28.096.06.159.119.192.167.042.06.071.103.103.231.039.146.006.39-.093.703-.097.305-.28.657-.531 1.017-.503.721-1.386 1.427-2.524 1.859-.449.17-.645.207-.9.15-.282 0-.607-.047-.883-.123-.308-.084-.563-.195-.698-.336-.074-.073-.111-.138-.128-.203-.013-.049-.01-.088-.004-.139.02-.149.127-.374.337-.632.21-.257.525-.539.952-.803.854-.527 2.053-.976 3.413-.976m0-1c-1.724 0-3.338.536-4.326 1.191-1.168.734-1.895 1.707-1.895 2.526 0 .608.336 1.083.615 1.358.566.558 1.583.963 2.794.963.337 0 .907-.017 1.764-.447 3.061-1.542 3.932-4.237 3.932-5.191 0-.853-.855-1.4-2.884-1.4z"/><path fill="%23662113" d="M10.435 21.384c.554 0 1.058-.078 1.483-.196.463-.127.837-.31 1.085-.554.151-.148.257-.319.311-.515.05-.182.063-.367.037-.562-.043-.323-.205-.658-.478-.994-.274-.334-.668-.676-1.177-.994-1.015-.636-2.453-1.133-4.073-1.133-.742 0-1.282.162-1.653.367-.184.102-.334.216-.443.338-.125.139-.192.264-.25.479-.078.292-.051.655.079 1.059.129.403.352.842.656 1.278.608.872 1.613 1.674 2.932 2.176.628.239 1.008.349 1.491.251z"/><path fill="%23C1694F" d="M7.624 16.711c-.508 0-.873.161-1.064.28-.096.06-.159.119-.192.167-.042.06-.071.103-.103.231-.039.146-.006.39.093.703.097.305.28.657.531 1.017.503.721 1.386 1.427 2.524 1.859.449.17.645.207.9.15.282 0 .607-.047.883-.123.308-.084.563-.195.698-.336.074-.073.111-.138.128-.203.013-.049.01-.088.004-.139-.02-.149-.127-.374-.337-.632-.21-.257-.525-.539-.952-.803-.854-.527-2.053-.976-3.413-.976m0-1c1.724 0 3.338.536 4.326 1.191 1.168.734 1.895 1.707 1.895 2.526 0 .608-.336 1.083-.615 1.358-.566.558-1.583.963-2.794.963-.337 0-.907-.017-1.764-.447C5.611 19.76 4.74 17.065 4.74 16.111c0-.853.855-1.4 2.884-1.4z"/><path fill="%23FFAC33" d="M20.5 28.471c0 1.974-1.605 3.574-3.578 3.574-1.974 0-3.578-1.6-3.578-3.574 0-1.973 1.604-3.574 3.578-3.574 1.973 0 3.578 1.601 3.578 3.574z"/><path fill="%23C1694F" d="M16.021 24.182c-.305.354-.659.674-1.051.945-1.026-1.732-3.106-2.3-4.794-1.324-.165-1.261-.235-2.556-.235-3.802 0-.557.018-1.112.047-1.667 3.276 1.128 6.169 3.226 8.193 5.914-.773-.159-1.541-.241-2.16-.066z"/></svg>');
+           animation: chickenDying 1s forwards;
+       }
+
+       @keyframes chickenDying {
+           0% { transform: translateY(-50%) rotate(0deg); }
+           25% { transform: translateY(-50%) rotate(20deg); }
+           50% { transform: translateY(-50%) rotate(-20deg); }
+           75% { transform: translateY(-50%) rotate(10deg); }
+           100% { transform: translateY(-50%) rotate(-90deg); }
+       }
+
+       .blood-splatter {
+           position: absolute;
+           width: 80px;
+           height: 80px;
+           background-image: url('data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="%23E81123" d="M50 20c-16.569 0-30 13.431-30 30 0 16.569 13.431 30 30 30 16.569 0 30-13.431 30-30 0-16.569-13.431-30-30-30zm-7.5 15c2.071 0 3.75 1.679 3.75 3.75 0 2.071-1.679 3.75-3.75 3.75-2.071 0-3.75-1.679-3.75-3.75 0-2.071 1.679-3.75 3.75-3.75zm-7.5 7.5c1.381 0 2.5 1.119 2.5 2.5s-1.119 2.5-2.5 2.5-2.5-1.119-2.5-2.5 1.119-2.5 2.5-2.5zm35 27.5c-2.071 0-3.75-1.679-3.75-3.75 0-2.071 1.679-3.75 3.75-3.75 2.071 0 3.75 1.679 3.75 3.75 0 2.071-1.679 3.75-3.75 3.75zm-5-17.5c-1.381 0-2.5-1.119-2.5-2.5s1.119-2.5 2.5-2.5 2.5 1.119 2.5 2.5-1.119 2.5-2.5 2.5zm-15 15c-2.761 0-5-2.239-5-5s2.239-5 5-5 5 2.239 5 5-2.239 5-5 5z"/></svg>');
+           background-size: contain;
+           opacity: 0;
+           transform: translate(-50%, -50%);
+           z-index: 9;
+           pointer-events: none;
+       }
+
+       .blood-splatter.active {
+           animation: bloodSplatter 0.8s forwards;
+       }
+
+       @keyframes bloodSplatter {
+           0% { opacity: 0; transform: translate(-50%, -50%) scale(0); }
+           60% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+           100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+       }
+
+       .current-earning {
+           font-size: 1.3rem;
+           font-weight: bold;
+           color: #4caf50;
+           margin: 10px 0;
+           text-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+       }
+
+       .game-actions {
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           margin-top: 20px;
+       }
+
+       /* Special Effects */
+       @keyframes glow {
+           0% { filter: drop-shadow(0 0 2px rgba(77, 124, 255, 0.7)); }
+           50% { filter: drop-shadow(0 0 10px rgba(77, 124, 255, 0.9)); }
+           100% { filter: drop-shadow(0 0 2px rgba(77, 124, 255, 0.7)); }
+       }
+
+       /* Media queries for better responsiveness */
+       @media (max-height: 700px) {
+           .chicken-path {
+               height: 100px;
+           }
+
+           .path-circle {
+               width: 30px;
+               height: 30px;
+           }
+
+           .chicken {
+               width: 40px;
+               height: 40px;
+           }
+
+           .game-info {
+               font-size: 0.9rem;
+               padding: 5px 15px;
+           }
+
+           .overlay-content {
+               padding: 1.5rem;
+           }
+
+           .overlay-title {
+               font-size: 2rem;
+               margin-bottom: 0.5rem;
+           }
+
+           .overlay-message {
+               font-size: 1rem;
+               margin-bottom: 1rem;
+           }
+
+           .cashout-btn {
+               padding: 0.5rem 1.5rem;
+               font-size: 1rem;
+           }
+       }
+
+       @media (max-width: 600px) {
+           .path-circle {
+               width: 25px;
+               height: 25px;
+               font-size: 0.8rem;
+           }
+
+           .chicken {
+               width: 35px;
+               height: 35px;
+           }
+
+           .chicken-path {
+               height: 80px;
+           }
+
+           .overlay-title {
+               font-size: 1.8rem;
+           }
+
+           .overlay-message {
+               font-size: 0.9rem;
+           }
+
+           .game-title {
+               font-size: 1.8rem;
+           }
+       }
+   </style>
+</head>
+
+<body>
+   <div class="game-container">
+       <div class="game-header">
+           <h1 class="game-title">Chicken Run</h1>
+           <p class="game-subtitle">How far will you dare to go?</p>
+           <div class="coin-tracker">
+               <div class="coin-icon"></div>
+               <span class="coin-amount" id="coinDisplay">0</span>
+           </div>
+       </div>
+
+       <div class="game-board">
+           <canvas id="game-canvas"></canvas>
+           <div id="chicken-run-container" style="display: none;">
+               <div class="game-info" id="game-info">
+                   Click the next circle to move forward. Each step earns 100 coins but has a 50% chance of failure!
+               </div>
+               
+               <div class="current-earning" id="current-earning">Current: 0 coins</div>
+               
+               <div class="chicken-path" id="chicken-path">
+                   <!-- Path circles will be created by JavaScript -->
+                   <div class="chicken" id="chicken"></div>
+                   <div class="blood-splatter" id="blood-splatter"></div>
+               </div>
+               
+               <div class="game-actions">
+                   <button id="cashout-btn" class="cashout-btn" disabled>Cash Out</button>
+               </div>
+           </div>
+
+           <!-- Start Screen Overlay -->
+           <div class="game-overlay visible" id="start-screen">
+               <div class="overlay-content">
+                   <h2 class="overlay-title">Chicken Run</h2>
+                   <p class="overlay-message">
+                       Test your luck with the brave chicken!<br>
+                       Each step earns you 100 coins but has a 50% chance of failing.<br>
+                       You can cash out anytime to keep your earnings.<br>
+                       If you reach the 10th circle, your earnings are doubled!
+                   </p>
+                   <button id="start-btn" class="game-btn">Start Game</button>
+               </div>
+           </div>
+
+           <!-- Game Result Overlay -->
+           <div class="game-overlay" id="result-screen">
+               <div class="overlay-content">
+                   <h2 class="overlay-title" id="result-title">Chicken Died!</h2>
+                   <p class="overlay-message" id="result-message">
+                       You lost! The chicken didn't make it...<br>
+                       Better luck next time!
+                   </p>
+                   <button id="play-again-btn" class="game-btn">Play Again</button>
+               </div>
+           </div>
+       </div>
+
+       <div class="controls">
+           <button id="back-btn" class="restart-btn">Back to Beta Games</button>
+       </div>
+   </div>
+
+   <!-- Firebase SDK -->
+   <script type="module">
+       // Firebase Imports
+       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+       import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+       import { getFirestore, doc, getDoc, updateDoc, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+
+       // Firebase Configuration - UPDATED
+       const firebaseConfig = {
+           apiKey: "AIzaSyCkAp_GCGCtw4zv7GgHJOE9GPgIaPEuOvQ",
+           authDomain: "void-games-c8d9e.firebaseapp.com",
+           projectId: "void-games-c8d9e",
+           storageBucket: "void-games-c8d9e.firebasestorage.app",
+           messagingSenderId: "1063089929776",
+           appId: "1:1063089929776:web:8e226a23a4f3ab9c5777f5"
+       };
+
+       // Initialize Firebase
+       const app = initializeApp(firebaseConfig);
+       const auth = getAuth(app);
+       const db = getFirestore(app);
+
+       // Authentication and Coin Management
+       let currentUser = null;
+       let firebaseCoinBalance = 0;
+       window.transactionInProgress = false; // Add transaction lock
+
+       // Authentication State Listener
+       onAuthStateChanged(auth, async (user) => {
+           if (user) {
+               // User is signed in
+               currentUser = user;
+               console.log("User signed in:", user.uid);
+               await loadFirebaseCoinBalance();
+           } else {
+               // No user is signed in - use default balance
+               currentUser = null;
+               console.log("No user signed in, using default balance");
+               window.coinBalance = 1000; // Default fallback
+               window.updateCoinDisplay();
+           }
+       });
+
+       // Load Coin Balance from Firebase
+       async function loadFirebaseCoinBalance() {
+           if (!currentUser) {
+               console.log("No user available to load balance");
+               return;
+           }
+
+           try {
+               console.log("Loading balance for user:", currentUser.uid);
+
+               // Use currentUser.uid and force server data retrieval
+               const userRef = doc(db, 'users', currentUser.uid);
+               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
+
+               if (userDoc.exists()) {
+                   // Get coin balance from Firestore
+                   const userData = userDoc.data();
+
+                   // IMPORTANT: Use accountBalance field for consistency with main page
+                   firebaseCoinBalance = userData.accountBalance || 0;
+
+                   console.log("Loaded balance from Firebase:", firebaseCoinBalance);
+
+                   // Update local coin display and game state
+                   window.coinBalance = firebaseCoinBalance;
+                   
+                   // Update UI and game state
+                   if (typeof updateCoinDisplay === 'function') {
+                       updateCoinDisplay();
+                   } else if (window.updateCoinDisplay) {
+                       window.updateCoinDisplay();
+                   } else {
+                       console.error("updateCoinDisplay function not found");
+                       if (coinDisplay) {
+                           coinDisplay.textContent = window.coinBalance.toLocaleString();
+                       }
+                   }
+
+                   console.log("Updated local balance:", window.coinBalance);
+                   return firebaseCoinBalance;
+               } else {
+                   console.log("User document doesn't exist, creating new one");
+                   // Create initial balance if no document exists
+                   await setDoc(userRef, { 
+                     accountBalance: 1000,
+                     username: currentUser.displayName || "Player",
+                     email: currentUser.email,
+                     createdAt: new Date(),
+                     totalGamesPlayed: 0,
+                     totalMoneySpent: 0,
+                     totalMoneyEarned: 0
+                   });
+
+                   firebaseCoinBalance = 1000;
+                   window.coinBalance = 1000;
+                   window.updateCoinDisplay();
+                   return 1000;
+               }
+           } catch (error) {
+               console.error("Error loading coin balance:", error);
+               window.coinBalance = 1000; // Default fallback
+               window.updateCoinDisplay();
+               return 0;
+           }
+       }
+
+       // Update Coin Balance in Firebase
+       async function updateFirebaseCoinBalance(newBalance) {
+           if (!currentUser) {
+               console.log("No user available to update balance");
+               return false;
+           }
+
+           try {
+               console.log("Updating balance for user:", currentUser.uid, "New balance:", newBalance);
+
+               // Get the current document first to make sure we're updating the latest data
+               const userRef = doc(db, 'users', currentUser.uid);
+               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
+
+               if (!userDoc.exists()) {
+                   console.error("Cannot update non-existent user document");
+                   return false;
+               }
+
+               // Update with the exact same field format as the main page
+               await updateDoc(userRef, { 
+                   accountBalance: newBalance 
+               });
+
+               firebaseCoinBalance = newBalance;
+               console.log("Firebase balance updated successfully");
+
+               return true;
+           } catch (error) {
+               console.error("Error updating coin balance:", error);
+               return false;
+           }
+       }
+
+       // Record Game Transaction with transaction lock for better tracking
+       async function recordGameTransaction(gameId, amount, isWin) {
+           if (!currentUser) return;
+
+           try {
+               console.log(`Recording transaction: ${isWin ? 'win' : 'play'} for ${Math.abs(amount)} coins`);
+               
+               // Set a transaction lock to prevent duplicate updates
+               if (window.transactionInProgress) {
+                   console.log("Transaction already in progress, waiting...");
+                   await new Promise(resolve => setTimeout(resolve, 300));
+               }
+               
+               window.transactionInProgress = true;
+               
+               try {
+                   // Create transaction record with consistent data format
+                   const transactionRef = doc(collection(db, 'transactions'));
+                   await setDoc(transactionRef, {
+                       userId: currentUser.uid,
+                       gameId: gameId,
+                       transactionType: isWin ? 'game_win' : 'game_play',
+                       amount: Math.abs(amount),
+                       timestamp: new Date()
+                   });
+
+                   // Get latest user data from server
+                   const userRef = doc(db, 'users', currentUser.uid);
+                   const userDoc = await getDoc(userRef, { source: 'server' });
+
+                   if (userDoc.exists()) {
+                       const userData = userDoc.data();
+                       let updatedBalance = userData.accountBalance || 0;
+
+                       // Calculate new balance
+                       if (isWin) {
+                           updatedBalance += amount;
+                           console.log(`Adding ${amount} coins, new balance: ${updatedBalance}`);
+                           userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
+                       } else {
+                           updatedBalance -= Math.abs(amount);
+                           console.log(`Removing ${Math.abs(amount)} coins, new balance: ${updatedBalance}`);
+                           userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
+                           userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
+                       }
+
+                       // Update firebase and local state consistently
+                       await updateDoc(userRef, {
+                           accountBalance: updatedBalance,
+                           totalGamesPlayed: userData.totalGamesPlayed || 0,
+                           totalMoneySpent: userData.totalMoneySpent || 0,
+                           totalMoneyEarned: userData.totalMoneyEarned || 0,
+                           lastUpdated: new Date() // Add timestamp for tracking
+                       });
+
+                       // Make sure local state is synced with Firebase
+                       window.coinBalance = updatedBalance;
+                       firebaseCoinBalance = updatedBalance;
+
+                       // Update display
+                       window.updateCoinDisplay();
+
+                       return {
+                           transactionId: transactionRef.id,
+                           newBalance: updatedBalance
+                       };
+                   }
+               } finally {
+                   // Always release transaction lock
+                   window.transactionInProgress = false;
+               }
+           } catch (error) {
+               console.error("Transaction Error:", error);
+               window.transactionInProgress = false; // Make sure lock is released
+           }
+       }
+
+       // Attach functions to window for game script access
+       window.loadFirebaseCoinBalance = loadFirebaseCoinBalance;
+       window.updateFirebaseCoinBalance = updateFirebaseCoinBalance;
+       window.recordGameTransaction = recordGameTransaction;
+   </script>
+
+   <script>
+// Game Configuration
+window.coinBalance = 1000; // Initialize at the top level before any other code runs
+
+const GAME_CONFIG = {
+    earnPerStep: 100,     // Coins earned per successful step
+    gameId: 'chicken_run_game', // ID for Firebase transactions
+    maxSteps: 10,         // Total number of steps/circles
+    successRate: 0.5,     // 50% chance of success
+    doubleAtEnd: true     // Double earnings if player reaches the end
+};
+
+// Game state
+let canvas, ctx;
+let canvasWidth, canvasHeight;
+let animationFrame;
+let gameActive = false;
+let currentPosition = -1; // -1 means chicken is at the starting position
+let currentEarnings = 0;  // Current earnings this round
+let animationInProgress = false; // Flag to prevent multiple clicks during animations
+
+// DOM elements - will initialize these after DOM is loaded
+let coinDisplay;
+let startScreen;
+let resultScreen;
+let startBtn;
+let playAgainBtn;
+let backBtn;
+let cashoutBtn;
+let chickenRunContainer;
+let gameInfo;
+let chicken;
+let bloodSplatter;
+let chickenPath;
+let currentEarningDisplay;
+let resultTitle;
+let resultMessage;
+let circles = []; // Will hold references to the circle elements
+
+// Helper function to clear all timeouts
+function clearAllTimeouts() {
+    // Create a very large number (bigger than any reasonable timeout id)
+    const highestTimeoutId = setTimeout(() => {}, 0);
+    
+    // Clear all timeout IDs from 0 to the highest one
+    for (let i = 0; i < highestTimeoutId; i++) {
+        clearTimeout(i);
+    }
+}
+
+// Initialize DOM elements
+function initDomElements() {
+    coinDisplay = document.getElementById('coinDisplay');
+    startScreen = document.getElementById('start-screen');
+    resultScreen = document.getElementById('result-screen');
+    startBtn = document.getElementById('start-btn');
+    playAgainBtn = document.getElementById('play-again-btn');
+    backBtn = document.getElementById('back-btn');
+    cashoutBtn = document.getElementById('cashout-btn');
+    chickenRunContainer = document.getElementById('chicken-run-container');
+    gameInfo = document.getElementById('game-info');
+    chicken = document.getElementById('chicken');
+    bloodSplatter = document.getElementById('blood-splatter');
+    chickenPath = document.getElementById('chicken-path');
+    currentEarningDisplay = document.getElementById('current-earning');
+    resultTitle = document.getElementById('result-title');
+    resultMessage = document.getElementById('result-message');
+}
+
+// Update coin display
+function updateCoinDisplay() {
+    if (coinDisplay) {
+        coinDisplay.textContent = window.coinBalance.toLocaleString();
+    }
+}
+
+// Make updateCoinDisplay available globally
+window.updateCoinDisplay = updateCoinDisplay;
+
+// Update current earnings display
+function updateCurrentEarnings() {
+    if (currentEarningDisplay) {
+        currentEarningDisplay.textContent = `Current: ${currentEarnings.toLocaleString()} coins`;
+    }
+}
+
+// Update coin balance - Using only recordTransaction to update Firebase
+function updateCoins(amount, isWin = true) {
+    // Calculate the new balance
+    const newBalance = window.coinBalance + amount;
+    window.coinBalance = newBalance;
+    
+    // Update the display
+    updateCoinDisplay();
+
+    // Only use recordGameTransaction which properly handles balance updates
+    if (window.recordGameTransaction) {
+        // If amount is positive, it's a win, otherwise it's a play cost
+        window.recordGameTransaction(GAME_CONFIG.gameId, amount, isWin);
+    } else if (window.updateFirebaseCoinBalance) {
+        // Fallback only if recordGameTransaction is not available
+        window.updateFirebaseCoinBalance(newBalance);
+    }
+}
+
+// Initialize canvas for background
+function initCanvas() {
+    canvas = document.getElementById('game-canvas');
+    if (!canvas) {
+        console.error("Canvas element not found!");
+        return;
+    }
+
+    ctx = canvas.getContext('2d');
+
+    const gameBoard = document.querySelector('.game-board');
+    if (!gameBoard) {
+        console.error("Game board element not found!");
+        return;
+    }
+
+    // Get actual dimensions of the game board
+    canvasWidth = gameBoard.clientWidth;
+    canvasHeight = gameBoard.clientHeight;
+
+    // Set canvas dimensions
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    canvas.style.width = canvasWidth + "px";
+    canvas.style.height = canvasHeight + "px";
+}
+
+// Create circles for the chicken path
+function createCircles() {
+    // Clear previous circles
+    chickenPath.innerHTML = '';
+    
+    // Add chicken and blood splatter back
+    chickenPath.appendChild(chicken);
+    chickenPath.appendChild(bloodSplatter);
+    
+    circles = [];
+    
+    // Create lines and circles
+    for (let i = 0; i < GAME_CONFIG.maxSteps; i++) {
+        // Create circle
+        const circle = document.createElement('div');
+        circle.className = 'path-circle';
+        circle.dataset.position = i;
+        circle.textContent = i + 1;
+        
+        // Calculate left position
+        const leftPos = (i + 1) * (100 / (GAME_CONFIG.maxSteps + 1));
+        circle.style.position = 'absolute';
+        circle.style.left = `${leftPos}%`;
+        
+        // Add click handler
+        circle.addEventListener('click', handleCircleClick);
+        
+        chickenPath.appendChild(circle);
+        circles.push(circle);
+        
+        // Create connecting line (except for last circle)
+        if (i < GAME_CONFIG.maxSteps - 1) {
+            const line = document.createElement('div');
+            line.className = 'path-line';
+            chickenPath.appendChild(line);
+        }
+    }
+}
+
+// Handle circle click
+function handleCircleClick(event) {
+    const clickedPosition = parseInt(event.target.dataset.position);
+    
+    // Only allow clicking the next position and only if animation is not in progress
+    if (clickedPosition !== currentPosition + 1 || animationInProgress) {
+        return;
+    }
+    
+    // Set animation flag
+    animationInProgress = true;
+    
+    // Determine if the move is successful (50% chance)
+    const isSuccessful = Math.random() < GAME_CONFIG.successRate;
+    
+    if (isSuccessful) {
+        // Move successful
+        moveChicken(clickedPosition);
+        
+        // Update current position
+        currentPosition = clickedPosition;
+        
+        // Update earnings
+        currentEarnings += GAME_CONFIG.earnPerStep;
+        updateCurrentEarnings();
+        
+        // Mark circle as active
+        for (let i = 0; i < circles.length; i++) {
+            if (i === clickedPosition) {
+                circles[i].classList.add('active');
+            } else {
+                circles[i].classList.remove('active');
+            }
+        }
+        
+        // Check if reached the end
+        if (clickedPosition === GAME_CONFIG.maxSteps - 1) {
+            // Player reached the end!
+            setTimeout(() => {
+                // Double earnings if configured
+                if (GAME_CONFIG.doubleAtEnd) {
+                    currentEarnings *= 2;
+                }
+                
+                // Show victory screen
+                showVictoryScreen();
+                
+                // Add earnings to balance
+                updateCoins(currentEarnings, true);
+                
+                // Reset animation flag
+                animationInProgress = false;
+            }, 500);
+        } else {
+            // Enable cashout button after first successful move
+            if (cashoutBtn) {
+                cashoutBtn.disabled = false;
+            }
+            
+            // Update game info
+            if (gameInfo) {
+                gameInfo.textContent = `Success! Move to the next circle or cash out now with ${currentEarnings.toLocaleString()} coins.`;
+            }
+            
+            // Reset animation flag
+            animationInProgress = false;
+        }
+    } else {
+        // Move failed - chicken dies!
+        killChicken(clickedPosition);
+        
+        // Update game info
+        if (gameInfo) {
+            gameInfo.textContent = "Oh no! The chicken didn't make it...";
+        }
+        
+        // Show death screen after animation
+        setTimeout(() => {
+            showDeathScreen();
+            animationInProgress = false;
+        }, 1000);
+    }
+}
+
+// Move chicken to the specified position
+function moveChicken(position) {
+    if (!chicken) return;
+    
+    // Calculate new left position based on the circle's position
+    const leftPos = (position + 1) * (100 / (GAME_CONFIG.maxSteps + 1));
+    chicken.style.left = `${leftPos}%`;
+}
+
+// Kill the chicken at the specified position
+function killChicken(position) {
+    if (!chicken || !bloodSplatter) return;
+    
+    // Calculate position for death animation
+    const leftPos = (position + 1) * (100 / (GAME_CONFIG.maxSteps + 1));
+    
+    // Move chicken to the position
+    chicken.style.left = `${leftPos}%`;
+    
+    // Add death class
+    chicken.classList.add('chicken-dead');
+    
+    // Position and show blood splatter
+    bloodSplatter.style.left = `${leftPos}%`;
+    bloodSplatter.style.top = '50%';
+    bloodSplatter.classList.add('active');
+    
+    // Mark circle as danger
+    if (circles[position]) {
+        circles[position].classList.add('danger');
+    }
+}
+
+// Cash out the current earnings
+function cashout() {
+    if (currentEarnings <= 0 || !gameActive) {
+        return;
+    }
+    
+    // Update game info
+    if (gameInfo) {
+        gameInfo.textContent = `Cashed out with ${currentEarnings.toLocaleString()} coins. Well played!`;
+    }
+    
+    // Add earnings to balance
+    updateCoins(currentEarnings, true);
+    
+    // Show cashout screen
+    showCashoutScreen();
+}
+
+// Show victory screen
+function showVictoryScreen() {
+    if (!resultScreen || !resultTitle || !resultMessage) {
+        console.error("Result screen elements not found!");
+        return;
+    }
+    
+    // Set the result screen content
+    resultTitle.textContent = "Victory!";
+    resultTitle.className = "overlay-title win";
+    
+    // Update message
+    resultMessage.innerHTML = `You reached the end!<br>
+        Your earnings have been doubled!<br>
+        You won: <span class="win-amount">${currentEarnings.toLocaleString()}</span> coins`;
+    
+    // Make result screen visible
+    resultScreen.style.display = 'flex';
+    resultScreen.classList.add('visible');
+    
+    // End the game
+    gameActive = false;
+}
+
+// Show death screen
+function showDeathScreen() {
+    if (!resultScreen || !resultTitle || !resultMessage) {
+        console.error("Result screen elements not found!");
+        return;
+    }
+    
+    // Set the result screen content
+    resultTitle.textContent = "Chicken Died!";
+    resultTitle.className = "overlay-title lose";
+    
+    // Update message
+    resultMessage.innerHTML = `The chicken didn't make it!<br>
+        You made it to position ${currentPosition + 1} of ${GAME_CONFIG.maxSteps}.<br>
+        You lost everything.`;
+    
+    // Make result screen visible
+    resultScreen.style.display = 'flex';
+    resultScreen.classList.add('visible');
+    
+    // End the game
+    gameActive = false;
+}
+
+// Show cashout screen
+function showCashoutScreen() {
+    if (!resultScreen || !resultTitle || !resultMessage) {
+        console.error("Result screen elements not found!");
+        return;
+    }
+    
+    // Set the result screen content
+    resultTitle.textContent = "Cashed Out!";
+    resultTitle.className = "overlay-title win";
+    
+    // Update message
+    resultMessage.innerHTML = `Smart move!<br>
+        You made it to position ${currentPosition + 1} of ${GAME_CONFIG.maxSteps}.<br>
+        You won: <span class="win-amount">${currentEarnings.toLocaleString()}</span> coins`;
+    
+    // Make result screen visible
+    resultScreen.style.display = 'flex';
+    resultScreen.classList.add('visible');
+    
+    // End the game
+    gameActive = false;
+}
+
+// Complete game reset
+function resetGame() {
+    // Reset game state
+    gameActive = false;
+    currentPosition = -1;
+    currentEarnings = 0;
+    animationInProgress = false;
+    
+    // Cancel any animation frames
+    if (animationFrame) {
+        cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+    }
+    
+    // Reset displays
+    updateCurrentEarnings();
+    
+    // Hide game elements
+    if (chickenRunContainer) {
+        chickenRunContainer.style.display = 'none';
+    }
+    
+    // Reset chicken
+    if (chicken) {
+        chicken.style.left = '10px'; // Starting position
+        chicken.classList.remove('chicken-dead');
+    }
+    
+    // Reset blood splatter
+    if (bloodSplatter) {
+        bloodSplatter.classList.remove('active');
+    }
+    
+    // Hide result screen if visible
+    if (resultScreen) {
+        resultScreen.classList.remove('visible');
+    }
+    
+    // Disable cashout button
+    if (cashoutBtn) {
+        cashoutBtn.disabled = true;
+    }
+    
+    // Show start screen
+    if (startScreen) {
+        startScreen.classList.add('visible');
+    }
+    
+    try {
+        // Clear any pending timeouts
+        if (typeof clearAllTimeouts === 'function') {
+            clearAllTimeouts();
+        }
+    } catch (e) {
+        console.log("Error clearing timeouts:", e);
+    }
+}
+
+// Initialize game
+function initGame() {
+    // Reset for new game
+    gameActive = true;
+    currentPosition = -1;
+    currentEarnings = 0;
+    animationInProgress = false;
+    
+    // Update current earnings display
+    updateCurrentEarnings();
+    
+    // Hide start screen
+    startScreen.classList.remove('visible');
+    
+    // Create circles
+    createCircles();
+    
+    // Show game container
+    if (chickenRunContainer) {
+        chickenRunContainer.style.display = 'flex';
+    }
+    
+    // Reset chicken to starting position
+    if (chicken) {
+        chicken.style.left = '10px';
+        chicken.classList.remove('chicken-dead');
+    }
+    
+    // Reset blood splatter
+    if (bloodSplatter) {
+        bloodSplatter.classList.remove('active');
+    }
+    
+    // Disable cashout button until first move
+    if (cashoutBtn) {
+        cashoutBtn.disabled = true;
+    }
+    
+    // Update game info
+    if (gameInfo) {
+        gameInfo.textContent = "Click the first circle to start. Each step has a 50% chance of success!";
+    }
+    
+    // Start game loop for background effects
+    window.cancelAnimationFrame(animationFrame);
+    gameLoop();
+}
+
+// Draw stars in background
+function drawStars() {
+    if (!ctx || !canvas) return;
+    
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    ctx.fillStyle = '#FFFFFF';
+    
+    for (let i = 0; i < 100; i++) {
+        // Create a deterministic but varied star pattern
+        const seed = i * 12437; // Large prime number
+        const x = (seed % canvasWidth) % canvasWidth;
+        const y = (seed * 23 % canvasHeight) % canvasHeight;
+        
+        // Vary the star sizes
+        const size = (i % 3) + 1;
+        
+        // Make stars twinkle
+        const alpha = 0.3 + 0.7 * Math.sin(Date.now() * 0.001 + i);
+        
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    ctx.globalAlpha = 1.0;
+}
+
+// Game loop
+function gameLoop() {
+    // Draw background
+    drawStars();
+    
+    // Continue game loop
+    animationFrame = requestAnimationFrame(gameLoop);
+}
+
+// Initialize game after DOM is fully loaded
+function initializeGame() {
+    // Initialize DOM elements
+    initDomElements();
+    
+    // Initialize canvas
+    initCanvas();
+    
+    // Setup event listeners
+    setupEventListeners();
+    
+    // Initial reset
+    resetGame();
+    
+    // Initialize with default coin balance and check Firebase
+    if (window.loadFirebaseCoinBalance) {
+        window.loadFirebaseCoinBalance().then(() => {
+            updateCoinDisplay();
+        });
+    } else {
+        window.coinBalance = 1000; // Default fallback
+        updateCoinDisplay();
+    }
+}
+
+// Setup event listeners
+function setupEventListeners() {
+    // Start button
+    if (startBtn) {
+        startBtn.addEventListener('click', function() {
+            initGame();
+        });
+    }
+    
+    // Play again button
+    if (playAgainBtn) {
+        playAgainBtn.addEventListener('click', function() {
+            if (resultScreen) {
+                resultScreen.classList.remove('visible');
+                setTimeout(() => {
+                    resetGame();
+                }, 300); // Give time for fade-out animation
+            } else {
+                resetGame();
+            }
+        });
+    }
+    
+    // Back button
+    if (backBtn) {
+        backBtn.addEventListener('click', function() {
+            window.location.href = '/voidgms.html';
+        });
+    }
+    
+    // Cashout button
+    if (cashoutBtn) {
+        cashoutBtn.addEventListener('click', function() {
+            if (!cashoutBtn.disabled && gameActive) {
+                cashout();
+            }
+        });
+    }
+    
+    // Add resize event listener
+    window.addEventListener('resize', function() {
+        initCanvas();
+        if (gameActive) {
+            drawStars();
+        }
+    });
+}
+
+// Initialize the game after DOM is fully loaded
+document.addEventListener('DOMContentLoaded', function() {
+    initializeGame();
+    
+    // Make doubly sure the result screen is initially hidden
+    const resultScreen = document.getElementById('result-screen');
+    if (resultScreen) {
+        resultScreen.classList.remove('visible');
+    }
+});
+   </script>
+</body>
+</html>
