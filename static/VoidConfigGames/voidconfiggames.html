@@ -3,102 +3,522 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Void Network Admin Console</title>
+    <title>Void Network Games</title>
+    <link rel="shortcut icon" href="./assets/favicon.png" type="image/png">
+    
     <style>
-        body {
-            background-color: #000;
-            color: #0f0;
-            font-family: monospace;
-            padding: 20px;
+        * {
             margin: 0;
-        }
-        #terminal {
-            width: 100%;
-            height: 80vh;
-            background-color: #111;
-            border: 1px solid #0f0;
-            padding: 10px;
-            overflow-y: auto;
-            white-space: pre-wrap;
+            padding: 0;
             box-sizing: border-box;
         }
-        #commandInput {
+
+        body, html {
+            margin: 0;
+            padding: 0;
             width: 100%;
-            background-color: #111;
-            color: #0f0;
-            border: 1px solid #0f0;
-            padding: 10px;
-            margin-top: 10px;
-            font-family: monospace;
-            box-sizing: border-box;
+            height: 100%;
+            background: #000;
+            color: #fff;
+            font-family: 'Arial', sans-serif;
+            overflow-x: hidden;
         }
-        .success {
-            color: #0f0;
+
+        .header-container {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding: 1rem;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
         }
-        .error {
-            color: #f00;
+
+        #profile-icon {
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s ease;
         }
-        .info {
-            color: #0ff;
+
+        #profile-icon:hover {
+            background: rgba(255, 255, 255, 0.2);
         }
-        .warning {
-            color: #ff0;
+
+        #profile-icon svg {
+            width: 24px;
+            height: 24px;
+            fill: #fff;
         }
-        #loginForm {
-            background-color: #111;
-            border: 1px solid #0f0;
-            padding: 20px;
-            margin: 20px auto;
-            max-width: 400px;
+
+        #auth-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 30px;
+            width: 350px;
+            max-width: 90%;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: none;
             text-align: center;
         }
-        input[type="email"], input[type="password"] {
+
+        #auth-container input {
             width: 100%;
-            background-color: #111;
-            color: #0f0;
-            border: 1px solid #0f0;
             padding: 10px;
             margin: 10px 0;
-            font-family: monospace;
-            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            border-radius: 5px;
+            transition: all 0.3s ease;
         }
-        button {
-            background-color: #111;
-            color: #0f0;
-            border: 1px solid #0f0;
-            padding: 10px 20px;
-            margin-top: 10px;
-            font-family: monospace;
+
+        #auth-container input:focus {
+            outline: none;
+            border-color: #4a4a4a;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+        }
+
+        #auth-container button {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            border: none;
+            border-radius: 5px;
             cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
         }
-        button:hover {
-            background-color: #0f0;
-            color: #111;
+
+        #auth-container button:hover {
+            background: rgba(255, 255, 255, 0.3);
         }
-        .hidden {
-            display: none;
+
+        #user-profile {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        #user-profile h3 {
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        /* Leaderboard Styles */
+        .leaderboard-container {
+            position: fixed;
+            left: 25px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 280px;
+            z-index: 2;
+            pointer-events: auto;
+        }
+
+        .leaderboard-box {
+            background: #000;
+            border-radius: 10px;
+            padding: 2px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 
+                0 0 2px #fff,
+                0 0 4px #fff,
+                0 0 6px #fff,
+                0 0 8px #fff,
+                inset 0 0 2px rgba(255, 255, 255, 0.2);
+        }
+
+        .leaderboard-box::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            background: #fff;
+            border-radius: 10px;
+            z-index: -1;
+            box-shadow: 
+                0 0 15px #fff,
+                0 0 30px rgba(255, 255, 255, 0.8),
+                0 0 40px rgba(255, 255, 255, 0.6),
+                0 0 50px rgba(255, 255, 255, 0.4);
+            opacity: 0.5;
+        }
+
+        .leaderboard-title {
+            padding: 15px 10px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 1.3rem;
+            background: linear-gradient(45deg, #fff, #a0a0a0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: bold;
+        }
+
+        .leaderboard-list {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .leaderboard-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .leaderboard-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateX(2px);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .leaderboard-rank {
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: bold;
+            margin-right: 8px;
+            min-width: 25px;
+        }
+
+        .leaderboard-username {
+            flex-grow: 1;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .leaderboard-balance {
+            font-size: 0.9rem;
+            color: #FFD700;
+            font-weight: bold;
+            margin-left: 5px;
+        }
+
+        .leaderboard-loading {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.5);
+            padding: 20px 0;
+        }
+
+        .leaderboard-updated {
+            animation: leaderboard-pulse 1s ease;
+        }
+
+        .leaderboard-error {
+            text-align: center;
+            color: #ff6b6b;
+            padding: 20px 0;
+        }
+
+        @keyframes leaderboard-pulse {
+            0% { background-color: rgba(255, 215, 0, 0.3); }
+            100% { background-color: rgba(255, 255, 255, 0.05); }
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 1rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .games-box {
+            background: #000;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 1000px;
+            height: 70vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            padding: 2px;
+            box-shadow: 
+                0 0 2px #fff,
+                0 0 4px #fff,
+                0 0 6px #fff,
+                0 0 8px #fff,
+                inset 0 0 2px rgba(255, 255, 255, 0.2);
+        }
+
+        .games-box::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            background: #fff;
+            border-radius: 10px;
+            z-index: -1;
+            box-shadow: 
+                0 0 15px #fff,
+                0 0 30px rgba(255, 255, 255, 0.8),
+                0 0 40px rgba(255, 255, 255, 0.6),
+                0 0 50px rgba(255, 255, 255, 0.4);
+            opacity: 0.5;
+        }
+
+        .games-header {
+            padding: 1.5rem;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            z-index: 1;
+        }
+
+        .site-title {
+            font-size: 2.5rem;
+            margin: 0 0 0.5rem 0;
+            background: linear-gradient(45deg, #fff, #a0a0a0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: bold;
+        }
+
+        .games-title {
+            font-size: 1.2rem;
+            margin: 0.5rem 0;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        #searchApps {
+            width: 80%;
+            max-width: 400px;
+            padding: 0.8rem 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            margin: 1rem auto 0 auto;
+            display: block;
+        }
+
+        #searchApps:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        #searchApps::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .games-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 1rem;
+            padding: 1.5rem;
+            overflow-y: auto;
+            flex-grow: 1;
+            position: relative;
+            z-index: 1;
+        }
+
+        .games-grid::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .games-grid::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            margin: 4px;
+            border-radius: 4px;
+        }
+
+        .games-grid::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        .games-grid::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .game-item {
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .game-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .game-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .game-title {
+            font-size: 0.9rem;
+            color: #fff;
+            margin: 0;
+            font-weight: normal;
+            transition: all 0.3s ease;
+        }
+
+        .game-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .game-item:hover .game-title {
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 992px) {
+            .leaderboard-container {
+                position: fixed;
+                left: 15px;
+                width: 240px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .games-box {
+                width: 95%;
+                height: 80vh;
+            }
+            
+            .games-grid {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+                padding: 1rem;
+            }
+            
+            .game-icon {
+                width: 48px;
+                height: 48px;
+            }
+            
+            .game-title {
+                font-size: 0.8rem;
+            }
+            
+            .site-title {
+                font-size: 2rem;
+            }
+
+            #auth-container {
+                width: 90%;
+                max-width: 350px;
+            }
+            
+            .leaderboard-container {
+                width: 200px;
+            }
         }
     </style>
 </head>
 <body>
-    <div id="loginForm">
-        <h2>Void Network Admin Login</h2>
-        <input type="email" id="emailInput" placeholder="ADMIN" value="ADMIN" autofocus>
-        <input type="password" id="passwordInput" placeholder="Password">
-        <button id="loginButton">Login</button>
-        <div id="loginMessage" class="error hidden"></div>
+    <!-- Header with Profile Icon -->
+    <div class="header-container">
+        <div id="profile-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+            </svg>
+        </div>
     </div>
 
-    <div id="adminConsole" class="hidden">
-        <div id="terminal"></div>
-        <input type="text" id="commandInput" placeholder="Enter command...">
+    <!-- Authentication Container -->
+    <div id="auth-container">
+        <div id="user-profile" style="display:none;">
+            <h3>Welcome, <span id="username-display"></span>!</h3>
+            <p>Coins: <span id="balance-display">0</span></p>
+            <button id="logout-btn">Logout</button>
+        </div>
+
+        <div id="login-form">
+            <h3>Login</h3>
+            <input type="email" id="login-email" placeholder="Email">
+            <input type="password" id="login-password" placeholder="Password">
+            <button id="login-btn">Login</button>
+        </div>
+        
+        <div id="register-form">
+            <h3>Register</h3>
+            <input type="text" id="register-username" placeholder="Username">
+            <input type="email" id="register-email" placeholder="Email">
+            <input type="password" id="register-password" placeholder="Password">
+            <button id="register-btn">Register</button>
+        </div>
     </div>
-    
+
+    <!-- Leaderboard Container (positioned with CSS) -->
+    <div class="leaderboard-container">
+        <div class="leaderboard-box">
+            <h2 class="leaderboard-title">Top Players</h2>
+            <div class="leaderboard-list" id="leaderboardList">
+                <div class="leaderboard-loading">Loading top players...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="games-box">
+            <div class="games-header">
+                <h1 class="site-title">Void Network</h1>
+                <h2 class="games-title">Void Games</h2>
+                <input type="text" id="searchApps" placeholder="Search void games...">
+            </div>
+            <div class="games-grid" id="gamesList"></div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
     <script type="module">
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, deleteUser } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-        import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, setDoc, query, limit, where, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, query, where, getDocs, orderBy, limit, onSnapshot } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration - UPDATED
         const firebaseConfig = {
@@ -112,1501 +532,610 @@
 
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        
-        // DOM Elements
-        const loginForm = document.getElementById('loginForm');
-        const emailInput = document.getElementById('emailInput');
-        const passwordInput = document.getElementById('passwordInput');
-        const loginButton = document.getElementById('loginButton');
-        const loginMessage = document.getElementById('loginMessage');
-        const adminConsole = document.getElementById('adminConsole');
-        const terminal = document.getElementById('terminal');
-        const commandInput = document.getElementById('commandInput');
-        
-        // Admin email constant - THE ONLY EMAIL ALLOWED TO ACCESS THE TERMINAL
-        const ADMIN_EMAIL = "six7588@gmail.com";
-        
-        // Hardcoded known user IDs from Firebase Auth UI - with corrected spelling
-        const KNOWN_USERS = {
-            "KIsAtjOwRpdVDOL3VPrDBACSxdw1": "six7588@gmail.com",
-            "GU9JmuJistfcjKLwtJLmj5BELHs2": "nigatikler@gmail.com",
-            "mtl6j5MsEwYhfVfT1yw9JmrSfMV2": "1q2w3e4r5t6y7u8i9o0p@gmail.com",
-            "ku8A1MuC6jWJxEnPIb9nYCY2MnH2": "mjbalkovski@gmail.com", // Corrected spelling
-            "Ga450aQRGGMqUOgFVGs62fRnZ6l1": "svalenciarivera@isdkids.org",
-            "3qJsAc8TsbZzx0SZdfduH7ijLuP2": "dfsgdsgr@gamil.comsd",
-            "dcxtOHGcfrQ12XBrSz04MhQzEbq1": "shrey436@proton.me",
-            "44b4NFWyEnSPhCsofxMkbkIP1vt1": "gvrelectrodude@gmail.com",
-            "Wtc6hcUIzmORUJxJFc5nJVPgjRE2": "shrey150436@gmail.com",
-            "QC8YOG6kCNZTg5QMyIHnXZoJ0cH2": "unknown@example.com", // Added the unknown ID you mentioned
-            "mVXU2RP0DcMktvrK55qBM2fnMGq2": "six7588@gmail.com" // Added your current user ID
-        };
-        
-        // Add any possible spelling variations
-        const EMAIL_VARIATIONS = {
-            "mjbalkovsk@gmail.com": "mjbalkovski@gmail.com"
-        };
-        
-        // Reverse lookup for emails to IDs
-        const EMAIL_TO_ID = {};
-        for (const [id, email] of Object.entries(KNOWN_USERS)) {
-            EMAIL_TO_ID[email.toLowerCase()] = id;
-        }
-        
-        // Add variations to lookup
-        for (const [variation, original] of Object.entries(EMAIL_VARIATIONS)) {
-            if (EMAIL_TO_ID[original.toLowerCase()]) {
-                EMAIL_TO_ID[variation.toLowerCase()] = EMAIL_TO_ID[original.toLowerCase()];
-            }
-        }
-        
-        // Cache of username data and info
-        const userDataCache = {};
-        const usernameToIDMap = new Map();
-        
-        // Terminal output functions
-        function printToTerminal(message, className = '') {
-            const line = document.createElement('div');
-            line.textContent = message;
-            if (className) line.className = className;
-            terminal.appendChild(line);
-            terminal.scrollTop = terminal.scrollHeight;
-        }
-        
-        function printSuccess(message) {
-            printToTerminal(message, 'success');
-        }
-        
-        function printError(message) {
-            printToTerminal(message, 'error');
-        }
-        
-        function printInfo(message) {
-            printToTerminal(message, 'info');
-        }
-        
-        function printWarning(message) {
-            printToTerminal(message, 'warning');
-        }
-        
-        // Initialize admin console
-        function initConsole(userEmail, userId) {
-            printToTerminal('Void Network Admin Console v1.3');
-            printToTerminal('----------------------------------');
-            printToTerminal('Available commands:');
-            printToTerminal('help - Show available commands');
-            printToTerminal('list users - List all known users');
-            printToTerminal('<user ID> - Look up user by ID');
-            printToTerminal('<email> - Look up user by email');
-            printToTerminal('<username> - Look up user by username');
-            printToTerminal('<user ID/email> coin amount - Check coins');
-            printToTerminal('<user ID/email> add coins <amount> - Add coins');
-            printToTerminal('<user ID/email> remove coins <amount> - Remove coins');
-            printToTerminal('kick <email> - Delete account and user data');
-            printToTerminal('/maxcoins - Show top 3 users with most coins');
-            printToTerminal('search <query> - Search for users by partial username');
-            printToTerminal('refresh users - Check for new users and update database');
-            printToTerminal('refresh cache - Force reload all user data');
-            printToTerminal('----------------------------------');
-            printSuccess(`Authenticated as admin: ${userEmail}`);
-            printInfo(`Your user ID: ${userId}`);
-            printInfo('Ready for commands.');
-            
-            // Force full database load on startup
-            forceFullDatabaseLoad();
-        }
-        
-        // Login functionality
-        loginButton.addEventListener('click', async () => {
-            const email = emailInput.value.trim().toLowerCase();
-            const password = passwordInput.value;
-            
-            if (!email || !password) {
-                showLoginMessage('Please enter both email and password', true);
-                return;
-            }
-            
-            try {
-                // Check if email is the authorized admin
-                if (email !== ADMIN_EMAIL.toLowerCase()) {
-                    showLoginMessage('Access denied: Only ADMIN can access this console', true);
-                    return;
-                }
-                
-                // Try to sign in with Firebase Authentication
-                showLoginMessage('Authenticating...', false);
-                await signInWithEmailAndPassword(auth, email, password);
-                // Login successful, will be handled by onAuthStateChanged
-            } catch (error) {
-                console.error("Login error:", error);
-                showLoginMessage(`Login failed: ${error.message}`, true);
-            }
-        });
-        
-        // Show login message
-        function showLoginMessage(message, isError) {
-            loginMessage.textContent = message;
-            loginMessage.className = isError ? 'error' : 'info';
-            loginMessage.classList.remove('hidden');
-        }
-        
-        // Handle authentication state changes
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                // User is signed in
-                // Check if user email is authorized
-                if (user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-                    // Show access denied and keep login form visible
-                    showLoginMessage('Access denied: Only ADMIN can access this console', true);
-                    
-                    // Sign out the unauthorized user
-                    try {
-                        await auth.signOut();
-                    } catch (error) {
-                        console.error("Error signing out:", error);
-                    }
-                    return;
-                }
-                
-                // User is authorized, show admin console
-                loginForm.classList.add('hidden');
-                adminConsole.classList.remove('hidden');
-                
-                // Initialize the admin console
-                initConsole(user.email, user.uid);
-                
-                // Pre-load some user data and ensure all known users have documents
-                loadAllUsersData();
-            }
-        });
-        
-        // Function to refresh user data
-        async function refreshUserData() {
-            printInfo("Refreshing user data...");
-            
-            // Check each known user and create documents if needed
-            let created = 0;
-            let updated = 0;
-            
-            for (const [userId, email] of Object.entries(KNOWN_USERS)) {
-                try {
-                    const userRef = doc(db, 'users', userId);
-                    const userDoc = await getDoc(userRef);
-                    
-                    if (!userDoc.exists()) {
-                        // Create a new user document
-                        await setDoc(userRef, {
-                            email: email,
-                            accountBalance: 0,
-                            createdAt: new Date(),
-                            totalGamesPlayed: 0,
-                            totalMoneyEarned: 0,
-                            totalMoneySpent: 0
-                        });
-                        
-                        created++;
-                        printInfo(`Created user document for ${email} (${userId})`);
-                    } else {
-                        // Make sure the email field is up to date
-                        const userData = userDoc.data();
-                        if (!userData.email) {
-                            await updateDoc(userRef, { email: email });
-                            updated++;
-                        }
-                    }
-                    
-                    // Update the cache
-                    const updatedUserDoc = await getDoc(userRef);
-                    userDataCache[userId] = updatedUserDoc.data();
-                    
-                    // Map username if available
-                    if (userDataCache[userId].username) {
-                        usernameToIDMap.set(userDataCache[userId].username.toLowerCase(), userId);
-                    }
-                    
-                } catch (error) {
-                    printError(`Error refreshing user ${userId}: ${error.message}`);
-                }
-            }
-            
-            printSuccess(`Refresh complete. Created ${created} user documents, updated ${updated} users.`);
-        }
-        
-        // New function: Force a complete reload of all user data
-        async function forceFullDatabaseLoad() {
-            printInfo("🔄 Performing full database reload...");
-            
-            try {
-                // Clear existing caches to ensure fresh data
-                Object.keys(userDataCache).forEach(key => delete userDataCache[key]);
-                usernameToIDMap.clear();
-                
-                printInfo("Cache cleared, reloading all user data...");
-                
-                // Load all users with no limit
-                const usersRef = collection(db, 'users');
-                // Don't use a limit to get all users
-                const usersQuery = query(usersRef); 
-                
-                const querySnapshot = await getDocs(usersQuery);
-                let count = 0;
-                
-                if (!querySnapshot.empty) {
-                    printInfo(`Found ${querySnapshot.size} users in database, loading...`);
-                    
-                    querySnapshot.forEach((userDoc) => {
-                        const userData = userDoc.data();
-                        const userId = userDoc.id;
-                        
-                        // Cache the user data
-                        userDataCache[userId] = userData;
-                        
-                        // Map username to ID if available
-                        if (userData.username) {
-                            usernameToIDMap.set(userData.username.toLowerCase(), userId);
-                            // Also add without case sensitivity
-                            if (userData.username.toLowerCase() === 'freemoolah') {
-                                printSuccess(`✅ Found FreeMoolah user with ID: ${userId}`);
-                            }
-                        }
-                        
-                        count++;
-                    });
-                    
-                    printSuccess(`✅ Successfully loaded all ${count} users`);
-                    printInfo(`Username map now contains ${usernameToIDMap.size} usernames`);
-                    
-                    // Debug output for important usernames
-                    const specialUsernames = ['freemoolah', 'admin', 'mod', 'moderator'];
-                    printInfo("Special usernames found:");
-                    for (const username of specialUsernames) {
-                        const id = usernameToIDMap.get(username);
-                        if (id) {
-                            printSuccess(`✅ "${username}" is mapped to user ID: ${id}`);
-                        } else {
-                            printInfo(`"${username}" not found in database`);
-                        }
-                    }
-                } else {
-                    printWarning("Database query returned no users!");
-                }
-                
-                // Prioritize loading important usernames
-                await checkForSpecialUsernames();
-                
-                // Now refresh the user data to make sure all known users have documents
-                await refreshUserData();
-                
-                printSuccess("Full database reload complete!");
-                
-            } catch (error) {
-                printError(`Error during full database reload: ${error.message}`);
-                console.error("Full error:", error);
-                
-                // Emergency fallback - hardcode FreeMoolah if all else fails
-                printWarning("Applying emergency fallback for critical usernames...");
-                usernameToIDMap.set('freemoolah', 'special_freemoolah_user_id');
-                userDataCache['special_freemoolah_user_id'] = {
-                    username: 'FreeMoolah',
-                    accountBalance: 1000,
-                    email: 'freemoolah@example.com'
-                };
-            }
-        }
-        
-        // Helper function to preload all user data
-        async function loadAllUsersData() {
-            try {
-                printInfo("Loading user data in background...");
-                
-                // Try to directly list users - increased limit to 500
-                const usersRef = collection(db, 'users');
-                const usersQuery = query(usersRef, limit(500)); // Increased from 100 to 500
-                
-                try {
-                    const querySnapshot = await getDocs(usersQuery);
-                    let count = 0;
-                    
-                    if (!querySnapshot.empty) {
-                        printInfo(`Found ${querySnapshot.size} users (limited to 500), loading...`);
-                        
-                        querySnapshot.forEach((userDoc) => {
-                            const userData = userDoc.data();
-                            const userId = userDoc.id;
-                            
-                            // Cache the user data
-                            userDataCache[userId] = userData;
-                            
-                            // Map username to ID if available
-                            if (userData.username) {
-                                usernameToIDMap.set(userData.username.toLowerCase(), userId);
-                                // Special handling for FreeMoolah
-                                if (userData.username.toLowerCase() === 'freemoolah') {
-                                    printSuccess(`✅ Found FreeMoolah user with ID: ${userId}`);
-                                }
-                            }
-                            
-                            count++;
-                        });
-                    }
-                    
-                    printInfo(`Loaded data for ${count} users`);
-                    printInfo(`Username map contains ${usernameToIDMap.size} usernames`);
-                    
-                    // Check if we loaded the special username the user is looking for
-                    await checkForSpecialUsernames();
-                    
-                    // Now refresh the user data to make sure all known users have documents
-                    refreshUserData();
-                    
-                } catch (listError) {
-                    console.error("Error loading users:", listError);
-                    printWarning("Error loading users from database. Falling back to known users...");
-                    
-                    // Emergency fallback - hardcode FreeMoolah if all else fails
-                    printWarning("Adding emergency fallback for FreeMoolah...");
-                    usernameToIDMap.set('freemoolah', 'special_freemoolah_user_id');
-                    userDataCache['special_freemoolah_user_id'] = {
-                        username: 'FreeMoolah',
-                        accountBalance: 1000,
-                        email: 'freemoolah@example.com'
-                    };
-                    
-                    // Fallback to refresh
-                    refreshUserData();
-                }
-            } catch (error) {
-                console.error("Error in preloading:", error);
-                // Fallback to refresh
-                refreshUserData();
-            }
-        }
-        
-        // New function to specifically search for important usernames
-        async function checkForSpecialUsernames() {
-            try {
-                // List of special usernames to look for
-                const specialUsernames = ['FreeMoolah'];
-                
-                for (const username of specialUsernames) {
-                    // Check if we already have this username in the map
-                    if (usernameToIDMap.has(username.toLowerCase())) {
-                        printInfo(`Special username "${username}" is already loaded.`);
-                        continue;
-                    }
-                    
-                    // Try to find this username in Firestore
-                    const usersRef = collection(db, 'users');
-                    const usernameQuery = query(usersRef, where('username', '==', username));
-                    
-                    try {
-                        const querySnapshot = await getDocs(usernameQuery);
-                        
-                        if (!querySnapshot.empty) {
-                            // User found by username
-                            querySnapshot.forEach((userDoc) => {
-                                const userData = userDoc.data();
-                                const userId = userDoc.id;
-                                
-                                userDataCache[userId] = userData;
-                                usernameToIDMap.set(username.toLowerCase(), userId);
-                                
-                                printInfo(`Found special username "${username}" with ID ${userId}`);
-                            });
-                        } else {
-                            // Try case-insensitive search as fallback
-                            const lowerCaseQuery = query(
-                                usersRef, 
-                                where('username_lower', '==', username.toLowerCase())
-                            );
-                            
-                            try {
-                                const lowerCaseSnapshot = await getDocs(lowerCaseQuery);
-                                
-                                if (!lowerCaseSnapshot.empty) {
-                                    lowerCaseSnapshot.forEach((userDoc) => {
-                                        const userData = userDoc.data();
-                                        const userId = userDoc.id;
-                                        
-                                        userDataCache[userId] = userData;
-                                        usernameToIDMap.set(username.toLowerCase(), userId);
-                                        
-                                        printInfo(`Found special username "${username}" (case insensitive) with ID ${userId}`);
-                                    });
-                                } else {
-                                    printInfo(`Special username "${username}" not found in database.`);
-                                    
-                                    // As a last resort, check all cached users
-                                    for (const [userId, userData] of Object.entries(userDataCache)) {
-                                        if (userData && userData.username && 
-                                            userData.username.toLowerCase() === username.toLowerCase()) {
-                                            usernameToIDMap.set(username.toLowerCase(), userId);
-                                            printInfo(`Found "${username}" in user cache with ID ${userId}`);
-                                            break;
-                                        }
-                                    }
-                                }
-                            } catch (error) {
-                                printWarning(`Error in case-insensitive search for "${username}": ${error.message}`);
-                            }
-                        }
-                    } catch (error) {
-                        printWarning(`Error searching for special username "${username}": ${error.message}`);
-                    }
-                }
-            } catch (error) {
-                printError(`Error checking for special usernames: ${error.message}`);
-            }
-        }
-        
-        // Process command input
-        commandInput.addEventListener('keypress', async (e) => {
-            if (e.key === 'Enter') {
-                const command = commandInput.value.trim();
-                printToTerminal(`> ${command}`);
-                commandInput.value = '';
-                
-                try {
-                    await processCommand(command);
-                } catch (error) {
-                    printError(`Command error: ${error.message}`);
-                }
-            }
-        });
-        
-        // Process commands
-        async function processCommand(command) {
-            // Help command
-            if (command.toLowerCase() === 'help') {
-                printInfo('Available commands:');
-                printInfo('help - Show this help information');
-                printInfo('list users - List all known users');
-                printInfo('<user ID> - Look up user by ID');
-                printInfo('<email> - Look up user by email');
-                printInfo('<username> - Look up user by username');
-                printInfo('<user ID/email> coin amount - Check coins');
-                printInfo('<user ID/email> add coins <amount> - Add coins');
-                printInfo('<user ID/email> remove coins <amount> - Remove coins');
-                printInfo('kick <email> - Delete account and user data');
-                printInfo('/maxcoins - Show top 3 users with most coins');
-                printInfo('search <query> - Search for users by partial username');
-                printInfo('me - Show your own user ID (for reference)');
-                printInfo('refresh users - Check for new users and update database');
-                printInfo('refresh cache - Force reload all user data');
-                return;
-            }
-            
-            // Refresh users command
-            if (command.toLowerCase() === 'refresh users') {
-                await refreshUserData();
-                return;
-            }
-            
-            // Force refresh cache command
-            if (command.toLowerCase() === 'refresh cache') {
-                await forceFullDatabaseLoad();
-                return;
-            }
-            
-            // Show own user ID
-            if (command.toLowerCase() === 'me') {
-                const currentUser = auth.currentUser;
-                if (currentUser) {
-                    printInfo(`Your user ID: ${currentUser.uid}`);
-                    printInfo(`Your email: ${currentUser.email}`);
-                } else {
-                    printError('Not currently authenticated');
-                }
-                return;
-            }
-            
-            // List users command
-            if (command.toLowerCase() === 'list users') {
-                printInfo('Known Users:');
-                for (const [userId, email] of Object.entries(KNOWN_USERS)) {
-                    let userInfo = `${email} (ID: ${userId})`;
-                    
-                    // Add username if cached
-                    if (userDataCache[userId] && userDataCache[userId].username) {
-                        userInfo += ` | Username: ${userDataCache[userId].username}`;
-                    }
-                    
-                    printInfo(userInfo);
-                }
-                return;
-            }
-            
-            // Max coins command
-            if (command.toLowerCase() === '/maxcoins') {
-                await findUsersWithMostCoins();
-                return;
-            }
-            
-            // Search command (new)
-            if (command.toLowerCase().startsWith('search ')) {
-                const searchQuery = command.substring(7).trim().toLowerCase();
-                if (searchQuery) {
-                    await searchUsers(searchQuery);
-                } else {
-                    printError('Please provide a search term after "search"');
-                }
-                return;
-            }
-            
-            const parts = command.split(' ');
-            
-            // Kick command
-            if (parts.length >= 2 && parts[0].toLowerCase() === 'kick') {
-                const targetEmail = parts[1].toLowerCase();
-                
-                // Warn if kicking admin account but don't prevent it
-                if (targetEmail === ADMIN_EMAIL.toLowerCase()) {
-                    printWarning(`⚠️ You are kicking an ADMIN account! This might restrict console access.`);
-                }
-                
-                await kickUser(targetEmail);
-                return;
-            }
-            
-            // Check if command is for checking coins
-            if (parts.length >= 3 && parts[1] === 'coin' && parts[2] === 'amount') {
-                let userId = parts[0];
-                
-                // If it looks like an email, convert to ID
-                if (userId.includes('@')) {
-                    const email = userId.toLowerCase();
-                    // Try direct match or variations
-                    userId = EMAIL_TO_ID[email] || EMAIL_TO_ID[EMAIL_VARIATIONS[email]];
-                    
-                    if (!userId) {
-                        printError(`No user ID found for email: ${parts[0]}`);
-                        return;
-                    }
-                }
-                
-                try {
-                    const userData = await getUserData(userId);
-                    if (userData) {
-                        // Display user's information
-                        printSuccess(`User with ID ${userId} has ${userData.accountBalance || 0} coins.`);
-                        
-                        if (userData.email) {
-                            printInfo(`User email: ${userData.email}`);
-                        } else if (KNOWN_USERS[userId]) {
-                            printInfo(`User email: ${KNOWN_USERS[userId]}`);
-                        }
-                        
-                        if (userData.username) {
-                            printInfo(`Username: ${userData.username}`);
-                        }
-                    }
-                } catch (error) {
-                    printError(`Error checking user coins: ${error.message}`);
-                }
-            }
-            // Check if command is for adding coins
-            else if (parts.length >= 4 && parts[1] === 'add' && parts[2] === 'coins') {
-                let userId = parts[0];
-                
-                // If it looks like an email, convert to ID
-                if (userId.includes('@')) {
-                    const email = userId.toLowerCase();
-                    // Try direct match or variations
-                    userId = EMAIL_TO_ID[email] || EMAIL_TO_ID[EMAIL_VARIATIONS[email]];
-                    
-                    if (!userId) {
-                        printError(`No user ID found for email: ${parts[0]}`);
-                        return;
-                    }
-                }
-                
-                const amount = parseInt(parts[3]);
-                
-                if (isNaN(amount)) {
-                    printError('Invalid amount. Please provide a number.');
-                    return;
-                }
-                
-                try {
-                    const success = await addCoinsToUser(userId, amount);
-                    if (success) {
-                        printSuccess(`Successfully added ${amount} coins to user with ID ${userId}.`);
-                    }
-                } catch (error) {
-                    printError(`Error adding coins: ${error.message}`);
-                }
-            }
-            // Check if command is for removing coins
-            else if (parts.length >= 4 && parts[1] === 'remove' && parts[2] === 'coins') {
-                let userId = parts[0];
-                
-                // If it looks like an email, convert to ID
-                if (userId.includes('@')) {
-                    const email = userId.toLowerCase();
-                    // Try direct match or variations
-                    userId = EMAIL_TO_ID[email] || EMAIL_TO_ID[EMAIL_VARIATIONS[email]];
-                    
-                    if (!userId) {
-                        printError(`No user ID found for email: ${parts[0]}`);
-                        return;
-                    }
-                }
-                
-                const amount = parseInt(parts[3]);
-                
-                if (isNaN(amount)) {
-                    printError('Invalid amount. Please provide a number.');
-                    return;
-                }
-                
-                if (amount <= 0) {
-                    printError('Amount to remove must be positive.');
-                    return;
-                }
-                
-                try {
-                    const success = await removeCoinsFromUser(userId, amount);
-                    if (success) {
-                        printSuccess(`Successfully removed ${amount} coins from user with ID ${userId}.`);
-                    }
-                } catch (error) {
-                    printError(`Error removing coins: ${error.message}`);
-                }
-            }
-            // Single parameter commands (lookup by ID, email, or username)
-            else if (parts.length === 1) {
-                const lookup = parts[0];
-                
-                // Special case for 'FreeMoolah' - handle it directly with extreme fallbacks
-                if (lookup.toLowerCase() === 'freemoolah') {
-                    printInfo(`🔍 Special handling for FreeMoolah username...`);
-                    
-                    // FALLBACK 0: Check if we have it in our map
-                    let foundUserId = usernameToIDMap.get('freemoolah');
-                    
-                    if (foundUserId) {
-                        printSuccess(`✅ Found user with username: FreeMoolah (from map)`);
-                        printInfo(`User ID: ${foundUserId}`);
-                        await displayUserInfo(foundUserId);
-                        return;
-                    }
-                    
-                    // FALLBACK 1: Search all cached users
-                    printInfo(`Searching all cached users for FreeMoolah...`);
-                    let foundInCache = false;
-                    for (const [userId, userData] of Object.entries(userDataCache)) {
-                        if (userData && userData.username) {
-                            // Try case-insensitive match
-                            if (userData.username.toLowerCase() === 'freemoolah') {
-                                printSuccess(`✅ Found user with username: FreeMoolah (from cache)`);
-                                printInfo(`User ID: ${userId}`);
-                                // Add to map for future lookups
-                                usernameToIDMap.set('freemoolah', userId);
-                                await displayUserInfo(userId);
-                                foundInCache = true;
-                                break;
-                            }
-                            // Also try fuzzy match
-                            else if (userData.username.toLowerCase().includes('moolah') || 
-                                    userData.username.toLowerCase().includes('free')) {
-                                printSuccess(`✅ Found similar username: ${userData.username} (fuzzy match)`);
-                                printInfo(`User ID: ${userId}`);
-                                await displayUserInfo(userId);
-                                foundInCache = true;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (!foundInCache) {
-                        // FALLBACK 2: Query Firestore directly with multiple strategies
-                        printInfo(`Querying database directly for FreeMoolah...`);
-                        try {
-                            const usersRef = collection(db, 'users');
-                            
-                            // Strategy 1: Exact match
-                            printInfo(`- Trying exact match query...`);
-                            const exactQueries = [
-                                query(usersRef, where('username', '==', 'FreeMoolah')),
-                                query(usersRef, where('username', '==', 'freemoolah')),
-                                query(usersRef, where('username', '==', 'FREEMOOLAH'))
-                            ];
-                            
-                            for (const exactQuery of exactQueries) {
-                                const snapshot = await getDocs(exactQuery);
-                                if (!snapshot.empty) {
-                                    const userDoc = snapshot.docs[0];
-                                    const userId = userDoc.id;
-                                    const userData = userDoc.data();
-                                    
-                                    userDataCache[userId] = userData;
-                                    usernameToIDMap.set('freemoolah', userId);
-                                    
-                                    printSuccess(`✅ Found user with username: ${userData.username} (exact query)`);
-                                    printInfo(`User ID: ${userId}`);
-                                    await displayUserInfo(userId);
-                                    return;
-                                }
-                            }
-                            
-                            // Strategy 2: Case insensitive with username_lower
-                            printInfo(`- Trying case-insensitive field...`);
-                            const lowerQuery = query(usersRef, where('username_lower', '==', 'freemoolah'));
-                            const lowerSnapshot = await getDocs(lowerQuery);
-                            
-                            if (!lowerSnapshot.empty) {
-                                const userDoc = lowerSnapshot.docs[0];
-                                const userId = userDoc.id;
-                                const userData = userDoc.data();
-                                
-                                userDataCache[userId] = userData;
-                                usernameToIDMap.set('freemoolah', userId);
-                                
-                                printSuccess(`✅ Found user with username: ${userData.username} (lowercase field)`);
-                                printInfo(`User ID: ${userId}`);
-                                await displayUserInfo(userId);
-                                return;
-                            }
-                            
-                            // Strategy 3: Partial matches
-                            printInfo(`- Trying partial matches...`);
-                            const partialQueries = [
-                                query(usersRef, where('username', '>=', 'free'), where('username', '<=', 'free\uf8ff')),
-                                query(usersRef, where('username', '>=', 'Free'), where('username', '<=', 'Free\uf8ff')),
-                                query(usersRef, where('username', '>=', 'moolah'), where('username', '<=', 'moolah\uf8ff')),
-                                query(usersRef, where('username', '>=', 'Moolah'), where('username', '<=', 'Moolah\uf8ff'))
-                            ];
-                            
-                            for (const partialQuery of partialQueries) {
-                                const snapshot = await getDocs(partialQuery);
-                                if (!snapshot.empty) {
-                                    // Look through results for a close match
-                                    for (const doc of snapshot.docs) {
-                                        const userData = doc.data();
-                                        if (userData.username && 
-                                            (userData.username.toLowerCase().includes('free') || 
-                                             userData.username.toLowerCase().includes('moolah'))) {
-                                            
-                                            const userId = doc.id;
-                                            userDataCache[userId] = userData;
-                                            
-                                            printSuccess(`✅ Found similar username: ${userData.username} (partial match)`);
-                                            printInfo(`User ID: ${userId}`);
-                                            await displayUserInfo(userId);
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (error) {
-                            printError(`Error in direct database queries: ${error.message}`);
-                        }
-                        
-                        // FALLBACK 3: Emergency fallback with synthetic user
-                        printWarning(`⚠️ All direct queries failed. Creating emergency FreeMoolah user...`);
-                        // Create a synthetic FreeMoolah user as last resort
-                        const syntheticId = 'emergency_freemoolah_' + Date.now();
-                        userDataCache[syntheticId] = {
-                            username: 'FreeMoolah',
-                            accountBalance: 1000,
-                            email: 'freemoolah@voidgames.example',
-                            createdAt: new Date(),
-                            totalGamesPlayed: 0,
-                            totalMoneyEarned: 1000,
-                            totalMoneySpent: 0,
-                            _synthetic: true // Flag to indicate this is not a real user
-                        };
-                        usernameToIDMap.set('freemoolah', syntheticId);
-                        
-                        printWarning(`Created emergency FreeMoolah user with ID: ${syntheticId}`);
-                        printWarning(`This is a placeholder until the real user is found`);
-                        printInfo(`Use 'refresh cache' to try finding the real user again`);
-                        
-                        await displayUserInfo(syntheticId);
-                    }
-                    return;
-                }
-                
-                // Determine the type of lookup
-                if (lookup.includes('@')) {
-                    // Email lookup
-                    const email = lookup.toLowerCase();
-                    // Try to find in known emails, including variations
-                    let userId = EMAIL_TO_ID[email];
-                    
-                    // Check for email variations
-                    if (!userId && EMAIL_VARIATIONS[email]) {
-                        userId = EMAIL_TO_ID[EMAIL_VARIATIONS[email].toLowerCase()];
-                    }
-                    
-                    if (userId) {
-                        printSuccess(`User ID for ${email}: ${userId}`);
-                        await displayUserInfo(userId);
-                    } else {
-                        printError(`No user ID found for email: ${email}`);
-                    }
-                } else if (Object.keys(KNOWN_USERS).includes(lookup)) {
-                    // User ID lookup
-                    printSuccess(`Looking up info for user ID: ${lookup}`);
-                    await displayUserInfo(lookup);
-                } else {
-                    // Try username lookup
-                    const lowercaseLookup = lookup.toLowerCase();
-                    const userId = usernameToIDMap.get(lowercaseLookup);
-                    
-                    if (userId) {
-                        printSuccess(`Found user with username: ${lookup}`);
-                        printInfo(`User ID: ${userId}`);
-                        await displayUserInfo(userId);
-                    } else {
-                        // Try to find by ID one more time
-                        try {
-                            const userData = await getUserData(lookup);
-                            if (userData) {
-                                printSuccess(`Found user with ID: ${lookup}`);
-                                await displayUserInfo(lookup);
-                                return;
-                            }
-                        } catch (e) {
-                            // Not found as ID either
-                        }
-                        
-                        // Try fuzzy search in cache before giving up
-                        let bestMatch = null;
-                        let bestMatchId = null;
-                        
-                        for (const [userId, userData] of Object.entries(userDataCache)) {
-                            if (userData && userData.username) {
-                                const username = userData.username.toLowerCase();
-                                if (username.includes(lowercaseLookup) || 
-                                    lowercaseLookup.includes(username)) {
-                                    // Simple partial match
-                                    bestMatch = userData.username;
-                                    bestMatchId = userId;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        if (bestMatch && bestMatchId) {
-                            printSuccess(`Found similar username: ${bestMatch}`);
-                            printInfo(`User ID: ${bestMatchId}`);
-                            await displayUserInfo(bestMatchId);
-                        } else {
-                            printError(`No user found with ID, email, or username: ${lookup}`);
-                            printInfo(`Try 'search ${lookup}' for partial matches.`);
-                        }
-                    }
-                }
-            }
-            else {
-                printError('Invalid command. Type "help" for available commands.');
-            }
-        }
-        
-        // Enhanced search users function with more aggressive strategies
-        async function searchUsers(query) {
-            try {
-                printInfo(`🔍 Searching for users matching: "${query}"...`);
-                
-                // Special case for FreeMoolah
-                if (query.toLowerCase() === 'freemoolah') {
-                    printWarning(`Special case detected: searching for FreeMoolah...`);
-                    // Process as if the user entered the exact username
-                    await processCommand('FreeMoolah');
-                    return;
-                }
-                
-                const results = [];
-                const lowerQuery = query.toLowerCase();
-                
-                // Search through our cached data first
-                printInfo(`Searching cached data (${Object.keys(userDataCache).length} users)...`);
-                let cacheMatchCount = 0;
-                
-                for (const [userId, userData] of Object.entries(userDataCache)) {
-                    if (userData) {
-                        let isMatch = false;
-                        let matchReason = '';
-                        
-                        // Check username
-                        if (userData.username) {
-                            const username = userData.username.toLowerCase();
-                            if (username.includes(lowerQuery) || lowerQuery.includes(username)) {
-                                isMatch = true;
-                                matchReason = 'username';
-                            }
-                        }
-                        
-                        // Check email
-                        if (userData.email) {
-                            const email = userData.email.toLowerCase();
-                            if (email.includes(lowerQuery)) {
-                                isMatch = true;
-                                matchReason = 'email';
-                            }
-                        }
-                        
-                        // Check display name if exists
-                        if (userData.displayName) {
-                            const displayName = userData.displayName.toLowerCase();
-                            if (displayName.includes(lowerQuery)) {
-                                isMatch = true;
-                                matchReason = 'display name';
-                            }
-                        }
-                        
-                        if (isMatch) {
-                            results.push({
-                                userId,
-                                username: userData.username || "No Username",
-                                email: userData.email || KNOWN_USERS[userId] || "Unknown",
-                                matchReason
-                            });
-                            cacheMatchCount++;
-                        }
-                    }
-                }
-                
-                printInfo(`Found ${cacheMatchCount} matches in cache.`);
-                
-                // Always try multiple direct Firestore queries with different strategies
-                printInfo(`Querying Firestore database...`);
-                
-                try {
-                    const usersRef = collection(db, 'users');
-                    let dbMatchCount = 0;
-                    
-                    // Strategy 1: Prefix search on username
-                    try {
-                        printInfo(`- Trying prefix search...`);
-                        const prefixQuery = query(
-                            usersRef, 
-                            where('username', '>=', query),
-                            where('username', '<=', query + '\uf8ff'),
-                            limit(20)
-                        );
-                        
-                        const querySnapshot = await getDocs(prefixQuery);
-                        
-                        querySnapshot.forEach((doc) => {
-                            const userData = doc.data();
-                            // Only add if not already in results
-                            if (!results.some(r => r.userId === doc.id)) {
-                                results.push({
-                                    userId: doc.id,
-                                    username: userData.username || "No Username",
-                                    email: userData.email || KNOWN_USERS[doc.id] || "Unknown",
-                                    matchReason: 'prefix match'
-                                });
-                                dbMatchCount++;
-                                
-                                // Also update cache
-                                userDataCache[doc.id] = userData;
-                                if (userData.username) {
-                                    usernameToIDMap.set(userData.username.toLowerCase(), doc.id);
-                                }
-                            }
-                        });
-                    } catch (error) {
-                        printWarning(`Prefix search error: ${error.message}`);
-                    }
-                    
-                    // Strategy 2: Try lowercase version for case-insensitive search
-                    try {
-                        printInfo(`- Trying lowercase search...`);
-                        const lowerQuery = query(
-                            usersRef, 
-                            where('username_lower', '>=', query.toLowerCase()),
-                            where('username_lower', '<=', query.toLowerCase() + '\uf8ff'),
-                            limit(20)
-                        );
-                        
-                        const lowerSnapshot = await getDocs(lowerQuery);
-                        
-                        lowerSnapshot.forEach((doc) => {
-                            const userData = doc.data();
-                            // Only add if not already in results
-                            if (!results.some(r => r.userId === doc.id)) {
-                                results.push({
-                                    userId: doc.id,
-                                    username: userData.username || "No Username",
-                                    email: userData.email || KNOWN_USERS[doc.id] || "Unknown",
-                                    matchReason: 'lowercase match'
-                                });
-                                dbMatchCount++;
-                                
-                                // Also update cache
-                                userDataCache[doc.id] = userData;
-                                if (userData.username) {
-                                    usernameToIDMap.set(userData.username.toLowerCase(), doc.id);
-                                }
-                            }
-                        });
-                    } catch (error) {
-                        // Ignore this error as the lowercase field might not exist
-                    }
-                    
-                    // Strategy 3: Try variations of the search term
-                    const variations = [
-                        query.toLowerCase(),
-                        query.toUpperCase(),
-                        query.charAt(0).toUpperCase() + query.slice(1).toLowerCase()
-                    ];
-                    
-                    printInfo(`- Trying ${variations.length} case variations...`);
-                    for (const variation of variations) {
-                        try {
-                            const variationQuery = query(
-                                usersRef,
-                                where('username', '==', variation),
-                                limit(5)
-                            );
-                            
-                            const varSnapshot = await getDocs(variationQuery);
-                            
-                            varSnapshot.forEach((doc) => {
-                                const userData = doc.data();
-                                // Only add if not already in results
-                                if (!results.some(r => r.userId === doc.id)) {
-                                    results.push({
-                                        userId: doc.id,
-                                        username: userData.username || "No Username",
-                                        email: userData.email || KNOWN_USERS[doc.id] || "Unknown",
-                                        matchReason: 'case variation match'
-                                    });
-                                    dbMatchCount++;
-                                    
-                                    // Also update cache
-                                    userDataCache[doc.id] = userData;
-                                    if (userData.username) {
-                                        usernameToIDMap.set(userData.username.toLowerCase(), doc.id);
-                                    }
-                                }
-                            });
-                        } catch (error) {
-                            // Ignore errors for individual variations
-                        }
-                    }
-                    
-                    printInfo(`Found ${dbMatchCount} additional matches in database.`);
-                } catch (error) {
-                    printWarning(`Database search error: ${error.message}`);
-                }
-                
-                // Display results
-                if (results.length > 0) {
-                    printSuccess(`✅ Found ${results.length} user(s) matching "${query}":`);
-                    
-                    results.forEach((result, index) => {
-                        printInfo(`${index + 1}. ${result.username} (${result.email}) - ID: ${result.userId} [${result.matchReason}]`);
-                    });
-                    
-                    printInfo(`Use the username or ID to see full details.`);
-                    
-                    // If we found more than 1 result but less than 5, show the first one details automatically
-                    if (results.length > 0 && results.length < 5) {
-                        const firstResult = results[0];
-                        printInfo(`Showing details for the first match:`);
-                        await displayUserInfo(firstResult.userId);
-                    }
-                } else {
-                    printWarning(`⚠️ No users found matching "${query}".`);
-                    printInfo(`Try 'refresh cache' to load all data and search again.`);
-                    
-                    // If this was a search for something similar to FreeMoolah but not exact, suggest the exact search
-                    if (lowerQuery.includes('free') || lowerQuery.includes('moolah')) {
-                        printInfo(`Did you mean to search for "FreeMoolah"? Try that exact spelling.`);
-                    }
-                }
-            } catch (error) {
-                printError(`Search error: ${error.message}`);
-            }
-        }
-        
-        // Display comprehensive user info
-        async function displayUserInfo(userId) {
-            try {
-                const userData = await getUserData(userId);
-                if (!userData) {
-                    printError("Could not retrieve user data");
-                    return;
-                }
-                
-                // Display core information
-                if (userData.email) {
-                    printInfo(`Email: ${userData.email}`);
-                } else if (KNOWN_USERS[userId]) {
-                    printInfo(`Email: ${KNOWN_USERS[userId]}`);
-                }
-                
-                if (userData.username) {
-                    printInfo(`Username: ${userData.username}`);
-                    
-                    // Make sure this username is in our lookup map
-                    if (!usernameToIDMap.has(userData.username.toLowerCase())) {
-                        usernameToIDMap.set(userData.username.toLowerCase(), userId);
-                    }
-                } else {
-                    printInfo(`Username: Not set`);
-                }
-                
-                // Financial information
-                printInfo(`Account Balance: ${userData.accountBalance || 0} coins`);
-                
-                // Game statistics
-                if (userData.totalGamesPlayed) {
-                    printInfo(`Total Games Played: ${userData.totalGamesPlayed}`);
-                }
-                
-                if (userData.totalMoneySpent) {
-                    printInfo(`Total Money Spent: ${userData.totalMoneySpent}`);
-                }
-                
-                if (userData.totalMoneyEarned) {
-                    printInfo(`Total Money Earned: ${userData.totalMoneyEarned}`);
-                }
-                
-                // Account information
-                if (userData.createdAt) {
-                    // Format date if it's a Firebase timestamp
-                    let dateStr = userData.createdAt;
-                    if (userData.createdAt.toDate) {
-                        dateStr = userData.createdAt.toDate().toLocaleString();
-                    }
-                    printInfo(`Account Created: ${dateStr}`);
-                }
-                
-                // Additional profile data if available
-                if (userData.displayName) {
-                    printInfo(`Display Name: ${userData.displayName}`);
-                }
-                
-                if (userData.photoURL) {
-                    printInfo(`Profile Photo URL: ${userData.photoURL}`);
-                }
-                
-                // Any custom properties
-                const standardFields = [
-                    'email', 'username', 'accountBalance', 'totalGamesPlayed', 
-                    'totalMoneySpent', 'totalMoneyEarned', 'createdAt',
-                    'displayName', 'photoURL', 'uid'
-                ];
-                
-                // Show any additional fields
-                const extraFields = Object.keys(userData).filter(key => !standardFields.includes(key));
-                if (extraFields.length > 0) {
-                    printInfo('Additional User Data:');
-                    for (const field of extraFields) {
-                        let value = userData[field];
-                        if (value && typeof value === 'object') {
-                            if (value.toDate) {
-                                value = value.toDate().toLocaleString();
-                            } else {
-                                value = JSON.stringify(value);
-                            }
-                        }
-                        printInfo(`- ${field}: ${value}`);
-                    }
-                }
-            } catch (error) {
-                printError(`Error displaying user info: ${error.message}`);
-            }
-        }
-        
-        // Get full user data - Modified to create user document if it doesn't exist
-        async function getUserData(userId) {
-            try {
-                // Check cache first
-                if (userDataCache[userId]) {
-                    return userDataCache[userId];
-                }
-                
-                // Get the user document
-                const userRef = doc(db, 'users', userId);
-                const userDoc = await getDoc(userRef);
-                
-                if (!userDoc.exists()) {
-                    // If user ID is in KNOWN_USERS, create a document for them
-                    if (KNOWN_USERS[userId]) {
-                        printInfo(`User document not found for ${userId}. Creating a new document...`);
-                        
-                        const newUserData = {
-                            email: KNOWN_USERS[userId],
-                            accountBalance: 0,
-                            createdAt: new Date(),
-                            totalGamesPlayed: 0,
-                            totalMoneyEarned: 0,
-                            totalMoneySpent: 0
-                        };
-                        
-                        await setDoc(userRef, newUserData);
-                        
-                        // Cache for later use
-                        userDataCache[userId] = newUserData;
-                        
-                        printSuccess(`Created new user document for ${KNOWN_USERS[userId]}`);
-                        return newUserData;
-                    } else {
-                        printError("User document not found and user ID not in known users");
-                        return null;
-                    }
-                }
-                
-                const userData = userDoc.data();
-                
-                // Add email from KNOWN_USERS if missing
-                if (!userData.email && KNOWN_USERS[userId]) {
-                    userData.email = KNOWN_USERS[userId];
-                    await updateDoc(userRef, { email: KNOWN_USERS[userId] });
-                    printInfo(`Updated missing email for user ${userId}`);
-                }
-                
-                // Add lowercase version of username for case-insensitive lookups if needed
-                if (userData.username && !userData.username_lower) {
-                    await updateDoc(userRef, { username_lower: userData.username.toLowerCase() });
-                    userData.username_lower = userData.username.toLowerCase();
-                }
-                
-                // Cache for later use
-                userDataCache[userId] = userData;
-                
-                // Update username map if available
-                if (userData.username) {
-                    usernameToIDMap.set(userData.username.toLowerCase(), userId);
-                }
-                
-                return userData;
-            } catch (error) {
-                printError(`Error getting user data: ${error.message}`);
-                throw error;
-            }
-        }
 
-        // Add coins to user
-        async function addCoinsToUser(userId, amount) {
-            try {
-                printInfo(`Adding ${amount} coins to user ID: ${userId}...`);
-                
-                // Get current balance
-                const userData = await getUserData(userId);
-                
-                if (!userData) {
-                    printError("Could not retrieve or create user data");
-                    return false;
-                }
-                
-                const userRef = doc(db, 'users', userId);
-                const currentBalance = userData.accountBalance || 0;
-                const newBalance = currentBalance + amount;
-                
-                // Update the balance
-                await updateDoc(userRef, { 
-                    accountBalance: newBalance 
-                });
-                
-                // Update cache
-                if (userDataCache[userId]) {
-                    userDataCache[userId].accountBalance = newBalance;
-                }
-                
-                printInfo(`Updated balance. New balance: ${newBalance}`);
-                return true;
-            } catch (error) {
-                printError(`Error adding coins: ${error.message}`);
-                throw error;
-            }
-        }
+        // FIXED: Profile Icon Toggle Functionality
+        const profileIcon = document.getElementById('profile-icon');
+        const authContainer = document.getElementById('auth-container');
         
-        // Remove coins from user
-        async function removeCoinsFromUser(userId, amount) {
-            try {
-                printInfo(`Removing ${amount} coins from user ID: ${userId}...`);
+        profileIcon.addEventListener('click', () => {
+            // Toggle visibility of auth container
+            if (authContainer.style.display === 'block') {
+                authContainer.style.display = 'none';
+            } else {
+                authContainer.style.display = 'block';
                 
-                // Get current balance
-                const userData = await getUserData(userId);
-                
-                if (!userData) {
-                    printError("Could not retrieve or create user data");
-                    return false;
-                }
-                
-                const userRef = doc(db, 'users', userId);
-                const currentBalance = userData.accountBalance || 0;
-                
-                // Check if user has enough balance
-                if (currentBalance < amount) {
-                    printError(`User only has ${currentBalance} coins, cannot remove ${amount}`);
-                    return false;
-                }
-                
-                const newBalance = currentBalance - amount;
-                
-                // Update the balance
-                await updateDoc(userRef, { 
-                    accountBalance: newBalance 
-                });
-                
-                // Update cache
-                if (userDataCache[userId]) {
-                    userDataCache[userId].accountBalance = newBalance;
-                }
-                
-                printInfo(`Updated balance. New balance: ${newBalance}`);
-                return true;
-            } catch (error) {
-                printError(`Error removing coins: ${error.message}`);
-                throw error;
-            }
-        }
-        
-        // Kick user (delete account and data)
-        async function kickUser(email) {
-            try {
-                printWarning(`Preparing to kick user with email: ${email}...`);
-                
-                // Check if this is the admin account and add special warning
-                if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-                    printWarning(`⚠️ WARNING: You are about to kick an ADMIN account!`);
-                    printWarning(`⚠️ This could restrict access to this console!`);
-                }
-                
-                // Find user ID from email
-                const userId = EMAIL_TO_ID[email.toLowerCase()];
-                
-                if (!userId) {
-                    printError(`Could not find user ID for email: ${email}`);
-                    return false;
-                }
-                
-                // Safety confirmation
-                printWarning(`WARNING: About to delete account and all data for ${email} (${userId})`);
-                printWarning(`This action cannot be undone.`);
-                
-                // Delete user document from Firestore
-                try {
-                    const userRef = doc(db, 'users', userId);
-                    await deleteDoc(userRef);
-                    printSuccess(`Deleted user document for ${email}`);
-                    
-                    // Remove from cache
-                    delete userDataCache[userId];
-                    
-                    // Remove from username map if exists
-                    for (const [username, id] of usernameToIDMap.entries()) {
-                        if (id === userId) {
-                            usernameToIDMap.delete(username);
-                            printInfo(`Removed username mapping for ${username}`);
-                        }
-                    }
-                    
-                    // Update known users list
-                    if (KNOWN_USERS[userId]) {
-                        delete KNOWN_USERS[userId];
-                        delete EMAIL_TO_ID[email.toLowerCase()];
-                        printInfo(`Removed user from known users list`);
-                    }
-                    
-                    printSuccess(`Successfully kicked user: ${email}`);
-                    return true;
-                } catch (error) {
-                    printError(`Error deleting user document: ${error.message}`);
-                    return false;
-                }
-            } catch (error) {
-                printError(`Error kicking user: ${error.message}`);
-                return false;
-            }
-        }
-        
-        // Find users with most coins
-        async function findUsersWithMostCoins() {
-            try {
-                printInfo(`Finding users with the most coins...`);
-                
-                // Create an array to store user coin data
-                const userCoins = [];
-                
-                // Try to query Firestore directly
-                try {
-                    const usersRef = collection(db, 'users');
-                    const usersQuery = query(usersRef, orderBy('accountBalance', 'desc'), limit(3));
-                    const querySnapshot = await getDocs(usersQuery);
-                    
-                    if (!querySnapshot.empty) {
-                        printSuccess(`Top 3 users with most coins:`);
-                        let rank = 1;
-                        
-                        querySnapshot.forEach((userDoc) => {
-                            const userData = userDoc.data();
-                            const userId = userDoc.id;
-                            const username = userData.username || "No Username";
-                            const email = userData.email || KNOWN_USERS[userId] || "Unknown";
-                            const coins = userData.accountBalance || 0;
-                            
-                            // Cache this data
-                            userDataCache[userId] = userData;
-                            if (userData.username) {
-                                usernameToIDMap.set(userData.username.toLowerCase(), userId);
-                            }
-                            
-                            printInfo(`${rank}. ${username} (${email}): ${coins} coins`);
-                            rank++;
-                        });
-                        
-                        return;
-                    } else {
-                        printInfo(`No users found in the database.`);
-                    }
-                } catch (queryError) {
-                    printWarning(`Could not query database directly. Falling back to cached data...`);
-                    console.error("Query error:", queryError);
-                    
-                    // Fallback to cached data
-                    for (const [userId, userData] of Object.entries(userDataCache)) {
-                        if (userData) {
-                            const coins = userData.accountBalance || 0;
-                            const username = userData.username || "No Username";
-                            const email = userData.email || KNOWN_USERS[userId] || "Unknown";
-                            
-                            userCoins.push({
-                                userId,
-                                username,
-                                email,
-                                coins
+                // If user is logged in, refresh balance display
+                if (auth.currentUser) {
+                    // Add a small delay to ensure any pending transactions are complete
+                    setTimeout(() => {
+                        voidAccounting.getUserAccountDetails(auth.currentUser.uid)
+                            .then(userDetails => {
+                                document.getElementById('username-display').textContent = userDetails.username;
+                                document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
+                            })
+                            .catch(error => {
+                                console.error("Error refreshing balance:", error);
                             });
-                        }
-                    }
-                    
-                    // Sort by coins (descending)
-                    userCoins.sort((a, b) => b.coins - a.coins);
-                    
-                    // Display top 3 users
-                    const topUsers = userCoins.slice(0, 3);
-                    
-                    if (topUsers.length > 0) {
-                        printSuccess(`Top ${topUsers.length} users with most coins (from cache):`);
-                        topUsers.forEach((user, index) => {
-                            printInfo(`${index + 1}. ${user.username} (${user.email}): ${user.coins} coins`);
-                        });
-                    } else {
-                        printWarning(`No user data available in cache.`);
-                    }
+                    }, 300);
                 }
-            } catch (error) {
-                printError(`Error finding users with most coins: ${error.message}`);
             }
+        });
+
+        // Close auth container when clicking outside
+        document.addEventListener('click', (event) => {
+            if (!profileIcon.contains(event.target) && 
+                !authContainer.contains(event.target)) {
+                authContainer.style.display = 'none';
+            }
+        });
+
+// FIXED: Void Network Accounting Class
+class VoidNetworkAccounting {
+    constructor() {
+        this.auth = auth;
+        this.db = db;
+        this.transactionInProgress = false; // Add a transaction lock
+        console.log("VoidNetworkAccounting initialized");
+    }
+
+    // User Registration
+    async registerUser(email, password, username) {
+        try {
+            console.log("Registering new user:", email);
+            const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
+            const user = userCredential.user;
+
+            // Create user profile in Firestore
+            await setDoc(doc(this.db, 'users', user.uid), {
+                username: username,
+                email: email,
+                createdAt: new Date(),
+                accountBalance: 1000, // Starting balance
+                totalGamesPlayed: 0,
+                totalMoneySpent: 0,
+                totalMoneyEarned: 0
+            });
+
+            console.log("User registered successfully:", user.uid);
+            return user;
+        } catch (error) {
+            console.error("Registration Error:", error);
+            throw error;
+        }
+    }
+
+    // User Login
+    async loginUser(email, password) {
+        try {
+            console.log("Logging in user:", email);
+            const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
+            console.log("User logged in successfully:", userCredential.user.uid);
+            return userCredential.user;
+        } catch (error) {
+            console.error("Login Error:", error);
+            throw error;
+        }
+    }
+
+    // Logout
+    async logout() {
+        try {
+            console.log("Logging out user");
+            await this.auth.signOut();
+            console.log("User logged out successfully");
+        } catch (error) {
+            console.error("Logout Error:", error);
+            throw error;
+        }
+    }
+
+    // Get Current User
+    getCurrentUser() {
+        return this.auth.currentUser;
+    }
+
+    // Get User Account Details - With transaction-safe cache handling
+    async getUserAccountDetails(userId) {
+        try {
+            // If a transaction is in progress, wait a bit to ensure we get the latest data
+            if (this.transactionInProgress) {
+                console.log("Transaction in progress, waiting before fetching account details");
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            console.log("Getting account details for user:", userId);
+            const userRef = doc(this.db, 'users', userId);
+            // Force fresh data from server, not cache
+            const userDoc = await getDoc(userRef, { source: 'server' });
+
+            if (!userDoc.exists()) {
+                console.error("User document not found");
+                throw new Error('User not found');
+            }
+
+            const userData = userDoc.data();
+            console.log("Retrieved user data:", userData.username, "Balance:", userData.accountBalance);
+            return userData;
+        } catch (error) {
+            console.error("Account Details Error:", error);
+            throw error;
+        }
+    }
+
+    // Track Game Transaction - FIXED with transaction lock
+    async recordGameTransaction(gameId, userId, transactionType, amount) {
+        // Set transaction flag to prevent concurrent updates
+        if (this.transactionInProgress) {
+            console.log("Transaction already in progress, please wait");
+            return null;
         }
         
-        // Add Enter key support for login form
-        emailInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') passwordInput.focus();
+        this.transactionInProgress = true;
+        
+        try {
+            console.log(`Recording transaction: ${transactionType} for ${amount} coins in ${gameId}`);
+            
+            // Create transaction record
+            const transactionRef = doc(collection(this.db, 'transactions'));
+            await setDoc(transactionRef, {
+                userId: userId,
+                gameId: gameId,
+                transactionType: transactionType,
+                amount: amount,
+                timestamp: new Date()
+            });
+
+            // Get the latest data from server
+            const userRef = doc(this.db, 'users', userId);
+            const userDoc = await getDoc(userRef, { source: 'server' });
+            
+            if (!userDoc.exists()) {
+                console.error("Cannot update non-existent user");
+                throw new Error('User document not found');
+            }
+            
+            const userData = userDoc.data();
+            let updatedBalance = userData.accountBalance || 0;
+            
+            // Update user metrics based on transaction type
+            if (transactionType === 'deposit') {
+                updatedBalance += amount;
+                console.log(`Adding ${amount} coins, new balance will be ${updatedBalance}`);
+            } else if (transactionType === 'withdrawal') {
+                updatedBalance -= amount;
+                console.log(`Removing ${amount} coins, new balance will be ${updatedBalance}`);
+            } else if (transactionType === 'game_play') {
+                if (amount > 0) {
+                    updatedBalance -= amount;
+                    console.log(`Game play cost ${amount} coins, new balance will be ${updatedBalance}`);
+                }
+                userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
+                userData.totalMoneySpent = (userData.totalMoneySpent || 0) + (amount > 0 ? amount : 0);
+            } else if (transactionType === 'game_win') {
+                updatedBalance += amount;
+                console.log(`Game win added ${amount} coins, new balance will be ${updatedBalance}`);
+                userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + amount;
+            }
+
+            // Update user document with new balance and stats
+            await updateDoc(userRef, {
+                accountBalance: updatedBalance,
+                totalGamesPlayed: userData.totalGamesPlayed || 0,
+                totalMoneySpent: userData.totalMoneySpent || 0,
+                totalMoneyEarned: userData.totalMoneyEarned || 0,
+                lastUpdated: new Date() // Add timestamp for tracking purposes
+            });
+
+            // Wait to make sure Firestore has processed the update
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            console.log(`Transaction completed. New balance: ${updatedBalance}`);
+            
+            // Update UI directly after transaction to ensure consistency
+            document.getElementById('balance-display').textContent = updatedBalance.toLocaleString();
+            
+            return {
+                transactionId: transactionRef.id,
+                newBalance: updatedBalance
+            };
+        } catch (error) {
+            console.error("Transaction Error:", error);
+            throw error;
+        } finally {
+            // Release transaction lock, even if there was an error
+            this.transactionInProgress = false;
+        }
+    }
+}
+
+// NEW: Leaderboard Class for real-time updates
+class VoidLeaderboard {
+    constructor(db) {
+        this.db = db;
+        this.unsubscribe = null; // To store the Firestore listener unsubscribe function
+        this.leaderboardElement = document.getElementById('leaderboardList');
+        console.log("VoidLeaderboard initialized");
+    }
+    
+    // Start real-time leaderboard updates
+    startLeaderboardUpdates() {
+        try {
+            if (this.unsubscribe) {
+                // If already subscribed, unsubscribe first
+                this.unsubscribe();
+            }
+            
+            console.log("Starting leaderboard updates");
+            // Query the top 5 users by account balance
+            const usersRef = collection(this.db, 'users');
+            const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(5));
+            
+            // Set up real-time listener with server-side data
+            this.unsubscribe = onSnapshot(q, 
+                {
+                    // Force fresh data from server, not cache
+                    includeMetadataChanges: true
+                },
+                (querySnapshot) => {
+                    // Only update if we have server data, not cached data
+                    if (!querySnapshot.metadata.fromCache) {
+                        this.updateLeaderboardUI(querySnapshot);
+                    }
+                }, 
+                (error) => {
+                    console.error("Leaderboard listener error:", error);
+                    this.showLeaderboardError("Could not load leaderboard data");
+                }
+            );
+            
+        } catch (error) {
+            console.error("Error setting up leaderboard:", error);
+            this.showLeaderboardError("Could not start leaderboard");
+        }
+    }
+    
+    // Stop leaderboard updates
+    stopLeaderboardUpdates() {
+        if (this.unsubscribe) {
+            console.log("Stopping leaderboard updates");
+            this.unsubscribe();
+            this.unsubscribe = null;
+        }
+    }
+    
+    // Update leaderboard UI with fresh data
+    updateLeaderboardUI(querySnapshot) {
+        if (!this.leaderboardElement) {
+            console.error("Leaderboard element not found");
+            return;
+        }
+        
+        // Always clear the leaderboard completely first
+        this.leaderboardElement.innerHTML = '';
+        
+        if (querySnapshot.empty) {
+            this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+            return;
+        }
+        
+        console.log("Updating leaderboard with new data");
+        let rank = 1;
+        
+        // Filter out any deleted documents before processing
+        const validDocs = [];
+        querySnapshot.forEach((doc) => {
+            if (doc.exists()) {
+                validDocs.push(doc);
+            } else {
+                console.log("Skipping deleted document in leaderboard");
+            }
         });
         
-        passwordInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') loginButton.click();
+        // If all documents were filtered out, show empty state
+        if (validDocs.length === 0) {
+            this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+            return;
+        }
+        
+        // Create leaderboard items from valid documents
+        validDocs.forEach((doc) => {
+            const userData = doc.data();
+            const leaderboardItem = document.createElement('div');
+            leaderboardItem.className = 'leaderboard-item';
+            leaderboardItem.dataset.userId = doc.id; // Store user ID for reference
+            
+            // Add animation class for new/updated items
+            leaderboardItem.classList.add('leaderboard-updated');
+            
+            leaderboardItem.innerHTML = `
+                <span class="leaderboard-rank">#${rank}</span>
+                <span class="leaderboard-username">${userData.username || 'Unknown'}</span>
+                <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+            `;
+            
+            this.leaderboardElement.appendChild(leaderboardItem);
+            rank++;
+            
+            // Remove animation class after animation is complete
+            setTimeout(() => {
+                leaderboardItem.classList.remove('leaderboard-updated');
+            }, 1000);
         });
-    </script>
+        
+        console.log(`Leaderboard updated with ${validDocs.length} players`);
+    }
+    
+    // Show error message
+    showLeaderboardError(message) {
+        if (this.leaderboardElement) {
+            this.leaderboardElement.innerHTML = `
+                <div class="leaderboard-error">${message}</div>
+            `;
+        }
+    }
+}
+
+// Initialize Accounting System
+const voidAccounting = new VoidNetworkAccounting();
+
+// Initialize Leaderboard - with custom refresh method
+const voidLeaderboard = new VoidLeaderboard(db);
+
+// Add a manual refresh method to force leaderboard updates
+function refreshLeaderboard() {
+    console.log("Manual leaderboard refresh requested");
+    // Stop current listener and restart to force refresh
+    voidLeaderboard.stopLeaderboardUpdates();
+    voidLeaderboard.startLeaderboardUpdates();
+}
+
+// Add periodic refresh to ensure leaderboard stays updated
+setInterval(refreshLeaderboard, 60000); // Refresh every minute
+
+// Authentication Event Listeners
+document.getElementById('login-btn')?.addEventListener('click', async () => {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+    
+    if (!email || !password) {
+        alert('Please enter both email and password');
+        return;
+    }
+    
+    try {
+        const user = await voidAccounting.loginUser(email, password);
+        console.log('Logged in user:', user);
+        await updateUIForLoggedInUser(user);
+        authContainer.style.display = 'none'; // Hide auth container after login
+    } catch (error) {
+        alert('Login failed: ' + error.message);
+    }
+});
+
+document.getElementById('register-btn')?.addEventListener('click', async () => {
+    const username = document.getElementById('register-username').value;
+    const email = document.getElementById('register-email').value;
+    const password = document.getElementById('register-password').value;
+    
+    if (!username || !email || !password) {
+        alert('Please fill in all fields');
+        return;
+    }
+    
+    try {
+        const user = await voidAccounting.registerUser(email, password, username);
+        console.log('Registered user:', user);
+        await updateUIForLoggedInUser(user);
+        authContainer.style.display = 'none'; // Hide auth container after registration
+    } catch (error) {
+        alert('Registration failed: ' + error.message);
+    }
+});
+
+document.getElementById('logout-btn')?.addEventListener('click', async () => {
+    try {
+        await voidAccounting.logout();
+        updateUIForLoggedOutUser();
+    } catch (error) {
+        alert('Logout failed: ' + error.message);
+    }
+});
+
+// FIXED: Update UI based on authentication state - with transaction safety
+async function updateUIForLoggedInUser(user) {
+    document.getElementById('login-form').style.display = 'none';
+    document.getElementById('register-form').style.display = 'none';
+    document.getElementById('user-profile').style.display = 'block';
+    
+    try {
+        // Wait a moment to ensure any pending transactions are complete
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Fetch fresh user details from server
+        const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
+        document.getElementById('username-display').textContent = userDetails.username;
+        document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
+        console.log("Updated UI with balance:", userDetails.accountBalance);
+    } catch (error) {
+        console.error("Error updating UI:", error);
+        alert('Could not load user details. Please try again.');
+    }
+}
+
+function updateUIForLoggedOutUser() {
+    document.getElementById('login-form').style.display = 'block';
+    document.getElementById('register-form').style.display = 'block';
+    document.getElementById('user-profile').style.display = 'none';
+}
+
+// IMPROVED: Listen for authentication state changes
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        console.log("Auth state changed: User is signed in", user.uid);
+        await updateUIForLoggedInUser(user);
+    } else {
+        console.log("Auth state changed: User is signed out");
+        updateUIForLoggedOutUser();
+    }
+});
+
+// IMPROVED: Game loading logic
+const defaultApps = [
+    {
+        title: "Ball Dropper",
+        imgSrc: "https://lh7-us.googleusercontent.com/CUj18dKaBkXv0WI59qpP2-Ub1J0KHyKXwgnhPBdmzDzwhQNvIkwPsrVLJCiSsS0iNOaF8-nAamakuiFLoRzYIGyOr-LOFJg9hD5IA9cIvjh5ZIHmBhT-hel39crAOTgz88P8jX2WApcC5PDnLbabDK_QC1vyFw",
+        link: "/local games/Plinko/plinko.html"
+    },
+    {
+        title: "MineFeild",
+        imgSrc: "https://lh7-us.googleusercontent.com/WAjTfpxFqdXwMOlzyChcCi40sg6-ukZN5u24gdmWyi9_Yca5-V8vBR6zrgOoADGwKKJM7e7cKEkq9i_chkYesJvN_VVnvKAfUOPIllTxR2mbOK-HiR0vlIgH_2_bY2Oqzh2ndVieVycQoGDMXuZC-8gpE85Ypg",
+        link: "/local games/CrossyRoad/crossy.html"
+    },
+    {
+        title: "Memory Squares",
+        imgSrc: "https://lh7-us.googleusercontent.com/USI3iEwtHyyyN6fdMllkREQg8h8N7xsXxw94Wb0umSNOzvXTgMtBtxMBXwgyVOHirbrZCVGU1JDeyVaW94xuTS-4vEvT1iZzriw3We_RIYDPW63aWxDEj8xZ_d7Nc3vi6LfrEr20QOOMvnWL8JD5XgbbC-PjKA",
+        link: "/local games/memory-square/mem.html"
+    },
+    {
+        title: "VoidSnake",
+        imgSrc: "https://lh7-us.googleusercontent.com/zPbDytQWYmY90BK7jPcdb8QQ8QNz4LWyhwUq1zNWiD64NNGC_8L21T_QDOl9z8R9QRvJtkFRvM9f83ODmjJJYgG6sZwi71SPiTUwASMOaofbb7wIOKEQJ-Wq1VSGVlCg3RmSdC7B4d-SGOfs_hRdmKjtxHbGOQ",
+        link: "/local games/Void Snake/Voidsnake.html"
+    },
+    {
+        title: "Heads Or Tails?",
+        imgSrc: "https://lh7-us.googleusercontent.com/hv5hNvlc6ekkUBPpxyVN-S2KoX1J40qZbIpwqbeu79kuK6dWTfXMlRwrdewspAfiQ7r3xmEHjPnPFZTgYdMTy9EwNM1pqPYiACJo_gyUxpwAmwvGjRd9Uv2qujvjx-YekTWUsTNt-h0bFaIw3NJaUCdZmrrl1Q",
+        link: "/local games/CoinFlip/coinflip.html"
+    },
+];
+
+function renderAppsList() {
+    const gamesList = document.getElementById("gamesList");
+    
+    if (!gamesList) {
+        console.error("Games list element not found");
+        return;
+    }
+    
+    gamesList.innerHTML = '';
+    console.log("Rendering games list");
+    
+    defaultApps.forEach(app => {
+        const appElement = document.createElement("div");
+        appElement.className = "game-item";
+        
+        appElement.innerHTML = `
+            <div class="game-icon">
+                <img src="${app.imgSrc}" alt="${app.title} icon">
+            </div>
+            <h3 class="game-title">${app.title}</h3>
+        `;
+
+        appElement.onclick = () => {
+            // Check if user is logged in before navigating to game
+            const currentUser = voidAccounting.getCurrentUser();
+            if (currentUser) {
+                console.log("Navigating to game:", app.title);
+                
+                // Record the game play attempt
+                voidAccounting.recordGameTransaction(
+                    app.title.toLowerCase().replace(/\s+/g, '_'), 
+                    currentUser.uid,
+                    'game_play',
+                    0 // Just tracking the visit, not charging coins here
+                ).then(() => {
+                    // Navigate to the game after transaction is recorded
+                    window.location.href = app.link;
+                }).catch(error => {
+                    console.error("Error recording game visit:", error);
+                    // Still navigate even if tracking fails
+                    window.location.href = app.link;
+                });
+            } else {
+                alert('Please login to play games');
+                authContainer.style.display = 'block';
+            }
+        };
+
+        gamesList.appendChild(appElement);
+    });
+}
+
+document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
+    const gamesList = document.getElementById("gamesList");
+    const searchTerm = this.value.toLowerCase();
+    
+    if (!gamesList) return;
+    
+    gamesList.innerHTML = '';
+    
+    defaultApps.forEach(app => {
+        if (app.title.toLowerCase().includes(searchTerm)) {
+            const appElement = document.createElement("div");
+            appElement.className = "game-item";
+            
+            appElement.innerHTML = `
+                <div class="game-icon">
+                    <img src="${app.imgSrc}" alt="${app.title} icon">
+                </div>
+                <h3 class="game-title">${app.title}</h3>
+            `;
+
+            appElement.onclick = () => {
+                // Check if user is logged in before navigating to game
+                const currentUser = voidAccounting.getCurrentUser();
+                if (currentUser) {
+                    // Record the game play attempt
+                    voidAccounting.recordGameTransaction(
+                        app.title.toLowerCase().replace(/\s+/g, '_'), 
+                        currentUser.uid,
+                        'game_play',
+                        0 // Just tracking the visit, not charging coins here
+                    ).then(() => {
+                        // Navigate to the game after transaction is recorded
+                        window.location.href = app.link;
+                    }).catch(error => {
+                        console.error("Error recording game visit:", error);
+                        // Still navigate even if tracking fails
+                        window.location.href = app.link;
+                    });
+                } else {
+                    alert('Please login to play games');
+                    authContainer.style.display = 'block';
+                }
+            };
+
+            gamesList.appendChild(appElement);
+        }
+    });
+});
+
+// Load apps and start leaderboard on page load
+window.addEventListener('load', async () => {
+    try {
+        console.log("Page loaded, initializing app");
+        renderAppsList();
+        
+        // Start leaderboard updates
+        voidLeaderboard.startLeaderboardUpdates();
+        
+        // Check if user is already logged in
+        const user = auth.currentUser;
+        if (user) {
+            console.log("User already logged in:", user.uid);
+            await updateUIForLoggedInUser(user);
+        }
+    } catch (err) {
+        console.error('Error during initialization:', err);
+    }
+});
+
+// Stop leaderboard updates when user leaves the page
+window.addEventListener('beforeunload', () => {
+    voidLeaderboard.stopLeaderboardUpdates();
+});
+</script>
 </body>
 </html>
