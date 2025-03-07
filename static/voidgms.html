@@ -127,6 +127,9 @@
             width: 380px;
             z-index: 2;
             pointer-events: auto;
+            max-height: 90vh;
+            overflow-y: auto;
+            transition: all 0.3s ease;
         }
 
         .leaderboard-box {
@@ -168,6 +171,23 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .leaderboard-toggle {
+            display: none;
+            margin-left: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            justify-content: center;
+            align-items: center;
         }
 
         .leaderboard-list {
@@ -245,9 +265,32 @@
             padding: 20px 0;
         }
 
+        .leaderboard-retry {
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .leaderboard-retry button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .leaderboard-retry button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
         @keyframes leaderboard-pulse {
             0% { background-color: rgba(255, 215, 0, 0.3); }
             100% { background-color: rgba(255, 255, 255, 0.05); }
+        }
+
+        .leaderboard-minimized .leaderboard-list {
+            display: none;
         }
 
         .container {
@@ -426,9 +469,18 @@
         }
 
         /* Responsive adjustments */
+        @media (max-width: 1200px) {
+            .leaderboard-container {
+                width: 320px;
+            }
+            
+            .leaderboard-toggle {
+                display: flex;
+            }
+        }
+
         @media (max-width: 992px) {
             .leaderboard-container {
-                position: fixed;
                 left: 15px;
                 width: 280px;
             }
@@ -438,6 +490,7 @@
             .games-box {
                 width: 95%;
                 height: 80vh;
+                margin-left: 0;
             }
             
             .games-grid {
@@ -465,6 +518,63 @@
             
             .leaderboard-container {
                 width: 240px;
+            }
+        }
+        
+        /* Additional responsive handling for small screens */
+        @media (max-width: 600px) {
+            .leaderboard-container {
+                width: 180px;
+                font-size: 0.9rem;
+            }
+            
+            .leaderboard-title {
+                font-size: 1.1rem;
+                padding: 10px 5px;
+            }
+            
+            .leaderboard-item {
+                padding: 6px 8px;
+            }
+            
+            .leaderboard-rank {
+                font-size: 0.9rem;
+                min-width: 20px;
+            }
+            
+            .leaderboard-username {
+                font-size: 0.8rem;
+            }
+            
+            .leaderboard-balance {
+                font-size: 0.8rem;
+                min-width: 60px;
+            }
+        }
+        
+        /* Mobile layout adjustments */
+        @media (max-width: 480px) {
+            .container {
+                padding: 0.5rem;
+            }
+            
+            .leaderboard-container {
+                max-width: 160px;
+                left: 5px;
+            }
+            
+            .leaderboard-minimized {
+                max-width: 140px;
+            }
+            
+            .games-box {
+                width: 100%;
+                margin-left: 0;
+            }
+            
+            .games-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+                gap: 0.7rem;
             }
         }
     </style>
@@ -506,7 +616,10 @@
     <!-- Leaderboard Container (positioned with CSS) -->
     <div class="leaderboard-container">
         <div class="leaderboard-box">
-            <h2 class="leaderboard-title">Top Players</h2>
+            <h2 class="leaderboard-title">
+                Top Players
+                <span class="leaderboard-toggle" id="leaderboardToggle">−</span>
+            </h2>
             <div class="leaderboard-list" id="leaderboardList">
                 <div class="leaderboard-loading">Loading top players...</div>
             </div>
@@ -763,16 +876,46 @@ class VoidNetworkAccounting {
     }
 }
 
-// NEW: Leaderboard Class for real-time updates
+// IMPROVED: Leaderboard Class for real-time updates
 class VoidLeaderboard {
     constructor(db) {
         this.db = db;
         this.unsubscribe = null; // To store the Firestore listener unsubscribe function
         this.leaderboardElement = document.getElementById('leaderboardList');
+        this.retryCount = 0;
+        this.maxRetries = 3;
+        this.retryTimeout = null;
+        this.isMinimized = false;
         console.log("VoidLeaderboard initialized");
+        
+        // Set up minimize/maximize toggle
+        const toggleBtn = document.getElementById('leaderboardToggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => this.toggleLeaderboard());
+        }
     }
     
-    // Start real-time leaderboard updates
+    // Toggle leaderboard visibility
+    toggleLeaderboard() {
+        const container = document.querySelector('.leaderboard-container');
+        const toggleBtn = document.getElementById('leaderboardToggle');
+        
+        if (container) {
+            if (this.isMinimized) {
+                // Maximize
+                container.classList.remove('leaderboard-minimized');
+                if (toggleBtn) toggleBtn.textContent = '−';
+                this.isMinimized = false;
+            } else {
+                // Minimize
+                container.classList.add('leaderboard-minimized');
+                if (toggleBtn) toggleBtn.textContent = '+';
+                this.isMinimized = true;
+            }
+        }
+    }
+    
+    // Start real-time leaderboard updates with fallback
     startLeaderboardUpdates() {
         try {
             if (this.unsubscribe) {
@@ -780,32 +923,158 @@ class VoidLeaderboard {
                 this.unsubscribe();
             }
             
+            // Show loading state
+            if (this.leaderboardElement) {
+                this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Loading top players...</div>';
+            }
+            
             console.log("Starting leaderboard updates");
             // Query the top 5 users by account balance
             const usersRef = collection(this.db, 'users');
             const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(5));
             
-            // Set up real-time listener with server-side data
-            this.unsubscribe = onSnapshot(q, 
-                {
-                    // Force fresh data from server, not cache
-                    includeMetadataChanges: true
-                },
-                (querySnapshot) => {
-                    // Only update if we have server data, not cached data
-                    if (!querySnapshot.metadata.fromCache) {
-                        this.updateLeaderboardUI(querySnapshot);
-                    }
-                }, 
-                (error) => {
-                    console.error("Leaderboard listener error:", error);
-                    this.showLeaderboardError("Could not load leaderboard data");
-                }
-            );
+            // Set up timeout to check if we get data within a reasonable time
+            const timeoutPromise = new Promise((_, reject) => {
+                this.loadTimeout = setTimeout(() => {
+                    reject(new Error('Leaderboard load timeout'));
+                }, 10000); // 10 second timeout
+            });
+            
+            // Start a promise race between Firestore query and timeout
+            Promise.race([
+                // Firestore query promise
+                new Promise((resolve) => {
+                    // Set up real-time listener with server-side data
+                    this.unsubscribe = onSnapshot(q, 
+                        {
+                            includeMetadataChanges: true
+                        },
+                        (querySnapshot) => {
+                            // Clear timeout since we got a response
+                            clearTimeout(this.loadTimeout);
+                            
+                            // Reset retry count on successful data
+                            this.retryCount = 0;
+                            
+                            // Update UI with the snapshot data
+                            if (!querySnapshot.metadata.fromCache) {
+                                this.updateLeaderboardUI(querySnapshot);
+                                resolve(querySnapshot);
+                            } else {
+                                console.log("Received cached data, waiting for server data");
+                            }
+                        }, 
+                        (error) => {
+                            console.error("Leaderboard listener error:", error);
+                            clearTimeout(this.loadTimeout);
+                            this.handleLeaderboardError("Could not load leaderboard data");
+                        }
+                    );
+                }),
+                timeoutPromise
+            ]).catch(error => {
+                console.error("Leaderboard loading issue:", error);
+                this.handleLeaderboardError("Leaderboard data timed out");
+            });
             
         } catch (error) {
             console.error("Error setting up leaderboard:", error);
-            this.showLeaderboardError("Could not start leaderboard");
+            this.handleLeaderboardError("Could not start leaderboard");
+        }
+    }
+    
+    // Handle leaderboard errors with retry mechanism
+    handleLeaderboardError(message) {
+        // Clear any existing retries
+        if (this.retryTimeout) {
+            clearTimeout(this.retryTimeout);
+        }
+        
+        // Show error with retry button if we haven't reached max retries
+        if (this.retryCount < this.maxRetries) {
+            this.retryCount++;
+            
+            const remainingRetries = this.maxRetries - this.retryCount + 1;
+            
+            if (this.leaderboardElement) {
+                this.leaderboardElement.innerHTML = `
+                    <div class="leaderboard-error">${message}</div>
+                    <div class="leaderboard-retry">
+                        <button id="retry-leaderboard">Retry (${remainingRetries} left)</button>
+                    </div>
+                `;
+                
+                // Add event listener to retry button
+                const retryBtn = document.getElementById('retry-leaderboard');
+                if (retryBtn) {
+                    retryBtn.addEventListener('click', () => {
+                        this.startLeaderboardUpdates();
+                    });
+                }
+            }
+            
+            // Auto-retry after a delay (with exponential backoff)
+            const backoffTime = Math.min(2000 * Math.pow(2, this.retryCount - 1), 30000);
+            this.retryTimeout = setTimeout(() => {
+                console.log(`Auto-retrying leaderboard (attempt ${this.retryCount})`);
+                this.startLeaderboardUpdates();
+            }, backoffTime);
+            
+        } else {
+            // Max retries reached, show fallback content
+            this.showFallbackLeaderboard();
+        }
+    }
+    
+    // Show fallback static leaderboard
+    showFallbackLeaderboard() {
+        if (this.leaderboardElement) {
+            this.leaderboardElement.innerHTML = `
+                <div class="leaderboard-error">Unable to load live leaderboard</div>
+                <div class="leaderboard-item">
+                    <span class="leaderboard-rank">#1</span>
+                    <div class="leaderboard-username-container">
+                        <span class="leaderboard-username">Void Network</span>
+                    </div>
+                    <span class="leaderboard-balance">89,750</span>
+                </div>
+                <div class="leaderboard-item">
+                    <span class="leaderboard-rank">#2</span>
+                    <div class="leaderboard-username-container">
+                        <span class="leaderboard-username">TopPlayer</span>
+                    </div>
+                    <span class="leaderboard-balance">65,420</span>
+                </div>
+                <div class="leaderboard-item">
+                    <span class="leaderboard-rank">#3</span>
+                    <div class="leaderboard-username-container">
+                        <span class="leaderboard-username">GameMaster</span>
+                    </div>
+                    <span class="leaderboard-balance">48,300</span>
+                </div>
+                <div class="leaderboard-retry">
+                    <button id="retry-leaderboard-final">Try Again</button>
+                </div>
+            `;
+            
+            // Style Void Network specially in the fallback
+            const usernameElements = this.leaderboardElement.querySelectorAll('.leaderboard-username');
+            usernameElements.forEach(el => {
+                if (el.textContent === 'Void Network') {
+                    el.style.color = '#1DA1F2';
+                    el.style.textShadow = '0 0 5px rgba(29, 161, 242, 0.3)';
+                    el.style.fontWeight = 'bold';
+                }
+            });
+            
+            // Add event listener for final retry button
+            const retryBtn = document.getElementById('retry-leaderboard-final');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', () => {
+                    this.retryCount = 0; // Reset retry count
+                    this.startLeaderboardUpdates();
+                });
+            }
         }
     }
     
@@ -815,6 +1084,15 @@ class VoidLeaderboard {
             console.log("Stopping leaderboard updates");
             this.unsubscribe();
             this.unsubscribe = null;
+        }
+        
+        // Clear any pending timeouts
+        if (this.loadTimeout) {
+            clearTimeout(this.loadTimeout);
+        }
+        
+        if (this.retryTimeout) {
+            clearTimeout(this.retryTimeout);
         }
     }
     
@@ -881,15 +1159,9 @@ class VoidLeaderboard {
         });
         
         console.log(`Leaderboard updated with ${validDocs.length} players`);
-    }
-    
-    // Show error message
-    showLeaderboardError(message) {
-        if (this.leaderboardElement) {
-            this.leaderboardElement.innerHTML = `
-                <div class="leaderboard-error">${message}</div>
-            `;
-        }
+        
+        // Find and highlight Void Network
+        findAndHighlightVoidNetwork();
     }
 }
 
@@ -942,6 +1214,23 @@ setInterval(refreshLeaderboard, 30000); // Refresh every 30 seconds
 
 // Run the initial highlight check shortly after page load
 setTimeout(findAndHighlightVoidNetwork, 2000);
+
+// Detect screen size changes to auto-minimize leaderboard on small screens
+function handleResponsiveLayout() {
+    const leaderboardContainer = document.querySelector('.leaderboard-container');
+    if (leaderboardContainer && window.innerWidth < 600) {
+        // Auto-minimize on very small screens if not already minimized
+        if (!voidLeaderboard.isMinimized) {
+            voidLeaderboard.toggleLeaderboard();
+        }
+    }
+}
+
+// Initial check on page load
+window.addEventListener('load', handleResponsiveLayout);
+
+// Check on window resize
+window.addEventListener('resize', handleResponsiveLayout);
 
 // Authentication Event Listeners
 document.getElementById('login-btn')?.addEventListener('click', async () => {
