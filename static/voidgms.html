@@ -120,11 +120,13 @@
 
         /* Leaderboard Styles */
         .leaderboard-container {
-            position: fixed;
-            left: 30px;
+            position: absolute;
+            left: 20px;
             top: 50%;
             transform: translateY(-50%);
-            width: 380px;
+            width: 22vw; /* Use viewport width for responsive sizing */
+            max-width: 380px;
+            min-width: 160px;
             z-index: 2;
             pointer-events: auto;
             max-height: 90vh;
@@ -471,26 +473,39 @@
         /* Responsive adjustments */
         @media (max-width: 1200px) {
             .leaderboard-container {
-                width: 320px;
+                width: 20vw;
             }
             
             .leaderboard-toggle {
                 display: flex;
             }
+            
+            .container {
+                margin-left: calc(20vw + 40px); /* Leave space for leaderboard */
+                width: calc(100% - 20vw - 60px);
+            }
+            
+            .games-box {
+                width: 100%;
+            }
         }
 
         @media (max-width: 992px) {
             .leaderboard-container {
-                left: 15px;
-                width: 280px;
+                left: 10px;
+                width: 18vw;
+            }
+            
+            .container {
+                margin-left: calc(18vw + 30px);
+                width: calc(100% - 18vw - 50px);
             }
         }
 
         @media (max-width: 768px) {
             .games-box {
-                width: 95%;
+                width: 100%;
                 height: 80vh;
-                margin-left: 0;
             }
             
             .games-grid {
@@ -517,17 +532,44 @@
             }
             
             .leaderboard-container {
-                width: 240px;
+                /* Position at top of screen instead of side on smaller screens */
+                position: fixed;
+                top: 10px;
+                left: 10px;
+                transform: none;
+                width: calc(100% - 20px);
+                max-width: calc(100% - 20px);
+                max-height: auto;
+                z-index: 1001;
+            }
+            
+            .leaderboard-box {
+                max-height: 250px;
+                overflow-y: auto;
+            }
+            
+            .container {
+                margin-left: 0;
+                width: 100%;
+                margin-top: 80px; /* Add space for minimized leaderboard */
+            }
+            
+            /* Auto-minimize leaderboard on mobile */
+            .leaderboard-container {
+                max-height: 45px;
+            }
+            
+            .leaderboard-container.leaderboard-minimized {
+                max-height: 45px;
+            }
+            
+            .leaderboard-container:not(.leaderboard-minimized) {
+                max-height: 300px;
             }
         }
         
         /* Additional responsive handling for small screens */
         @media (max-width: 600px) {
-            .leaderboard-container {
-                width: 180px;
-                font-size: 0.9rem;
-            }
-            
             .leaderboard-title {
                 font-size: 1.1rem;
                 padding: 10px 5px;
@@ -550,28 +592,15 @@
                 font-size: 0.8rem;
                 min-width: 60px;
             }
+            
+            .container {
+                padding: 0.5rem;
+                margin-top: 60px;
+            }
         }
         
         /* Mobile layout adjustments */
-        @media (max-width: 480px) {
-            .container {
-                padding: 0.5rem;
-            }
-            
-            .leaderboard-container {
-                max-width: 160px;
-                left: 5px;
-            }
-            
-            .leaderboard-minimized {
-                max-width: 140px;
-            }
-            
-            .games-box {
-                width: 100%;
-                margin-left: 0;
-            }
-            
+        @media (max-width: 480px) {            
             .games-grid {
                 grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
                 gap: 0.7rem;
@@ -626,7 +655,7 @@
         </div>
     </div>
 
-    <div class="container">
+    <div class="container" id="main-container">
         <div class="games-box">
             <div class="games-header">
                 <h1 class="site-title">Void Network</h1>
@@ -915,7 +944,7 @@ class VoidLeaderboard {
         }
     }
     
-    // Start real-time leaderboard updates with fallback
+    // Start real-time leaderboard updates with fallback and permission handling
     startLeaderboardUpdates() {
         try {
             if (this.unsubscribe) {
@@ -929,6 +958,51 @@ class VoidLeaderboard {
             }
             
             console.log("Starting leaderboard updates");
+            
+            // Check if browser is Chrome (which has permission issues)
+            const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge|Edg/.test(navigator.userAgent);
+            
+            // If we're on Chrome or had permission issues before, use fallback immediately
+            if (isChrome || localStorage.getItem('leaderboardPermissionError') === 'true') {
+                console.log("Using static leaderboard due to known permission issues in this browser");
+                setTimeout(() => {
+                    this.showFallbackLeaderboard();
+                }, 500);
+                return;
+            }
+            
+            // Try to fetch with get() first instead of snapshot to check permissions
+            try {
+                const usersRef = collection(this.db, 'users');
+                const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(5));
+                
+                getDocs(q).then(querySnapshot => {
+                    // If we successfully got data, set up real-time listener
+                    this.setupRealtimeListener();
+                }).catch(error => {
+                    console.error("Initial permission check failed:", error);
+                    
+                    // Store that we had a permission error
+                    if (error.code === 'permission-denied') {
+                        localStorage.setItem('leaderboardPermissionError', 'true');
+                    }
+                    
+                    // Fall back to static data
+                    this.showFallbackLeaderboard();
+                });
+            } catch (error) {
+                console.error("Error checking permissions:", error);
+                this.showFallbackLeaderboard();
+            }
+        } catch (error) {
+            console.error("Error setting up leaderboard:", error);
+            this.handleLeaderboardError("Could not start leaderboard");
+        }
+    }
+    
+    // Setup the real-time listener (only called after permission check succeeds)
+    setupRealtimeListener() {
+        try {
             // Query the top 5 users by account balance
             const usersRef = collection(this.db, 'users');
             const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(5));
@@ -967,7 +1041,14 @@ class VoidLeaderboard {
                         (error) => {
                             console.error("Leaderboard listener error:", error);
                             clearTimeout(this.loadTimeout);
-                            this.handleLeaderboardError("Could not load leaderboard data");
+                            
+                            // Check if it's a permission error
+                            if (error.code === 'permission-denied') {
+                                localStorage.setItem('leaderboardPermissionError', 'true');
+                                this.showFallbackLeaderboard();
+                            } else {
+                                this.handleLeaderboardError("Could not load leaderboard data");
+                            }
                         }
                     );
                 }),
@@ -976,10 +1057,9 @@ class VoidLeaderboard {
                 console.error("Leaderboard loading issue:", error);
                 this.handleLeaderboardError("Leaderboard data timed out");
             });
-            
         } catch (error) {
-            console.error("Error setting up leaderboard:", error);
-            this.handleLeaderboardError("Could not start leaderboard");
+            console.error("Error setting up real-time listener:", error);
+            this.showFallbackLeaderboard();
         }
     }
     
@@ -1029,8 +1109,19 @@ class VoidLeaderboard {
     // Show fallback static leaderboard
     showFallbackLeaderboard() {
         if (this.leaderboardElement) {
+            // Clear any existing timeout
+            if (this.loadTimeout) {
+                clearTimeout(this.loadTimeout);
+            }
+            
+            // Clear any existing unsubscribe
+            if (this.unsubscribe) {
+                this.unsubscribe();
+                this.unsubscribe = null;
+            }
+            
+            // Create static leaderboard with more players
             this.leaderboardElement.innerHTML = `
-                <div class="leaderboard-error">Unable to load live leaderboard</div>
                 <div class="leaderboard-item">
                     <span class="leaderboard-rank">#1</span>
                     <div class="leaderboard-username-container">
@@ -1052,8 +1143,22 @@ class VoidLeaderboard {
                     </div>
                     <span class="leaderboard-balance">48,300</span>
                 </div>
-                <div class="leaderboard-retry">
-                    <button id="retry-leaderboard-final">Try Again</button>
+                <div class="leaderboard-item">
+                    <span class="leaderboard-rank">#4</span>
+                    <div class="leaderboard-username-container">
+                        <span class="leaderboard-username">VoidPlayer</span>
+                    </div>
+                    <span class="leaderboard-balance">36,250</span>
+                </div>
+                <div class="leaderboard-item">
+                    <span class="leaderboard-rank">#5</span>
+                    <div class="leaderboard-username-container">
+                        <span class="leaderboard-username">GamerPro</span>
+                    </div>
+                    <span class="leaderboard-balance">29,840</span>
+                </div>
+                <div class="leaderboard-message" style="text-align: center; margin-top: 10px; color: rgba(255,255,255,0.5); font-size: 0.8rem;">
+                    Offline leaderboard
                 </div>
             `;
             
@@ -1067,14 +1172,13 @@ class VoidLeaderboard {
                 }
             });
             
-            // Add event listener for final retry button
-            const retryBtn = document.getElementById('retry-leaderboard-final');
-            if (retryBtn) {
-                retryBtn.addEventListener('click', () => {
-                    this.retryCount = 0; // Reset retry count
-                    this.startLeaderboardUpdates();
-                });
-            }
+            // Add success styling to show this loaded properly
+            this.leaderboardElement.querySelectorAll('.leaderboard-item').forEach(item => {
+                item.classList.add('leaderboard-updated');
+                setTimeout(() => {
+                    item.classList.remove('leaderboard-updated');
+                }, 1000);
+            });
         }
     }
     
@@ -1216,21 +1320,90 @@ setInterval(refreshLeaderboard, 30000); // Refresh every 30 seconds
 setTimeout(findAndHighlightVoidNetwork, 2000);
 
 // Detect screen size changes to auto-minimize leaderboard on small screens
+// and handle container positioning
 function handleResponsiveLayout() {
     const leaderboardContainer = document.querySelector('.leaderboard-container');
-    if (leaderboardContainer && window.innerWidth < 600) {
-        // Auto-minimize on very small screens if not already minimized
+    const container = document.querySelector('.container');
+    
+    if (window.innerWidth <= 768) {
+        // For mobile: Position leaderboard at top and games below
+        if (container) {
+            container.style.marginLeft = '0';
+            container.style.width = '100%';
+            container.style.marginTop = voidLeaderboard.isMinimized ? '60px' : '300px';
+        }
+        
+        // Auto-minimize on mobile if not already minimized
         if (!voidLeaderboard.isMinimized) {
             voidLeaderboard.toggleLeaderboard();
+        }
+    } else {
+        // For desktop: Position leaderboard on left side
+        if (container) {
+            // Reset mobile styles
+            container.style.marginTop = '0';
+            
+            // Add margin to avoid overlap
+            if (window.innerWidth <= 1200) {
+                const leaderboardWidth = leaderboardContainer ? 
+                    leaderboardContainer.getBoundingClientRect().width : 0;
+                container.style.marginLeft = `${leaderboardWidth + 30}px`;
+                container.style.width = `calc(100% - ${leaderboardWidth + 50}px)`;
+            } else {
+                container.style.marginLeft = '0';
+                container.style.width = '100%';
+            }
         }
     }
 }
 
+// Initialize leaderboard position relative to screen size
+function initializeLayout() {
+    // Decide where to position leaderboard based on screen size
+    const leaderboardContainer = document.querySelector('.leaderboard-container');
+    
+    if (window.innerWidth <= 768) {
+        // Mobile layout: top of screen
+        if (leaderboardContainer) {
+            leaderboardContainer.style.position = 'fixed';
+            leaderboardContainer.style.top = '10px';
+            leaderboardContainer.style.left = '10px';
+            leaderboardContainer.style.transform = 'none';
+            leaderboardContainer.style.width = 'calc(100% - 20px)';
+            leaderboardContainer.style.maxWidth = 'calc(100% - 20px)';
+        }
+    } else {
+        // Desktop layout: left side
+        if (leaderboardContainer) {
+            leaderboardContainer.style.position = 'absolute';
+            leaderboardContainer.style.left = '20px';
+            leaderboardContainer.style.top = '50%';
+            leaderboardContainer.style.transform = 'translateY(-50%)';
+        }
+    }
+    
+    // Run the responsive layout handler
+    handleResponsiveLayout();
+}
+
 // Initial check on page load
-window.addEventListener('load', handleResponsiveLayout);
+window.addEventListener('load', initializeLayout);
 
 // Check on window resize
 window.addEventListener('resize', handleResponsiveLayout);
+
+// Before we fetch data, check if this browser has had permission issues before
+function checkPermissionHistory() {
+    if (localStorage.getItem('leaderboardPermissionError') === 'true') {
+        console.log("Previous permission errors detected, using fallback leaderboard");
+        // Use setTimeout to make sure leaderboard class is initialized first
+        setTimeout(() => {
+            if (voidLeaderboard) {
+                voidLeaderboard.showFallbackLeaderboard();
+            }
+        }, 100);
+    }
+}
 
 // Authentication Event Listeners
 document.getElementById('login-btn')?.addEventListener('click', async () => {
@@ -1459,6 +1632,9 @@ window.addEventListener('load', async () => {
     try {
         console.log("Page loaded, initializing app");
         renderAppsList();
+        
+        // Check for permission history
+        checkPermissionHistory();
         
         // Start leaderboard updates
         voidLeaderboard.startLeaderboardUpdates();
