@@ -532,40 +532,38 @@
                 max-width: 350px;
             }
             
+            /* Fixed leaderboard positioning for mobile */
             .leaderboard-container {
-                /* Position at top of screen instead of side on smaller screens */
                 position: fixed;
                 top: 10px;
                 left: 10px;
+                right: 10px;
                 transform: none;
                 width: calc(100% - 20px);
-                max-width: calc(100% - 20px);
-                max-height: auto;
+                max-width: none;
                 z-index: 1001;
+                /* Always start minimized on mobile */
+                max-height: 45px;
             }
             
-            .leaderboard-box {
-                max-height: 250px;
+            /* Ensure the leaderboard stays minimized by default */
+            .leaderboard-container:not(.leaderboard-expanded) {
+                max-height: 45px;
+                overflow: hidden;
+            }
+            
+            /* When expanded, it will have max-height to show content but not cover games */
+            .leaderboard-container.leaderboard-expanded {
+                max-height: 300px;
                 overflow-y: auto;
             }
             
+            /* Container padding adjustment to avoid overlap */
             .container {
                 margin-left: 0;
                 width: 100%;
-                margin-top: 80px; /* Add space for minimized leaderboard */
-            }
-            
-            /* Auto-minimize leaderboard on mobile */
-            .leaderboard-container {
-                max-height: 45px;
-            }
-            
-            .leaderboard-container.leaderboard-minimized {
-                max-height: 45px;
-            }
-            
-            .leaderboard-container:not(.leaderboard-minimized) {
-                max-height: 300px;
+                padding-top: 55px; /* Fixed space for minimized leaderboard */
+                margin-top: 0;
             }
         }
         
@@ -592,11 +590,6 @@
             .leaderboard-balance {
                 font-size: 0.8rem;
                 min-width: 60px;
-            }
-            
-            .container {
-                padding: 0.5rem;
-                margin-top: 60px;
             }
         }
         
@@ -644,11 +637,11 @@
     </div>
 
     <!-- Leaderboard Container (positioned with CSS) -->
-    <div class="leaderboard-container">
+    <div class="leaderboard-container leaderboard-minimized">
         <div class="leaderboard-box">
             <h2 class="leaderboard-title">
                 Top Players
-                <span class="leaderboard-toggle" id="leaderboardToggle">−</span>
+                <span class="leaderboard-toggle" id="leaderboardToggle">+</span>
             </h2>
             <div class="leaderboard-list" id="leaderboardList">
                 <div class="leaderboard-loading">Loading top players...</div>
@@ -915,7 +908,7 @@ class VoidLeaderboard {
         this.retryCount = 0;
         this.maxRetries = 3;
         this.retryTimeout = null;
-        this.isMinimized = false;
+        this.isMinimized = true; // Start minimized on mobile
         console.log("VoidLeaderboard initialized");
         
         // Set up minimize/maximize toggle
@@ -934,13 +927,29 @@ class VoidLeaderboard {
             if (this.isMinimized) {
                 // Maximize
                 container.classList.remove('leaderboard-minimized');
+                container.classList.add('leaderboard-expanded');
                 if (toggleBtn) toggleBtn.textContent = '−';
                 this.isMinimized = false;
             } else {
                 // Minimize
                 container.classList.add('leaderboard-minimized');
+                container.classList.remove('leaderboard-expanded');
                 if (toggleBtn) toggleBtn.textContent = '+';
                 this.isMinimized = true;
+            }
+            
+            // Adjust container padding based on leaderboard state
+            this.adjustContainerPadding();
+        }
+    }
+    
+    // Adjust container padding based on leaderboard state
+    adjustContainerPadding() {
+        const container = document.getElementById('main-container');
+        if (window.innerWidth <= 768) {
+            // Only adjust padding for mobile view
+            if (container) {
+                container.style.paddingTop = this.isMinimized ? '55px' : '300px';
             }
         }
     }
@@ -1290,7 +1299,7 @@ function handleResponsiveLayout() {
         if (container) {
             container.style.marginLeft = '0';
             container.style.width = '100%';
-            container.style.marginTop = voidLeaderboard.isMinimized ? '60px' : '300px';
+            container.style.paddingTop = voidLeaderboard.isMinimized ? '55px' : '300px';
         }
         
         // Auto-minimize on mobile if not already minimized
@@ -1301,7 +1310,7 @@ function handleResponsiveLayout() {
         // For desktop: Position leaderboard on left side
         if (container) {
             // Reset mobile styles
-            container.style.marginTop = '0';
+            container.style.paddingTop = '0';
             
             // Add margin to avoid overlap
             if (window.innerWidth <= 1200) {
