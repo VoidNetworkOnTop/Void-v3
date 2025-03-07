@@ -945,7 +945,7 @@ class VoidLeaderboard {
         }
     }
     
-    // Start real-time leaderboard updates with fallback and permission handling
+    // Start real-time leaderboard updates - Force live data for all browsers
     startLeaderboardUpdates() {
         try {
             if (this.unsubscribe) {
@@ -958,109 +958,65 @@ class VoidLeaderboard {
                 this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Loading top players...</div>';
             }
             
-            console.log("Starting leaderboard updates");
+            console.log("Starting leaderboard updates - force live data");
             
-            // Check if browser is Chrome (which has permission issues)
-            const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge|Edg/.test(navigator.userAgent);
+            // Clear any permission error records
+            localStorage.removeItem('leaderboardPermissionError');
             
-            // If we're on Chrome or had permission issues before, use fallback immediately
-            if (isChrome || localStorage.getItem('leaderboardPermissionError') === 'true') {
-                console.log("Using static leaderboard due to known permission issues in this browser");
-                setTimeout(() => {
-                    this.showFallbackLeaderboard();
-                }, 500);
-                return;
-            }
+            // Setup real-time listener directly - force live data
+            this.setupRealtimeListener();
             
-            // Try to fetch with get() first instead of snapshot to check permissions
-            try {
-                const usersRef = collection(this.db, 'users');
-                const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(5));
-                
-                getDocs(q).then(querySnapshot => {
-                    // If we successfully got data, set up real-time listener
-                    this.setupRealtimeListener();
-                }).catch(error => {
-                    console.error("Initial permission check failed:", error);
-                    
-                    // Store that we had a permission error
-                    if (error.code === 'permission-denied') {
-                        localStorage.setItem('leaderboardPermissionError', 'true');
-                    }
-                    
-                    // Fall back to static data
-                    this.showFallbackLeaderboard();
-                });
-            } catch (error) {
-                console.error("Error checking permissions:", error);
-                this.showFallbackLeaderboard();
-            }
         } catch (error) {
             console.error("Error setting up leaderboard:", error);
-            this.handleLeaderboardError("Could not start leaderboard");
+            // Retry immediately if there's an error
+            setTimeout(() => this.setupRealtimeListener(), 1000);
         }
     }
     
-    // Setup the real-time listener (only called after permission check succeeds)
+    // Setup the real-time listener with multiple retries
     setupRealtimeListener() {
         try {
             // Query the top 5 users by account balance
             const usersRef = collection(this.db, 'users');
             const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(5));
             
-            // Set up timeout to check if we get data within a reasonable time
-            const timeoutPromise = new Promise((_, reject) => {
-                this.loadTimeout = setTimeout(() => {
-                    reject(new Error('Leaderboard load timeout'));
-                }, 10000); // 10 second timeout
-            });
+            console.log("Setting up real-time Firebase listener");
             
-            // Start a promise race between Firestore query and timeout
-            Promise.race([
-                // Firestore query promise
-                new Promise((resolve) => {
-                    // Set up real-time listener with server-side data
-                    this.unsubscribe = onSnapshot(q, 
-                        {
-                            includeMetadataChanges: true
-                        },
-                        (querySnapshot) => {
-                            // Clear timeout since we got a response
-                            clearTimeout(this.loadTimeout);
-                            
-                            // Reset retry count on successful data
-                            this.retryCount = 0;
-                            
-                            // Update UI with the snapshot data
-                            if (!querySnapshot.metadata.fromCache) {
-                                this.updateLeaderboardUI(querySnapshot);
-                                resolve(querySnapshot);
-                            } else {
-                                console.log("Received cached data, waiting for server data");
-                            }
-                        }, 
-                        (error) => {
-                            console.error("Leaderboard listener error:", error);
-                            clearTimeout(this.loadTimeout);
-                            
-                            // Check if it's a permission error
-                            if (error.code === 'permission-denied') {
-                                localStorage.setItem('leaderboardPermissionError', 'true');
-                                this.showFallbackLeaderboard();
-                            } else {
-                                this.handleLeaderboardError("Could not load leaderboard data");
-                            }
-                        }
-                    );
-                }),
-                timeoutPromise
-            ]).catch(error => {
-                console.error("Leaderboard loading issue:", error);
-                this.handleLeaderboardError("Leaderboard data timed out");
-            });
+            // Set up real-time listener with server-side data
+            this.unsubscribe = onSnapshot(q, 
+                {
+                    includeMetadataChanges: true
+                },
+                (querySnapshot) => {
+                    // Reset retry count on successful data
+                    this.retryCount = 0;
+                    
+                    // Update UI with the snapshot data
+                    if (!querySnapshot.metadata.fromCache) {
+                        console.log("Received fresh data from server");
+                        this.updateLeaderboardUI(querySnapshot);
+                    } else {
+                        console.log("Received cached data, waiting for server data");
+                    }
+                }, 
+                (error) => {
+                    console.error("Leaderboard listener error:", error);
+                    
+                    // Retry after a short delay
+                    if (this.retryCount < 5) {
+                        this.retryCount++;
+                        console.log(`Retrying Firebase connection (${this.retryCount}/5)...`);
+                        setTimeout(() => this.setupRealtimeListener(), 2000);
+                    }
+                }
+            );
         } catch (error) {
             console.error("Error setting up real-time listener:", error);
-            this.showFallbackLeaderboard();
+            // Retry after a delay
+            if (this.retryCount < 5) {
+                this.retryCount++;
+                setTimeout(() => this.setupRealtimeListener(), 2000);
+            }
         }
     }
     
@@ -1303,11 +1259,14 @@ function findAndHighlightVoidNetwork() {
     });
 }
 
-// Refresh the leaderboard with a delay
+// Refresh the leaderboard manually to force a new connection
 function refreshLeaderboard() {
     console.log("Manual leaderboard refresh requested");
+    
     // Stop current listener and restart to force refresh
     voidLeaderboard.stopLeaderboardUpdates();
+    
+    // Force a new connection attempt
     voidLeaderboard.startLeaderboardUpdates();
     
     // After a short delay, manually look for Void Network
@@ -1393,16 +1352,29 @@ window.addEventListener('load', initializeLayout);
 // Check on window resize
 window.addEventListener('resize', handleResponsiveLayout);
 
-// Before we fetch data, check if this browser has had permission issues before
-function checkPermissionHistory() {
-    if (localStorage.getItem('leaderboardPermissionError') === 'true') {
-        console.log("Previous permission errors detected, using fallback leaderboard");
-        // Use setTimeout to make sure leaderboard class is initialized first
-        setTimeout(() => {
-            if (voidLeaderboard) {
-                voidLeaderboard.showFallbackLeaderboard();
-            }
-        }, 100);
+// Before we fetch data, ensure we're ready for live data mode
+function prepareForLiveData() {
+    // Clear any previous permission errors to force a fresh attempt
+    localStorage.removeItem('leaderboardPermissionError');
+    
+    // Add a refresh button to the leaderboard title
+    const leaderboardTitle = document.querySelector('.leaderboard-title');
+    if (leaderboardTitle) {
+        // Check if we already have a refresh button
+        if (!document.getElementById('refresh-leaderboard-btn')) {
+            const refreshBtn = document.createElement('span');
+            refreshBtn.id = 'refresh-leaderboard-btn';
+            refreshBtn.innerHTML = '↻';
+            refreshBtn.style.marginLeft = '10px';
+            refreshBtn.style.cursor = 'pointer';
+            refreshBtn.style.fontSize = '0.9em';
+            refreshBtn.title = 'Refresh leaderboard';
+            refreshBtn.addEventListener('click', function(e) {
+                e.stopPropagation(); // Don't trigger the toggle
+                refreshLeaderboard();
+            });
+            leaderboardTitle.appendChild(refreshBtn);
+        }
     }
 }
 
@@ -1634,8 +1606,8 @@ window.addEventListener('load', async () => {
         console.log("Page loaded, initializing app");
         renderAppsList();
         
-        // Check for permission history
-        checkPermissionHistory();
+        // Prepare for live data
+        prepareForLiveData();
         
         // Start leaderboard updates
         voidLeaderboard.startLeaderboardUpdates();
