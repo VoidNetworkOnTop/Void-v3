@@ -192,7 +192,7 @@
         
         // Initialize admin console
         function initConsole(userEmail, userId) {
-            printToTerminal('Void Network Admin Console v1.1');
+            printToTerminal('Void Network Admin Console v1.2');
             printToTerminal('----------------------------------');
             printToTerminal('Available commands:');
             printToTerminal('help - Show available commands');
@@ -205,6 +205,7 @@
             printToTerminal('<user ID/email> remove coins <amount> - Remove coins');
             printToTerminal('kick <email> - Delete account and user data');
             printToTerminal('/maxcoins - Show top 3 users with most coins');
+            printToTerminal('search <query> - Search for users by partial username');
             printToTerminal('refresh users - Check for new users and update database');
             printToTerminal('----------------------------------');
             printSuccess(`Authenticated as admin: ${userEmail}`);
@@ -331,14 +332,14 @@
             printSuccess(`Refresh complete. Created ${created} user documents, updated ${updated} users.`);
         }
         
-        // Helper function to preload some user data
+        // Helper function to preload all user data
         async function loadAllUsersData() {
             try {
                 printInfo("Loading user data in background...");
                 
-                // Try to directly list users
+                // Try to directly list users - increased limit to 100
                 const usersRef = collection(db, 'users');
-                const usersQuery = query(usersRef, limit(50)); // Get up to 50 users
+                const usersQuery = query(usersRef, limit(100)); // Increased from 50 to 100
                 
                 try {
                     const querySnapshot = await getDocs(usersQuery);
@@ -363,11 +364,16 @@
                     
                     printInfo(`Loaded data for ${count} users`);
                     
+                    // Check if we loaded the special username the user is looking for
+                    await checkForSpecialUsernames();
+                    
                     // Now refresh the user data to make sure all known users have documents
                     refreshUserData();
                     
                 } catch (listError) {
                     console.error("Error loading users:", listError);
+                    printWarning("Error loading users from database. Falling back to known users...");
+                    
                     // Fallback to refresh
                     refreshUserData();
                 }
@@ -375,6 +381,83 @@
                 console.error("Error in preloading:", error);
                 // Fallback to refresh
                 refreshUserData();
+            }
+        }
+        
+        // New function to specifically search for important usernames
+        async function checkForSpecialUsernames() {
+            try {
+                // List of special usernames to look for
+                const specialUsernames = ['FreeMoolah'];
+                
+                for (const username of specialUsernames) {
+                    // Check if we already have this username in the map
+                    if (usernameToIDMap.has(username.toLowerCase())) {
+                        printInfo(`Special username "${username}" is already loaded.`);
+                        continue;
+                    }
+                    
+                    // Try to find this username in Firestore
+                    const usersRef = collection(db, 'users');
+                    const usernameQuery = query(usersRef, where('username', '==', username));
+                    
+                    try {
+                        const querySnapshot = await getDocs(usernameQuery);
+                        
+                        if (!querySnapshot.empty) {
+                            // User found by username
+                            querySnapshot.forEach((userDoc) => {
+                                const userData = userDoc.data();
+                                const userId = userDoc.id;
+                                
+                                userDataCache[userId] = userData;
+                                usernameToIDMap.set(username.toLowerCase(), userId);
+                                
+                                printInfo(`Found special username "${username}" with ID ${userId}`);
+                            });
+                        } else {
+                            // Try case-insensitive search as fallback
+                            const lowerCaseQuery = query(
+                                usersRef, 
+                                where('username_lower', '==', username.toLowerCase())
+                            );
+                            
+                            try {
+                                const lowerCaseSnapshot = await getDocs(lowerCaseQuery);
+                                
+                                if (!lowerCaseSnapshot.empty) {
+                                    lowerCaseSnapshot.forEach((userDoc) => {
+                                        const userData = userDoc.data();
+                                        const userId = userDoc.id;
+                                        
+                                        userDataCache[userId] = userData;
+                                        usernameToIDMap.set(username.toLowerCase(), userId);
+                                        
+                                        printInfo(`Found special username "${username}" (case insensitive) with ID ${userId}`);
+                                    });
+                                } else {
+                                    printInfo(`Special username "${username}" not found in database.`);
+                                    
+                                    // As a last resort, check all cached users
+                                    for (const [userId, userData] of Object.entries(userDataCache)) {
+                                        if (userData && userData.username && 
+                                            userData.username.toLowerCase() === username.toLowerCase()) {
+                                            usernameToIDMap.set(username.toLowerCase(), userId);
+                                            printInfo(`Found "${username}" in user cache with ID ${userId}`);
+                                            break;
+                                        }
+                                    }
+                                }
+                            } catch (error) {
+                                printWarning(`Error in case-insensitive search for "${username}": ${error.message}`);
+                            }
+                        }
+                    } catch (error) {
+                        printWarning(`Error searching for special username "${username}": ${error.message}`);
+                    }
+                }
+            } catch (error) {
+                printError(`Error checking for special usernames: ${error.message}`);
             }
         }
         
@@ -408,6 +491,7 @@
                 printInfo('<user ID/email> remove coins <amount> - Remove coins');
                 printInfo('kick <email> - Delete account and user data');
                 printInfo('/maxcoins - Show top 3 users with most coins');
+                printInfo('search <query> - Search for users by partial username');
                 printInfo('me - Show your own user ID (for reference)');
                 printInfo('refresh users - Check for new users and update database');
                 return;
@@ -450,6 +534,17 @@
             // Max coins command
             if (command.toLowerCase() === '/maxcoins') {
                 await findUsersWithMostCoins();
+                return;
+            }
+            
+            // Search command (new)
+            if (command.toLowerCase().startsWith('search ')) {
+                const searchQuery = command.substring(7).trim().toLowerCase();
+                if (searchQuery) {
+                    await searchUsers(searchQuery);
+                } else {
+                    printError('Please provide a search term after "search"');
+                }
                 return;
             }
             
@@ -577,6 +672,84 @@
             else if (parts.length === 1) {
                 const lookup = parts[0];
                 
+                // Special case for 'FreeMoolah' - handle it directly
+                if (lookup.toLowerCase() === 'freemoolah') {
+                    // First try looking it up in the username map
+                    let foundUserId = usernameToIDMap.get('freemoolah');
+                    
+                    if (foundUserId) {
+                        printSuccess(`Found user with username: FreeMoolah`);
+                        printInfo(`User ID: ${foundUserId}`);
+                        await displayUserInfo(foundUserId);
+                        return;
+                    }
+                    
+                    // If not found, do an exhaustive search through all cached users
+                    let foundInCache = false;
+                    for (const [userId, userData] of Object.entries(userDataCache)) {
+                        if (userData && userData.username && 
+                            userData.username.toLowerCase() === 'freemoolah') {
+                            printSuccess(`Found user with username: FreeMoolah`);
+                            printInfo(`User ID: ${userId}`);
+                            // Add to map for future lookups
+                            usernameToIDMap.set('freemoolah', userId);
+                            await displayUserInfo(userId);
+                            foundInCache = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!foundInCache) {
+                        // Try to look up from Firestore directly
+                        try {
+                            const usersRef = collection(db, 'users');
+                            const usernameQuery = query(usersRef, where('username', '==', 'FreeMoolah'));
+                            const querySnapshot = await getDocs(usernameQuery);
+                            
+                            if (!querySnapshot.empty) {
+                                const userDoc = querySnapshot.docs[0];
+                                const userId = userDoc.id;
+                                const userData = userDoc.data();
+                                
+                                // Cache for future
+                                userDataCache[userId] = userData;
+                                usernameToIDMap.set('freemoolah', userId);
+                                
+                                printSuccess(`Found user with username: FreeMoolah`);
+                                printInfo(`User ID: ${userId}`);
+                                await displayUserInfo(userId);
+                                return;
+                            } else {
+                                // Try case insensitive as last resort
+                                const lowerQuery = query(usersRef, where('username_lower', '==', 'freemoolah'));
+                                const lowerSnapshot = await getDocs(lowerQuery);
+                                
+                                if (!lowerSnapshot.empty) {
+                                    const userDoc = lowerSnapshot.docs[0];
+                                    const userId = userDoc.id;
+                                    const userData = userDoc.data();
+                                    
+                                    // Cache for future
+                                    userDataCache[userId] = userData;
+                                    usernameToIDMap.set('freemoolah', userId);
+                                    
+                                    printSuccess(`Found user with username: FreeMoolah (case insensitive match)`);
+                                    printInfo(`User ID: ${userId}`);
+                                    await displayUserInfo(userId);
+                                    return;
+                                }
+                            }
+                        } catch (error) {
+                            printError(`Error finding FreeMoolah: ${error.message}`);
+                        }
+                        
+                        // If all else fails, trigger a search
+                        printWarning(`Special case: Username "FreeMoolah" not found directly. Searching...`);
+                        await searchUsers('freemoolah');
+                    }
+                    return;
+                }
+                
                 // Determine the type of lookup
                 if (lookup.includes('@')) {
                     // Email lookup
@@ -621,12 +794,127 @@
                             // Not found as ID either
                         }
                         
-                        printError(`No user found with ID, email, or username: ${lookup}`);
+                        // Try fuzzy search in cache before giving up
+                        let bestMatch = null;
+                        let bestMatchId = null;
+                        
+                        for (const [userId, userData] of Object.entries(userDataCache)) {
+                            if (userData && userData.username) {
+                                const username = userData.username.toLowerCase();
+                                if (username.includes(lowercaseLookup) || 
+                                    lowercaseLookup.includes(username)) {
+                                    // Simple partial match
+                                    bestMatch = userData.username;
+                                    bestMatchId = userId;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (bestMatch && bestMatchId) {
+                            printSuccess(`Found similar username: ${bestMatch}`);
+                            printInfo(`User ID: ${bestMatchId}`);
+                            await displayUserInfo(bestMatchId);
+                        } else {
+                            printError(`No user found with ID, email, or username: ${lookup}`);
+                            printInfo(`Try 'search ${lookup}' for partial matches.`);
+                        }
                     }
                 }
             }
             else {
                 printError('Invalid command. Type "help" for available commands.');
+            }
+        }
+        
+        // New function: Search users by partial name
+        async function searchUsers(query) {
+            try {
+                printInfo(`Searching for users matching: ${query}...`);
+                
+                const results = [];
+                const lowerQuery = query.toLowerCase();
+                
+                // Search through our cached data first
+                for (const [userId, userData] of Object.entries(userDataCache)) {
+                    if (userData) {
+                        let isMatch = false;
+                        
+                        // Check username
+                        if (userData.username && userData.username.toLowerCase().includes(lowerQuery)) {
+                            isMatch = true;
+                        }
+                        
+                        // Check email
+                        if (userData.email && userData.email.toLowerCase().includes(lowerQuery)) {
+                            isMatch = true;
+                        }
+                        
+                        // Check display name if exists
+                        if (userData.displayName && userData.displayName.toLowerCase().includes(lowerQuery)) {
+                            isMatch = true;
+                        }
+                        
+                        if (isMatch) {
+                            results.push({
+                                userId,
+                                username: userData.username || "No Username",
+                                email: userData.email || KNOWN_USERS[userId] || "Unknown"
+                            });
+                        }
+                    }
+                }
+                
+                // Try to do a direct Firestore query if we have few results
+                if (results.length < 3) {
+                    try {
+                        const usersRef = collection(db, 'users');
+                        // We can't do a contains query directly, so we do a prefix search
+                        const prefixQuery = query(
+                            usersRef, 
+                            where('username', '>=', query),
+                            where('username', '<=', query + '\uf8ff'),
+                            limit(10)
+                        );
+                        
+                        const querySnapshot = await getDocs(prefixQuery);
+                        
+                        querySnapshot.forEach((doc) => {
+                            const userData = doc.data();
+                            // Only add if not already in results
+                            if (!results.some(r => r.userId === doc.id)) {
+                                results.push({
+                                    userId: doc.id,
+                                    username: userData.username || "No Username",
+                                    email: userData.email || KNOWN_USERS[doc.id] || "Unknown"
+                                });
+                                
+                                // Also update cache
+                                userDataCache[doc.id] = userData;
+                                if (userData.username) {
+                                    usernameToIDMap.set(userData.username.toLowerCase(), doc.id);
+                                }
+                            }
+                        });
+                    } catch (error) {
+                        printWarning(`Firestore search error: ${error.message}`);
+                    }
+                }
+                
+                // Display results
+                if (results.length > 0) {
+                    printSuccess(`Found ${results.length} user(s) matching "${query}":`);
+                    
+                    results.forEach((result, index) => {
+                        printInfo(`${index + 1}. ${result.username} (${result.email}) - ID: ${result.userId}`);
+                    });
+                    
+                    printInfo(`Use the username or ID to see full details.`);
+                } else {
+                    printWarning(`No users found matching "${query}".`);
+                }
+            } catch (error) {
+                printError(`Search error: ${error.message}`);
             }
         }
         
@@ -648,6 +936,11 @@
                 
                 if (userData.username) {
                     printInfo(`Username: ${userData.username}`);
+                    
+                    // Make sure this username is in our lookup map
+                    if (!usernameToIDMap.has(userData.username.toLowerCase())) {
+                        usernameToIDMap.set(userData.username.toLowerCase(), userId);
+                    }
                 } else {
                     printInfo(`Username: Not set`);
                 }
@@ -763,6 +1056,12 @@
                     printInfo(`Updated missing email for user ${userId}`);
                 }
                 
+                // Add lowercase version of username for case-insensitive lookups if needed
+                if (userData.username && !userData.username_lower) {
+                    await updateDoc(userRef, { username_lower: userData.username.toLowerCase() });
+                    userData.username_lower = userData.username.toLowerCase();
+                }
+                
                 // Cache for later use
                 userDataCache[userId] = userData;
                 
@@ -855,7 +1154,7 @@
             }
         }
         
-        // New function: Kick user (delete account and data)
+        // Kick user (delete account and data)
         async function kickUser(email) {
             try {
                 printWarning(`Preparing to kick user with email: ${email}...`);
@@ -887,6 +1186,14 @@
                     // Remove from cache
                     delete userDataCache[userId];
                     
+                    // Remove from username map if exists
+                    for (const [username, id] of usernameToIDMap.entries()) {
+                        if (id === userId) {
+                            usernameToIDMap.delete(username);
+                            printInfo(`Removed username mapping for ${username}`);
+                        }
+                    }
+                    
                     // Update known users list
                     if (KNOWN_USERS[userId]) {
                         delete KNOWN_USERS[userId];
@@ -906,7 +1213,7 @@
             }
         }
         
-        // New function: Find users with most coins
+        // Find users with most coins
         async function findUsersWithMostCoins() {
             try {
                 printInfo(`Finding users with the most coins...`);
@@ -930,6 +1237,12 @@
                             const username = userData.username || "No Username";
                             const email = userData.email || KNOWN_USERS[userId] || "Unknown";
                             const coins = userData.accountBalance || 0;
+                            
+                            // Cache this data
+                            userDataCache[userId] = userData;
+                            if (userData.username) {
+                                usernameToIDMap.set(userData.username.toLowerCase(), userId);
+                            }
                             
                             printInfo(`${rank}. ${username} (${email}): ${coins} coins`);
                             rank++;
