@@ -121,10 +121,10 @@
         /* Leaderboard Styles */
         .leaderboard-container {
             position: fixed;
-            left: 25px;
+            left: 30px;
             top: 50%;
             transform: translateY(-50%);
-            width: 280px;
+            width: 380px;
             z-index: 2;
             pointer-events: auto;
         }
@@ -418,7 +418,7 @@
             .leaderboard-container {
                 position: fixed;
                 left: 15px;
-                width: 240px;
+                width: 280px;
             }
         }
 
@@ -452,7 +452,7 @@
             }
             
             .leaderboard-container {
-                width: 200px;
+                width: 240px;
             }
         }
     </style>
@@ -773,13 +773,23 @@ class VoidLeaderboard {
             const usersRef = collection(this.db, 'users');
             const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(5));
             
-            // Set up real-time listener
-            this.unsubscribe = onSnapshot(q, (querySnapshot) => {
-                this.updateLeaderboardUI(querySnapshot);
-            }, (error) => {
-                console.error("Leaderboard listener error:", error);
-                this.showLeaderboardError("Could not load leaderboard data");
-            });
+            // Set up real-time listener with server-side data
+            this.unsubscribe = onSnapshot(q, 
+                {
+                    // Force fresh data from server, not cache
+                    includeMetadataChanges: true
+                },
+                (querySnapshot) => {
+                    // Only update if we have server data, not cached data
+                    if (!querySnapshot.metadata.fromCache) {
+                        this.updateLeaderboardUI(querySnapshot);
+                    }
+                }, 
+                (error) => {
+                    console.error("Leaderboard listener error:", error);
+                    this.showLeaderboardError("Could not load leaderboard data");
+                }
+            );
             
         } catch (error) {
             console.error("Error setting up leaderboard:", error);
@@ -803,6 +813,7 @@ class VoidLeaderboard {
             return;
         }
         
+        // Always clear the leaderboard completely first
         this.leaderboardElement.innerHTML = '';
         
         if (querySnapshot.empty) {
@@ -813,10 +824,28 @@ class VoidLeaderboard {
         console.log("Updating leaderboard with new data");
         let rank = 1;
         
+        // Filter out any deleted documents before processing
+        const validDocs = [];
         querySnapshot.forEach((doc) => {
+            if (doc.exists()) {
+                validDocs.push(doc);
+            } else {
+                console.log("Skipping deleted document in leaderboard");
+            }
+        });
+        
+        // If all documents were filtered out, show empty state
+        if (validDocs.length === 0) {
+            this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+            return;
+        }
+        
+        // Create leaderboard items from valid documents
+        validDocs.forEach((doc) => {
             const userData = doc.data();
             const leaderboardItem = document.createElement('div');
             leaderboardItem.className = 'leaderboard-item';
+            leaderboardItem.dataset.userId = doc.id; // Store user ID for reference
             
             // Add animation class for new/updated items
             leaderboardItem.classList.add('leaderboard-updated');
@@ -835,6 +864,8 @@ class VoidLeaderboard {
                 leaderboardItem.classList.remove('leaderboard-updated');
             }, 1000);
         });
+        
+        console.log(`Leaderboard updated with ${validDocs.length} players`);
     }
     
     // Show error message
@@ -850,8 +881,19 @@ class VoidLeaderboard {
 // Initialize Accounting System
 const voidAccounting = new VoidNetworkAccounting();
 
-// Initialize Leaderboard
+// Initialize Leaderboard - with custom refresh method
 const voidLeaderboard = new VoidLeaderboard(db);
+
+// Add a manual refresh method to force leaderboard updates
+function refreshLeaderboard() {
+    console.log("Manual leaderboard refresh requested");
+    // Stop current listener and restart to force refresh
+    voidLeaderboard.stopLeaderboardUpdates();
+    voidLeaderboard.startLeaderboardUpdates();
+}
+
+// Add periodic refresh to ensure leaderboard stays updated
+setInterval(refreshLeaderboard, 60000); // Refresh every minute
 
 // Authentication Event Listeners
 document.getElementById('login-btn')?.addEventListener('click', async () => {
