@@ -985,8 +985,8 @@ const GAME_CONFIG = {
             earnPerStep: 100,
             endReward: 1000000,  // 1 million coins for reaching the end of 10 circles
             deathPenalty: 200,
-            initialSuccessRate: 0.90,  // Start with 90% success rate
-            finalSuccessRate: 0.70,    // End with 70% success rate
+            initialSuccessRate: 0.85,  // Start with 85% success rate
+            finalSuccessRate: 0.65,    // End with 65% success rate
             difficultyIncreasePoint: 0.40 // Start decreasing success rate after 40% of the way
         },
         20: {
@@ -994,8 +994,8 @@ const GAME_CONFIG = {
             earnPerStep: 200,
             endReward: 2000000,  // 2 million coins for reaching the end of 20 circles
             deathPenalty: 400,
-            initialSuccessRate: 0.92,  // Start with 92% success rate
-            finalSuccessRate: 0.65,    // End with 65% success rate
+            initialSuccessRate: 0.87,  // Start with 87% success rate
+            finalSuccessRate: 0.60,    // End with 60% success rate
             difficultyIncreasePoint: 0.35 // Start decreasing success rate after 35% of the way
         },
         30: {
@@ -1003,8 +1003,8 @@ const GAME_CONFIG = {
             earnPerStep: 300,
             endReward: 3000000,  // 3 million coins for reaching the end of 30 circles
             deathPenalty: 600,
-            initialSuccessRate: 0.95,  // Start with 95% success rate
-            finalSuccessRate: 0.60,    // End with 60% success rate
+            initialSuccessRate: 0.90,  // Start with 90% success rate
+            finalSuccessRate: 0.55,    // End with 55% success rate
             difficultyIncreasePoint: 0.30 // Start decreasing success rate after 30% of the way
         }
     },
@@ -1074,6 +1074,9 @@ function initDomElements() {
         20: document.getElementById('level-20'),
         30: document.getElementById('level-30')
     };
+    
+    // Make sure coin display is updated immediately
+    updateCoinDisplay();
 }
 
 // Update coin display
@@ -1097,18 +1100,38 @@ function updateCurrentEarnings() {
 function updateCoins(amount, isWin = true) {
     // Calculate the new balance
     const newBalance = window.coinBalance + amount;
+    
+    console.log(`Updating coins: current=${window.coinBalance}, change=${amount}, new=${newBalance}`);
+    
+    // Update local balance first
     window.coinBalance = newBalance;
     
     // Update the display
     updateCoinDisplay();
 
-    // Only use recordGameTransaction which properly handles balance updates
+    // Force update to Firebase
     if (window.recordGameTransaction) {
         // If amount is positive, it's a win, otherwise it's a play cost
-        window.recordGameTransaction(GAME_CONFIG.gameId, Math.abs(amount), isWin);
+        window.recordGameTransaction(GAME_CONFIG.gameId, Math.abs(amount), isWin)
+            .then((result) => {
+                console.log("Transaction recorded successfully:", result);
+            })
+            .catch((error) => {
+                console.error("Error recording transaction:", error);
+                // Fallback to direct balance update if transaction fails
+                if (window.updateFirebaseCoinBalance) {
+                    window.updateFirebaseCoinBalance(newBalance);
+                }
+            });
     } else if (window.updateFirebaseCoinBalance) {
         // Fallback only if recordGameTransaction is not available
-        window.updateFirebaseCoinBalance(newBalance);
+        window.updateFirebaseCoinBalance(newBalance)
+            .then((success) => {
+                console.log("Direct balance update:", success);
+            })
+            .catch((error) => {
+                console.error("Error updating balance:", error);
+            });
     }
 }
 
@@ -1281,7 +1304,7 @@ function handleCircleClick(event) {
     // Calculate current success rate based on position
     const currentSuccessRate = calculateSuccessRate(clickedPosition);
     
-    // Log probability for debugging
+    // Log probability for debugging (only visible in console)
     console.log(`Position ${clickedPosition}: Success rate ${(currentSuccessRate * 100).toFixed(1)}%`);
     
     // Determine if the move is successful
@@ -1359,12 +1382,19 @@ function handleCircleClick(event) {
                 cashoutBtn.disabled = false;
             }
             
-            // Update game info with success rate for next move
-            const nextSuccessRate = calculateSuccessRate(clickedPosition + 1);
-            const failRate = (100 - nextSuccessRate * 100).toFixed(0);
-            
+            // Update game info without showing the exact percentage
             if (gameInfo) {
-                gameInfo.textContent = `Success! Move to the next circle or cash out now with ${currentEarnings.toLocaleString()} coins. (${failRate}% risk of failure)`;
+                // Determine how far along they are to provide hint about risk
+                const progressPercentage = (clickedPosition + 1) / levelConfig.maxSteps;
+                let riskLevel = "low";
+                
+                if (progressPercentage > 0.7) {
+                    riskLevel = "high";
+                } else if (progressPercentage > 0.4) {
+                    riskLevel = "moderate";
+                }
+                
+                gameInfo.textContent = `Success! Move to the next circle or cash out now with ${currentEarnings.toLocaleString()} coins. Risk level: ${riskLevel}`;
             }
             
             // Reset animation flag
@@ -1506,6 +1536,9 @@ function showVictoryScreen() {
     resultScreen.style.display = 'flex';
     resultScreen.classList.add('visible');
     
+    // Force balance update on screen before hiding the game
+    updateCoinDisplay();
+    
     // End the game
     gameActive = false;
 }
@@ -1532,6 +1565,9 @@ function showDeathScreen() {
     resultScreen.style.display = 'flex';
     resultScreen.classList.add('visible');
     
+    // Force balance update on screen before hiding the game
+    updateCoinDisplay();
+    
     // End the game
     gameActive = false;
 }
@@ -1557,6 +1593,9 @@ function showCashoutScreen() {
     // Make result screen visible
     resultScreen.style.display = 'flex';
     resultScreen.classList.add('visible');
+    
+    // Force balance update on screen before hiding the game
+    updateCoinDisplay();
     
     // End the game
     gameActive = false;
@@ -1661,9 +1700,9 @@ function initGame() {
         cashoutBtn.disabled = true;
     }
     
-    // Update game info based on selected level
+    // Update game info based on selected level without showing exact percentage
     if (gameInfo) {
-        gameInfo.textContent = `Level: ${GAME_CONFIG.selectedLevel} circles. Each step earns ${levelConfig.earnPerStep} coins. Initial success rate: ${(levelConfig.initialSuccessRate * 100).toFixed(0)}%. Click the first circle to start!`;
+        gameInfo.textContent = `Level: ${GAME_CONFIG.selectedLevel} circles. Each step earns ${levelConfig.earnPerStep} coins. Click the first circle to start!`;
     }
     
     // Start game loop for background effects
