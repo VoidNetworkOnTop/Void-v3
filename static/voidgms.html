@@ -584,7 +584,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, query, where, getDocs, orderBy, limit, onSnapshot } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, query, where, getDocs, orderBy, limit, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration - UPDATED
         const firebaseConfig = {
@@ -601,6 +601,165 @@
         const analytics = getAnalytics(app);
         const auth = getAuth(app);
         const db = getFirestore(app);
+
+        // Admin check function
+        function isAdminUser() {
+          const currentUser = auth.currentUser;
+          return currentUser && currentUser.email === 'six7588@gmail.com';
+        }
+
+        // Admin popup function to ban/unban users
+        function showAdminPopup() {
+          // Create popup container
+          const popupContainer = document.createElement('div');
+          popupContainer.id = 'admin-popup';
+          popupContainer.style.position = 'fixed';
+          popupContainer.style.top = '50%';
+          popupContainer.style.left = '50%';
+          popupContainer.style.transform = 'translate(-50%, -50%)';
+          popupContainer.style.background = 'rgba(0, 0, 0, 0.9)';
+          popupContainer.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+          popupContainer.style.borderRadius = '10px';
+          popupContainer.style.padding = '20px';
+          popupContainer.style.zIndex = '1001';
+          popupContainer.style.width = '350px';
+          popupContainer.style.maxWidth = '90%';
+          popupContainer.style.backdropFilter = 'blur(10px)';
+          popupContainer.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.2)';
+          
+          // Create popup content
+          popupContainer.innerHTML = `
+            <h3 style="color: #fff; text-align: center; margin-bottom: 15px;">Admin Controls</h3>
+            <div id="ban-section">
+              <p style="color: #fff; margin-bottom: 10px;">Enter username to ban:</p>
+              <input type="text" id="ban-username" placeholder="Username" style="width: 100%; padding: 10px; margin-bottom: 10px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; border-radius: 5px;">
+              <button id="ban-button" style="width: 100%; padding: 10px; background: rgba(255, 0, 0, 0.3); color: #fff; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px;">Ban User</button>
+            </div>
+            <div id="unban-section">
+              <p style="color: #fff; margin-bottom: 10px;">Enter username to unban:</p>
+              <input type="text" id="unban-username" placeholder="Username" style="width: 100%; padding: 10px; margin-bottom: 10px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; border-radius: 5px;">
+              <button id="unban-button" style="width: 100%; padding: 10px; background: rgba(0, 255, 0, 0.3); color: #fff; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px;">Unban User</button>
+            </div>
+            <button id="close-popup" style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.2); color: #fff; border: none; border-radius: 5px; cursor: pointer;">Close</button>
+          `;
+          
+          // Add popup to body
+          document.body.appendChild(popupContainer);
+          
+          // Add event listeners
+          document.getElementById('ban-button').addEventListener('click', function() {
+            const username = document.getElementById('ban-username').value.trim();
+            if (username) {
+              banUser(username);
+            } else {
+              alert('Please enter a username');
+            }
+          });
+          
+          document.getElementById('unban-button').addEventListener('click', function() {
+            const username = document.getElementById('unban-username').value.trim();
+            if (username) {
+              unbanUser(username);
+            } else {
+              alert('Please enter a username');
+            }
+          });
+          
+          document.getElementById('close-popup').addEventListener('click', function() {
+            document.body.removeChild(popupContainer);
+          });
+        }
+
+        // Ban user functionality
+        async function banUser(username) {
+          try {
+            if (!isAdminUser()) {
+              console.error('Only admin can perform this action');
+              return;
+            }
+            
+            // Find user document by username
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('username', '==', username));
+            const querySnapshot = await getDocs(q);
+            
+            if (querySnapshot.empty) {
+              alert(`User "${username}" not found`);
+              return;
+            }
+            
+            // Get user document
+            const userDoc = querySnapshot.docs[0];
+            const userId = userDoc.id;
+            
+            // Add user to banned collection
+            await setDoc(doc(db, 'banned_users', userId), {
+              username: username,
+              bannedAt: new Date(),
+              bannedBy: auth.currentUser.email
+            });
+            
+            // Update user document to mark as banned
+            await updateDoc(doc(db, 'users', userId), {
+              banned: true
+            });
+            
+            alert(`User "${username}" has been banned successfully`);
+            refreshLeaderboard(); // Refresh to update the display
+            
+          } catch (error) {
+            console.error('Error banning user:', error);
+            alert('Failed to ban user: ' + error.message);
+          }
+        }
+
+        // Unban user functionality
+        async function unbanUser(username) {
+          try {
+            if (!isAdminUser()) {
+              console.error('Only admin can perform this action');
+              return;
+            }
+            
+            // Find user document by username
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('username', '==', username));
+            const querySnapshot = await getDocs(q);
+            
+            if (querySnapshot.empty) {
+              alert(`User "${username}" not found`);
+              return;
+            }
+            
+            // Get user document
+            const userDoc = querySnapshot.docs[0];
+            const userId = userDoc.id;
+            
+            // Check if user is actually banned
+            const bannedRef = doc(db, 'banned_users', userId);
+            const bannedDoc = await getDoc(bannedRef);
+            
+            if (!bannedDoc.exists()) {
+              alert(`User "${username}" is not banned`);
+              return;
+            }
+            
+            // Remove user from banned collection
+            await deleteDoc(doc(db, 'banned_users', userId));
+            
+            // Update user document to mark as not banned
+            await updateDoc(doc(db, 'users', userId), {
+              banned: false
+            });
+            
+            alert(`User "${username}" has been unbanned successfully`);
+            refreshLeaderboard(); // Refresh to update the display
+            
+          } catch (error) {
+            console.error('Error unbanning user:', error);
+            alert('Failed to unban user: ' + error.message);
+          }
+        }
 
         // FIXED: Profile Icon Toggle Functionality
         const profileIcon = document.getElementById('profile-icon');
@@ -1072,7 +1231,7 @@ class VoidLeaderboard {
         }
     }
     
-    // Update leaderboard UI with fresh data - FIXED for proper text truncation
+    // Update leaderboard UI with fresh data - MODIFIED to filter banned users
     updateLeaderboardUI(querySnapshot) {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
@@ -1090,11 +1249,17 @@ class VoidLeaderboard {
         console.log("Updating leaderboard with new data");
         let rank = 1;
         
-        // Filter out any deleted documents before processing
+        // Filter out any deleted documents and banned users before processing
         const validDocs = [];
         querySnapshot.forEach((doc) => {
             if (doc.exists()) {
-                validDocs.push(doc);
+                const userData = doc.data();
+                // Skip banned users
+                if (!userData.banned) {
+                    validDocs.push(doc);
+                } else {
+                    console.log(`Skipping banned user: ${userData.username}`);
+                }
             } else {
                 console.log("Skipping deleted document in leaderboard");
             }
@@ -1188,6 +1353,49 @@ function refreshLeaderboard() {
     setTimeout(findAndHighlightVoidNetwork, 1000);
 }
 
+// MODIFIED: Add admin controls to prepareForLiveData
+function prepareForLiveData() {
+    // Clear any previous permission errors to force a fresh attempt
+    localStorage.removeItem('leaderboardPermissionError');
+    
+    // Add a refresh button to the leaderboard title
+    const leaderboardTitle = document.querySelector('.leaderboard-title');
+    if (leaderboardTitle) {
+        // Check if we already have a refresh button
+        if (!document.getElementById('refresh-leaderboard-btn')) {
+            const refreshBtn = document.createElement('span');
+            refreshBtn.id = 'refresh-leaderboard-btn';
+            refreshBtn.innerHTML = '↻';
+            refreshBtn.style.marginLeft = '10px';
+            refreshBtn.style.cursor = 'pointer';
+            refreshBtn.style.fontSize = '0.9em';
+            refreshBtn.title = 'Refresh leaderboard';
+            refreshBtn.addEventListener('click', function(e) {
+                e.stopPropagation(); // Don't trigger the toggle
+                refreshLeaderboard();
+            });
+            leaderboardTitle.appendChild(refreshBtn);
+        }
+        
+        // Check for and add admin button if user is admin and button doesn't exist yet
+        if (isAdminUser() && !document.getElementById('admin-leaderboard-btn')) {
+            const adminBtn = document.createElement('span');
+            adminBtn.id = 'admin-leaderboard-btn';
+            adminBtn.innerHTML = '⊖'; // Circle with minus symbol
+            adminBtn.style.marginLeft = '10px';
+            adminBtn.style.cursor = 'pointer';
+            adminBtn.style.fontSize = '0.9em';
+            adminBtn.style.color = '#ff6b6b'; // Red color to indicate admin function
+            adminBtn.title = 'Admin controls';
+            adminBtn.addEventListener('click', function(e) {
+                e.stopPropagation(); // Don't trigger the toggle
+                showAdminPopup();
+            });
+            leaderboardTitle.appendChild(adminBtn);
+        }
+    }
+}
+
 // Add periodic refresh to ensure leaderboard stays updated
 setInterval(refreshLeaderboard, 30000); // Refresh every 30 seconds
 
@@ -1232,32 +1440,6 @@ window.addEventListener('load', () => {
 
 // Check on window resize
 window.addEventListener('resize', handleResponsiveLayout);
-
-// Before we fetch data, ensure we're ready for live data mode
-function prepareForLiveData() {
-    // Clear any previous permission errors to force a fresh attempt
-    localStorage.removeItem('leaderboardPermissionError');
-    
-    // Add a refresh button to the leaderboard title
-    const leaderboardTitle = document.querySelector('.leaderboard-title');
-    if (leaderboardTitle) {
-        // Check if we already have a refresh button
-        if (!document.getElementById('refresh-leaderboard-btn')) {
-            const refreshBtn = document.createElement('span');
-            refreshBtn.id = 'refresh-leaderboard-btn';
-            refreshBtn.innerHTML = '↻';
-            refreshBtn.style.marginLeft = '10px';
-            refreshBtn.style.cursor = 'pointer';
-            refreshBtn.style.fontSize = '0.9em';
-            refreshBtn.title = 'Refresh leaderboard';
-            refreshBtn.addEventListener('click', function(e) {
-                e.stopPropagation(); // Don't trigger the toggle
-                refreshLeaderboard();
-            });
-            leaderboardTitle.appendChild(refreshBtn);
-        }
-    }
-}
 
 // Authentication Event Listeners
 document.getElementById('login-btn')?.addEventListener('click', async () => {
@@ -1335,11 +1517,17 @@ function updateUIForLoggedOutUser() {
     document.getElementById('user-profile').style.display = 'none';
 }
 
-// IMPROVED: Listen for authentication state changes
+// MODIFIED: Listen for authentication state changes with admin check
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         console.log("Auth state changed: User is signed in", user.uid);
         await updateUIForLoggedInUser(user);
+        
+        // Check if user is admin and refresh the admin controls visibility
+        if (isAdminUser()) {
+            console.log("Admin user detected");
+            prepareForLiveData(); // This will add the admin button
+        }
     } else {
         console.log("Auth state changed: User is signed out");
         updateUIForLoggedOutUser();
