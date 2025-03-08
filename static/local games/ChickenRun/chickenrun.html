@@ -1065,379 +1065,216 @@
    </script>
 
    <script>
-// SECURITY: Use a more robust closure pattern with Symbol to create truly private methods
-(function() {
-    // Create private keys using Symbols that cannot be accessed externally
-    const _private = {
-        methods: Object.create(null),
-        state: Object.create(null)
-    };
+// Simple game implementation with direct event handling
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM fully loaded");
     
-    // Private state using the Symbol-based private object
-    _private.state = {
-        coinBalance: 1000, // Default initial balance
+    // Game state
+    let gameState = {
+        coinBalance: 1000,
         gameActive: false,
         currentPosition: -1,
         currentEarnings: 0,
-        animationInProgress: false,
-        lastRngSeed: 0,
-        integrityToken: "", // Will be set during initialization
-        gameInstance: null,
-        transactionQueue: [],
-        processingTransaction: false,
-        cheatingDetected: false,
-        methodsProtected: false,
-        lastTransactionTime: 0
+        selectedLevel: 10
     };
-
-    // SECURITY: Game configuration with obfuscated names to make it harder to understand and manipulate
-    const _gc = {
-        gid: 'chicken_run_game', // gameId
-        lvl: { // levels
-            10: {
-                ms: 10, // maxSteps
-                eps: 100, // earnPerStep
-                er: 1000000, // endReward
-                dp: 200, // deathPenalty
-                isr: 0.85, // initialSuccessRate
-                fsr: 0.65, // finalSuccessRate
-                dip: 0.40, // difficultyIncreasePoint
-                ef: 200 // entryFee
-            },
-            20: {
-                ms: 20,
-                eps: 200,
-                er: 2000000,
-                dp: 400,
-                isr: 0.87,
-                fsr: 0.60,
-                dip: 0.35,
-                ef: 300
-            },
-            30: {
-                ms: 30,
-                eps: 300,
-                er: 3000000,
-                dp: 600,
-                isr: 0.90,
-                fsr: 0.55,
-                dip: 0.30,
-                ef: 500
-            }
+    
+    // Game configuration
+    const gameLevels = {
+        10: {
+            maxSteps: 10,
+            earnPerStep: 100,
+            endReward: 1000,
+            deathPenalty: 200,
+            entryFee: 200
         },
-        sl: 10 // selectedLevel
+        20: {
+            maxSteps: 20,
+            earnPerStep: 200,
+            endReward: 2000,
+            deathPenalty: 400,
+            entryFee: 300
+        },
+        30: {
+            maxSteps: 30,
+            earnPerStep: 300,
+            endReward: 3000,
+            deathPenalty: 600,
+            entryFee: 500
+        }
     };
-
-    // Private DOM element references
-    let _elements = {};
     
-    // Canvas and animation variables
-    let canvas, ctx;
-    let canvasWidth, canvasHeight;
-    let animationFrame;
-    let circles = []; // Will hold references to the circle elements
-
-    // SECURITY: Secure RNG implementation using crypto API - now completely private
-    _private.methods.secureRandom = function() {
-        try {
-            const array = new Uint32Array(1);
-            crypto.getRandomValues(array);
-            return array[0] / 4294967295; // Normalize to [0, 1)
-        } catch (e) {
-            // Fallback to a more secure Math.random() implementation if crypto is not available
-            const timestamp = Date.now();
-            const lastSeed = _private.state.lastRngSeed;
-            _private.state.lastRngSeed = (timestamp * 1103515245 + 12345) % 2147483647;
-            return ((_private.state.lastRngSeed / 2147483647) + Math.random()) / 2;
+    // Elements cache
+    const elements = {
+        coinDisplay: document.getElementById('coinDisplay'),
+        startScreen: document.getElementById('start-screen'),
+        resultScreen: document.getElementById('result-screen'),
+        startBtn: document.getElementById('start-btn'),
+        playAgainBtn: document.getElementById('play-again-btn'),
+        backBtn: document.getElementById('back-btn'),
+        cashoutBtn: document.getElementById('cashout-btn'),
+        chickenRunContainer: document.getElementById('chicken-run-container'),
+        gameInfo: document.getElementById('game-info'),
+        chicken: document.getElementById('chicken'),
+        bloodSplatter: document.getElementById('blood-splatter'),
+        chickenPath: document.getElementById('chicken-path'),
+        currentEarningDisplay: document.getElementById('current-earning'),
+        resultTitle: document.getElementById('result-title'),
+        resultMessage: document.getElementById('result-message'),
+        levelButtons: {
+            10: document.getElementById('level-10'),
+            20: document.getElementById('level-20'),
+            30: document.getElementById('level-30')
         }
-    }
-
-    // SECURITY: Verify game integrity periodically - now using private methods
-    _private.methods.verifyGameIntegrity = function() {
-        try {
-            // Check if window object has been tampered with to expose our methods
-            if (window.updateCoins || window.processTransaction || window._private) {
-                console.error("Security violation: Exposed private methods detected");
-                _private.state.cheatingDetected = true;
-                _private.methods.resetGame();
-                alert("Security violation detected. Game has been reset.");
-                return false;
-            }
-            
-            // Check for any attempt to access the game state
-            const gameStateAccessAttempts = [
-                'coinBalance', 
-                'currentEarnings', 
-                'gameActive',
-                'privateGameState',
-                '_private'
-            ];
-            
-            // Search for these strings in recent console input (this is heuristic)
-            for (const key of gameStateAccessAttempts) {
-                // Check if this string appears in recently executed code
-                // (This is just a heuristic, but can catch some basic attempts)
-                if (new Error().stack.includes(key) && 
-                    !new Error().stack.includes('verifyGameIntegrity')) {
-                    console.error(`Security violation: Attempted access to private game state "${key}"`);
-                    _private.state.cheatingDetected = true;
-                    return false;
-                }
-            }
-            
-            return true;
-        } catch (e) {
-            console.error("Integrity verification error:", e);
-            return false;
-        }
-    }
-
-    // Set up periodic integrity checks from inside the private scope - use a different variable name
-    const _integrityInterval = setInterval(() => {
-        if (_private && _private.methods && _private.methods.verifyGameIntegrity) {
-            _private.methods.verifyGameIntegrity();
-        }
-    }, 5000);
-
-    // Helper function to clear all timeouts - now private
-    _private.methods.clearAllTimeouts = function() {
-        const highestTimeoutId = setTimeout(() => {}, 0);
-        for (let i = 0; i < highestTimeoutId; i++) {
-            clearTimeout(i);
-        }
-    }
-
-    // Initialize DOM elements - converted to private method
-    _private.methods.initDomElements = function() {
-        _elements = {
-            coinDisplay: document.getElementById('coinDisplay'),
-            startScreen: document.getElementById('start-screen'),
-            resultScreen: document.getElementById('result-screen'),
-            startBtn: document.getElementById('start-btn'),
-            playAgainBtn: document.getElementById('play-again-btn'),
-            backBtn: document.getElementById('back-btn'),
-            cashoutBtn: document.getElementById('cashout-btn'),
-            chickenRunContainer: document.getElementById('chicken-run-container'),
-            gameInfo: document.getElementById('game-info'),
-            chicken: document.getElementById('chicken'),
-            bloodSplatter: document.getElementById('blood-splatter'),
-            chickenPath: document.getElementById('chicken-path'),
-            currentEarningDisplay: document.getElementById('current-earning'),
-            resultTitle: document.getElementById('result-title'),
-            resultMessage: document.getElementById('result-message'),
-            levelButtons: {
-                10: document.getElementById('level-10'),
-                20: document.getElementById('level-20'),
-                30: document.getElementById('level-30')
-            }
-        };
-        
-        // Make sure coin display is updated immediately
-        _private.methods.updateCoinDisplay();
-    }
-
-    // Internal method to update coin display - now completely private
-    _private.methods.updateCoinDisplay = function() {
-        if (_elements.coinDisplay) {
-            _elements.coinDisplay.textContent = _private.state.coinBalance.toLocaleString();
-        }
-    }
-
-    // Internal method to update current earnings display - now completely private
-    _private.methods.updateCurrentEarnings = function() {
-        if (_elements.currentEarningDisplay) {
-            _elements.currentEarningDisplay.textContent = `Current: ${_private.state.currentEarnings.toLocaleString()} coins`;
-        }
-    }
-
-    // SECURITY: Completely private method to update coins that requires server-side verification
-    _private.methods.updateCoins = async function(amount, isWin = true, transactionKey) {
-        // SECURITY: Check transaction key to prevent unauthorized calls
-        const expectedKey = _private.state.integrityToken + '_' + Date.now().toString().substring(0, 8);
-        const keyValid = typeof transactionKey === 'string' && 
-                         (transactionKey.includes(_private.state.integrityToken) || 
-                          transactionKey === 'INTERNAL_GAME_TRANSACTION');
-                          
-        if (!keyValid) {
-            console.error("Invalid transaction attempt detected");
-            _private.state.cheatingDetected = true;
-            return false;
-        }
-        
-        // SECURITY: Rate limiting to prevent rapid coin updates
-        const now = Date.now();
-        if (now - _private.state.lastTransactionTime < 500) { // 500ms minimum between transactions
-            console.warn("Transaction rate limiting applied");
-            return false;
-        }
-        _private.state.lastTransactionTime = now;
-        
-        // Calculate the new balance
-        const currentBalance = _private.state.coinBalance;
-        const newBalance = currentBalance + amount;
-        
-        // Sanity check - prevent impossibly large transactions
-        if (Math.abs(amount) > 10000000) {
-            console.error("Transaction amount exceeds reasonable limits");
-            _private.state.cheatingDetected = true;
-            return false;
-        }
-        
-        console.log(`Processing coin update: current=${currentBalance}, change=${amount}, new=${newBalance}`);
-        
-        // Create a snapshot of the game state for verification
-        const gameState = {
-            position: _private.state.currentPosition,
-            level: _gc.sl,
-            timestamp: now,
-            actionType: isWin ? 'win' : 'play',
-            verificationToken: _private.state.integrityToken.substring(0, 8)
-        };
-        
-        try {
-            // Temporarily update UI for responsiveness
-            _private.state.coinBalance = newBalance;
-            _private.methods.updateCoinDisplay();
-            
-            // Queue the transaction for processing
-            await _private.methods.processTransaction(amount, isWin, gameState);
-            
-            return true;
-        } catch (error) {
-            console.error("Error updating coins:", error);
-            
-            // Revert to original balance if there was an error
-            _private.state.coinBalance = currentBalance;
-            _private.methods.updateCoinDisplay();
-            
-            return false;
+    };
+    
+    // Check if elements are found
+    console.log("Start button found:", !!elements.startBtn);
+    console.log("Level buttons found:", !!elements.levelButtons[10], !!elements.levelButtons[20], !!elements.levelButtons[30]);
+    
+    // Update coin display
+    function updateCoinDisplay() {
+        if (elements.coinDisplay) {
+            elements.coinDisplay.textContent = gameState.coinBalance.toLocaleString();
         }
     }
     
-    // Process transaction with server - now completely private
-    _private.methods.processTransaction = async function(amount, isWin, gameState) {
-        if (_private.state.processingTransaction) {
-            _private.state.transactionQueue.push({amount, isWin, gameState});
-            return;
+    // Update current earnings display
+    function updateCurrentEarnings() {
+        if (elements.currentEarningDisplay) {
+            elements.currentEarningDisplay.textContent = `Current: ${gameState.currentEarnings.toLocaleString()} coins`;
         }
+    }
+    
+    // Update the visible level selection
+    function setActiveLevel(level) {
+        // Update selected level
+        gameState.selectedLevel = parseInt(level);
         
-        _private.state.processingTransaction = true;
-        
-        try {
-            if (window.gameAPI && typeof window.gameAPI.processTransaction === 'function') {
-                // Add additional security checks
-                const secureGameState = {
-                    ...gameState,
-                    clientTimestamp: Date.now(),
-                    hashVerification: await _private.methods.generateVerificationHash(amount, isWin)
-                };
-                
-                const result = await window.gameAPI.processTransaction(amount, isWin, secureGameState);
-                
-                if (result && result.success) {
-                    // Update with the server-verified balance
-                    _private.state.coinBalance = result.newBalance;
-                    _private.methods.updateCoinDisplay();
-                } else {
-                    // If transaction failed, refresh balance from server
-                    if (window.gameAPI && typeof window.gameAPI.refreshBalance === 'function') {
-                        const serverBalance = await window.gameAPI.refreshBalance();
-                        _private.state.coinBalance = serverBalance;
-                        _private.methods.updateCoinDisplay();
-                    }
-                }
-            }
-        } catch (error) {
-            console.error("Transaction processing error:", error);
-        } finally {
-            _private.state.processingTransaction = false;
-            
-            // Process any queued transactions
-            if (_private.state.transactionQueue.length > 0) {
-                const nextTransaction = _private.state.transactionQueue.shift();
-                _private.methods.processTransaction(
-                    nextTransaction.amount, 
-                    nextTransaction.isWin, 
-                    nextTransaction.gameState
-                );
+        // Update UI to show selected level
+        for (const [levelKey, button] of Object.entries(elements.levelButtons)) {
+            if (parseInt(levelKey) === gameState.selectedLevel) {
+                button.classList.add('selected');
+            } else {
+                button.classList.remove('selected');
             }
         }
     }
     
-    // Generate verification hash for transaction integrity
-    _private.methods.generateVerificationHash = async function(amount, isWin) {
-        try {
-            const data = `${_private.state.integrityToken}:${amount}:${isWin}:${Date.now()}`;
-            const encoder = new TextEncoder();
-            const dataBuffer = encoder.encode(data);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-            
-            return Array.from(new Uint8Array(hashBuffer))
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join('');
-        } catch (e) {
-            // Fallback if crypto API fails
-            return btoa(`${_private.state.integrityToken}:${amount}:${isWin}:${Date.now()}`);
+    // Reset the game
+    function resetGame() {
+        gameState.gameActive = false;
+        gameState.currentPosition = -1;
+        gameState.currentEarnings = 0;
+        
+        // Reset displays
+        updateCurrentEarnings();
+        
+        // Hide game elements
+        if (elements.chickenRunContainer) {
+            elements.chickenRunContainer.style.display = 'none';
+        }
+        
+        // Reset chicken
+        if (elements.chicken) {
+            elements.chicken.style.left = '10px';
+            elements.chicken.classList.remove('chicken-dead');
+        }
+        
+        // Reset blood splatter
+        if (elements.bloodSplatter) {
+            elements.bloodSplatter.classList.remove('active');
+        }
+        
+        // Hide result screen if visible
+        if (elements.resultScreen) {
+            elements.resultScreen.classList.remove('visible');
+        }
+        
+        // Disable cashout button
+        if (elements.cashoutBtn) {
+            elements.cashoutBtn.disabled = true;
+        }
+        
+        // Show start screen
+        if (elements.startScreen) {
+            elements.startScreen.classList.add('visible');
         }
     }
-
-    // Initialize canvas for background - converted to private method
-    _private.methods.initCanvas = function() {
-        canvas = document.getElementById('game-canvas');
-        if (!canvas) {
-            console.error("Canvas element not found!");
+    
+    // Initialize the game
+    function initGame() {
+        console.log("Initializing game with level:", gameState.selectedLevel);
+        
+        const levelConfig = gameLevels[gameState.selectedLevel];
+        
+        // Check if player has enough coins for entry fee
+        if (gameState.coinBalance < levelConfig.entryFee) {
+            alert(`Not enough coins! You need at least ${levelConfig.entryFee} coins.`);
             return;
         }
-
-        ctx = canvas.getContext('2d');
-
-        const gameBoard = document.querySelector('.game-board');
-        if (!gameBoard) {
-            console.error("Game board element not found!");
-            return;
+        
+        // Deduct entry fee
+        gameState.coinBalance -= levelConfig.entryFee;
+        updateCoinDisplay();
+        
+        // Reset for new game
+        gameState.gameActive = true;
+        gameState.currentPosition = -1;
+        gameState.currentEarnings = 0;
+        
+        // Update current earnings display
+        updateCurrentEarnings();
+        
+        // Hide start screen
+        elements.startScreen.classList.remove('visible');
+        
+        // Create game path
+        createCircles();
+        
+        // Show game container
+        if (elements.chickenRunContainer) {
+            elements.chickenRunContainer.style.display = 'flex';
         }
-
-        // Get actual dimensions of the game board
-        canvasWidth = gameBoard.clientWidth;
-        canvasHeight = gameBoard.clientHeight;
-
-        // Set canvas dimensions
-        canvas.width = canvasWidth;
-        canvas.height = canvasHeight;
-        canvas.style.width = canvasWidth + "px";
-        canvas.style.height = canvasHeight + "px";
+        
+        // Reset chicken to starting position
+        if (elements.chicken) {
+            elements.chicken.style.left = '10px';
+            elements.chicken.classList.remove('chicken-dead');
+        }
+        
+        // Reset blood splatter
+        if (elements.bloodSplatter) {
+            elements.bloodSplatter.classList.remove('active');
+        }
+        
+        // Disable cashout button until first move
+        if (elements.cashoutBtn) {
+            elements.cashoutBtn.disabled = true;
+        }
+        
+        // Update game info
+        if (elements.gameInfo) {
+            elements.gameInfo.textContent = `Level: ${gameState.selectedLevel} circles. Each step earns ${levelConfig.earnPerStep} coins. Click the first circle to start!`;
+        }
     }
-
-    // Create circles for the chicken path - converted to private method
-    _private.methods.createCircles = function() {
+    
+    // Create game path circles
+    function createCircles() {
         // Clear previous circles
-        _elements.chickenPath.innerHTML = '';
+        elements.chickenPath.innerHTML = '';
         
         // Add chicken and blood splatter back
-        _elements.chickenPath.appendChild(_elements.chicken);
-        _elements.chickenPath.appendChild(_elements.bloodSplatter);
+        elements.chickenPath.appendChild(elements.chicken);
+        elements.chickenPath.appendChild(elements.bloodSplatter);
         
-        circles = [];
+        const levelConfig = gameLevels[gameState.selectedLevel];
+        const maxSteps = levelConfig.maxSteps;
         
-        const currentLevelConfig = _gc.lvl[_gc.sl];
-        const maxSteps = currentLevelConfig.ms;
+        // Create visible circles
+        const leftPadding = 5;
+        const usableWidth = 90;
         
-        // Adjust path height based on number of circles
-        if (maxSteps > 10) {
-            _elements.chickenPath.style.height = maxSteps > 20 ? '200px' : '170px';
-        } else {
-            _elements.chickenPath.style.height = '150px';
-        }
-        
-        // Create visible circles (maximum 10 visible at once)
-        const visibleCircles = Math.min(maxSteps, 10);
-        
-        // Calculate padding for the first circle to make it more accessible
-        const leftPadding = 5; // 5% left padding
-        const rightPadding = 5; // 5% right padding
-        const usableWidth = 100 - leftPadding - rightPadding;
-        
-        // Create lines and circles
+        // Create circles
         for (let i = 0; i < maxSteps; i++) {
             // Create circle
             const circle = document.createElement('div');
@@ -1445,851 +1282,278 @@
             circle.dataset.position = i;
             circle.textContent = i + 1;
             
-            // Calculate left position with improved spacing
-            let leftPos;
-            if (maxSteps <= 10) {
-                // For 10 circles, use full width with padding
-                leftPos = leftPadding + (i * (usableWidth / (maxSteps - 1)));
-            } else {
-                // For 20 and 30 circles, calculate position differently
-                // We'll only show 10 circles at a time
-                const circleGroup = Math.floor(i / 10);
-                const posInGroup = i % 10;
-                
-                // Position within the current group of 10
-                if (posInGroup === 0) {
-                    // Make first circle of each group more accessible
-                    leftPos = leftPadding;
-                } else {
-                    leftPos = leftPadding + (posInGroup * (usableWidth / 9));
-                }
-                
-                // Hide circles that are not in the current visible group
-                if (circleGroup > 0) {
-                    circle.style.display = 'none';
-                    circle.dataset.group = circleGroup;
-                }
-            }
+            // Calculate position
+            const leftPos = leftPadding + (i * (usableWidth / (maxSteps - 1)));
             
             circle.style.position = 'absolute';
             circle.style.left = `${leftPos}%`;
-            
-            // Add a z-index to ensure circles are clickable
             circle.style.zIndex = 10;
             
-            // Make circle slightly larger for better clickability
-            if (maxSteps > 10) {
-                circle.style.width = '45px';
-                circle.style.height = '45px';
-            }
+            // Add click handler directly to the circle
+            circle.addEventListener('click', function() {
+                handleCircleClick(parseInt(this.dataset.position));
+            });
             
-            // SECURITY: Use event delegation instead of direct handlers
-            circle.dataset.action = 'circle-click';
-            
-            _elements.chickenPath.appendChild(circle);
-            circles.push(circle);
+            elements.chickenPath.appendChild(circle);
             
             // Create connecting line (except for last circle)
-            if (i < maxSteps - 1 && (maxSteps <= 10 || i % 10 < 9)) {
+            if (i < maxSteps - 1) {
                 const line = document.createElement('div');
                 line.className = 'path-line';
-                _elements.chickenPath.appendChild(line);
+                elements.chickenPath.appendChild(line);
             }
         }
-        
-        // Add logic to show the next group of circles when progressing
-        if (maxSteps > 10) {
-            // Add group indicator
-            const groupIndicator = document.createElement('div');
-            groupIndicator.id = 'group-indicator';
-            groupIndicator.className = 'game-info';
-            groupIndicator.style.position = 'absolute';
-            groupIndicator.style.bottom = '-40px';
-            groupIndicator.style.left = '50%';
-            groupIndicator.style.transform = 'translateX(-50%)';
-            groupIndicator.style.padding = '5px 15px';
-            groupIndicator.style.fontSize = '0.9rem';
-            groupIndicator.textContent = 'Group 1 of ' + Math.ceil(maxSteps / 10);
-            _elements.chickenPath.appendChild(groupIndicator);
-        }
     }
-
-    // SECURITY: Secure implementation of success rate calculation - converted to private method
-    _private.methods.calculateSuccessRate = function(position) {
-        const levelConfig = _gc.lvl[_gc.sl];
-        const maxSteps = levelConfig.ms;
-        const initialRate = levelConfig.isr;
-        const finalRate = levelConfig.fsr;
-        const difficultyIncreasePoint = levelConfig.dip;
+    
+    // Handle circle clicks
+    function handleCircleClick(position) {
+        console.log("Circle clicked:", position);
         
-        // If we're before the difficulty increase point, return the initial rate
-        if (position < maxSteps * difficultyIncreasePoint) {
-            return initialRate;
-        }
-        
-        // Calculate how far into the difficulty zone we are (0 to 1)
-        const progressAfterDifficulty = (position - maxSteps * difficultyIncreasePoint) / 
-                                      (maxSteps * (1 - difficultyIncreasePoint));
-        
-        // Linear interpolation between initial and final rates
-        return initialRate - progressAfterDifficulty * (initialRate - finalRate);
-    }
-
-    // Handle circle clicks - converted to private method
-    _private.methods.handleCircleClick = function(event) {
-        // Find the clicked circle through event bubbling
-        let target = event.target;
-        if (!target.classList.contains('path-circle')) {
-            return; // Not a circle
-        }
-        
-        const clickedPosition = parseInt(target.dataset.position);
-        
-        // Only allow clicking the next position and only if animation is not in progress
-        if (clickedPosition !== _private.state.currentPosition + 1 || _private.state.animationInProgress) {
+        // Only allow clicking the next position
+        if (position !== gameState.currentPosition + 1 || !gameState.gameActive) {
             return;
         }
         
-        // Check for tampering or cheating
-        if (_private.state.cheatingDetected) {
-            alert("Security violation detected. Game reset required.");
-            _private.methods.resetGame();
-            return;
-        }
+        const levelConfig = gameLevels[gameState.selectedLevel];
         
-        // Set animation flag
-        _private.state.animationInProgress = true;
-        
-        // Calculate current success rate based on position using secure RNG
-        const currentSuccessRate = _private.methods.calculateSuccessRate(clickedPosition);
-        
-        // Determine if the move is successful using secure random number generation
-        const randomValue = _private.methods.secureRandom();
-        const isSuccessful = randomValue < currentSuccessRate;
-        
-        const levelConfig = _gc.lvl[_gc.sl];
+        // Determine if successful (80% chance of success initially, decreasing to 50% by the end)
+        const successRate = 0.8 - (position / levelConfig.maxSteps * 0.3);
+        const isSuccessful = Math.random() < successRate;
         
         if (isSuccessful) {
             // Move successful
-            _private.methods.moveChicken(clickedPosition);
+            moveChicken(position);
             
-            // Update current position
-            _private.state.currentPosition = clickedPosition;
+            // Update position
+            gameState.currentPosition = position;
             
             // Update earnings
-            _private.state.currentEarnings += levelConfig.eps;
-            _private.methods.updateCurrentEarnings();
+            gameState.currentEarnings += levelConfig.earnPerStep;
+            updateCurrentEarnings();
             
-            // Mark circle as active
-            for (let i = 0; i < circles.length; i++) {
-                if (i === clickedPosition) {
-                    circles[i].classList.add('active');
+            // Mark all circles up to this position as active
+            const circles = elements.chickenPath.querySelectorAll('.path-circle');
+            circles.forEach((circle, index) => {
+                if (index === position) {
+                    circle.classList.add('active');
                 } else {
-                    circles[i].classList.remove('active');
+                    circle.classList.remove('active');
                 }
-            }
-            
-            // For games with more than 10 circles, handle circle group visibility
-            if (levelConfig.ms > 10) {
-                // Check if we need to show the next group of circles
-                const currentGroup = Math.floor(clickedPosition / 10);
-                const nextGroup = Math.floor((clickedPosition + 1) / 10);
-                
-                // If moving to next group, update visibility
-                if (nextGroup > currentGroup) {
-                    // Hide current group
-                    circles.forEach((circle, index) => {
-                        if (Math.floor(index / 10) === currentGroup) {
-                            circle.style.display = 'none';
-                        }
-                        
-                        // Show next group
-                        if (Math.floor(index / 10) === nextGroup) {
-                            circle.style.display = '';
-                        }
-                    });
-                    
-                    // Update group indicator
-                    const groupIndicator = document.getElementById('group-indicator');
-                    if (groupIndicator) {
-                        groupIndicator.textContent = `Group ${nextGroup + 1} of ${Math.ceil(levelConfig.ms / 10)}`;
-                    }
-                }
-            }
+            });
             
             // Check if reached the end
-            if (clickedPosition === levelConfig.ms - 1) {
-                // Player reached the end!
+            if (position === levelConfig.maxSteps - 1) {
+                // Player won!
                 setTimeout(() => {
-                    // Set earnings to the end reward
-                    _private.state.currentEarnings = levelConfig.er;
-                    
-                    // Show victory screen
-                    _private.methods.showVictoryScreen();
-                    
-                    // Add earnings to balance
-                    _private.methods.updateCoins(_private.state.currentEarnings, true, 'INTERNAL_GAME_TRANSACTION');
-                    
-                    // Reset animation flag
-                    _private.state.animationInProgress = false;
+                    gameState.currentEarnings = levelConfig.endReward;
+                    showVictoryScreen();
+                    gameState.coinBalance += gameState.currentEarnings;
+                    updateCoinDisplay();
                 }, 500);
             } else {
-                // Enable cashout button after first successful move
-                if (_elements.cashoutBtn) {
-                    _elements.cashoutBtn.disabled = false;
+                // Enable cashout button after first move
+                elements.cashoutBtn.disabled = false;
+                
+                // Update game info
+                const progressPercentage = (position + 1) / levelConfig.maxSteps;
+                let riskLevel = "low";
+                
+                if (progressPercentage > 0.7) {
+                    riskLevel = "high";
+                } else if (progressPercentage > 0.4) {
+                    riskLevel = "moderate";
                 }
                 
-                // Update game info without showing the exact percentage
-                if (_elements.gameInfo) {
-                    // Determine how far along they are to provide hint about risk
-                    const progressPercentage = (clickedPosition + 1) / levelConfig.ms;
-                    let riskLevel = "low";
-                    
-                    if (progressPercentage > 0.7) {
-                        riskLevel = "high";
-                    } else if (progressPercentage > 0.4) {
-                        riskLevel = "moderate";
-                    }
-                    
-                    _elements.gameInfo.textContent = `Success! Move to the next circle or cash out now with ${_private.state.currentEarnings.toLocaleString()} coins. Risk level: ${riskLevel}`;
-                }
-                
-                // Reset animation flag
-                _private.state.animationInProgress = false;
+                elements.gameInfo.textContent = `Success! Move to the next circle or cash out now with ${gameState.currentEarnings.toLocaleString()} coins. Risk level: ${riskLevel}`;
             }
         } else {
             // Move failed - chicken dies!
-            _private.methods.killChicken(clickedPosition);
+            killChicken(position);
             
-            // Deduct coins for dying
-            _private.methods.updateCoins(-levelConfig.dp, false, 'INTERNAL_GAME_TRANSACTION');
+            // Deduct penalty
+            gameState.coinBalance -= levelConfig.deathPenalty;
+            updateCoinDisplay();
             
             // Update game info
-            if (_elements.gameInfo) {
-                _elements.gameInfo.textContent = `Oh no! The chicken didn't make it... You lost ${levelConfig.dp} coins!`;
-            }
+            elements.gameInfo.textContent = `Oh no! The chicken didn't make it... You lost ${levelConfig.deathPenalty} coins!`;
             
-            // Show death screen after animation
+            // Show death screen
             setTimeout(() => {
-                _private.methods.showDeathScreen();
-                _private.state.animationInProgress = false;
+                showDeathScreen();
             }, 1000);
         }
     }
-
-    // Move chicken to the specified position - converted to private method
-    _private.methods.moveChicken = function(position) {
-        if (!_elements.chicken) return;
+    
+    // Move chicken to position
+    function moveChicken(position) {
+        const levelConfig = gameLevels[gameState.selectedLevel];
+        const maxSteps = levelConfig.maxSteps;
         
-        const maxSteps = _gc.lvl[_gc.sl].ms;
-        const currentGroup = Math.floor(position / 10);
-        const posInGroup = position % 10;
+        // Calculate position
+        const leftPadding = 5;
+        const usableWidth = 90;
+        const leftPos = leftPadding + (position * (usableWidth / (maxSteps - 1)));
         
-        // Calculate new left position based on the circle's position
-        let leftPos;
-        
-        if (maxSteps <= 10) {
-            // For 10 circles, use previous calculation
-            const leftPadding = 5;
-            const usableWidth = 90;
-            leftPos = leftPadding + (position * (usableWidth / (maxSteps - 1)));
-        } else {
-            // For more than 10 circles, position within current group
-            const leftPadding = 5;
-            const usableWidth = 90;
-            
-            if (posInGroup === 0) {
-                leftPos = leftPadding;
-            } else {
-                leftPos = leftPadding + (posInGroup * (usableWidth / 9));
-            }
-        }
-        
-        _elements.chicken.style.left = `${leftPos}%`;
+        elements.chicken.style.left = `${leftPos}%`;
     }
     
-    // Kill the chicken at the specified position - converted to private method
-    _private.methods.killChicken = function(position) {
-        if (!_elements.chicken || !_elements.bloodSplatter) return;
+    // Kill chicken animation
+    function killChicken(position) {
+        const levelConfig = gameLevels[gameState.selectedLevel];
+        const maxSteps = levelConfig.maxSteps;
         
-        const maxSteps = _gc.lvl[_gc.sl].ms;
-        const currentGroup = Math.floor(position / 10);
-        const posInGroup = position % 10;
-        
-        // Calculate position for death animation
-        let leftPos;
-        
-        if (maxSteps <= 10) {
-            // For 10 circles, use previous calculation with padding
-            const leftPadding = 5;
-            const usableWidth = 90;
-            leftPos = leftPadding + (position * (usableWidth / (maxSteps - 1)));
-        } else {
-            // For more than 10 circles, position within current group
-            const leftPadding = 5;
-            const usableWidth = 90;
-            
-            if (posInGroup === 0) {
-                leftPos = leftPadding;
-            } else {
-                leftPos = leftPadding + (posInGroup * (usableWidth / 9));
-            }
-        }
+        // Calculate position for death
+        const leftPadding = 5;
+        const usableWidth = 90;
+        const leftPos = leftPadding + (position * (usableWidth / (maxSteps - 1)));
         
         // Move chicken to the position
-        _elements.chicken.style.left = `${leftPos}%`;
+        elements.chicken.style.left = `${leftPos}%`;
         
         // Add death class
-        _elements.chicken.classList.add('chicken-dead');
+        elements.chicken.classList.add('chicken-dead');
         
-        // Position and show blood splatter
-        _elements.bloodSplatter.style.left = `${leftPos}%`;
-        _elements.bloodSplatter.style.top = '50%';
-        _elements.bloodSplatter.classList.add('active');
+        // Show blood splatter
+        elements.bloodSplatter.style.left = `${leftPos}%`;
+        elements.bloodSplatter.style.top = '50%';
+        elements.bloodSplatter.classList.add('active');
         
         // Mark circle as danger
+        const circles = elements.chickenPath.querySelectorAll('.path-circle');
         if (circles[position]) {
             circles[position].classList.add('danger');
         }
     }
-
-    // Cash out the current earnings - now completely private
-    _private.methods.cashout = function() {
-        if (_private.state.currentEarnings <= 0 || !_private.state.gameActive) {
+    
+    // Cash out current earnings
+    function cashout() {
+        if (gameState.currentEarnings <= 0 || !gameState.gameActive) {
             return;
         }
+        
+        // Add earnings to balance
+        gameState.coinBalance += gameState.currentEarnings;
+        updateCoinDisplay();
         
         // Update game info
-        if (_elements.gameInfo) {
-            _elements.gameInfo.textContent = `Cashed out with ${_private.state.currentEarnings.toLocaleString()} coins. Well played!`;
-        }
-        
-        // Add earnings to balance using secure internal transaction
-        _private.methods.updateCoins(_private.state.currentEarnings, true, 'INTERNAL_GAME_TRANSACTION');
+        elements.gameInfo.textContent = `Cashed out with ${gameState.currentEarnings.toLocaleString()} coins. Well played!`;
         
         // Show cashout screen
-        _private.methods.showCashoutScreen();
+        showCashoutScreen();
     }
-
-    // Show victory screen - converted to private method
-    _private.methods.showVictoryScreen = function() {
-        if (!_elements.resultScreen || !_elements.resultTitle || !_elements.resultMessage) {
-            console.error("Result screen elements not found!");
-            return;
-        }
+    
+    // Show victory screen
+    function showVictoryScreen() {
+        const levelConfig = gameLevels[gameState.selectedLevel];
         
-        const levelConfig = _gc.lvl[_gc.sl];
+        // Set result screen content
+        elements.resultTitle.textContent = "Victory!";
+        elements.resultTitle.className = "overlay-title win";
         
-        // Set the result screen content
-        _elements.resultTitle.textContent = "Victory!";
-        _elements.resultTitle.className = "overlay-title win";
-        
-        // Calculate net profit (subtract entry fee from reward for analytics only)
-        const netProfit = _private.state.currentEarnings - levelConfig.ef;
-        console.log(`Victory! Gross win: ${_private.state.currentEarnings}, Entry fee: ${levelConfig.ef}, Net profit: ${netProfit}`);
-        
-        // Update message (don't mention entry fee to user)
-        _elements.resultMessage.innerHTML = `You reached the end!<br>
+        elements.resultMessage.innerHTML = `You reached the end!<br>
             You won the jackpot!<br>
-            You won: <span class="win-amount">${_private.state.currentEarnings.toLocaleString()}</span> coins`;
+            You won: <span class="win-amount">${gameState.currentEarnings.toLocaleString()}</span> coins`;
         
-        // Make result screen visible
-        _elements.resultScreen.style.display = 'flex';
-        _elements.resultScreen.classList.add('visible');
-        
-        // Force balance update on screen before hiding the game
-        _private.methods.updateCoinDisplay();
+        // Show result screen
+        elements.resultScreen.style.display = 'flex';
+        elements.resultScreen.classList.add('visible');
         
         // End the game
-        _private.state.gameActive = false;
+        gameState.gameActive = false;
     }
     
-    // Show death screen - converted to private method
-    _private.methods.showDeathScreen = function() {
-        if (!_elements.resultScreen || !_elements.resultTitle || !_elements.resultMessage) {
-            console.error("Result screen elements not found!");
-            return;
-        }
+    // Show death screen
+    function showDeathScreen() {
+        const levelConfig = gameLevels[gameState.selectedLevel];
         
-        const levelConfig = _gc.lvl[_gc.sl];
+        // Set result screen content
+        elements.resultTitle.textContent = "Chicken Died!";
+        elements.resultTitle.className = "overlay-title lose";
         
-        // Set the result screen content
-        _elements.resultTitle.textContent = "Chicken Died!";
-        _elements.resultTitle.className = "overlay-title lose";
+        elements.resultMessage.innerHTML = `The chicken didn't make it!<br>
+            You made it to position ${gameState.currentPosition + 1} of ${levelConfig.maxSteps}.<br>
+            You lost ${levelConfig.deathPenalty} coins.`;
         
-        // Update message
-        _elements.resultMessage.innerHTML = `The chicken didn't make it!<br>
-            You made it to position ${_private.state.currentPosition + 1} of ${levelConfig.ms}.<br>
-            You lost ${levelConfig.dp} coins.`;
-        
-        // Make result screen visible
-        _elements.resultScreen.style.display = 'flex';
-        _elements.resultScreen.classList.add('visible');
-        
-        // Force balance update on screen before hiding the game
-        _private.methods.updateCoinDisplay();
-        
-        // Log total loss for analytics (but don't show to user)
-        console.log(`Total loss: ${levelConfig.ef + levelConfig.dp} coins (entry fee: ${levelConfig.ef}, death penalty: ${levelConfig.dp})`);
+        // Show result screen
+        elements.resultScreen.style.display = 'flex';
+        elements.resultScreen.classList.add('visible');
         
         // End the game
-        _private.state.gameActive = false;
+        gameState.gameActive = false;
     }
     
-    // Show cashout screen - converted to private method
-    _private.methods.showCashoutScreen = function() {
-        if (!_elements.resultScreen || !_elements.resultTitle || !_elements.resultMessage) {
-            console.error("Result screen elements not found!");
-            return;
-        }
+    // Show cashout screen
+    function showCashoutScreen() {
+        const levelConfig = gameLevels[gameState.selectedLevel];
         
-        const levelConfig = _gc.lvl[_gc.sl];
+        // Set result screen content
+        elements.resultTitle.textContent = "Cashed Out!";
+        elements.resultTitle.className = "overlay-title win";
         
-        // Set the result screen content
-        _elements.resultTitle.textContent = "Cashed Out!";
-        _elements.resultTitle.className = "overlay-title win";
+        elements.resultMessage.innerHTML = `Smart move!<br>
+            You made it to position ${gameState.currentPosition + 1} of ${levelConfig.maxSteps}.<br>
+            You won: <span class="win-amount">${gameState.currentEarnings.toLocaleString()}</span> coins`;
         
-        // Calculate net profit (subtract entry fee from winnings for analytics only)
-        const netProfit = _private.state.currentEarnings - levelConfig.ef;
-        console.log(`Cashout! Gross win: ${_private.state.currentEarnings}, Entry fee: ${levelConfig.ef}, Net profit: ${netProfit}`);
-        
-        // Update message (don't mention entry fee to user)
-        _elements.resultMessage.innerHTML = `Smart move!<br>
-            You made it to position ${_private.state.currentPosition + 1} of ${levelConfig.ms}.<br>
-            You won: <span class="win-amount">${_private.state.currentEarnings.toLocaleString()}</span> coins`;
-        
-        // Make result screen visible
-        _elements.resultScreen.style.display = 'flex';
-        _elements.resultScreen.classList.add('visible');
-        
-        // Force balance update on screen before hiding the game
-        _private.methods.updateCoinDisplay();
+        // Show result screen
+        elements.resultScreen.style.display = 'flex';
+        elements.resultScreen.classList.add('visible');
         
         // End the game
-        _private.state.gameActive = false;
-    }
-
-    // Reset game - converted to private method
-    _private.methods.resetGame = function() {
-        // Reset game state
-        _private.state.gameActive = false;
-        _private.state.currentPosition = -1;
-        _private.state.currentEarnings = 0;
-        _private.state.animationInProgress = false;
-        
-        // Cancel any animation frames
-        if (animationFrame) {
-            cancelAnimationFrame(animationFrame);
-            animationFrame = null;
-        }
-        
-        // Reset displays
-        _private.methods.updateCurrentEarnings();
-        
-        // Hide game elements
-        if (_elements.chickenRunContainer) {
-            _elements.chickenRunContainer.style.display = 'none';
-        }
-        
-        // Reset chicken
-        if (_elements.chicken) {
-            _elements.chicken.style.left = '10px'; // Starting position
-            _elements.chicken.classList.remove('chicken-dead');
-        }
-        
-        // Reset blood splatter
-        if (_elements.bloodSplatter) {
-            _elements.bloodSplatter.classList.remove('active');
-        }
-        
-        // Hide result screen if visible
-        if (_elements.resultScreen) {
-            _elements.resultScreen.classList.remove('visible');
-        }
-        
-        // Disable cashout button
-        if (_elements.cashoutBtn) {
-            _elements.cashoutBtn.disabled = true;
-        }
-        
-        // Show start screen
-        if (_elements.startScreen) {
-            _elements.startScreen.classList.add('visible');
-        }
-        
-        try {
-            // Clear any pending timeouts
-            _private.methods.clearAllTimeouts();
-        } catch (e) {
-            console.log("Error clearing timeouts:", e);
-        }
-    }
-
-    // Initialize game - properly using private methods
-    _private.methods.initGame = function() {
-        // Get current level configuration
-        const levelConfig = _gc.lvl[_gc.sl];
-        
-        // Check if player has enough coins for entry fee
-        if (_private.state.coinBalance < levelConfig.ef) {
-            // Show insufficient funds message
-            if (_elements.gameInfo) {
-                _elements.gameInfo.textContent = `Not enough coins to start the game! You need at least ${levelConfig.ef} coins.`;
-            }
-            return;
-        }
-        
-        // SECURITY: Verify game integrity before starting
-        if (!_private.methods.verifyGameIntegrity()) {
-            _private.methods.resetGame();
-            alert("Game security verification failed. Please refresh the page.");
-            return;
-        }
-        
-        // Deduct entry fee
-        _private.methods.updateCoins(-levelConfig.ef, false, 'INTERNAL_GAME_TRANSACTION');
-        
-        // Reset for new game
-        _private.state.gameActive = true;
-        _private.state.currentPosition = -1;
-        _private.state.currentEarnings = 0;
-        _private.state.animationInProgress = false;
-        
-        // Update current earnings display
-        _private.methods.updateCurrentEarnings();
-        
-        // Hide start screen
-        _elements.startScreen.classList.remove('visible');
-        
-        // Create circles based on selected level
-        _private.methods.createCircles();
-        
-        // Show game container
-        if (_elements.chickenRunContainer) {
-            _elements.chickenRunContainer.style.display = 'flex';
-        }
-        
-        // Reset chicken to starting position
-        if (_elements.chicken) {
-            _elements.chicken.style.left = '10px';
-            _elements.chicken.classList.remove('chicken-dead');
-        }
-        
-        // Reset blood splatter
-        if (_elements.bloodSplatter) {
-            _elements.bloodSplatter.classList.remove('active');
-        }
-        
-        // Disable cashout button until first move
-        if (_elements.cashoutBtn) {
-            _elements.cashoutBtn.disabled = true;
-        }
-        
-        // Update game info based on selected level without showing exact percentage
-        if (_elements.gameInfo) {
-            _elements.gameInfo.textContent = `Level: ${_gc.sl} circles. Each step earns ${levelConfig.eps} coins. Click the first circle to start!`;
-        }
-        
-        // Start game loop for background effects
-        window.cancelAnimationFrame(animationFrame);
-        _private.methods.gameLoop();
-    }
-
-    // Draw stars in background - converted to private method
-    _private.methods.drawStars = function() {
-        if (!ctx || !canvas) return;
-        
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-        ctx.fillStyle = '#FFFFFF';
-        
-        // SECURITY: Use a deterministic but non-predictable pattern for stars
-        const timestamp = Date.now();
-        const seed = timestamp * 0.001; // Convert to seconds for slower animation
-        
-        for (let i = 0; i < 100; i++) {
-            // Create a deterministic but varied star pattern
-            const starSeed = (i * 12437 + timestamp) % 997; // Use prime numbers for better distribution
-            const x = (starSeed % canvasWidth) % canvasWidth;
-            const y = ((starSeed * 23) % canvasHeight) % canvasHeight;
-            
-// Vary the star sizes
-        const size = (i % 3) + 1;
-        
-        // Make stars twinkle using a more complex pattern
-        const alpha = 0.3 + 0.7 * Math.sin(seed + i * 0.1);
-        
-        ctx.globalAlpha = alpha;
-        ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.fill();
+        gameState.gameActive = false;
     }
     
-    ctx.globalAlpha = 1.0;
-}
-
-// Game loop - converted to private method
-_private.methods.gameLoop = function() {
-    // Draw background
-    _private.methods.drawStars();
-    
-    // Continue game loop
-    animationFrame = requestAnimationFrame(_private.methods.gameLoop);
-}
-
-// Set the active level button - converted to private method
-_private.methods.setActiveLevel = function(level) {
-    // Update selected level in config
-    _gc.sl = parseInt(level);
-    
-    // Update UI to show selected level
-    for (const [levelKey, button] of Object.entries(_elements.levelButtons)) {
-        if (parseInt(levelKey) === _gc.sl) {
-            button.classList.add('selected');
-        } else {
-            button.classList.remove('selected');
-        }
+    // Direct event binding for critical buttons
+    if (elements.startBtn) {
+        console.log("Adding click handler to start button");
+        elements.startBtn.onclick = function() {
+            console.log("Start button clicked!");
+            initGame();
+        };
     }
     
-    // Update button state if insufficient funds
-    const levelConfig = _gc.lvl[_gc.sl];
-    if (_private.state.coinBalance < levelConfig.ef) {
-        _elements.startBtn.classList.add('insufficient');
-    } else {
-        _elements.startBtn.classList.remove('insufficient');
-    }
-}
-
-// Secure entry point for game initialization - converted to private method
-_private.methods.initializeGame = function() {
-    // Register with the gameAPI
-    if (window.gameAPI && typeof window.gameAPI.initializeGame === 'function') {
-        const initialBalance = window.gameAPI.initializeGame({
-            // Provide secure methods to the API
-            _setInternalBalance: function(balance) {
-                _private.state.coinBalance = balance;
-                _private.methods.updateCoinDisplay();
-            }
-        });
-        
-        // Use the provided initial balance
-        if (initialBalance !== undefined) {
-            _private.state.coinBalance = initialBalance;
-        }
+    if (elements.playAgainBtn) {
+        elements.playAgainBtn.onclick = function() {
+            console.log("Play again button clicked!");
+            elements.resultScreen.classList.remove('visible');
+            setTimeout(resetGame, 300);
+        };
     }
     
-    // Initialize DOM elements
-    _private.methods.initDomElements();
-    
-    // Initialize canvas
-    _private.methods.initCanvas();
-    
-    // SECURITY: Use event delegation for all game interactions
-    _private.methods.setupSecureEventListeners();
-    
-    // Initial reset
-    _private.methods.resetGame();
-    
-    // Generate a new integrity token for this session
-    _private.state.integrityToken = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-        .map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// SECURITY: Setup event listeners using secure delegation pattern - converted to private method
-_private.methods.setupSecureEventListeners = function() {
-    // Use event delegation for the entire game board
-    const gameBoard = document.querySelector('.game-board');
-    if (gameBoard) {
-        gameBoard.addEventListener('click', function(event) {
-            // Verify integrity first
-            _private.methods.verifyGameIntegrity();
-            
-            // Find what was clicked
-            const target = event.target;
-            
-            // Handle circle clicks
-            if (target.classList.contains('path-circle')) {
-                _private.methods.handleCircleClick(event);
-            }
-            
-            // Handle button clicks
-            if (target.id === 'cashout-btn' && !target.disabled && _private.state.gameActive) {
-                _private.methods.cashout();
-            }
-        });
-    }
-    
-    // Start button
-    const startBtn = document.getElementById('start-btn');
-    if (startBtn) {
-        startBtn.addEventListener('click', function() {
-            console.log("Start button clicked");
-            const levelConfig = _gc.lvl[_gc.sl];
-            
-            // Check if player has enough coins for entry fee
-            if (_private.state.coinBalance < levelConfig.ef) {
-                alert(`You need more coins to play this game!`);
-                return;
-            }
-            
-            _private.methods.initGame();
-        });
-    }
-    
-    // Play again button
-    const playAgainBtn = document.getElementById('play-again-btn');
-    if (playAgainBtn) {
-        playAgainBtn.addEventListener('click', function() {
-            const levelConfig = _gc.lvl[_gc.sl];
-            
-            // Check if player has enough coins for entry fee
-            if (_private.state.coinBalance < levelConfig.ef) {
-                alert(`You need more coins to play this game!`);
-                _private.methods.resetGame(); // Just reset to selection screen
-                return;
-            }
-            
-            if (_elements.resultScreen) {
-                _elements.resultScreen.classList.remove('visible');
-                setTimeout(() => {
-                    _private.methods.resetGame();
-                }, 300); // Give time for fade-out animation
-            } else {
-                _private.methods.resetGame();
-            }
-        });
-    }
-    
-    // Back button
-    const backBtn = document.getElementById('back-btn');
-    if (backBtn) {
-        backBtn.addEventListener('click', function() {
+    if (elements.backBtn) {
+        elements.backBtn.onclick = function() {
+            console.log("Back button clicked!");
             window.location.href = '/voidgms.html';
-        });
+        };
     }
     
-    // Level selection buttons - use event delegation for better security
-    const levelSelection = document.querySelector('.level-selection');
-    if (levelSelection) {
-        levelSelection.addEventListener('click', function(event) {
-            const target = event.target;
-            if (target.classList.contains('level-btn')) {
-                const level = target.dataset.level;
-                if (level) {
-                    _private.methods.setActiveLevel(level);
-                    
-                    // Subtly hint at different costs without being explicit
-                    const levelConfig = _gc.lvl[_gc.sl];
-                    if (_private.state.coinBalance < levelConfig.ef) {
-                        _elements.startBtn.classList.add('insufficient');
-                    } else {
-                        _elements.startBtn.classList.remove('insufficient');
-                    }
-                }
-            }
-        });
+    if (elements.cashoutBtn) {
+        elements.cashoutBtn.onclick = function() {
+            console.log("Cash out button clicked!");
+            cashout();
+        };
     }
     
-    // SECURITY: Add event listeners to detect debugging attempts
-    window.addEventListener('contextmenu', function(e) {
-        // Log attempts to open dev tools via right-click
-        console.log("Context menu event detected");
-    });
-    
-    // Add resize event listener
-    window.addEventListener('resize', function() {
-        _private.methods.initCanvas();
-        if (_private.state.gameActive) {
-            _private.methods.drawStars();
+    // Level selection buttons
+    for (const [level, button] of Object.entries(elements.levelButtons)) {
+        if (button) {
+            button.onclick = function() {
+                console.log("Level button clicked:", level);
+                setActiveLevel(level);
+            };
         }
-    });
-    
-    // SECURITY: Listen for DevTools opening via various keyboard shortcuts
-    window.addEventListener('keydown', function(e) {
-        // Detect common dev tools shortcuts (F12, Ctrl+Shift+I, Cmd+Option+I)
-        if (e.key === 'F12' || 
-            (e.ctrlKey && e.shiftKey && e.key === 'I') || 
-            (e.metaKey && e.altKey && e.key === 'i')) {
-            console.log("DevTools keyboard shortcut detected");
-            // Optionally trigger integrity verification
-            _private.methods.verifyGameIntegrity();
-        }
-    });
-}
-
-// Observer to check for DOM modifications - private method
-_private.methods.setupDOMObserver = function() {
-    // This method was referenced but not defined in the original code
-    // Adding empty implementation to prevent errors
-    
-    // Could implement MutationObserver to detect DOM tampering
-    try {
-        const observer = new MutationObserver((mutations) => {
-            // Check for suspicious DOM modifications
-            for (const mutation of mutations) {
-                // Log potentially suspicious modifications
-                if (mutation.type === 'attributes' && 
-                    (mutation.target.id === 'cashout-btn' || 
-                     mutation.target.classList.contains('path-circle'))) {
-                    console.warn("Suspicious DOM modification detected");
-                }
-            }
-        });
-        
-        // Observe the game container
-        const gameContainer = document.querySelector('.game-container');
-        if (gameContainer) {
-            observer.observe(gameContainer, { 
-                attributes: true,
-                childList: true,
-                subtree: true
-            });
-        }
-    } catch (e) {
-        console.error("Error setting up DOM observer:", e);
     }
-}
-
-// Anti-debugging measures - private method
-_private.methods.setupAntiDebugging = function() {
-    // This method was referenced but not defined in the original code
-    // Adding empty implementation to prevent errors
     
-    // Could implement anti-debugging techniques here
-}
-
-// Initialize the game after DOM is fully loaded
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize the game using our private methods
-    _private.methods.initializeGame();
+    // Initialize default display
+    updateCoinDisplay();
+    updateCurrentEarnings();
     
-    // Setup anti-cheat protections
-    _private.methods.setupDOMObserver();
-    _private.methods.setupAntiDebugging();
-    
-    // Perform an initial integrity check
-    _private.methods.verifyGameIntegrity();
-    
-    // Make doubly sure the result screen is initially hidden
-    const resultScreen = document.getElementById('result-screen');
-    if (resultScreen) {
-        resultScreen.classList.remove('visible');
+    // Make sure start screen is visible
+    if (elements.startScreen) {
+        elements.startScreen.classList.add('visible');
     }
+    
+    console.log("Game initialization complete");
 });
-
-// Create fake/decoy functions to confuse cheaters
-window.updateCoins = function(amount) {
-    console.log("Nice try! Cheating attempt detected and logged.");
-    _private.state.cheatingDetected = true;
-    _private.methods.resetGame();
-    alert("Cheating detected! Game has been reset.");
-    return false;
-};
-
-// Use a property descriptor to make the function appear normal but be impossible to modify
-Object.defineProperty(window, 'updateCoins', {
-    configurable: false,
-    writable: false
-});
-
-// No exposed global functions or variables - everything is encapsulated
-})();
+   </script>
+</body>
+</html>
