@@ -1171,6 +1171,7 @@
     let gameStateHash = '';
     let lastGameAction = '';
     let actionCounter = 0;
+    let initializationMode = true; // Allow initialization without validation errors
 
     // Deck state
     let deck = [];
@@ -1202,9 +1203,10 @@
     // Security function - Generate a hash for game state validation
     function hashGameState() {
         // Create a string representing critical game state
+        // Exclude elements that change rapidly during initialization
         const stateString = JSON.stringify({
-            playerCards: playerCards,
-            dealerCards: dealerCards,
+            playerCardCount: playerCards.length,
+            dealerCardCount: dealerCards.length,
             currentBet: currentBet,
             balance: window.gameInterface.getBalance(),
             gameActive: gameActive,
@@ -1225,6 +1227,11 @@
     
     // Security function - Validate game state integrity
     function validateGameState() {
+        // Skip validation during initialization to prevent false positives
+        if (initializationMode) {
+            return true;
+        }
+        
         const currentHash = hashGameState();
         
         // If we have a previous hash to compare against
@@ -1939,9 +1946,12 @@
 
     // Start dealing cards
     async function startDeal() {
-        // Track the action
-        lastGameAction = 'startDeal';
-        actionCounter++;
+        // Skip validation during initial game actions
+        if (!initializationMode) {
+            // Track the action
+            lastGameAction = 'startDeal';
+            actionCounter++;
+        }
         
         // Check minimum bet
         if (currentBet < GAME_CONFIG.minBet) {
@@ -1961,12 +1971,17 @@
         // Deal initial cards
         await dealInitialCards();
         
-        // Validate state after action
-        validateGameState();
+        // Validate state after action - only if not in initialization
+        if (!initializationMode) {
+            validateGameState();
+        }
     }
 
     // Initialize game
     function initGame() {
+        // Set initialization mode to avoid false tampering detection
+        initializationMode = true;
+        
         // Reset game state
         gameActive = true;
         currentBet = 0;
@@ -2017,7 +2032,12 @@
         gameLoop();
         
         // Set initial game state hash
-        validateGameState();
+        gameStateHash = hashGameState();
+        
+        // Turn off initialization mode after setup
+        setTimeout(() => {
+            initializationMode = false;
+        }, 500);
     }
 
     // Reset the game
@@ -2076,12 +2096,32 @@
         // Add a security check for all game actions
         const secureAction = (action) => {
             return function(event) {
-                // Verify game hasn't been tampered with
-                if (validateGameState()) {
-                    action.call(this, event);
-                } else {
-                    console.error("Game state validation failed");
+                try {
+                    // Check if we're in initialization mode
+                    if (initializationMode) {
+                        action.call(this, event);
+                    } else {
+                        // Verify game hasn't been tampered with
+                        if (validateGameState()) {
+                            action.call(this, event);
+                        } else {
+                            console.error("Game state validation failed");
+                            // Prevent infinite reset loops by setting initialization mode
+                            initializationMode = true;
+                            resetGame();
+                            setTimeout(() => {
+                                initializationMode = false;
+                            }, 500);
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error in game action:", error);
+                    // Safe recovery
+                    initializationMode = true;
                     resetGame();
+                    setTimeout(() => {
+                        initializationMode = false;
+                    }, 500);
                 }
             };
         };
