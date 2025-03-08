@@ -705,6 +705,18 @@
                </div>
            </div>
 
+           <!-- Login Required Overlay -->
+           <div class="game-overlay" id="login-required-screen">
+               <div class="overlay-content">
+                   <h2 class="overlay-title" style="background: linear-gradient(45deg, #FF9800, #F44336); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Login Required</h2>
+                   <p class="overlay-message">
+                       You need to be logged in to play Blackjack.<br>
+                       Please sign in to your Void Games account.
+                   </p>
+                   <button id="login-btn" class="game-btn">Go to Login</button>
+               </div>
+           </div>
+
            <!-- Game Result Overlay -->
            <div class="game-overlay" id="result-screen">
                <div class="overlay-content">
@@ -1882,6 +1894,18 @@
         
         gameActive = false;
         
+        // Clear the cards from the containers for a clean transition
+        if (playerCardsContainer) {
+            playerCardsContainer.innerHTML = '';
+        }
+        if (dealerCardsContainer) {
+            dealerCardsContainer.innerHTML = '';
+        }
+        
+        // Reset card arrays
+        playerCards = [];
+        dealerCards = [];
+        
         // Validate final state
         validateGameState();
     }
@@ -1989,6 +2013,21 @@
 
     // Initialize game
     function initGame() {
+        // Check if user is logged in before allowing game to start
+        if (!currentUser) {
+            console.log("User not logged in, showing login screen");
+            let loginScreen = document.getElementById('login-required-screen');
+            let startScreen = document.getElementById('start-screen');
+            
+            if (startScreen) {
+                startScreen.classList.remove('visible');
+            }
+            if (loginScreen) {
+                loginScreen.classList.add('visible');
+            }
+            return;
+        }
+    
         // Set initialization mode to avoid false tampering detection
         initializationMode = true;
         
@@ -2063,6 +2102,30 @@
             resultScreen.classList.remove('visible');
         }
         
+        // Make sure card containers are empty
+        if (playerCardsContainer) {
+            playerCardsContainer.innerHTML = '';
+        }
+        if (dealerCardsContainer) {
+            dealerCardsContainer.innerHTML = '';
+        }
+        
+        // Reset hand value displays
+        if (playerValueDisplay) {
+            playerValueDisplay.textContent = '0';
+        }
+        if (dealerValueDisplay) {
+            dealerValueDisplay.textContent = '0';
+        }
+        
+        // Show bet controls, hide action controls
+        if (betControls) {
+            betControls.style.display = 'block';
+        }
+        if (actionControls) {
+            actionControls.style.display = 'none';
+        }
+        
         // Reset game state
         actionCounter = 0;
         gameStateHash = ''; // Clear hash state
@@ -2119,6 +2182,21 @@
         const secureAction = (action) => {
             return function(event) {
                 try {
+                    // Check if user is logged in for game actions
+                    if (!currentUser && this.id !== 'login-btn' && this.id !== 'back-btn') {
+                        console.log("User not logged in, showing login screen");
+                        let loginScreen = document.getElementById('login-required-screen');
+                        let startScreen = document.getElementById('start-screen');
+                        
+                        if (startScreen) {
+                            startScreen.classList.remove('visible');
+                        }
+                        if (loginScreen) {
+                            loginScreen.classList.add('visible');
+                        }
+                        return;
+                    }
+                    
                     // Betting actions get special treatment
                     if (this && this.classList && this.classList.contains('bet-btn')) {
                         // Always allow bet buttons to work without validation
@@ -2238,6 +2316,9 @@
         // Setup event listeners
         setupEventListeners();
         
+        // Check user login status
+        checkLoginStatus();
+        
         // Initialize with default coin balance and check Firebase
         setTimeout(() => {
             // Delayed initialization to ensure firebase is fully loaded
@@ -2274,6 +2355,37 @@
         // Set initial game state hash
         validateGameState();
     });
+    
+    // Check if user is logged in
+    function checkLoginStatus() {
+        let loginScreen = document.getElementById('login-required-screen');
+        let startScreen = document.getElementById('start-screen');
+        let loginBtn = document.getElementById('login-btn');
+        
+        if (loginBtn) {
+            loginBtn.addEventListener('click', function() {
+                window.location.href = '/login.html'; // Redirect to login page
+            });
+        }
+        
+        setTimeout(() => {
+            // Check after a short delay to ensure Firebase auth has initialized
+            if (!currentUser) {
+                console.log("No user logged in, showing login screen");
+                if (startScreen) {
+                    startScreen.classList.remove('visible');
+                }
+                if (loginScreen) {
+                    loginScreen.classList.add('visible');
+                }
+            } else {
+                console.log("User is logged in, game can start");
+                if (loginScreen) {
+                    loginScreen.classList.remove('visible');
+                }
+            }
+        }, 1000);
+    }
 
     // Anti-tampering - freeze global objects to prevent modification
     Object.freeze(GAME_CONFIG);
