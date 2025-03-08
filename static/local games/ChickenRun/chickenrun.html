@@ -987,7 +987,8 @@ const GAME_CONFIG = {
             deathPenalty: 200,
             initialSuccessRate: 0.85,  // Start with 85% success rate
             finalSuccessRate: 0.65,    // End with 65% success rate
-            difficultyIncreasePoint: 0.40 // Start decreasing success rate after 40% of the way
+            difficultyIncreasePoint: 0.40, // Start decreasing success rate after 40% of the way
+            entryFee: 200  // Entry fee for 10-circle game
         },
         20: {
             maxSteps: 20,
@@ -996,7 +997,8 @@ const GAME_CONFIG = {
             deathPenalty: 400,
             initialSuccessRate: 0.87,  // Start with 87% success rate
             finalSuccessRate: 0.60,    // End with 60% success rate
-            difficultyIncreasePoint: 0.35 // Start decreasing success rate after 35% of the way
+            difficultyIncreasePoint: 0.35, // Start decreasing success rate after 35% of the way
+            entryFee: 300  // Entry fee for 20-circle game
         },
         30: {
             maxSteps: 30,
@@ -1005,7 +1007,8 @@ const GAME_CONFIG = {
             deathPenalty: 600,
             initialSuccessRate: 0.90,  // Start with 90% success rate
             finalSuccessRate: 0.55,    // End with 55% success rate
-            difficultyIncreasePoint: 0.30 // Start decreasing success rate after 30% of the way
+            difficultyIncreasePoint: 0.30, // Start decreasing success rate after 30% of the way
+            entryFee: 500  // Entry fee for 30-circle game
         }
     },
     selectedLevel: 10  // Default selected level
@@ -1527,7 +1530,11 @@ function showVictoryScreen() {
     resultTitle.textContent = "Victory!";
     resultTitle.className = "overlay-title win";
     
-    // Update message
+    // Calculate net profit (subtract entry fee from reward for analytics only)
+    const netProfit = currentEarnings - levelConfig.entryFee;
+    console.log(`Victory! Gross win: ${currentEarnings}, Entry fee: ${levelConfig.entryFee}, Net profit: ${netProfit}`);
+    
+    // Update message (don't mention entry fee to user)
     resultMessage.innerHTML = `You reached the end!<br>
         You won the jackpot!<br>
         You won: <span class="win-amount">${currentEarnings.toLocaleString()}</span> coins`;
@@ -1568,6 +1575,9 @@ function showDeathScreen() {
     // Force balance update on screen before hiding the game
     updateCoinDisplay();
     
+    // Log total loss for analytics (but don't show to user)
+    console.log(`Total loss: ${levelConfig.entryFee + levelConfig.deathPenalty} coins (entry fee: ${levelConfig.entryFee}, death penalty: ${levelConfig.deathPenalty})`);
+    
     // End the game
     gameActive = false;
 }
@@ -1585,7 +1595,11 @@ function showCashoutScreen() {
     resultTitle.textContent = "Cashed Out!";
     resultTitle.className = "overlay-title win";
     
-    // Update message
+    // Calculate net profit (subtract entry fee from winnings for analytics only)
+    const netProfit = currentEarnings - levelConfig.entryFee;
+    console.log(`Cashout! Gross win: ${currentEarnings}, Entry fee: ${levelConfig.entryFee}, Net profit: ${netProfit}`);
+    
+    // Update message (don't mention entry fee to user)
     resultMessage.innerHTML = `Smart move!<br>
         You made it to position ${currentPosition + 1} of ${levelConfig.maxSteps}.<br>
         You won: <span class="win-amount">${currentEarnings.toLocaleString()}</span> coins`;
@@ -1661,14 +1675,26 @@ function resetGame() {
 
 // Initialize game
 function initGame() {
+    // Get current level configuration
+    const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+    
+    // Check if player has enough coins for entry fee
+    if (window.coinBalance < levelConfig.entryFee) {
+        // Show insufficient funds message
+        if (gameInfo) {
+            gameInfo.textContent = `Not enough coins to start the game! You need at least ${levelConfig.entryFee} coins.`;
+        }
+        return;
+    }
+    
+    // Deduct entry fee
+    updateCoins(-levelConfig.entryFee, false);
+    
     // Reset for new game
     gameActive = true;
     currentPosition = -1;
     currentEarnings = 0;
     animationInProgress = false;
-    
-    // Get current level configuration
-    const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
     
     // Update current earnings display
     updateCurrentEarnings();
@@ -1792,6 +1818,14 @@ function setupEventListeners() {
     // Start button
     if (startBtn) {
         startBtn.addEventListener('click', function() {
+            const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+            
+            // Check if player has enough coins for entry fee
+            if (window.coinBalance < levelConfig.entryFee) {
+                alert(`You need more coins to play this game!`);
+                return;
+            }
+            
             initGame();
         });
     }
@@ -1799,6 +1833,15 @@ function setupEventListeners() {
     // Play again button
     if (playAgainBtn) {
         playAgainBtn.addEventListener('click', function() {
+            const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+            
+            // Check if player has enough coins for entry fee
+            if (window.coinBalance < levelConfig.entryFee) {
+                alert(`You need more coins to play this game!`);
+                resetGame(); // Just reset to selection screen
+                return;
+            }
+            
             if (resultScreen) {
                 resultScreen.classList.remove('visible');
                 setTimeout(() => {
@@ -1831,6 +1874,14 @@ function setupEventListeners() {
         if (button) {
             button.addEventListener('click', function() {
                 setActiveLevel(level);
+                
+                // Subtly hint at different costs without being explicit
+                const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+                if (window.coinBalance < levelConfig.entryFee) {
+                    startBtn.classList.add('insufficient');
+                } else {
+                    startBtn.classList.remove('insufficient');
+                }
             });
         }
     }
