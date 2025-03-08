@@ -670,7 +670,7 @@
           });
         }
 
-        // Ban user functionality
+        // Ban user functionality - UPDATED to handle duplicate usernames
         async function banUser(username) {
           try {
             if (!isAdminUser()) {
@@ -678,7 +678,7 @@
               return;
             }
             
-            // Find user document by username
+            // Find ALL user documents with the same username
             const usersRef = collection(db, 'users');
             const q = query(usersRef, where('username', '==', username));
             const querySnapshot = await getDocs(q);
@@ -688,23 +688,39 @@
               return;
             }
             
-            // Get user document
-            const userDoc = querySnapshot.docs[0];
-            const userId = userDoc.id;
+            // Count how many users with this username
+            const userCount = querySnapshot.docs.length;
             
-            // Add user to banned collection
-            await setDoc(doc(db, 'banned_users', userId), {
-              username: username,
-              bannedAt: new Date(),
-              bannedBy: auth.currentUser.email
-            });
+            // Ban ALL users with this username
+            let bannedCount = 0;
+            const bannedUserIds = [];
             
-            // Update user document to mark as banned
-            await updateDoc(doc(db, 'users', userId), {
-              banned: true
-            });
+            // Use Promise.all to process all bans in parallel
+            await Promise.all(querySnapshot.docs.map(async (userDoc) => {
+              const userId = userDoc.id;
+              bannedUserIds.push(userId);
+              
+              // Add user to banned collection
+              await setDoc(doc(db, 'banned_users', userId), {
+                username: username,
+                bannedAt: new Date(),
+                bannedBy: auth.currentUser.email
+              });
+              
+              // Update user document to mark as banned
+              await updateDoc(doc(db, 'users', userId), {
+                banned: true
+              });
+              
+              bannedCount++;
+            }));
             
-            alert(`User "${username}" has been banned successfully`);
+            if (userCount > 1) {
+              alert(`Banned ${bannedCount} users with username "${username}"`);
+            } else {
+              alert(`User "${username}" has been banned successfully`);
+            }
+            
             refreshLeaderboard(); // Refresh to update the display
             
           } catch (error) {
@@ -731,29 +747,39 @@
               return;
             }
             
-            // Get user document
-            const userDoc = querySnapshot.docs[0];
-            const userId = userDoc.id;
+            // Process all matches
+            let unbannedCount = 0;
             
-            // Check if user is actually banned
-            const bannedRef = doc(db, 'banned_users', userId);
-            const bannedDoc = await getDoc(bannedRef);
+            await Promise.all(querySnapshot.docs.map(async (userDoc) => {
+              const userId = userDoc.id;
+              
+              // Check if user is actually banned
+              const bannedRef = doc(db, 'banned_users', userId);
+              const bannedDoc = await getDoc(bannedRef);
+              
+              if (bannedDoc.exists()) {
+                // Remove user from banned collection
+                await deleteDoc(bannedRef);
+                
+                // Update user document to mark as not banned
+                await updateDoc(doc(db, 'users', userId), {
+                  banned: false
+                });
+                
+                unbannedCount++;
+              }
+            }));
             
-            if (!bannedDoc.exists()) {
-              alert(`User "${username}" is not banned`);
-              return;
+            if (unbannedCount > 0) {
+              if (unbannedCount > 1) {
+                alert(`${unbannedCount} users with username "${username}" have been unbanned`);
+              } else {
+                alert(`User "${username}" has been unbanned successfully`);
+              }
+              refreshLeaderboard(); // Refresh to update the display
+            } else {
+              alert(`No banned users found with username "${username}"`);
             }
-            
-            // Remove user from banned collection
-            await deleteDoc(doc(db, 'banned_users', userId));
-            
-            // Update user document to mark as not banned
-            await updateDoc(doc(db, 'users', userId), {
-              banned: false
-            });
-            
-            alert(`User "${username}" has been unbanned successfully`);
-            refreshLeaderboard(); // Refresh to update the display
             
           } catch (error) {
             console.error('Error unbanning user:', error);
@@ -806,10 +832,23 @@ class VoidNetworkAccounting {
         console.log("VoidNetworkAccounting initialized");
     }
 
-    // User Registration
+    // User Registration - UPDATED to check for duplicate usernames
     async registerUser(email, password, username) {
         try {
+            console.log("Checking if username already exists:", username);
+            
+            // Check if username already exists
+            const usersRef = collection(this.db, 'users');
+            const q = query(usersRef, where('username', '==', username));
+            const querySnapshot = await getDocs(q);
+            
+            if (!querySnapshot.empty) {
+                throw new Error('Username already exists. Please choose a different username.');
+            }
+            
+            console.log("Username is available, proceeding with registration");
             console.log("Registering new user:", email);
+            
             const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
             const user = userCredential.user;
 
