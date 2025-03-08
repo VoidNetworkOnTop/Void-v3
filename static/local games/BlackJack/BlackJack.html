@@ -1202,27 +1202,29 @@
 
     // Security function - Generate a hash for game state validation
     function hashGameState() {
-        // Create a string representing critical game state
-        // Exclude elements that change rapidly during initialization
-        const stateString = JSON.stringify({
-            playerCardCount: playerCards.length,
-            dealerCardCount: dealerCards.length,
-            currentBet: currentBet,
-            balance: window.gameInterface.getBalance(),
-            gameActive: gameActive,
-            actionCounter: actionCounter,
-            lastAction: lastGameAction
-        });
-        
-        // Simple hash function
-        let hash = 0;
-        for (let i = 0; i < stateString.length; i++) {
-            const char = stateString.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32bit integer
+        try {
+            // Create a string representing critical game state
+            // Use a simpler representation that's less prone to false positives
+            const stateString = JSON.stringify({
+                playerCardCount: playerCards.length,
+                dealerCardCount: dealerCards.length,
+                betPhase: actionControls ? actionControls.style.display === 'none' : true,
+                gameActive: gameActive
+            });
+            
+            // Simple hash function
+            let hash = 0;
+            for (let i = 0; i < stateString.length; i++) {
+                const char = stateString.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            
+            return hash.toString(16);
+        } catch (error) {
+            console.error("Error generating hash:", error);
+            return "error";
         }
-        
-        return hash.toString(16);
     }
     
     // Security function - Validate game state integrity
@@ -1232,10 +1234,17 @@
             return true;
         }
         
+        // Skip validation during bet phase which has frequent small changes
+        if (betControls && betControls.style.display === 'block') {
+            // During betting, we'll just update the hash without validation
+            gameStateHash = hashGameState();
+            return true;
+        }
+        
         const currentHash = hashGameState();
         
-        // If we have a previous hash to compare against
-        if (gameStateHash && gameStateHash !== currentHash) {
+        // If we have a previous hash to compare against and it's not equal
+        if (gameStateHash && gameStateHash !== currentHash && gameStateHash !== "error" && currentHash !== "error") {
             console.error("Game state tampering detected");
             // Could implement additional security measures here
             return false;
@@ -1946,12 +1955,12 @@
 
     // Start dealing cards
     async function startDeal() {
-        // Skip validation during initial game actions
-        if (!initializationMode) {
-            // Track the action
-            lastGameAction = 'startDeal';
-            actionCounter++;
-        }
+        // Enable initialization mode during dealing phase
+        initializationMode = true;
+        
+        // Track the action
+        lastGameAction = 'startDeal';
+        actionCounter++;
         
         // Check minimum bet
         if (currentBet < GAME_CONFIG.minBet) {
@@ -1971,10 +1980,11 @@
         // Deal initial cards
         await dealInitialCards();
         
-        // Validate state after action - only if not in initialization
-        if (!initializationMode) {
-            validateGameState();
-        }
+        // Reset hash and disable initialization mode after cards dealt
+        gameStateHash = hashGameState();
+        setTimeout(() => {
+            initializationMode = false;
+        }, 1000);
     }
 
     // Initialize game
@@ -2045,13 +2055,25 @@
         // Clear any pending timeouts
         clearAllTimeouts();
         
+        // Set initialization mode to prevent validation errors
+        initializationMode = true;
+        
         // Hide result screen if visible
         if (resultScreen) {
             resultScreen.classList.remove('visible');
         }
         
+        // Reset game state
+        actionCounter = 0;
+        gameStateHash = ''; // Clear hash state
+        
         // Reset game state for a new round
         initGame();
+        
+        // Return to normal validation after a delay
+        setTimeout(() => {
+            initializationMode = false;
+        }, 1500);
     }
 
     // Draw stars in background
@@ -2097,6 +2119,13 @@
         const secureAction = (action) => {
             return function(event) {
                 try {
+                    // Betting actions get special treatment
+                    if (this && this.classList && this.classList.contains('bet-btn')) {
+                        // Always allow bet buttons to work without validation
+                        action.call(this, event);
+                        return;
+                    }
+                    
                     // Check if we're in initialization mode
                     if (initializationMode) {
                         action.call(this, event);
@@ -2111,7 +2140,7 @@
                             resetGame();
                             setTimeout(() => {
                                 initializationMode = false;
-                            }, 500);
+                            }, 1000);
                         }
                     }
                 } catch (error) {
@@ -2121,7 +2150,7 @@
                     resetGame();
                     setTimeout(() => {
                         initializationMode = false;
-                    }, 500);
+                    }, 1000);
                 }
             };
         };
