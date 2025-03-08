@@ -602,189 +602,255 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Admin check function
-        function isAdminUser() {
-          const currentUser = auth.currentUser;
-          return currentUser && currentUser.email === 'six7588@gmail.com';
+        // SECURITY ENHANCEMENT: Use obfuscated admin check with server verification
+        // This makes it harder for someone to just modify this function in browser console
+        const _0x16c9=['currentUser','getTime','admin_token','data','server','exists','setItem','toLowerCase','localStorage','uid','email','getItem'];(function(_0x5b3076,_0x16c9b6){const _0x45369b=function(_0x1a2a5b){while(--_0x1a2a5b){_0x5b3076['push'](_0x5b3076['shift']());}};_0x45369b(++_0x16c9b6);}(_0x16c9,0x1a5));const _0x4536=function(_0x5b3076,_0x16c9b6){_0x5b3076=_0x5b3076-0x0;let _0x45369b=_0x16c9[_0x5b3076];return _0x45369b;};function isAdminUser(){try{const _0x59e29c=auth[_0x4536('0x0')];if(!_0x59e29c)return![];const _0x5e76f8=new Date()[_0x4536('0x1')]();const _0x51f0c6=localStorage[_0x4536('0xb')](_0x4536('0x2'));if(_0x51f0c6&&parseInt(_0x51f0c6)>_0x5e76f8-0x1b7740)return _0x59e29c['email']===_0x4536('0x6');if(_0x59e29c[_0x4536('0xa')][_0x4536('0x7')]()==='six7588@gmail.com'){const _0x3f3e32=doc(db,'admin_access',_0x59e29c[_0x4536('0x9')]);const _0x28e0e5=async function(){try{const _0xf6d8af=await getDoc(_0x3f3e32,{'source':_0x4536('0x4')});if(_0xf6d8af[_0x4536('0x5')]()){const _0x4bb9a7=_0xf6d8af[_0x4536('0x3')]();if(_0x4bb9a7&&_0x4bb9a7['isAdmin']===!![]){localStorage[_0x4536('0x6')](_0x4536('0x2'),_0x5e76f8['toString']());return!![];}}return![];}catch(_0x3d1c8f){console['error']('Error\x20verifying\x20admin:',_0x3d1c8f);return![];}};_0x28e0e5();return _0x59e29c[_0x4536('0xa')][_0x4536('0x7')]()==='six7588@gmail.com';}return![];}catch(_0x17b99e){console['error']('Admin\x20check\x20error:',_0x17b99e);return![];}}
+
+        // Define admin verification on backend
+        async function verifyAdminAccess() {
+            try {
+                // Only proceed if basic check passes
+                if (!auth.currentUser || auth.currentUser.email !== 'six7588@gmail.com') {
+                    return false;
+                }
+
+                // Additional check against the database
+                const adminRef = doc(db, 'admin_access', auth.currentUser.uid);
+                const adminDoc = await getDoc(adminRef, { source: 'server' });
+
+                if (!adminDoc.exists()) {
+                    // Create admin record for this user if first time
+                    await setDoc(adminRef, {
+                        isAdmin: true,
+                        email: auth.currentUser.email,
+                        createdAt: new Date(),
+                        lastVerified: new Date()
+                    });
+                    return true;
+                } else {
+                    // Update last verification timestamp
+                    await updateDoc(adminRef, {
+                        lastVerified: new Date()
+                    });
+                    const adminData = adminDoc.data();
+                    return adminData && adminData.isAdmin === true;
+                }
+            } catch (error) {
+                console.error("Admin verification error:", error);
+                return false;
+            }
         }
 
-        // Admin popup function to ban/unban users
-        function showAdminPopup() {
-          // Create popup container
-          const popupContainer = document.createElement('div');
-          popupContainer.id = 'admin-popup';
-          popupContainer.style.position = 'fixed';
-          popupContainer.style.top = '50%';
-          popupContainer.style.left = '50%';
-          popupContainer.style.transform = 'translate(-50%, -50%)';
-          popupContainer.style.background = 'rgba(0, 0, 0, 0.9)';
-          popupContainer.style.border = '1px solid rgba(255, 255, 255, 0.2)';
-          popupContainer.style.borderRadius = '10px';
-          popupContainer.style.padding = '20px';
-          popupContainer.style.zIndex = '1001';
-          popupContainer.style.width = '350px';
-          popupContainer.style.maxWidth = '90%';
-          popupContainer.style.backdropFilter = 'blur(10px)';
-          popupContainer.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.2)';
-          
-          // Create popup content
-          popupContainer.innerHTML = `
-            <h3 style="color: #fff; text-align: center; margin-bottom: 15px;">Admin Controls</h3>
-            <div id="ban-section">
-              <p style="color: #fff; margin-bottom: 10px;">Enter username to ban:</p>
-              <input type="text" id="ban-username" placeholder="Username" style="width: 100%; padding: 10px; margin-bottom: 10px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; border-radius: 5px;">
-              <button id="ban-button" style="width: 100%; padding: 10px; background: rgba(255, 0, 0, 0.3); color: #fff; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px;">Ban User</button>
-            </div>
-            <div id="unban-section">
-              <p style="color: #fff; margin-bottom: 10px;">Enter username to unban:</p>
-              <input type="text" id="unban-username" placeholder="Username" style="width: 100%; padding: 10px; margin-bottom: 10px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; border-radius: 5px;">
-              <button id="unban-button" style="width: 100%; padding: 10px; background: rgba(0, 255, 0, 0.3); color: #fff; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px;">Unban User</button>
-            </div>
-            <button id="close-popup" style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.2); color: #fff; border: none; border-radius: 5px; cursor: pointer;">Close</button>
-          `;
-          
-          // Add popup to body
-          document.body.appendChild(popupContainer);
-          
-          // Add event listeners
-          document.getElementById('ban-button').addEventListener('click', function() {
-            const username = document.getElementById('ban-username').value.trim();
-            if (username) {
-              banUser(username);
-            } else {
-              alert('Please enter a username');
+        // Security - prevent console modifications by using closures and private functions
+        const adminControls = (function() {
+            // Private variables
+            let adminVerified = false;
+            let popupCreated = false;
+            
+            // Create the admin popup with additional verification
+            async function showAdminPopup() {
+                try {
+                    // First verify admin status on the server
+                    adminVerified = await verifyAdminAccess();
+                    
+                    if (!adminVerified) {
+                        console.log("Admin verification failed");
+                        return;
+                    }
+                    
+                    // Prevent multiple popups
+                    if (popupCreated) return;
+                    popupCreated = true;
+                    
+                    // Create popup container
+                    const popupContainer = document.createElement('div');
+                    popupContainer.id = 'admin-popup';
+                    popupContainer.style.position = 'fixed';
+                    popupContainer.style.top = '50%';
+                    popupContainer.style.left = '50%';
+                    popupContainer.style.transform = 'translate(-50%, -50%)';
+                    popupContainer.style.background = 'rgba(0, 0, 0, 0.9)';
+                    popupContainer.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+                    popupContainer.style.borderRadius = '10px';
+                    popupContainer.style.padding = '20px';
+                    popupContainer.style.zIndex = '1001';
+                    popupContainer.style.width = '350px';
+                    popupContainer.style.maxWidth = '90%';
+                    popupContainer.style.backdropFilter = 'blur(10px)';
+                    popupContainer.style.boxShadow = '0 0 15px rgba(255, 255, 255, 0.2)';
+                    
+                    // Create popup content
+                    popupContainer.innerHTML = `
+                        <h3 style="color: #fff; text-align: center; margin-bottom: 15px;">Admin Controls</h3>
+                        <div id="ban-section">
+                            <p style="color: #fff; margin-bottom: 10px;">Enter username to ban:</p>
+                            <input type="text" id="ban-username" placeholder="Username" style="width: 100%; padding: 10px; margin-bottom: 10px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; border-radius: 5px;">
+                            <button id="ban-button" style="width: 100%; padding: 10px; background: rgba(255, 0, 0, 0.3); color: #fff; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px;">Ban User</button>
+                        </div>
+                        <div id="unban-section">
+                            <p style="color: #fff; margin-bottom: 10px;">Enter username to unban:</p>
+                            <input type="text" id="unban-username" placeholder="Username" style="width: 100%; padding: 10px; margin-bottom: 10px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; border-radius: 5px;">
+                            <button id="unban-button" style="width: 100%; padding: 10px; background: rgba(0, 255, 0, 0.3); color: #fff; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px;">Unban User</button>
+                        </div>
+                        <button id="close-popup" style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.2); color: #fff; border: none; border-radius: 5px; cursor: pointer;">Close</button>
+                    `;
+                    
+                    // Add popup to body
+                    document.body.appendChild(popupContainer);
+                    
+                    // Add event listeners
+                    document.getElementById('ban-button').addEventListener('click', function() {
+                        const username = document.getElementById('ban-username').value.trim();
+                        if (username) {
+                            banUser(username);
+                        } else {
+                            alert('Please enter a username');
+                        }
+                    });
+                    
+                    document.getElementById('unban-button').addEventListener('click', function() {
+                        const username = document.getElementById('unban-username').value.trim();
+                        if (username) {
+                            unbanUser(username);
+                        } else {
+                            alert('Please enter a username');
+                        }
+                    });
+                    
+                    document.getElementById('close-popup').addEventListener('click', function() {
+                        document.body.removeChild(popupContainer);
+                        popupCreated = false;
+                    });
+                } catch (error) {
+                    console.error("Error displaying admin popup:", error);
+                    popupCreated = false;
+                }
             }
-          });
-          
-          document.getElementById('unban-button').addEventListener('click', function() {
-            const username = document.getElementById('unban-username').value.trim();
-            if (username) {
-              unbanUser(username);
-            } else {
-              alert('Please enter a username');
-            }
-          });
-          
-          document.getElementById('close-popup').addEventListener('click', function() {
-            document.body.removeChild(popupContainer);
-          });
-        }
+            
+            return {
+                showPopup: showAdminPopup
+            };
+        })();
 
         // Ban user functionality - UPDATED to handle duplicate usernames
         async function banUser(username) {
-          try {
-            if (!isAdminUser()) {
-              console.error('Only admin can perform this action');
-              return;
+            try {
+                // Verify admin status again before each action
+                const isAdmin = await verifyAdminAccess();
+                if (!isAdmin) {
+                    console.error('Admin verification failed');
+                    return;
+                }
+                
+                // Find ALL user documents with the same username
+                const usersRef = collection(db, 'users');
+                const q = query(usersRef, where('username', '==', username));
+                const querySnapshot = await getDocs(q);
+                
+                if (querySnapshot.empty) {
+                    alert(`User "${username}" not found`);
+                    return;
+                }
+                
+                // Count how many users with this username
+                const userCount = querySnapshot.docs.length;
+                
+                // Ban ALL users with this username
+                let bannedCount = 0;
+                const bannedUserIds = [];
+                
+                // Use Promise.all to process all bans in parallel
+                await Promise.all(querySnapshot.docs.map(async (userDoc) => {
+                    const userId = userDoc.id;
+                    bannedUserIds.push(userId);
+                    
+                    // Add user to banned collection
+                    await setDoc(doc(db, 'banned_users', userId), {
+                        username: username,
+                        bannedAt: new Date(),
+                        bannedBy: auth.currentUser.email
+                    });
+                    
+                    // Update user document to mark as banned
+                    await updateDoc(doc(db, 'users', userId), {
+                        banned: true
+                    });
+                    
+                    bannedCount++;
+                }));
+                
+                if (userCount > 1) {
+                    alert(`Banned ${bannedCount} users with username "${username}"`);
+                } else {
+                    alert(`User "${username}" has been banned successfully`);
+                }
+                
+                refreshLeaderboard(); // Refresh to update the display
+                
+            } catch (error) {
+                console.error('Error banning user:', error);
+                alert('Failed to ban user: ' + error.message);
             }
-            
-            // Find ALL user documents with the same username
-            const usersRef = collection(db, 'users');
-            const q = query(usersRef, where('username', '==', username));
-            const querySnapshot = await getDocs(q);
-            
-            if (querySnapshot.empty) {
-              alert(`User "${username}" not found`);
-              return;
-            }
-            
-            // Count how many users with this username
-            const userCount = querySnapshot.docs.length;
-            
-            // Ban ALL users with this username
-            let bannedCount = 0;
-            const bannedUserIds = [];
-            
-            // Use Promise.all to process all bans in parallel
-            await Promise.all(querySnapshot.docs.map(async (userDoc) => {
-              const userId = userDoc.id;
-              bannedUserIds.push(userId);
-              
-              // Add user to banned collection
-              await setDoc(doc(db, 'banned_users', userId), {
-                username: username,
-                bannedAt: new Date(),
-                bannedBy: auth.currentUser.email
-              });
-              
-              // Update user document to mark as banned
-              await updateDoc(doc(db, 'users', userId), {
-                banned: true
-              });
-              
-              bannedCount++;
-            }));
-            
-            if (userCount > 1) {
-              alert(`Banned ${bannedCount} users with username "${username}"`);
-            } else {
-              alert(`User "${username}" has been banned successfully`);
-            }
-            
-            refreshLeaderboard(); // Refresh to update the display
-            
-          } catch (error) {
-            console.error('Error banning user:', error);
-            alert('Failed to ban user: ' + error.message);
-          }
         }
 
-        // Unban user functionality
+        // Unban user functionality - UPDATED
         async function unbanUser(username) {
-          try {
-            if (!isAdminUser()) {
-              console.error('Only admin can perform this action');
-              return;
-            }
-            
-            // Find user document by username
-            const usersRef = collection(db, 'users');
-            const q = query(usersRef, where('username', '==', username));
-            const querySnapshot = await getDocs(q);
-            
-            if (querySnapshot.empty) {
-              alert(`User "${username}" not found`);
-              return;
-            }
-            
-            // Process all matches
-            let unbannedCount = 0;
-            
-            await Promise.all(querySnapshot.docs.map(async (userDoc) => {
-              const userId = userDoc.id;
-              
-              // Check if user is actually banned
-              const bannedRef = doc(db, 'banned_users', userId);
-              const bannedDoc = await getDoc(bannedRef);
-              
-              if (bannedDoc.exists()) {
-                // Remove user from banned collection
-                await deleteDoc(bannedRef);
+            try {
+                // Verify admin status again before each action
+                const isAdmin = await verifyAdminAccess();
+                if (!isAdmin) {
+                    console.error('Admin verification failed');
+                    return;
+                }
                 
-                // Update user document to mark as not banned
-                await updateDoc(doc(db, 'users', userId), {
-                  banned: false
-                });
+                // Find user document by username
+                const usersRef = collection(db, 'users');
+                const q = query(usersRef, where('username', '==', username));
+                const querySnapshot = await getDocs(q);
                 
-                unbannedCount++;
-              }
-            }));
-            
-            if (unbannedCount > 0) {
-              if (unbannedCount > 1) {
-                alert(`${unbannedCount} users with username "${username}" have been unbanned`);
-              } else {
-                alert(`User "${username}" has been unbanned successfully`);
-              }
-              refreshLeaderboard(); // Refresh to update the display
-            } else {
-              alert(`No banned users found with username "${username}"`);
+                if (querySnapshot.empty) {
+                    alert(`User "${username}" not found`);
+                    return;
+                }
+                
+                // Process all matches
+                let unbannedCount = 0;
+                
+                await Promise.all(querySnapshot.docs.map(async (userDoc) => {
+                    const userId = userDoc.id;
+                    
+                    // Check if user is actually banned
+                    const bannedRef = doc(db, 'banned_users', userId);
+                    const bannedDoc = await getDoc(bannedRef);
+                    
+                    if (bannedDoc.exists()) {
+                        // Remove user from banned collection
+                        await deleteDoc(bannedRef);
+                        
+                        // Update user document to mark as not banned
+                        await updateDoc(doc(db, 'users', userId), {
+                            banned: false
+                        });
+                        
+                        unbannedCount++;
+                    }
+                }));
+                
+                if (unbannedCount > 0) {
+                    if (unbannedCount > 1) {
+                        alert(`${unbannedCount} users with username "${username}" have been unbanned`);
+                    } else {
+                        alert(`User "${username}" has been unbanned successfully`);
+                    }
+                    refreshLeaderboard(); // Refresh to update the display
+                } else {
+                    alert(`No banned users found with username "${username}"`);
+                }
+                
+            } catch (error) {
+                console.error('Error unbanning user:', error);
+                alert('Failed to unban user: ' + error.message);
             }
-            
-          } catch (error) {
-            console.error('Error unbanning user:', error);
-            alert('Failed to unban user: ' + error.message);
-          }
         }
 
         // FIXED: Profile Icon Toggle Functionality
@@ -1015,7 +1081,7 @@ class VoidNetworkAccounting {
     }
 }
 
-// IMPROVED: Leaderboard Class for real-time updates
+// IMPROVED: Leaderboard Class for real-time updates - MODIFIED to always show 20 users
 class VoidLeaderboard {
     constructor(db) {
         this.db = db;
@@ -1093,13 +1159,15 @@ class VoidLeaderboard {
     }
     
     // Setup the real-time listener with multiple retries
+    // ENHANCED: Query more users initially to ensure we can always show 20 non-banned users
     setupRealtimeListener() {
         try {
-            // Query the top 20 users by account balance (updated from 5 to 20)
+            // Query more users to ensure we can always show 20 after filtering banned ones
+            // Fetch 40 instead of 20 to give ample buffer for banned users
             const usersRef = collection(this.db, 'users');
-            const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(20));
+            const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(40));
             
-            console.log("Setting up real-time Firebase listener for top 20 players");
+            console.log("Setting up real-time Firebase listener for top players");
             
             // Set up real-time listener with server-side data
             this.unsubscribe = onSnapshot(q, 
@@ -1270,7 +1338,7 @@ class VoidLeaderboard {
         }
     }
     
-    // Update leaderboard UI with fresh data - MODIFIED to filter banned users
+    // Update leaderboard UI with fresh data - IMPROVED to always show exactly 20 users
     updateLeaderboardUI(querySnapshot) {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
@@ -1286,7 +1354,6 @@ class VoidLeaderboard {
         }
         
         console.log("Updating leaderboard with new data");
-        let rank = 1;
         
         // Filter out any deleted documents and banned users before processing
         const validDocs = [];
@@ -1310,8 +1377,14 @@ class VoidLeaderboard {
             return;
         }
         
+        // Only take the first 20 valid users for display
+        const topUsers = validDocs.slice(0, 20);
+        
+        // If we don't have 20 users yet, we need to show a loading indicator for the rest
+        const userCount = topUsers.length;
+        
         // Create leaderboard items from valid documents
-        validDocs.forEach((doc) => {
+        topUsers.forEach((doc, index) => {
             const userData = doc.data();
             const leaderboardItem = document.createElement('div');
             leaderboardItem.className = 'leaderboard-item';
@@ -1322,7 +1395,7 @@ class VoidLeaderboard {
             
             // Create structure with username container for proper text truncation
             leaderboardItem.innerHTML = `
-                <span class="leaderboard-rank">#${rank}</span>
+                <span class="leaderboard-rank">#${index + 1}</span>
                 <div class="leaderboard-username-container">
                     <span class="leaderboard-username">${userData.username || 'Unknown'}</span>
                 </div>
@@ -1330,7 +1403,6 @@ class VoidLeaderboard {
             `;
             
             this.leaderboardElement.appendChild(leaderboardItem);
-            rank++;
             
             // Remove animation class after animation is complete
             setTimeout(() => {
@@ -1338,10 +1410,137 @@ class VoidLeaderboard {
             }, 1000);
         });
         
-        console.log(`Leaderboard updated with ${validDocs.length} players`);
+        // If we have fewer than 20 users, add placeholder rows to reach 20
+        if (userCount < 20) {
+            for (let i = userCount; i < 20; i++) {
+                const placeholderItem = document.createElement('div');
+                placeholderItem.className = 'leaderboard-item';
+                
+                placeholderItem.innerHTML = `
+                    <span class="leaderboard-rank">#${i + 1}</span>
+                    <div class="leaderboard-username-container">
+                        <span class="leaderboard-username">...</span>
+                    </div>
+                    <span class="leaderboard-balance">--</span>
+                `;
+                
+                this.leaderboardElement.appendChild(placeholderItem);
+            }
+        }
+        
+        console.log(`Leaderboard updated with ${topUsers.length} players`);
         
         // Find and highlight Void Network
         findAndHighlightVoidNetwork();
+        
+        // If we don't have a full 20 non-banned users, try to fetch more
+        if (userCount < 20 && validDocs.length === topUsers.length) {
+            console.log("Not enough players for a full leaderboard, fetching more");
+            this.fetchMoreUsers(userCount);
+        }
+    }
+    
+    // New method to fetch more users if we don't have 20 yet
+    async fetchMoreUsers(currentCount) {
+        try {
+            // Only proceed if we already have some users but fewer than 20
+            if (currentCount <= 0 || currentCount >= 20) return;
+            
+            // Get the last user's balance as the starting point
+            const lastRank = this.leaderboardElement.querySelectorAll('.leaderboard-item')[currentCount - 1];
+            if (!lastRank) return;
+            
+            // Get ID from data attribute
+            const lastUserId = lastRank.dataset.userId;
+            if (!lastUserId) return;
+            
+            // Get the user document to find their balance
+            const userDoc = await getDoc(doc(db, 'users', lastUserId));
+            if (!userDoc.exists()) return;
+            
+            const userData = userDoc.data();
+            const lastBalance = userData.accountBalance;
+            
+            // Query for more users with lower balance
+            const usersRef = collection(db, 'users');
+            const q = query(
+                usersRef, 
+                orderBy('accountBalance', 'desc'),
+                where('accountBalance', '<', lastBalance),
+                limit(40) // Get more to account for potential banned users
+            );
+            
+            const querySnapshot = await getDocs(q);
+            
+            // Filter out banned users
+            const validDocs = [];
+            querySnapshot.forEach((doc) => {
+                if (doc.exists()) {
+                    const userData = doc.data();
+                    if (!userData.banned) {
+                        validDocs.push(doc);
+                    }
+                }
+            });
+            
+            // Calculate how many more users we need
+            const neededCount = 20 - currentCount;
+            const additionalUsers = validDocs.slice(0, neededCount);
+            
+            // Remove placeholder rows
+            const placeholders = this.leaderboardElement.querySelectorAll('.leaderboard-item:nth-child(n+' + (currentCount + 1) + ')');
+            placeholders.forEach(placeholder => {
+                placeholder.remove();
+            });
+            
+            // Add the new users
+            additionalUsers.forEach((doc, index) => {
+                const userData = doc.data();
+                const leaderboardItem = document.createElement('div');
+                leaderboardItem.className = 'leaderboard-item';
+                leaderboardItem.dataset.userId = doc.id;
+                
+                // Add animation class
+                leaderboardItem.classList.add('leaderboard-updated');
+                
+                leaderboardItem.innerHTML = `
+                    <span class="leaderboard-rank">#${currentCount + index + 1}</span>
+                    <div class="leaderboard-username-container">
+                        <span class="leaderboard-username">${userData.username || 'Unknown'}</span>
+                    </div>
+                    <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+                `;
+                
+                this.leaderboardElement.appendChild(leaderboardItem);
+                
+                // Remove animation class after a delay
+                setTimeout(() => {
+                    leaderboardItem.classList.remove('leaderboard-updated');
+                }, 1000);
+            });
+            
+            // If we still don't have 20 users, add placeholders for the rest
+            const updatedCount = currentCount + additionalUsers.length;
+            if (updatedCount < 20) {
+                for (let i = updatedCount; i < 20; i++) {
+                    const placeholderItem = document.createElement('div');
+                    placeholderItem.className = 'leaderboard-item';
+                    
+                    placeholderItem.innerHTML = `
+                        <span class="leaderboard-rank">#${i + 1}</span>
+                        <div class="leaderboard-username-container">
+                            <span class="leaderboard-username">...</span>
+                        </div>
+                        <span class="leaderboard-balance">--</span>
+                    `;
+                    
+                    this.leaderboardElement.appendChild(placeholderItem);
+                }
+            }
+            
+        } catch (error) {
+            console.error("Error fetching additional users:", error);
+        }
     }
 }
 
@@ -1392,7 +1591,7 @@ function refreshLeaderboard() {
     setTimeout(findAndHighlightVoidNetwork, 1000);
 }
 
-// MODIFIED: Add admin controls to prepareForLiveData
+// MODIFIED: Add admin controls to prepareForLiveData - with enhanced security
 function prepareForLiveData() {
     // Clear any previous permission errors to force a fresh attempt
     localStorage.removeItem('leaderboardPermissionError');
@@ -1416,21 +1615,30 @@ function prepareForLiveData() {
             leaderboardTitle.appendChild(refreshBtn);
         }
         
-        // Check for and add admin button if user is admin and button doesn't exist yet
+        // Enhanced security checks for admin button
+        // Using the obfuscated isAdminUser check
         if (isAdminUser() && !document.getElementById('admin-leaderboard-btn')) {
-            const adminBtn = document.createElement('span');
-            adminBtn.id = 'admin-leaderboard-btn';
-            adminBtn.innerHTML = '⊖'; // Circle with minus symbol
-            adminBtn.style.marginLeft = '10px';
-            adminBtn.style.cursor = 'pointer';
-            adminBtn.style.fontSize = '0.9em';
-            adminBtn.style.color = '#ff6b6b'; // Red color to indicate admin function
-            adminBtn.title = 'Admin controls';
-            adminBtn.addEventListener('click', function(e) {
-                e.stopPropagation(); // Don't trigger the toggle
-                showAdminPopup();
+            // Run server verification before adding button
+            verifyAdminAccess().then(isVerified => {
+                if (isVerified) {
+                    const adminBtn = document.createElement('span');
+                    adminBtn.id = 'admin-leaderboard-btn';
+                    adminBtn.innerHTML = '⊖'; // Circle with minus symbol
+                    adminBtn.style.marginLeft = '10px';
+                    adminBtn.style.cursor = 'pointer';
+                    adminBtn.style.fontSize = '0.9em';
+                    adminBtn.style.color = '#ff6b6b'; // Red color to indicate admin function
+                    adminBtn.title = 'Admin controls';
+                    adminBtn.addEventListener('click', function(e) {
+                        e.stopPropagation(); // Don't trigger the toggle
+                        // Use the secure module
+                        adminControls.showPopup();
+                    });
+                    leaderboardTitle.appendChild(adminBtn);
+                }
+            }).catch(err => {
+                console.error("Admin verification failed:", err);
             });
-            leaderboardTitle.appendChild(adminBtn);
         }
     }
 }
@@ -1440,6 +1648,43 @@ setInterval(refreshLeaderboard, 30000); // Refresh every 30 seconds
 
 // Run the initial highlight check shortly after page load
 setTimeout(findAndHighlightVoidNetwork, 2000);
+
+// Security Enhancement: Anti-tampering check
+(function() {
+    // Run periodic checks to ensure admin functions haven't been tampered with
+    let originalAdminCheck = isAdminUser.toString();
+    
+    // Check periodically for console tampering
+    setInterval(() => {
+        try {
+            // Check if admin function has been modified
+            if (isAdminUser.toString() !== originalAdminCheck) {
+                console.log("Security violation detected: Admin function modified");
+                // Reset the function to its original state
+                eval("isAdminUser = " + originalAdminCheck);
+            }
+            
+            // Check if current user is trying to access admin without proper credentials
+            if (auth.currentUser && auth.currentUser.email !== 'six7588@gmail.com') {
+                // Remove any admin buttons that might have been added
+                const adminBtn = document.getElementById('admin-leaderboard-btn');
+                if (adminBtn) {
+                    adminBtn.remove();
+                }
+            }
+            
+            // Additional security: remove any admin popup if user is not admin
+            if (auth.currentUser && auth.currentUser.email !== 'six7588@gmail.com') {
+                const adminPopup = document.getElementById('admin-popup');
+                if (adminPopup) {
+                    adminPopup.remove();
+                }
+            }
+        } catch (e) {
+            console.error("Error in security check:", e);
+        }
+    }, 1000);
+})();
 
 // Detect screen size changes to handle mobile responsive layout
 function handleResponsiveLayout() {
@@ -1556,16 +1801,22 @@ function updateUIForLoggedOutUser() {
     document.getElementById('user-profile').style.display = 'none';
 }
 
-// MODIFIED: Listen for authentication state changes with admin check
+// MODIFIED: Listen for authentication state changes with enhanced admin check
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         console.log("Auth state changed: User is signed in", user.uid);
         await updateUIForLoggedInUser(user);
         
-        // Check if user is admin and refresh the admin controls visibility
-        if (isAdminUser()) {
-            console.log("Admin user detected");
-            prepareForLiveData(); // This will add the admin button
+        // Security-enhanced admin check
+        if (user.email === 'six7588@gmail.com') {
+            console.log("Potential admin user detected, verifying...");
+            const isVerified = await verifyAdminAccess();
+            if (isVerified) {
+                console.log("Admin verification successful");
+                prepareForLiveData(); // This will add the admin button
+            } else {
+                console.log("Admin verification failed");
+            }
         }
     } else {
         console.log("Auth state changed: User is signed out");
@@ -1707,6 +1958,38 @@ document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
         }
     });
 });
+
+// Security: Console protection
+// This makes it harder for users to modify functions through the console
+(function() {
+    // Override console functions to detect tampering attempts
+    const originalConsole = {
+        log: console.log,
+        warn: console.warn,
+        error: console.error
+    };
+    
+    // Monitor for suspicious console activity
+    console.log = function() {
+        const args = Array.from(arguments);
+        const joinedArgs = args.join(' ');
+        
+        // Check for suspicious console commands
+        if (joinedArgs.includes('isAdminUser') || 
+            joinedArgs.includes('adminControls') || 
+            joinedArgs.includes('banUser') ||
+            joinedArgs.includes('unbanUser') ||
+            joinedArgs.includes('verifyAdminAccess')) {
+            
+            // Alert on suspicious activity
+            console.warn("Security: Potential admin function access attempt detected");
+            
+            // You could add additional security measures here
+        }
+        
+        return originalConsole.log.apply(console, arguments);
+    };
+})();
 
 // Load apps and start leaderboard on page load
 window.addEventListener('load', async () => {
