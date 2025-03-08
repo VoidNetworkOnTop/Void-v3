@@ -662,7 +662,10 @@ class VoidNetworkAccounting {
                 accountBalance: 1000, // Starting balance
                 totalGamesPlayed: 0,
                 totalMoneySpent: 0,
-                totalMoneyEarned: 0
+                totalMoneyEarned: 0,
+                disabled: false, // Add disabled flag (false by default)
+                isActive: true,  // Add active flag (true by default)
+                accountDeleted: false // Account deletion flag (false by default)
             });
 
             console.log("User registered successfully:", user.uid);
@@ -723,6 +726,13 @@ class VoidNetworkAccounting {
             }
 
             const userData = userDoc.data();
+            
+            // Check if user is disabled or deleted
+            if (userData.disabled === true || userData.isActive === false || userData.accountDeleted === true) {
+                console.error("User account is disabled or deleted");
+                throw new Error('Account is disabled or has been deleted');
+            }
+
             console.log("Retrieved user data:", userData.username, "Balance:", userData.accountBalance);
             return userData;
         } catch (error) {
@@ -764,6 +774,13 @@ class VoidNetworkAccounting {
             }
             
             const userData = userDoc.data();
+            
+            // Check if user is disabled or deleted - prevent transactions for these accounts
+            if (userData.disabled === true || userData.isActive === false || userData.accountDeleted === true) {
+                console.error("Cannot perform transactions for disabled or deleted accounts");
+                throw new Error('Account is disabled or has been deleted');
+            }
+            
             let updatedBalance = userData.accountBalance || 0;
             
             // Update user metrics based on transaction type
@@ -898,10 +915,22 @@ class VoidLeaderboard {
     setupRealtimeListener() {
         try {
             // Query the top 20 users by account balance (updated from 5 to 20)
+            // Add where clauses to exclude disabled/deleted users from the query itself
             const usersRef = collection(this.db, 'users');
-            const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(20));
+            const q = query(
+                usersRef, 
+                // First filter out disabled users if the field exists
+                where('disabled', '!=', true),
+                // Then filter out inactive users if that field exists
+                where('isActive', '!=', false),
+                // Then filter out deleted users if that field exists
+                where('accountDeleted', '!=', true),
+                // Finally order and limit the results
+                orderBy('accountBalance', 'desc'), 
+                limit(20)
+            );
             
-            console.log("Setting up real-time Firebase listener for top 20 players");
+            console.log("Setting up real-time Firebase listener for top 20 active players");
             
             // Set up real-time listener with server-side data
             this.unsubscribe = onSnapshot(q, 
@@ -1072,7 +1101,7 @@ class VoidLeaderboard {
         }
     }
     
-    // Update leaderboard UI with fresh data - FIXED for proper text truncation
+    // Update leaderboard UI with fresh data - FIXED with proper filtering for disabled/deleted users
     updateLeaderboardUI(querySnapshot) {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
@@ -1090,11 +1119,17 @@ class VoidLeaderboard {
         console.log("Updating leaderboard with new data");
         let rank = 1;
         
-        // Filter out any deleted documents before processing
+        // Filter out deleted documents and disabled users before processing
         const validDocs = [];
         querySnapshot.forEach((doc) => {
             if (doc.exists()) {
-                validDocs.push(doc);
+                const userData = doc.data();
+                // Skip users that are marked as disabled, inactive, or deleted in Firestore
+                if (userData.disabled === true || userData.isActive === false || userData.accountDeleted === true) {
+                    console.log("Skipping disabled/deleted user in leaderboard:", userData.username);
+                } else {
+                    validDocs.push(doc);
+                }
             } else {
                 console.log("Skipping deleted document in leaderboard");
             }
