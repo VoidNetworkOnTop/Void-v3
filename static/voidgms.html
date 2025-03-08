@@ -915,22 +915,20 @@ class VoidLeaderboard {
     setupRealtimeListener() {
         try {
             // Query the top 20 users by account balance (updated from 5 to 20)
-            // Add where clauses to exclude disabled/deleted users from the query itself
+            // Firestore only allows one '!=' operator per query, so we'll do initial filtering here
+            // and additional filtering when processing results
             const usersRef = collection(this.db, 'users');
             const q = query(
-                usersRef, 
-                // First filter out disabled users if the field exists
+                usersRef,
+                // Only use one '!=' filter in the query - for disabled accounts
                 where('disabled', '!=', true),
-                // Then filter out inactive users if that field exists
-                where('isActive', '!=', false),
-                // Then filter out deleted users if that field exists
-                where('accountDeleted', '!=', true),
-                // Finally order and limit the results
-                orderBy('accountBalance', 'desc'), 
-                limit(20)
+                // Order by balance to get top players
+                orderBy('accountBalance', 'desc'),
+                // Get more than 20 since we'll be filtering some out
+                limit(30)
             );
             
-            console.log("Setting up real-time Firebase listener for top 20 active players");
+            console.log("Setting up real-time Firebase listener for active players");
             
             // Set up real-time listener with server-side data
             this.unsubscribe = onSnapshot(q, 
@@ -1124,9 +1122,10 @@ class VoidLeaderboard {
         querySnapshot.forEach((doc) => {
             if (doc.exists()) {
                 const userData = doc.data();
-                // Skip users that are marked as disabled, inactive, or deleted in Firestore
-                if (userData.disabled === true || userData.isActive === false || userData.accountDeleted === true) {
-                    console.log("Skipping disabled/deleted user in leaderboard:", userData.username);
+                // We filtered 'disabled' in the query, but need to filter 'isActive' and 'accountDeleted' here
+                // Skip users that are marked as inactive or deleted in Firestore
+                if (userData.isActive === false || userData.accountDeleted === true) {
+                    console.log("Skipping inactive/deleted user in leaderboard:", userData.username);
                 } else {
                     validDocs.push(doc);
                 }
@@ -1142,7 +1141,9 @@ class VoidLeaderboard {
         }
         
         // Create leaderboard items from valid documents
-        validDocs.forEach((doc) => {
+        // Only show top 20 players after filtering
+        const topValidDocs = validDocs.slice(0, 20);
+        topValidDocs.forEach((doc) => {
             const userData = doc.data();
             const leaderboardItem = document.createElement('div');
             leaderboardItem.className = 'leaderboard-item';
@@ -1169,7 +1170,7 @@ class VoidLeaderboard {
             }, 1000);
         });
         
-        console.log(`Leaderboard updated with ${validDocs.length} players`);
+        console.log(`Leaderboard updated with ${topValidDocs.length} players out of ${validDocs.length} active accounts`);
         
         // Find and highlight Void Network
         findAndHighlightVoidNetwork();
