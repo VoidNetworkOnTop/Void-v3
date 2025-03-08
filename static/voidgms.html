@@ -1223,9 +1223,7 @@ function findAndHighlightVoidNetwork() {
 // Refresh the leaderboard manually
 function refreshLeaderboard() {
     console.log("Manual leaderboard refresh requested");
-    
-    // Just call fetchLeaderboardData directly
-    voidLeaderboard.fetchLeaderboardData();
+    voidLeaderboard.loadLeaderboardData();
 }
 
 // Add periodic refresh to ensure leaderboard stays updated
@@ -1273,7 +1271,7 @@ window.addEventListener('load', () => {
 // Check on window resize
 window.addEventListener('resize', handleResponsiveLayout);
 
-// Simple function to manually disable a user
+// Admin-only function to manually disable a user
 async function manuallyDisableUser() {
     try {
         const userId = prompt("Enter the user ID to disable:");
@@ -1284,14 +1282,15 @@ async function manuallyDisableUser() {
             return;
         }
         
-        const userRef = doc(db, 'users', userId);
-        await updateDoc(userRef, {
+        // Get reference to the user document
+        const userRef = db.collection('users').doc(userId);
+        
+        // Update the document
+        await userRef.update({
             disabled: true
         });
         
         alert(`User ${userId} has been disabled. Refreshing leaderboard.`);
-        
-        // Refresh the leaderboard
         refreshLeaderboard();
     } catch (error) {
         console.error("Error disabling user:", error);
@@ -1299,31 +1298,49 @@ async function manuallyDisableUser() {
     }
 }
 
-// Simple function for admin to check a user's status
+// Admin-only function to check a user's status
 async function checkUserStatus() {
     try {
         const userId = prompt("Enter the user ID to check:");
         if (!userId) return;
         
-        const userRef = doc(db, 'users', userId);
-        const userDoc = await getDoc(userRef);
+        // Get reference to the user document
+        const userRef = db.collection('users').doc(userId);
         
-        if (!userDoc.exists()) {
+        // Get the document
+        const userDoc = await userRef.get();
+        
+        if (!userDoc.exists) {
             alert(`User ${userId} does not exist.`);
             return;
         }
         
         const userData = userDoc.data();
-        alert(`User: ${userData.username}\nStatus:\n- Disabled: ${userData.disabled === true ? 'Yes' : 'No'}\n- Active: ${userData.isActive === false ? 'No' : 'Yes'}\n- Deleted: ${userData.accountDeleted === true ? 'Yes' : 'No'}\n- Balance: ${userData.accountBalance.toLocaleString()}`);
+        alert(`User: ${userData.username}
+Email: ${userData.email || 'Not available'}
+Status:
+- Disabled: ${userData.disabled === true ? 'Yes' : 'No'}
+- Active: ${userData.isActive === false ? 'No' : 'Yes'}
+- Deleted: ${userData.accountDeleted === true ? 'Yes' : 'No'}
+- Balance: ${userData.accountBalance.toLocaleString()}`);
     } catch (error) {
         console.error("Error checking user:", error);
         alert("Error: " + error.message);
     }
 }
 
-// IMPROVED: Before we fetch data, ensure we're ready for live data mode
+// Function to check if current user is admin
+function isAdminUser() {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return false;
+    
+    // Check if this is the specified admin user
+    return currentUser.uid === 'umhru1hzQJZa4db0WKHgDtp2qLc2';
+}
+
+// IMPROVED: Before we fetch data, ensure we're ready
 function prepareForLiveData() {
-    // Add admin tools to the leaderboard title
+    // Always add a refresh button to the leaderboard title
     const leaderboardTitle = document.querySelector('.leaderboard-title');
     if (leaderboardTitle) {
         // Check if we already have a refresh button
@@ -1342,33 +1359,56 @@ function prepareForLiveData() {
             });
             leaderboardTitle.appendChild(refreshBtn);
             
-            // Add disable user button
-            const disableUserBtn = document.createElement('span');
-            disableUserBtn.id = 'disable-user-btn';
-            disableUserBtn.innerHTML = '🚫';
-            disableUserBtn.style.marginLeft = '5px';
-            disableUserBtn.style.cursor = 'pointer';
-            disableUserBtn.style.fontSize = '0.9em';
-            disableUserBtn.title = 'Disable a user';
-            disableUserBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                manuallyDisableUser();
-            });
-            leaderboardTitle.appendChild(disableUserBtn);
+            // Wait for authentication to complete before adding admin buttons
+            const checkForAdmin = () => {
+                // Only add admin tools for the specified user
+                if (isAdminUser()) {
+                    console.log("Admin user detected, adding admin tools");
+                    
+                    // Add disable user button
+                    if (!document.getElementById('disable-user-btn')) {
+                        const disableUserBtn = document.createElement('span');
+                        disableUserBtn.id = 'disable-user-btn';
+                        disableUserBtn.innerHTML = '🚫';
+                        disableUserBtn.style.marginLeft = '5px';
+                        disableUserBtn.style.cursor = 'pointer';
+                        disableUserBtn.style.fontSize = '0.9em';
+                        disableUserBtn.title = 'Disable a user';
+                        disableUserBtn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            manuallyDisableUser();
+                        });
+                        leaderboardTitle.appendChild(disableUserBtn);
+                    }
+                    
+                    // Add check user button
+                    if (!document.getElementById('check-user-btn')) {
+                        const checkUserBtn = document.createElement('span');
+                        checkUserBtn.id = 'check-user-btn';
+                        checkUserBtn.innerHTML = '🔍';
+                        checkUserBtn.style.marginLeft = '5px';
+                        checkUserBtn.style.cursor = 'pointer';
+                        checkUserBtn.style.fontSize = '0.9em';
+                        checkUserBtn.title = 'Check user status';
+                        checkUserBtn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            checkUserStatus();
+                        });
+                        leaderboardTitle.appendChild(checkUserBtn);
+                    }
+                } else {
+                    // Remove admin buttons if they exist and user is not admin
+                    const disableBtn = document.getElementById('disable-user-btn');
+                    if (disableBtn) disableBtn.remove();
+                    
+                    const checkBtn = document.getElementById('check-user-btn');
+                    if (checkBtn) checkBtn.remove();
+                }
+            };
             
-            // Add check user button
-            const checkUserBtn = document.createElement('span');
-            checkUserBtn.id = 'check-user-btn';
-            checkUserBtn.innerHTML = '🔍';
-            checkUserBtn.style.marginLeft = '5px';
-            checkUserBtn.style.cursor = 'pointer';
-            checkUserBtn.style.fontSize = '0.9em';
-            checkUserBtn.title = 'Check user status';
-            checkUserBtn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                checkUserStatus();
-            });
-            leaderboardTitle.appendChild(checkUserBtn);
+            // Check immediately and whenever auth state changes
+            checkForAdmin();
+            auth.onAuthStateChanged(checkForAdmin);
         }
     }
 }
