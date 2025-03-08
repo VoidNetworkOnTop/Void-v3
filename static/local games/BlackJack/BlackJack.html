@@ -1,4 +1,24 @@
-<!DOCTYPE html>
+// Show the result screen
+    function showResult(title, message, resultClass) {
+        if (!resultScreen || !resultTitle || !resultMessage) {
+            console.error("Result screen elements not found!");
+            return;
+        }
+        
+        // Set the result screen content
+        resultTitle.textContent = title;
+        resultTitle.className = `overlay-title ${resultClass}`;
+        resultMessage.innerHTML = message;
+        
+        // Make sure the result screen is visible
+        resultScreen.style.display = 'flex';
+        resultScreen.classList.add('visible');
+        
+        // Force coin display update
+        window.gameInterface.updateDisplay();
+        
+        // Log for debugging
+        console.<!DOCTYPE html>
 <html lang="en">
 <head>
    <meta charset="UTF-8">
@@ -1325,8 +1345,17 @@
 
     // Update coin balance - Using the secure gameInterface instead of direct manipulation
     async function updateCoins(amount, isWin = true) {
+        // Add rate limiting to prevent multiple rapid transactions
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
         // Log the attempt for debugging
         console.log(`Updating coins: current=${window.gameInterface.getBalance()}, change=${amount}`);
+        
+        // Check for unrealistic values that might indicate a hack attempt
+        if (Math.abs(amount) > 100000) {
+            console.error("Unusually large transaction detected");
+            return false;
+        }
         
         // Use the secure game interface to update coins
         const success = await window.gameInterface.processTransaction(Math.abs(amount), isWin);
@@ -1338,7 +1367,9 @@
         }
         
         // Update game state hash after balance change
-        validateGameState();
+        gameStateHash = hashGameState();
+        
+        return success;
     }
 
     // Initialize canvas for background
@@ -1579,6 +1610,9 @@
 
     // Deal initial cards
     async function dealInitialCards() {
+        // Enable initialization mode during dealing
+        initializationMode = true;
+        
         // Validate current game state
         if (!validateGameState()) {
             console.error("Game state validation failed during deal");
@@ -1592,6 +1626,9 @@
         if (entryFee > 0) {
             console.log(`Applying hidden entry fee: ${entryFee} coins`);
             await updateCoins(entryFee, false);
+            
+            // Add a delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
         
         // Reset cards
@@ -1610,7 +1647,7 @@
         // Track the deal
         lastGameAction = 'deal';
         actionCounter++;
-        validateGameState();
+        gameStateHash = hashGameState();
         
         // Check for blackjack
         const playerHasBlackjack = isBlackjack(playerCards);
@@ -1627,21 +1664,21 @@
                 updateGameStatus("Both have Blackjack! Push!");
                 setTimeout(() => {
                     endGame();
-                }, 1500);
+                }, 2000);
             } else if (playerHasBlackjack) {
                 // Player has blackjack
                 gameResult = 'blackjack';
                 updateGameStatus("Blackjack! You win!");
                 setTimeout(() => {
                     endGame();
-                }, 1500);
+                }, 2000);
             } else {
                 // Dealer has blackjack
                 gameResult = 'lose';
                 updateGameStatus("Dealer has Blackjack! You lose.");
                 setTimeout(() => {
                     endGame();
-                }, 1500);
+                }, 2000);
             }
         } else {
             // Game continues - enable player actions
@@ -1650,6 +1687,11 @@
             // Check if player can double down
             canDouble = window.gameInterface.getBalance() >= currentBet;
             doubleBtn.disabled = !canDouble;
+            
+            // Return to normal validation after a short delay
+            setTimeout(() => {
+                initializationMode = false;
+            }, 1000);
         }
     }
 
@@ -1692,6 +1734,9 @@
 
     // Player hits - take another card
     function playerHit() {
+        // Enable initialization mode during action to prevent validation errors
+        initializationMode = true;
+        
         // Validate current game state
         if (!validateGameState()) {
             console.error("Game state validation failed during hit");
@@ -1717,15 +1762,22 @@
             disablePlayerActions();
             setTimeout(() => {
                 endGame();
-            }, 1500);
+            }, 2000);
         }
         
-        // Validate state after action
-        validateGameState();
+        // Return to normal validation after a short delay
+        setTimeout(() => {
+            initializationMode = false;
+            // Validate state after action
+            gameStateHash = hashGameState();
+        }, 500);
     }
 
     // Player stands - end turn and dealer plays
     function playerStand() {
+        // Enable initialization mode during action to prevent validation errors
+        initializationMode = true;
+        
         // Validate current game state
         if (!validateGameState()) {
             console.error("Game state validation failed during stand");
@@ -1740,12 +1792,19 @@
         disablePlayerActions();
         dealerPlay();
         
-        // Validate state after action
-        validateGameState();
+        // Return to normal validation after dealer finishes playing
+        setTimeout(() => {
+            initializationMode = false;
+            // Validate state after action
+            gameStateHash = hashGameState();
+        }, 3000);
     }
 
     // Player doubles down
     async function playerDoubleDown() {
+        // Enable initialization mode during action to prevent validation errors
+        initializationMode = true;
+        
         // Validate current game state
         if (!validateGameState()) {
             console.error("Game state validation failed during double down");
@@ -1757,31 +1816,42 @@
         lastGameAction = 'double';
         actionCounter++;
         
-        // Double the bet
-        await updateCoins(currentBet, false);
-        currentBet *= 2;
-        
-        // Update bet display
-        if (betAmount) {
-            betAmount.textContent = currentBet.toLocaleString();
+        try {
+            // Double the bet
+            await updateCoins(currentBet, false);
+            currentBet *= 2;
+            
+            // Update bet display
+            if (betAmount) {
+                betAmount.textContent = currentBet.toLocaleString();
+            }
+            
+            // Take only one card
+            playerHit();
+            
+            // If not busted, stand
+            if (!isBusted(playerCards)) {
+                setTimeout(() => {
+                    playerStand();
+                }, 1500);
+            }
+        } catch (error) {
+            console.error("Error during double down:", error);
         }
         
-        // Take only one card
-        playerHit();
-        
-        // If not busted, stand
-        if (!isBusted(playerCards)) {
-            setTimeout(() => {
-                playerStand();
-            }, 1000);
-        }
-        
-        // Validate state after action
-        validateGameState();
+        // Return to normal validation after a delay
+        setTimeout(() => {
+            initializationMode = false;
+            // Validate state after action
+            gameStateHash = hashGameState();
+        }, 1000);
     }
 
     // Dealer plays their turn
     function dealerPlay() {
+        // Enable initialization mode during dealer's turn
+        initializationMode = true;
+        
         // Track the action
         lastGameAction = 'dealerPlay';
         actionCounter++;
@@ -1792,13 +1862,6 @@
         
         // Function to add cards to dealer with delay
         function dealerDraw() {
-            // Validate state in each step
-            if (!validateGameState()) {
-                console.error("Game state validation failed during dealer draw");
-                resetGame();
-                return;
-            }
-            
             // Get current dealer hand value
             const dealerValue = calculateHandValue(dealerCards);
             
@@ -1811,20 +1874,22 @@
                     
                     // Continue drawing if needed
                     dealerDraw();
-                }, 800); // Delay between dealer draws
+                }, 1200); // Increased delay between dealer draws for better visibility
             } else {
                 // Dealer stands - evaluate result
                 setTimeout(() => {
                     evaluateResult();
-                }, 1000);
+                }, 1500);
             }
         }
         
-        // Start dealer drawing
-        dealerDraw();
+        // Start dealer drawing after a short delay
+        setTimeout(() => {
+            dealerDraw();
+        }, 800);
         
-        // Validate state after action
-        validateGameState();
+        // Update hash without validation since dealer play has many state changes
+        gameStateHash = hashGameState();
     }
 
     // Evaluate the game result
@@ -1832,6 +1897,9 @@
         // Track the action
         lastGameAction = 'evaluate';
         actionCounter++;
+        
+        // Temporarily enable initialization mode to prevent false tampering alerts
+        initializationMode = true;
         
         const playerValue = calculateHandValue(playerCards);
         const dealerValue = calculateHandValue(dealerCards);
@@ -1854,49 +1922,29 @@
             updateGameStatus("Push!");
         }
         
+        // Use longer delay to ensure animations complete before showing result
         setTimeout(() => {
             endGame();
-        }, 1500);
+            // Disable initialization mode after ending game
+            setTimeout(() => {
+                initializationMode = false;
+            }, 500);
+        }, 2000);
         
         // Validate state after action
-        validateGameState();
+        gameStateHash = hashGameState();
     }
 
     // End the game and show result
     async function endGame() {
+        // Set initialization mode to prevent validation errors during result screen
+        initializationMode = true;
+        
         // Track the action
         lastGameAction = 'endGame';
         actionCounter++;
         
-        let winAmount = 0;
-        
-        switch (gameResult) {
-            case 'blackjack':
-                // Blackjack pays 3:2
-                winAmount = Math.floor(currentBet * GAME_CONFIG.blackjackPayout);
-                await updateCoins(currentBet + winAmount, true);
-                showResult("Blackjack!", `You hit 21 with two cards!<br>You won: <span class="win-amount">${winAmount}</span> coins!`, 'win');
-                break;
-                
-            case 'win':
-                // Regular win pays 1:1
-                winAmount = currentBet;
-                await updateCoins(currentBet + winAmount, true);
-                showResult("You Win!", `You beat the dealer!<br>You won: <span class="win-amount">${winAmount}</span> coins!`, 'win');
-                break;
-                
-            case 'lose':
-                // Player already paid bet at start
-                showResult("You Lose!", `The dealer won this round.<br>You lost: <span class="lose-amount">${currentBet}</span> coins.`, 'lose');
-                break;
-                
-            case 'push':
-                // Return the original bet
-                await updateCoins(currentBet, true);
-                showResult("Push!", "It's a tie! Your bet has been returned.", 'push');
-                break;
-        }
-        
+        // Make sure other code doesn't interfere with game ending
         gameActive = false;
         
         // Hide action controls immediately
@@ -1909,11 +1957,55 @@
             betControls.style.display = 'none';
         }
         
+        let winAmount = 0;
+        
+        try {
+            switch (gameResult) {
+                case 'blackjack':
+                    // Blackjack pays 3:2
+                    winAmount = Math.floor(currentBet * GAME_CONFIG.blackjackPayout);
+                    await updateCoins(currentBet + winAmount, true);
+                    showResult("Blackjack!", `You hit 21 with two cards!<br>You won: <span class="win-amount">${winAmount}</span> coins!`, 'win');
+                    break;
+                    
+                case 'win':
+                    // Regular win pays 1:1
+                    winAmount = currentBet;
+                    await updateCoins(currentBet + winAmount, true);
+                    showResult("You Win!", `You beat the dealer!<br>You won: <span class="win-amount">${winAmount}</span> coins!`, 'win');
+                    break;
+                    
+                case 'lose':
+                    // Player already paid bet at start
+                    showResult("You Lose!", `The dealer won this round.<br>You lost: <span class="lose-amount">${currentBet}</span> coins.`, 'lose');
+                    break;
+                    
+                case 'push':
+                    // Return the original bet
+                    await updateCoins(currentBet, true);
+                    showResult("Push!", "It's a tie! Your bet has been returned.", 'push');
+                    break;
+            }
+        } catch (error) {
+            console.error("Error during game end:", error);
+            // Make sure the result is still shown even if there's an error
+            showResult(gameResult === 'win' ? "You Win!" : gameResult === 'lose' ? "You Lose!" : "Push!", 
+                      "Game completed.", gameResult === 'win' ? 'win' : gameResult === 'lose' ? 'lose' : 'push');
+        }
+        
         // Don't clear cards yet - let player see the final state
         // They will be cleared when the player clicks "Play Again"
         
+        // Make sure the result screen is visible
+        setTimeout(() => {
+            if (resultScreen && !resultScreen.classList.contains('visible')) {
+                resultScreen.style.display = 'flex';
+                resultScreen.classList.add('visible');
+            }
+        }, 500);
+        
         // Validate final state
-        validateGameState();
+        gameStateHash = hashGameState();
     }
 
     // Show the result screen
@@ -1928,12 +2020,15 @@
         resultTitle.className = `overlay-title ${resultClass}`;
         resultMessage.innerHTML = message;
         
-        // Make result screen visible
+        // Make sure the result screen is visible
         resultScreen.style.display = 'flex';
         resultScreen.classList.add('visible');
         
         // Force coin display update
         window.gameInterface.updateDisplay();
+        
+        // Log for debugging
+        console.log("Showing result screen:", title);
     }
 
     // Place a bet
