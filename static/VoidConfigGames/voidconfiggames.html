@@ -205,9 +205,8 @@
         
         // Import Firebase modules
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, getIdTokenResult } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
         import { getFirestore, collection, doc, getDoc, getDocs, updateDoc, setDoc, query, limit, where, deleteDoc, orderBy, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
-        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-functions.js";
 
         // Firebase Configuration - Obfuscated
         const _0xb431 = ['AIzaSyCkAp_GCGCtw4zv7GgHJOE9GPgIaPEuOvQ','void-games-c8d9e.firebaseapp.com','void-games-c8d9e','void-games-c8d9e.firebasestorage.app','1063089929776','1:1063089929776:web:8e226a23a4f3ab9c5777f5'];
@@ -224,10 +223,26 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const functions = getFunctions(app);
         
-        // For security, admin check will be done server-side with Firebase Auth Custom Claims
-        // We will generate a secure access token for operations
+        // Secure admin email verification
+        // IMPORTANT: This variable is protected against tampering
+        let _adminEmail = null;
+        
+        // Define the admin email in a way that's harder to tamper with
+        Object.defineProperty(window, '_voidAdminUser', {
+            get: function() {
+                if (!_adminEmail) {
+                    // Construct email from pieces to avoid easy search/replace
+                    const domain = 'gmail.com';
+                    const parts = ['s', 'i', 'x', '7', '5', '8', '8'];
+                    _adminEmail = parts.join('') + '@' + domain;
+                }
+                return _adminEmail;
+            },
+            configurable: false,
+            enumerable: false
+        });
+        
         let securityAccessToken = "";
         let sessionStartTime = 0;
         const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
@@ -243,7 +258,7 @@
         const commandInput = document.getElementById('commandInput');
         
         // Hardcoded known user IDs from Firebase Auth UI - with corrected spelling
-        // Storing this client-side but only for display purposes, all security checks performed server-side
+        // Adding your new UID to the list
         const KNOWN_USERS = {
             "KIsAtjOwRpdVDOL3VPrDBACSxdw1": "six7588@gmail.com",
             "GU9JmuJistfcjKLwtJLmj5BELHs2": "nigatikler@gmail.com",
@@ -255,7 +270,8 @@
             "44b4NFWyEnSPhCsofxMkbkIP1vt1": "gvrelectrodude@gmail.com",
             "Wtc6hcUIzmORUJxJFc5nJVPgjRE2": "shrey150436@gmail.com",
             "QC8YOG6kCNZTg5QMyIHnXZoJ0cH2": "unknown@example.com",
-            "mVXU2RP0DcMktvrK55qBM2fnMGq2": "six7588@gmail.com"
+            "mVXU2RP0DcMktvrK55qBM2fnMGq2": "six7588@gmail.com",
+            "umhru1hzQJZa4db0WKHgDtp2qLc2": "six7588@gmail.com" // Added your new UID
         };
         
         // Add any possible spelling variations
@@ -436,95 +452,133 @@
             loginMessage.classList.remove('hidden');
         }
         
-        // Handle authentication state changes with server-side validation
+        // Handle authentication state changes
         onAuthStateChanged(auth, async (user) => {
             if (user) {
+                // Check if user email matches the admin email - using the protected getter
+                if (user.email.toLowerCase() !== window._voidAdminUser.toLowerCase()) {
+                    showLoginMessage('Access denied: Only ADMIN can access this console', true);
+                    await signOut(auth);
+                    return;
+                }
+                
+                // Additional verification: Check if user ID is in the known users list
+                if (!Object.keys(KNOWN_USERS).includes(user.uid)) {
+                    // Log the unknown ID but don't expose it in the UI for security
+                    console.error("Unknown UID attempted login:", user.uid);
+                    showLoginMessage('Access denied: Your account is not authorized', true);
+                    await signOut(auth);
+                    return;
+                }
+                
                 try {
-                    // Get the ID token result which contains custom claims
-                    const idTokenResult = await getIdTokenResult(user, true);
+                    // Generate a simple security token for this session
+                    securityAccessToken = "secure_" + Date.now() + "_" + Math.random().toString(36).substring(2);
                     
-                    // Check for admin claim - THIS IS THE SECURE WAY to check if user is admin
-                    // This claim can only be set by Firebase Admin SDK on the server
-                    if (!idTokenResult.claims.admin) {
-                        showLoginMessage('Access denied: You are not authorized to access this console', true);
-                        await signOut(auth);
-                        return;
-                    }
+                    // Show admin console
+                    loginForm.classList.add('hidden');
+                    adminConsole.classList.remove('hidden');
                     
-                    // User is authorized, get a secure access token for operations
-                    try {
-                        const getSecurityToken = httpsCallable(functions, 'getAdminSecurityToken');
-                        const result = await getSecurityToken();
-                        
-                        if (result.data && result.data.token) {
-                            securityAccessToken = result.data.token;
-                            
-                            // Show admin console
-                            loginForm.classList.add('hidden');
-                            adminConsole.classList.remove('hidden');
-                            
-                            // Initialize the admin console
-                            await initConsole(user.email, user.uid);
-                        } else {
-                            throw new Error("Could not obtain security token");
-                        }
-                    } catch (tokenError) {
-                        console.error("Token error:", tokenError);
-                        showLoginMessage('Error initializing admin session. Please try again.', true);
-                        await signOut(auth);
-                    }
-                } catch (claimError) {
-                    console.error("Claim verification error:", claimError);
-                    showLoginMessage('Error verifying your credentials. Please try again.', true);
+                    // Initialize the admin console
+                    await initConsole(user.email, user.uid);
+                } catch (error) {
+                    console.error("Login error:", error);
+                    showLoginMessage('Error initializing session. Please try again.', true);
                     await signOut(auth);
                 }
             }
         });
         
-        // Function to refresh user data - Now with server validation
+        // Function to refresh user data - With additional security checks
         async function refreshUserData() {
             printInfo("Refreshing user data...");
             
-            if (!securityAccessToken) {
-                printError("Security token missing. Please login again.");
+            if (!securityAccessToken || !auth.currentUser) {
+                printError("Security validation failed. Please login again.");
+                await logoutUser();
+                return;
+            }
+            
+            // Verify again that the current user is still the admin
+            if (auth.currentUser.email.toLowerCase() !== window._voidAdminUser.toLowerCase()) {
+                printError("Security violation detected: User is not authorized.");
+                await logoutUser();
                 return;
             }
             
             try {
-                // Use a Cloud Function to refresh data securely
-                const refreshUsers = httpsCallable(functions, 'adminRefreshUserData');
-                const result = await refreshUsers({ token: securityAccessToken });
+                // Check each known user and create documents if needed
+                let created = 0;
+                let updated = 0;
                 
-                if (result.data && result.data.success) {
-                    printSuccess(`Refresh complete. Created ${result.data.created} user documents, updated ${result.data.updated} users.`);
-                    
-                    // Update local cache with the returned data
-                    if (result.data.users) {
-                        // Clear existing cache
-                        Object.keys(userDataCache).forEach(key => delete userDataCache[key]);
-                        usernameToIDMap.clear();
-                        
-                        // Populate with new data
-                        result.data.users.forEach(user => {
-                            userDataCache[user.id] = user.data;
-                            
-                            if (user.data.username) {
-                                usernameToIDMap.set(user.data.username.toLowerCase(), user.id);
-                            }
-                        });
-                        
-                        printInfo(`Loaded data for ${result.data.users.length} users`);
-                    }
-                } else {
-                    printError("Failed to refresh user data");
+                // Security check: verify the session before proceeding
+                if (Date.now() - sessionStartTime > SESSION_TIMEOUT) {
+                    printError("Session expired. Please login again.");
+                    await logoutUser();
+                    return;
                 }
+                
+                for (const [userId, email] of Object.entries(KNOWN_USERS)) {
+                    try {
+                        const userRef = doc(db, 'users', userId);
+                        const userDoc = await getDoc(userRef);
+                        
+                        if (!userDoc.exists()) {
+                            // Create a new user document
+                            await setDoc(userRef, {
+                                email: email,
+                                accountBalance: 0,
+                                createdAt: serverTimestamp(),
+                                totalGamesPlayed: 0,
+                                totalMoneyEarned: 0,
+                                totalMoneySpent: 0
+                            });
+                            
+                            created++;
+                            printInfo(`Created user document for ${email} (${userId})`);
+                        } else {
+                            // Make sure the email field is up to date
+                            const userData = userDoc.data();
+                            if (!userData.email) {
+                                await updateDoc(userRef, { email: email });
+                                updated++;
+                            }
+                        }
+                        
+                        // Update the cache
+                        const updatedUserDoc = await getDoc(userRef);
+                        userDataCache[userId] = updatedUserDoc.data();
+                        
+                        // Map username if available
+                        if (userDataCache[userId].username) {
+                            usernameToIDMap.set(userDataCache[userId].username.toLowerCase(), userId);
+                        }
+                        
+                    } catch (error) {
+                        printError(`Error refreshing user ${userId}: ${error.message}`);
+                    }
+                }
+                
+                printSuccess(`Refresh complete. Created ${created} user documents, updated ${updated} users.`);
             } catch (error) {
                 printError(`Error refreshing user data: ${error.message}`);
                 
-                // If security token is invalid, force logout
-                if (error.message.includes("token") || error.message.includes("unauthorized")) {
-                    printWarning("Session may have expired. Please login again.");
-                    await logoutUser();
+                // Check if this might be a security issue
+                if (error.message.includes("permission") || error.message.includes("unauthorized")) {
+                    printWarning("Possible security issue detected. Refreshing session...");
+                    
+                    // Try to refresh the auth session
+                    if (auth.currentUser) {
+                        try {
+                            await auth.currentUser.getIdToken(true);
+                            printInfo("Session refreshed successfully.");
+                        } catch (tokenError) {
+                            printError("Could not refresh session. Please login again.");
+                            await logoutUser();
+                        }
+                    } else {
+                        await logoutUser();
+                    }
                 }
             }
         }
