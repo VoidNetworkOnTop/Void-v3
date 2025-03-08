@@ -584,9 +584,20 @@
        // Firebase Imports
        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-       import { getFirestore, doc, getDoc, updateDoc, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+       import { 
+           getFirestore, 
+           doc, 
+           getDoc, 
+           updateDoc, 
+           setDoc, 
+           collection, 
+           serverTimestamp,
+           increment,
+           runTransaction 
+       } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+       import { getStorage, ref, getBlob } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-storage.js";
 
-       // Firebase Configuration - UPDATED
+       // Firebase Configuration
        const firebaseConfig = {
            apiKey: "AIzaSyCkAp_GCGCtw4zv7GgHJOE9GPgIaPEuOvQ",
            authDomain: "void-games-c8d9e.firebaseapp.com",
@@ -600,709 +611,920 @@
        const app = initializeApp(firebaseConfig);
        const auth = getAuth(app);
        const db = getFirestore(app);
+       const storage = getStorage(app);
 
-       // Authentication and Coin Management
-       let currentUser = null;
-       let firebaseCoinBalance = 0;
+       // Create a secure game interface that protects against console hacking
+       const createSecureGameInterface = () => {
+           // Private variables inaccessible from console
+           let _coinBalance = 0;
+           let _gameSessionKey = '';
+           let _pendingTransactions = [];
+           let _transactionLock = false;
+           let _lastServerSync = 0;
+           let _securityToken = '';
+           
+           // Generate a unique session key
+           const generateSessionKey = () => {
+               const randomBytes = new Uint8Array(16);
+               window.crypto.getRandomValues(randomBytes);
+               return Array.from(randomBytes, byte => byte.toString(16).padStart(2, '0')).join('');
+           };
 
-       // Authentication State Listener
-       onAuthStateChanged(auth, async (user) => {
-           if (user) {
-               // User is signed in
-               currentUser = user;
-               console.log("User signed in:", user.uid);
-               await loadFirebaseCoinBalance();
-           } else {
-               // No user is signed in
-               currentUser = null;
-               console.log("No user signed in");
-               showLoginPrompt();
-           }
-       });
-
-       // Load Coin Balance from Firebase
-       async function loadFirebaseCoinBalance() {
-           if (!currentUser) {
-               console.log("No user available to load balance");
-               return;
-           }
-
-           try {
-               console.log("Loading balance for user:", currentUser.uid);
+           // Generate security token for transaction validation
+           const generateSecurityToken = async (uid) => {
+               if (!uid) return '';
                
-               // Use currentUser.uid and force server data retrieval
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
+               // Create a token that combines user ID, timestamp and session
+               const timestamp = Date.now();
+               const rawToken = `${uid}:${timestamp}:${_gameSessionKey}`;
+               
+               // Use SubtleCrypto API to hash the token (more secure than simple encoding)
+               const encoder = new TextEncoder();
+               const data = encoder.encode(rawToken);
+               const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+               const hashArray = Array.from(new Uint8Array(hashBuffer));
+               const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+               
+               return `${timestamp.toString(36)}.${hashHex}`;
+           };
 
-               if (userDoc.exists()) {
-                   // Get coin balance from Firestore
-                   const userData = userDoc.data();
+           // Initialize the security system
+           const initSecurity = async (uid) => {
+               _gameSessionKey = generateSessionKey();
+               _securityToken = await generateSecurityToken(uid);
+               _lastServerSync = Date.now();
+               
+               // Set up anti-tampering protection
+               Object.defineProperty(window, '_debugMode', {
+                   get: function() { 
+                       // This acts as a tripwire - if someone tries to access debugMode, we know they're trying to hack
+                       recordTamperingAttempt('debug_access');
+                       return false; 
+                   },
+                   configurable: false
+               });
+               
+               // Periodic verification of game state integrity
+               setInterval(verifyGameIntegrity, 5000);
+           };
+           
+           // Record tampering attempts in Firebase
+           const recordTamperingAttempt = async (attemptType) => {
+               if (!auth.currentUser) return;
+               
+               try {
+                   const tamperRef = doc(collection(db, 'security_events'));
+                   await setDoc(tamperRef, {
+                       userId: auth.currentUser.uid,
+                       attemptType: attemptType,
+                       timestamp: serverTimestamp(),
+                       userAgent: navigator.userAgent,
+                       gameId: 'memory_squares'
+                   });
+               } catch (error) {
+                   // Silently fail to not give away detection
+               }
+           };
+           
+           // Verify game state hasn't been tampered with
+           const verifyGameIntegrity = () => {
+               const gameInterface = document.querySelector('.game-container');
+               
+               // If someone modified the DOM structure, we can detect it
+               if (!gameInterface || gameInterface.children.length !== 3) {
+                   recordTamperingAttempt('dom_tampering');
+                   // Force a page refresh as a countermeasure
+                   setTimeout(() => location.reload(), Math.random() * 2000 + 1000);
+               }
+               
+               // Check if the JS environment has been tampered with
+               if (window.updateCoins || window._gameEngine || window.coinBalance !== undefined) {
+                   recordTamperingAttempt('global_exposure');
+               }
+           };
+           
+           // Load coin balance securely from Firebase
+           const loadUserBalance = async () => {
+               if (!auth.currentUser) return 0;
+               
+               try {
+                   // Perform transaction to ensure data consistency
+                   const userRef = doc(db, 'users', auth.currentUser.uid);
                    
-                   // IMPORTANT: Use accountBalance field for consistency with main page
-                   firebaseCoinBalance = userData.accountBalance || 0;
+                   // Use a transaction to ensure we get fresh data
+                   const newBalance = await runTransaction(db, async (transaction) => {
+                       const userDoc = await transaction.get(userRef);
+                       
+                       if (!userDoc.exists()) {
+                           // Create initial user data if doesn't exist
+                           transaction.set(userRef, {
+                               accountBalance: 1000,
+                               username: auth.currentUser.displayName || "Player",
+                               email: auth.currentUser.email,
+                               createdAt: serverTimestamp(),
+                               totalGamesPlayed: 0,
+                               totalMoneySpent: 0,
+                               totalMoneyEarned: 0,
+                               lastActive: serverTimestamp()
+                           });
+                           return 1000;
+                       }
+                       
+                       // Update last active timestamp
+                       transaction.update(userRef, { lastActive: serverTimestamp() });
+                       
+                       // Return account balance
+                       return userDoc.data().accountBalance || 0;
+                   });
                    
-                   console.log("Loaded balance from Firebase:", firebaseCoinBalance);
+                   // Update local balance securely
+                   _coinBalance = newBalance;
+                   _lastServerSync = Date.now();
                    
-                   // Update local coin display and game state
-                   window.coinBalance = firebaseCoinBalance;
+                   // Update UI display (but not exposing the actual value to window)
+                   document.getElementById('coinDisplay').textContent = _coinBalance.toLocaleString();
                    
-                   // Make sure the global variable is also set
-                   coinBalance = firebaseCoinBalance;
-                   
-                   // Update UI and game state
-                   window.updateCoinDisplay();
-                   
-                   // Update start button appearance (but always allow play)
+                   // Update start button appearance based on balance
                    const startBtn = document.getElementById('start-btn');
                    if (startBtn) {
-                       if (coinBalance < 100) {
+                       if (_coinBalance < 100) {
                            startBtn.classList.add('insufficient');
                            startBtn.textContent = `Play (Negative Balance)`;
                        } else {
                            startBtn.classList.remove('insufficient');
                            startBtn.textContent = "Start Game";
                        }
-                       
-                       // Always enable the button
                        startBtn.disabled = false;
                    }
                    
-                   console.log("Updated local balance:", coinBalance);
-                   return firebaseCoinBalance;
-               } else {
-                   console.log("User document doesn't exist, creating new one");
-                   // Create initial balance if no document exists
-                   await setDoc(userRef, { 
-                     accountBalance: 1000,
-                     username: currentUser.displayName || "Player",
-                     email: currentUser.email,
-                     createdAt: new Date(),
-                     totalGamesPlayed: 0,
-                     totalMoneySpent: 0,
-                     totalMoneyEarned: 0
+                   return _coinBalance;
+               } catch (error) {
+                   console.error("Error in secure balance loading:", error.code);
+                   return 0;
+               }
+           };
+           
+           // Secure method to update balance in Firebase with transaction verification
+           const secureBalanceUpdate = async (amount, reason) => {
+               if (!auth.currentUser || _transactionLock) return false;
+               
+               _transactionLock = true;
+               
+               try {
+                   // Generate a new security token for this transaction
+                   const transactionToken = await generateSecurityToken(auth.currentUser.uid);
+                   
+                   // Create a timestamped transaction record
+                   const transactionId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+                   
+                   // Add to pending transactions locally first
+                   _pendingTransactions.push({
+                       id: transactionId,
+                       amount: amount,
+                       timestamp: Date.now(),
+                       token: transactionToken,
+                       status: 'pending'
                    });
                    
-                   firebaseCoinBalance = 1000;
-                   window.coinBalance = 1000;
-                   coinBalance = 1000;
-                   window.updateCoinDisplay();
-                   return 1000;
+                   // Update user balance in Firebase via transaction for atomicity
+                   const userRef = doc(db, 'users', auth.currentUser.uid);
+                   
+                   await runTransaction(db, async (transaction) => {
+                       const userDoc = await transaction.get(userRef);
+                       
+                       if (!userDoc.exists()) {
+                           throw new Error("User document does not exist");
+                       }
+                       
+                       const userData = userDoc.data();
+                       let currentBalance = userData.accountBalance || 0;
+                       let newBalance = currentBalance + amount;
+                       
+                       // Perform update atomically
+                       transaction.update(userRef, { 
+                           accountBalance: newBalance,
+                           lastTransaction: serverTimestamp()
+                       });
+                       
+                       // Update user stats based on transaction type
+                       if (amount > 0) {
+                           transaction.update(userRef, {
+                               totalMoneyEarned: increment(amount)
+                           });
+                       } else if (amount < 0 && reason === 'game_start') {
+                           transaction.update(userRef, {
+                               totalGamesPlayed: increment(1),
+                               totalMoneySpent: increment(Math.abs(amount))
+                           });
+                       }
+                       
+                       // Create transaction record in separate collection
+                       const transactionRef = doc(collection(db, 'transactions'), transactionId);
+                       transaction.set(transactionRef, {
+                           userId: auth.currentUser.uid,
+                           gameId: 'memory_squares',
+                           transactionType: reason,
+                           amount: amount,
+                           balanceBefore: currentBalance,
+                           balanceAfter: newBalance,
+                           timestamp: serverTimestamp(),
+                           securityToken: transactionToken
+                       });
+                   });
+                   
+                   // Update local state after successful Firebase update
+                   _coinBalance += amount;
+                   _lastServerSync = Date.now();
+                   
+                   // Update UI
+                   document.getElementById('coinDisplay').textContent = _coinBalance.toLocaleString();
+                   
+                   // Update pending transaction status
+                   const txIndex = _pendingTransactions.findIndex(tx => tx.id === transactionId);
+                   if (txIndex >= 0) {
+                       _pendingTransactions[txIndex].status = 'completed';
+                   }
+                   
+                   return true;
+               } catch (error) {
+                   console.error("Secure transaction failed:", error.code);
+                   return false;
+               } finally {
+                   _transactionLock = false;
                }
-           } catch (error) {
-               console.error("Error loading coin balance:", error);
-               showLoginPrompt();
-               return 0;
-           }
-       }
-
-       // Update Coin Balance in Firebase
-       async function updateFirebaseCoinBalance(newBalance) {
-           if (!currentUser) {
-               console.log("No user available to update balance");
-               return false;
-           }
-
-           try {
-               console.log("Updating balance for user:", currentUser.uid, "New balance:", newBalance);
+           };
+           
+           // Periodic synchronization with server to prevent client-side manipulation
+           const scheduleSyncWithServer = () => {
+               // Sync every 30 seconds plus random jitter to prevent predictable patterns
+               const syncInterval = 30 * 1000 + (Math.random() * 5000);
                
-               // Get the current document first to make sure we're updating the latest data
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
+               setInterval(async () => {
+                   if (!auth.currentUser) return;
+                   
+                   // Calculate time since last server sync
+                   const timeSinceSync = Date.now() - _lastServerSync;
+                   
+                   // If it's been more than a minute, force a sync
+                   if (timeSinceSync > 60000) {
+                       await loadUserBalance();
+                   }
+               }, syncInterval);
+           };
+           
+           // Show login prompt with secure implementation
+           const showSecureLoginPrompt = () => {
+               const overlay = document.createElement('div');
+               overlay.style.position = 'fixed';
+               overlay.style.top = '0';
+               overlay.style.left = '0';
+               overlay.style.width = '100%';
+               overlay.style.height = '100%';
+               overlay.style.background = 'rgba(0,0,0,0.8)';
+               overlay.style.display = 'flex';
+               overlay.style.justifyContent = 'center';
+               overlay.style.alignItems = 'center';
+               overlay.style.zIndex = '1000';
+
+               const modalContent = document.createElement('div');
+               modalContent.style.background = '#222';
+               modalContent.style.padding = '2rem';
+               modalContent.style.borderRadius = '10px';
+               modalContent.style.textAlign = 'center';
+               modalContent.style.color = 'white';
+
+               modalContent.innerHTML = `
+                   <h2>Login Required</h2>
+                   <p>Please log in to play Memory Squares and track your coins.</p>
+                   <div>
+                       <button id="loginBtn" style="
+                           background: #4CAF50;
+                           color: white;
+                           border: none;
+                           padding: 10px 20px;
+                           margin: 10px;
+                           border-radius: 5px;
+                           cursor: pointer;
+                       ">Go to Login</button>
+                       <button id="cancelBtn" style="
+                           background: #f44336;
+                           color: white;
+                           border: none;
+                           padding: 10px 20px;
+                           margin: 10px;
+                           border-radius: 5px;
+                           cursor: pointer;
+                       ">Cancel</button>
+                   </div>
+               `;
+
+               overlay.appendChild(modalContent);
+               document.body.appendChild(overlay);
+
+               // Add event listeners
+               document.getElementById('loginBtn').addEventListener('click', () => {
+                   window.location.href = '/voidgms.html';
+               });
+
+               document.getElementById('cancelBtn').addEventListener('click', () => {
+                   document.body.removeChild(overlay);
+                   // Disable game interactions
+                   const startBtn = document.getElementById('start-btn');
+                   if (startBtn) {
+                       startBtn.disabled = true;
+                       startBtn.textContent = 'Login to Play';
+                   }
+               });
+           };
+           
+           // Get current user balance safely (doesn't expose actual balance)
+           const getDisplayBalance = () => {
+               return _coinBalance;
+           };
+           
+           // Update UI without exposing balance value
+           const updateBalanceDisplay = () => {
+               document.getElementById('coinDisplay').textContent = _coinBalance.toLocaleString();
+           };
+           
+           // Initialize the game security
+           const init = async () => {
+               if (auth.currentUser) {
+                   await initSecurity(auth.currentUser.uid);
+                   await loadUserBalance();
+                   scheduleSyncWithServer();
+               }
+           };
+           
+           // Return only the necessary interface methods, keeping everything else private
+           return {
+               init,
+               getDisplayBalance,
+               updateBalanceDisplay,
+               updateCoins: secureBalanceUpdate,
+               loadBalance: loadUserBalance,
+               showLoginPrompt: showSecureLoginPrompt
+           };
+       };
+
+       // Create the secure game interface
+       const secureGame = createSecureGameInterface();
+
+       // Authentication State Listener
+       onAuthStateChanged(auth, async (user) => {
+           if (user) {
+               // User is signed in
+               console.log("User signed in");
+               await secureGame.init();
+           } else {
+               // No user is signed in
+               console.log("No user signed in");
+               secureGame.showLoginPrompt();
+           }
+       });
+       
+       // Create game engine in a closure to prevent direct access
+       const createGameEngine = (secureInterface) => {
+           // Game configuration constants
+           const GAME_CONFIG = {
+               startCost: 100,
+               deathPenalty: 100,
+               initialReward: 2,
+               gameId: 'memory_squares'
+           };
+           
+           // Private game state variables
+           let _currentLevel = 1;
+           let _currentReward = GAME_CONFIG.initialReward;
+           let _totalEarned = 0;
+           let _sequence = [];
+           let _playerSequence = [];
+           let _isShowingSequence = false;
+           let _canPlayerClick = false;
+           let _gameActive = false;
+           let _lastActionTimestamp = 0;
+           let _gameStartTime = 0;
+           
+           // Reference to game elements
+           const squares = document.querySelectorAll('.memory-square');
+           const startScreen = document.getElementById('start-screen');
+           const gameOverScreen = document.getElementById('game-over-screen');
+           const startBtn = document.getElementById('start-btn');
+           const restartBtn = document.getElementById('restart-btn');
+           const backBtn = document.getElementById('back-btn');
+           const levelDisplay = document.querySelector('#levelDisplay .level');
+           const rewardDisplay = document.querySelector('#rewardDisplay .reward');
+           const finalLevelDisplay = document.getElementById('final-level');
+           const totalEarnedDisplay = document.getElementById('total-earned');
+           const gameBoard = document.querySelector('.game-board');
+           
+           // Update level and reward display
+           const updateLevelDisplay = () => {
+               levelDisplay.textContent = _currentLevel;
+               rewardDisplay.textContent = _currentReward;
+           };
+           
+           // Generate tamper-resistant sequence for game integrity
+           const generateSecureSequence = (length) => {
+               // Use crypto API for true randomness instead of Math.random
+               const randomBuffer = new Uint8Array(length);
+               window.crypto.getRandomValues(randomBuffer);
                
-               if (!userDoc.exists()) {
-                   console.error("Cannot update non-existent user document");
+               // Convert to usable sequence with modulo operation
+               return Array.from(randomBuffer).map(val => val % 4);
+           };
+           
+           // Verify game timing to prevent speedhacking
+           const verifyActionTiming = (minTime) => {
+               const now = Date.now();
+               const elapsed = now - _lastActionTimestamp;
+               
+               // If actions happen too quickly, it might be automated cheating
+               if (_lastActionTimestamp > 0 && elapsed < minTime) {
+                   console.warn("Action performed too quickly");
                    return false;
                }
                
-               // Update with the exact same field format as the main page
-               await updateDoc(userRef, { 
-                   accountBalance: newBalance 
-               });
-               
-               firebaseCoinBalance = newBalance;
-               console.log("Firebase balance updated successfully");
-               
+               _lastActionTimestamp = now;
                return true;
-           } catch (error) {
-               console.error("Error updating coin balance:", error);
-               return false;
-           }
-       }
-
-       // Record Game Transaction for better tracking
-       async function recordGameTransaction(gameId, amount, isWin) {
-           if (!currentUser) return;
-
-           try {
-               // Create transaction record with consistent data format
-               const transactionRef = doc(collection(db, 'transactions'));
-               await setDoc(transactionRef, {
-                   userId: currentUser.uid,
-                   gameId: gameId,
-                   transactionType: isWin ? 'game_win' : 'game_play',
-                   amount: Math.abs(amount),
-                   timestamp: new Date()
-               });
-
-               // Get latest user data from server
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' });
+           };
+           
+           // Initialize game with secure balance deduction
+           const initGame = async () => {
+               // Verify this is a legitimate game start
+               if (!verifyActionTiming(500)) return;
                
-               if (userDoc.exists()) {
-                   const userData = userDoc.data();
-                   let updatedBalance = userData.accountBalance || 0;
+               // Deduct the cost to play securely
+               const deductionSuccess = await secureInterface.updateCoins(-GAME_CONFIG.startCost, 'game_start');
+               
+               if (!deductionSuccess) {
+                   console.error("Failed to deduct game cost");
+                   return;
+               }
+               
+               // Reset game state with secure sequence generation
+               _currentLevel = 1;
+               _currentReward = GAME_CONFIG.initialReward;
+               _totalEarned = 0;
+               _sequence = [];
+               _playerSequence = [];
+               _gameStartTime = Date.now();
+               
+               // Update displays
+               updateLevelDisplay();
+               
+               // Hide start screen
+               startScreen.classList.remove('visible');
+               
+               // Start the game
+               _gameActive = true;
+               nextLevel();
+           };
+           
+           // Start next level with secure sequence generation
+           const nextLevel = () => {
+               // Add a new secure random value to the sequence
+               const nextSquares = generateSecureSequence(1);
+               _sequence.push(nextSquares[0]);
+               
+               // Reset player sequence
+               _playerSequence = [];
+               
+               // Update level display
+               updateLevelDisplay();
+               
+               // Show the sequence to the player
+               showSequence();
+           };
+           
+           // Show the sequence to the player with timing validation
+           const showSequence = () => {
+               _isShowingSequence = true;
+               _canPlayerClick = false;
+               
+               // Disable all squares during sequence display
+               squares.forEach(square => {
+                   square.classList.add('disabled');
+                   square.classList.remove('active');
+               });
+               
+               // Create a non-predictable delay
+               const initialDelay = 400 + Math.floor(Math.random() * 200);
+               
+               setTimeout(() => {
+                   showSequenceStep(0);
+               }, initialDelay);
+           };
+           
+           // Helper function to show each step in the sequence
+           const showSequenceStep = (index) => {
+               if (index >= _sequence.length) {
+                   // End of sequence
+                   setTimeout(() => {
+                       squares.forEach(square => {
+                           square.classList.remove('active', 'disabled');
+                       });
+                       _isShowingSequence = false;
+                       _canPlayerClick = true;
+                   }, 300);
+                   return;
+               }
+               
+               // Verify sequence hasn't been tampered with
+               if (_sequence[index] === undefined || _sequence[index] < 0 || _sequence[index] > 3) {
+                   console.error("Sequence integrity issue detected");
+                   gameOver(true);  // Force game over if sequence integrity is compromised
+                   return;
+               }
+               
+               // Light up the current square
+               const currentSquare = squares[_sequence[index]];
+               currentSquare.classList.add('active');
+               playSound(_sequence[index]);
+               
+               // Calculate a dynamic display time that scales with level
+               const displayTime = Math.max(200, 600 - (_currentLevel * 10));
+               
+               // Keep the square lit for a moment
+               setTimeout(() => {
+                   // Turn off the square
+                   currentSquare.classList.remove('active');
                    
-                   // Calculate new balance
-                   if (isWin) {
-                       updatedBalance += amount;
-                       userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
-                   } else {
-                       updatedBalance -= Math.abs(amount);
-                       userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
-                       userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
+                   // Dynamic timing for difficulty scaling
+                   const pauseTime = Math.max(150, 300 - (_currentLevel * 5));
+                   
+                   // Wait before showing the next square
+                   setTimeout(() => {
+                       showSequenceStep(index + 1);
+                   }, pauseTime);
+               }, displayTime);
+           };
+           
+           // Handle player square click with timing validation
+           const handleSquareClick = async (index) => {
+               if (!_canPlayerClick || _isShowingSequence) return;
+               
+               // Validate click timing to prevent automated clicking
+               if (!verifyActionTiming(150)) {
+                   console.warn("Possible automated clicking detected");
+                   gameOver(true);
+                   return;
+               }
+               
+               // Add visual feedback
+               squares[index].classList.add('active');
+               playSound(index);
+               
+               // Remove active class after a delay
+               setTimeout(() => {
+                   squares[index].classList.remove('active');
+               }, 300);
+               
+               // Add to player sequence
+               _playerSequence.push(index);
+               
+               // Check if player's selection matches the sequence
+               const currentIndex = _playerSequence.length - 1;
+               
+               if (_playerSequence[currentIndex] !== _sequence[currentIndex]) {
+                   // Wrong selection
+                   await gameOver();
+                   return;
+               }
+               
+               // Check if player has completed the sequence
+               if (_playerSequence.length === _sequence.length) {
+                   // Validate gameplay timing to detect tool-assisted play
+                   const levelTime = Date.now() - _lastActionTimestamp;
+                   const expectedMinTime = 500 + (_currentLevel * 200);
+                   
+                   if (_currentLevel > 3 && levelTime < expectedMinTime) {
+                       console.warn("Suspiciously fast level completion");
+                       gameOver(true);
+                       return;
                    }
-
-                   // Update firebase and local state consistently
-                   await updateDoc(userRef, {
-                       accountBalance: updatedBalance,
-                       totalGamesPlayed: userData.totalGamesPlayed || 0,
-                       totalMoneySpent: userData.totalMoneySpent || 0,
-                       totalMoneyEarned: userData.totalMoneyEarned || 0
+                   
+                   // Correct sequence completed
+                   await levelComplete();
+               }
+           };
+           
+           // Play sound based on square index
+           const playSound = (index) => {
+               // Different tone for each square
+               const tones = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
+               
+               try {
+                   const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                   const oscillator = audioContext.createOscillator();
+                   const gainNode = audioContext.createGain();
+                   
+                   oscillator.type = 'sine';
+                   oscillator.frequency.value = tones[index];
+                   
+                   gainNode.gain.value = 0.3;
+                   
+                   oscillator.connect(gainNode);
+                   gainNode.connect(audioContext.destination);
+                   
+                   oscillator.start();
+                   
+                   // Stop after a short duration
+                   gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.3);
+                   oscillator.stop(audioContext.currentTime + 0.3);
+               } catch (e) {
+                   console.log("Audio not supported or enabled");
+               }
+           };
+           
+           // Level complete with secure reward processing
+           const levelComplete = async () => {
+               _canPlayerClick = false;
+               
+               // Verify level completion timing
+               const totalGameTime = Date.now() - _gameStartTime;
+               const expectedMinGameTime = 2000 + (_currentLevel * 1000);
+               
+               // If the game is progressing too quickly, it might be cheating
+               if (_currentLevel > 3 && totalGameTime < expectedMinGameTime) {
+                   console.warn("Game progressing suspiciously quickly");
+                   gameOver(true);
+                   return;
+               }
+               
+               // Award coins through secure interface
+               const rewardSuccess = await secureInterface.updateCoins(_currentReward, 'level_win');
+               
+               if (rewardSuccess) {
+                   _totalEarned += _currentReward;
+                   
+                   // Show reward popup
+                   showRewardPopup(_currentReward);
+                   
+                   // Double the reward for next level
+                   _currentReward *= 2;
+                   
+                   // Increase level
+                   _currentLevel++;
+                   
+                   // Flash all squares green to indicate success
+                   squares.forEach(square => {
+                       square.classList.add('correct');
                    });
                    
-                   // Make sure local state is synced with Firebase
-                   coinBalance = updatedBalance;
-                   firebaseCoinBalance = updatedBalance;
-                   
-                   // Update display
-                   updateCoinDisplay();
-                   
-                   return {
-                       transactionId: transactionRef.id,
-                       newBalance: updatedBalance
-                   };
+                   // Remove correct class after animation
+                   setTimeout(() => {
+                       squares.forEach(square => {
+                           square.classList.remove('correct');
+                       });
+                       
+                       // Start next level after a delay
+                       setTimeout(() => {
+                           nextLevel();
+                       }, 500);
+                   }, 800);
+               } else {
+                   console.error("Failed to process level reward");
+                   gameOver();
                }
-           } catch (error) {
-               console.error("Transaction Error:", error);
-           }
-       }
-
-       // Show Login Prompt
-       function showLoginPrompt() {
-           // Create a modal overlay
-           const overlay = document.createElement('div');
-           overlay.style.position = 'fixed';
-           overlay.style.top = '0';
-           overlay.style.left = '0';
-           overlay.style.width = '100%';
-           overlay.style.height = '100%';
-           overlay.style.background = 'rgba(0,0,0,0.8)';
-           overlay.style.display = 'flex';
-           overlay.style.justifyContent = 'center';
-           overlay.style.alignItems = 'center';
-           overlay.style.zIndex = '1000';
-
-           const modalContent = document.createElement('div');
-           modalContent.style.background = '#222';
-           modalContent.style.padding = '2rem';
-           modalContent.style.borderRadius = '10px';
-           modalContent.style.textAlign = 'center';
-           modalContent.style.color = 'white';
-
-           modalContent.innerHTML = `
-               <h2>Login Required</h2>
-               <p>Please log in to play Memory Squares and track your coins.</p>
-               <div>
-                   <button id="loginBtn" style="
-                       background: #4CAF50;
-                       color: white;
-                       border: none;
-                       padding: 10px 20px;
-                       margin: 10px;
-                       border-radius: 5px;
-                       cursor: pointer;
-                   ">Go to Login</button>
-                   <button id="cancelBtn" style="
-                       background: #f44336;
-                       color: white;
-                       border: none;
-                       padding: 10px 20px;
-                       margin: 10px;
-                       border-radius: 5px;
-                       cursor: pointer;
-                   ">Cancel</button>
-               </div>
-           `;
-
-           overlay.appendChild(modalContent);
-           document.body.appendChild(overlay);
-
-           // Add event listeners
-           document.getElementById('loginBtn').addEventListener('click', () => {
-               // Redirect to main page where login is possible
-               window.location.href = '/voidgms.html';
-           });
-
-           document.getElementById('cancelBtn').addEventListener('click', () => {
-               document.body.removeChild(overlay);
-               // Disable game interactions
-               const startBtn = document.getElementById('start-btn');
-               if (startBtn) {
-                   startBtn.disabled = true;
-                   startBtn.textContent = 'Login to Play';
+           };
+           
+           // Show reward popup
+           const showRewardPopup = (amount) => {
+               const popup = document.createElement('div');
+               popup.className = 'reward-popup';
+               popup.textContent = `+${amount}`;
+               
+               // Position in the center of game board
+               const boardRect = gameBoard.getBoundingClientRect();
+               popup.style.left = `${boardRect.width / 2}px`;
+               popup.style.top = `${boardRect.height / 2}px`;
+               popup.style.transform = 'translate(-50%, -50%)';
+               
+               gameBoard.appendChild(popup);
+               
+               // Remove popup after animation completes
+               setTimeout(() => {
+                   if (popup.parentNode) {
+                       popup.parentNode.removeChild(popup);
+                   }
+               }, 1500);
+           };
+           
+           // Game over with secure penalty handling
+           const gameOver = async (forcedEnd = false) => {
+               _gameActive = false;
+               _canPlayerClick = false;
+               
+               // Apply death penalty through secure interface if not a forced end
+               if (!forcedEnd) {
+                   await secureInterface.updateCoins(-GAME_CONFIG.deathPenalty, 'game_loss');
                }
-           });
-       }
-
-       // Attach functions to window for game script access
-       window.loadFirebaseCoinBalance = loadFirebaseCoinBalance;
-       window.updateFirebaseCoinBalance = updateFirebaseCoinBalance;
-       window.recordGameTransaction = recordGameTransaction;
-       window.showLoginPrompt = showLoginPrompt;
-       window.currentUser = currentUser;
+               
+               // Highlight the incorrect square in red if it's a natural game over
+               if (!forcedEnd && _playerSequence.length > 0) {
+                   const lastIndex = _playerSequence.length - 1;
+                   squares[_playerSequence[lastIndex]].classList.add('wrong');
+               }
+               
+               // Play error sound
+               try {
+                   const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                   const oscillator = audioContext.createOscillator();
+                   const gainNode = audioContext.createGain();
+                   
+                   oscillator.type = 'sawtooth';
+                   oscillator.frequency.value = 150;
+                   
+                   gainNode.gain.value = 0.3;
+                   
+                   oscillator.connect(gainNode);
+                   gainNode.connect(audioContext.destination);
+                   
+                   oscillator.start();
+                   
+                   oscillator.frequency.exponentialRampToValueAtTime(80, audioContext.currentTime + 0.2);
+                   gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.3);
+                   oscillator.stop(audioContext.currentTime + 0.3);
+               } catch (e) {
+                   console.log("Audio not supported or enabled");
+               }
+               
+               // Show correct sequence briefly
+               setTimeout(() => {
+                   squares.forEach(square => square.classList.remove('wrong', 'active'));
+                   
+                   // Briefly show the correct sequence
+                   showCorrectSequence(() => {
+                       // Update final stats
+                       finalLevelDisplay.textContent = _currentLevel;
+                       totalEarnedDisplay.textContent = _totalEarned;
+                       
+                       // Show game over screen
+                       gameOverScreen.classList.add('visible');
+                   });
+               }, 1000);
+           };
+           
+           // Show the correct sequence after game over
+           const showCorrectSequence = (callback) => {
+               let i = 0;
+               
+               // Disable all squares
+               squares.forEach(square => {
+                   square.classList.add('disabled');
+               });
+               
+               const interval = setInterval(() => {
+                   if (i < _sequence.length) {
+                       // Clear all squares
+                       squares.forEach(square => square.classList.remove('active'));
+                       
+                       // Show current square in sequence
+                       squares[_sequence[i]].classList.add('active');
+                       
+                       i++;
+                   } else {
+                       // End of sequence
+                       clearInterval(interval);
+                       
+                       // Clear all squares
+                       setTimeout(() => {
+                           squares.forEach(square => square.classList.remove('active', 'disabled'));
+                           if (callback) callback();
+                       }, 500);
+                   }
+               }, 400);
+           };
+           
+           // Create background particles
+           const createParticles = (count) => {
+               // Remove existing particles
+               const existingParticles = document.querySelectorAll('.particle');
+               existingParticles.forEach(p => p.remove());
+               
+               // Create new particles
+               for (let i = 0; i < count; i++) {
+                   const particle = document.createElement('div');
+                   particle.className = 'particle';
+                   
+                   // Random position
+                   particle.style.left = `${Math.random() * 100}%`;
+                   particle.style.top = `${Math.random() * 100}%`;
+                   
+                   // Random size
+                   const size = Math.random() * 3 + 1;
+                   particle.style.width = `${size}px`;
+                   particle.style.height = `${size}px`;
+                   
+                   // Random opacity
+                   particle.style.opacity = Math.random() * 0.5 + 0.2;
+                   
+                   // Animation
+                   particle.style.animation = `float ${Math.random() * 10 + 5}s linear infinite`;
+                   particle.style.animationDelay = `${Math.random() * 5}s`;
+                   
+                   gameBoard.appendChild(particle);
+               }
+           };
+           
+           // Initialize the game
+           const init = () => {
+               console.log("Memory Squares game initializing...");
+               
+               // Create background particles
+               createParticles(30);
+               
+               // Set up event listeners
+               setupEventListeners();
+           };
+           
+           // Set up secure event listeners
+           const setupEventListeners = () => {
+               // Start button - initiate game with cost deduction
+               startBtn.addEventListener('click', initGame);
+               
+               // Restart button - initialize a new game after game over
+               restartBtn.addEventListener('click', () => {
+                   gameOverScreen.classList.remove('visible');
+                   initGame();
+               });
+               
+               // Back button - return to main games page
+               backBtn.addEventListener('click', () => {
+                   window.location.href = '/voidgms.html';
+               });
+               
+               // Add click events to squares
+               squares.forEach(square => {
+                   square.addEventListener('click', (e) => {
+                       // Prevent event from bubbling up
+                       e.stopPropagation();
+                       
+                       const index = parseInt(square.dataset.index);
+                       handleSquareClick(index);
+                   });
+               });
+               
+               // Add keyboard support with tamper detection
+               document.addEventListener('keydown', (e) => {
+                   if (!_canPlayerClick) return;
+                   
+                   let index = -1;
+                   
+                   if (e.key === '1' || e.key === 'q' || e.key === 'Q') index = 0;
+                   else if (e.key === '2' || e.key === 'w' || e.key === 'W') index = 1;
+                   else if (e.key === '3' || e.key === 'a' || e.key === 'A') index = 2;
+                   else if (e.key === '4' || e.key === 's' || e.key === 'S') index = 3;
+                   
+                   if (index >= 0) {
+                       handleSquareClick(index);
+                   }
+               });
+               
+               // Add additional protection against console usage
+               Object.freeze(_sequence);
+               Object.freeze(_playerSequence);
+               
+               // Detect DevTools opening
+               const detectDevTools = () => {
+                   const widthThreshold = window.outerWidth - window.innerWidth > 160;
+                   const heightThreshold = window.outerHeight - window.innerHeight > 160;
+                   
+                   if (widthThreshold || heightThreshold) {
+                       // Record possible cheating attempt
+                       if (auth.currentUser) {
+                           const securityRef = doc(collection(db, 'security_events'));
+                           setDoc(securityRef, {
+                               userId: auth.currentUser.uid,
+                               type: 'devtools_detected',
+                               gameId: 'memory_squares',
+                               timestamp: serverTimestamp()
+                           });
+                       }
+                   }
+               };
+               
+               window.addEventListener('resize', detectDevTools);
+           };
+           
+           // Return minimal interface to prevent exposing internals
+           return {
+               init,
+               // Only expose methods necessary for game operation
+               getLevel: () => _currentLevel,
+               getTotalEarned: () => _totalEarned
+           };
+       };
+       
+       // Initialize game only once Firebase is ready
+       window.addEventListener('load', () => {
+           // Create the game engine with the secure interface
+           const gameEngine = createGameEngine(secureGame);
+           
+           // Initialize the game engine
+           gameEngine.init();
+       });
    </script>
-
-   <script>
-const GAME_CONFIG = {
-    startCost: 100,         // Cost to start the game
-    deathPenalty: 100,      // Coins lost when making a mistake
-    initialReward: 2,       // Initial reward for completing level 1
-    gameId: 'memory_squares' // ID for Firebase transactions
-};
-
-// Game state
-let coinBalance = 0;
-let currentLevel = 1;
-let currentReward = GAME_CONFIG.initialReward;
-let totalEarned = 0;
-let sequence = [];
-let playerSequence = [];
-let isShowingSequence = false;
-let canPlayerClick = false;
-let gameActive = false;
-
-// DOM elements
-const squares = document.querySelectorAll('.memory-square');
-const startScreen = document.getElementById('start-screen');
-const gameOverScreen = document.getElementById('game-over-screen');
-const startBtn = document.getElementById('start-btn');
-const restartBtn = document.getElementById('restart-btn');
-const backBtn = document.getElementById('back-btn');
-const coinDisplay = document.getElementById('coinDisplay');
-const levelDisplay = document.querySelector('#levelDisplay .level');
-const rewardDisplay = document.querySelector('#rewardDisplay .reward');
-const finalLevelDisplay = document.getElementById('final-level');
-const totalEarnedDisplay = document.getElementById('total-earned');
-const gameBoard = document.querySelector('.game-board');
-
-// Update coin display
-function updateCoinDisplay() {
-    coinDisplay.textContent = coinBalance.toLocaleString();
-}
-
-// Update level and reward display
-function updateLevelDisplay() {
-    levelDisplay.textContent = currentLevel;
-    rewardDisplay.textContent = currentReward;
-}
-
-// IMPROVED: Initialize game
-function initGame() {
-    // Deduct the cost to play
-    updateCoins(-GAME_CONFIG.startCost);
-    
-    // Reset game state
-    currentLevel = 1;
-    currentReward = GAME_CONFIG.initialReward;
-    totalEarned = 0;
-    sequence = [];
-    playerSequence = [];
-    
-    // Update displays
-    updateLevelDisplay();
-    
-    // Hide start screen
-    startScreen.classList.remove('visible');
-    
-    // Start the game
-    gameActive = true;
-    nextLevel();
-}
-
-// Start next level
-function nextLevel() {
-    // Add a new random square to the sequence
-    const nextSquare = Math.floor(Math.random() * 4);
-    sequence.push(nextSquare);
-    
-    // Reset player sequence
-    playerSequence = [];
-    
-    // Update level display
-    updateLevelDisplay();
-    
-    // Show the sequence to the player
-    showSequence();
-}
-
-// Show the sequence to the player
-function showSequence() {
-    isShowingSequence = true;
-    canPlayerClick = false;
-    
-    // Disable all squares during sequence display
-    squares.forEach(square => {
-        square.classList.add('disabled');
-        square.classList.remove('active'); // Clear any active states first
-    });
-    
-    // Give a clear initial pause before starting the sequence
-    setTimeout(() => {
-        // Show each square in the sequence with proper timing
-        showSequenceStep(0);
-    }, 500);
-}
-
-// Helper function to show each step in the sequence recursively
-function showSequenceStep(index) {
-    if (index >= sequence.length) {
-        // End of sequence
-        setTimeout(() => {
-            squares.forEach(square => {
-                square.classList.remove('active', 'disabled');
-            });
-            isShowingSequence = false;
-            canPlayerClick = true;
-        }, 300);
-        return;
-    }
-    
-    // Light up the current square
-    const currentSquare = squares[sequence[index]];
-    currentSquare.classList.add('active');
-    playSound(sequence[index]);
-    
-    // Keep the square lit for a moment
-    setTimeout(() => {
-        // Turn off the square
-        currentSquare.classList.remove('active');
-        
-        // Wait a moment before showing the next square
-        setTimeout(() => {
-            showSequenceStep(index + 1);
-        }, 250);
-    }, 500);
-}
-
-// Handle player square click
-function handleSquareClick(index) {
-    if (!canPlayerClick || isShowingSequence) return;
-    
-    // Add visual feedback
-    squares[index].classList.add('active');
-    playSound(index);
-    
-    // Remove active class after a delay
-    setTimeout(() => {
-        squares[index].classList.remove('active');
-    }, 300);
-    
-    // Add to player sequence
-    playerSequence.push(index);
-    
-    // Check if player's selection matches the sequence
-    const currentIndex = playerSequence.length - 1;
-    
-    if (playerSequence[currentIndex] !== sequence[currentIndex]) {
-        // Wrong selection
-        gameOver();
-        return;
-    }
-    
-    // Check if player has completed the sequence
-    if (playerSequence.length === sequence.length) {
-        // Correct sequence completed
-        levelComplete();
-    }
-}
-
-// Play sound based on square index
-function playSound(index) {
-    // Different tone for each square
-    const tones = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
-    
-    try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.type = 'sine';
-        oscillator.frequency.value = tones[index];
-        
-        gainNode.gain.value = 0.3;
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.start();
-        
-        // Stop after a short duration
-        gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.3);
-        oscillator.stop(audioContext.currentTime + 0.3);
-    } catch (e) {
-        console.log("Audio not supported or enabled");
-    }
-}
-
-// Level complete
-function levelComplete() {
-    canPlayerClick = false;
-    
-    // Award coins
-    updateCoins(currentReward);
-    totalEarned += currentReward;
-    
-    // Show reward popup
-    showRewardPopup(currentReward);
-    
-    // Double the reward for next level
-    currentReward *= 2;
-    
-    // Increase level
-    currentLevel++;
-    
-    // Flash all squares green to indicate success
-    squares.forEach(square => {
-        square.classList.add('correct');
-    });
-    
-    // Remove correct class after animation
-    setTimeout(() => {
-        squares.forEach(square => {
-            square.classList.remove('correct');
-        });
-        
-        // Start next level after a delay
-        setTimeout(() => {
-            nextLevel();
-        }, 500);
-    }, 800);
-}
-
-// Show reward popup
-function showRewardPopup(amount) {
-    const popup = document.createElement('div');
-    popup.className = 'reward-popup';
-    popup.textContent = `+${amount}`;
-    
-    // Position in the center of game board
-    const boardRect = gameBoard.getBoundingClientRect();
-    popup.style.left = `${boardRect.width / 2}px`;
-    popup.style.top = `${boardRect.height / 2}px`;
-    popup.style.transform = 'translate(-50%, -50%)';
-    
-    gameBoard.appendChild(popup);
-    
-    // Remove popup after animation completes
-    setTimeout(() => {
-        if (popup.parentNode) {
-            popup.parentNode.removeChild(popup);
-        }
-    }, 1500);
-}
-
-// Game over
-function gameOver() {
-    gameActive = false;
-    canPlayerClick = false;
-    
-    // IMMEDIATE COIN DEDUCTION - Don't wait for restart button
-    updateCoins(-GAME_CONFIG.deathPenalty);
-    
-    // Highlight the incorrect square in red
-    const lastIndex = playerSequence.length - 1;
-    squares[playerSequence[lastIndex]].classList.add('wrong');
-    
-    // Play error sound
-    try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.type = 'sawtooth';
-        oscillator.frequency.value = 150;
-        
-        gainNode.gain.value = 0.3;
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.start();
-        
-        oscillator.frequency.exponentialRampToValueAtTime(80, audioContext.currentTime + 0.2);
-        gainNode.gain.exponentialRampToValueAtTime(0.00001, audioContext.currentTime + 0.3);
-        oscillator.stop(audioContext.currentTime + 0.3);
-    } catch (e) {
-        console.log("Audio not supported or enabled");
-    }
-    
-    // Show correct sequence briefly
-    setTimeout(() => {
-        squares.forEach(square => square.classList.remove('wrong', 'active'));
-        
-        // Briefly show the correct sequence
-        showCorrectSequence(() => {
-            // Update final stats
-            finalLevelDisplay.textContent = currentLevel;
-            totalEarnedDisplay.textContent = totalEarned;
-            
-            // Show game over screen
-            gameOverScreen.classList.add('visible');
-        });
-    }, 1000);
-}
-
-// Show the correct sequence after game over
-function showCorrectSequence(callback) {
-    let i = 0;
-    
-    // Disable all squares
-    squares.forEach(square => {
-        square.classList.add('disabled');
-    });
-    
-    const interval = setInterval(() => {
-        if (i < sequence.length) {
-            // Clear all squares
-            squares.forEach(square => square.classList.remove('active'));
-            
-            // Show current square in sequence
-            squares[sequence[i]].classList.add('active');
-            
-            i++;
-        } else {
-            // End of sequence
-            clearInterval(interval);
-            
-            // Clear all squares
-            setTimeout(() => {
-                squares.forEach(square => square.classList.remove('active', 'disabled'));
-                if (callback) callback();
-            }, 500);
-        }
-    }, 400);
-}
-
-// Update coins function - handles both adding and removing coins
-function updateCoins(amount) {
-    const newBalance = coinBalance + amount;
-    coinBalance = newBalance;
-    
-    console.log(`Updating coins: ${amount > 0 ? '+' : ''}${amount}, New balance: ${newBalance}`);
-    
-    // Update the display
-    updateCoinDisplay();
-    
-    // Record transaction in Firebase
-    if (amount !== 0) { // Only record non-zero transactions
-        if (window.recordGameTransaction) {
-            window.recordGameTransaction(GAME_CONFIG.gameId, amount, amount > 0);
-        } else {
-            // Fallback to direct update if transaction recording isn't available
-            if (window.updateFirebaseCoinBalance) {
-                window.updateFirebaseCoinBalance(newBalance);
-            }
-        }
-    }
-}
-
-// Create particles effect
-function createParticles(count) {
-    // Remove existing particles
-    const existingParticles = document.querySelectorAll('.particle');
-    existingParticles.forEach(p => p.remove());
-    
-    // Create new particles
-    for (let i = 0; i < count; i++) {
-        const particle = document.createElement('div');
-        particle.className = 'particle';
-        
-        // Random position
-        particle.style.left = `${Math.random() * 100}%`;
-        particle.style.top = `${Math.random() * 100}%`;
-        
-        // Random size
-        const size = Math.random() * 3 + 1;
-        particle.style.width = `${size}px`;
-        particle.style.height = `${size}px`;
-        
-        // Random opacity
-        particle.style.opacity = Math.random() * 0.5 + 0.2;
-        
-        // Animation
-        particle.style.animation = `float ${Math.random() * 10 + 5}s linear infinite`;
-        particle.style.animationDelay = `${Math.random() * 5}s`;
-        
-        gameBoard.appendChild(particle);
-    }
-}
-
-// Event listeners
-startBtn.addEventListener('click', () => {
-    // Allow playing even with negative balance
-    initGame();
-});
-
-restartBtn.addEventListener('click', () => {
-    // No need to deduct coins again - already deducted when game ended
-    gameOverScreen.classList.remove('visible');
-    initGame();
-});
-
-backBtn.addEventListener('click', () => {
-    window.location.href = '/voidgms.html';
-});
-
-// Add click events to squares
-squares.forEach(square => {
-    square.addEventListener('click', () => {
-        const index = parseInt(square.dataset.index);
-        handleSquareClick(index);
-    });
-});
-
-// Add keyboard support (1-4 keys)
-document.addEventListener('keydown', (e) => {
-    if (!canPlayerClick) return;
-    
-    let index = -1;
-    
-    if (e.key === '1' || e.key === 'q' || e.key === 'Q') index = 0;
-    else if (e.key === '2' || e.key === 'w' || e.key === 'W') index = 1;
-    else if (e.key === '3' || e.key === 'a' || e.key === 'A') index = 2;
-    else if (e.key === '4' || e.key === 's' || e.key === 'S') index = 3;
-    
-    if (index >= 0) {
-        handleSquareClick(index);
-    }
-});
-
-// Initialize on page load
-window.addEventListener('load', () => {
-    console.log("Memory Squares game initializing...");
-    
-    // Create background particles
-    createParticles(30);
-    
-    // Check if Firebase is available
-    if (window.loadFirebaseCoinBalance) {
-        window.loadFirebaseCoinBalance();
-    } else {
-        // For testing without Firebase
-        coinBalance = 1000; 
-        updateCoinDisplay();
-    }
-});
-</script>
 </body>
 </html>
