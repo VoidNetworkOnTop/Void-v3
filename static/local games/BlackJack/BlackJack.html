@@ -493,6 +493,50 @@
            transform: translateY(-2px);
        }
 
+       /* New Deal button style */
+       .deal-btn {
+           padding: 12px 40px;
+           font-size: 1.4rem;
+           background: linear-gradient(135deg, #2e7d32, #1b5e20);
+           color: #fff;
+           border: 1px solid rgba(76, 175, 80, 0.6);
+           border-radius: 25px;
+           cursor: pointer;
+           transition: all 0.3s ease;
+           font-weight: bold;
+           letter-spacing: 2px;
+           text-transform: uppercase;
+           margin-bottom: 20px;
+           box-shadow: 0 0 10px rgba(76, 175, 80, 0.7);
+           animation: dealButtonGlow 1.5s infinite alternate;
+       }
+
+       .deal-btn:hover {
+           background: linear-gradient(135deg, #388e3c, #2e7d32);
+           transform: translateY(-3px);
+           box-shadow: 0 0 20px rgba(76, 175, 80, 0.9);
+       }
+
+       .deal-btn:disabled {
+           opacity: 0.5;
+           cursor: not-allowed;
+           background: linear-gradient(135deg, #444, #333);
+           animation: none;
+           box-shadow: none;
+       }
+
+       @keyframes dealButtonGlow {
+           0% {
+               box-shadow: 0 0 5px rgba(76, 175, 80, 0.7),
+                        0 0 10px rgba(76, 175, 80, 0.5);
+           }
+           100% {
+               box-shadow: 0 0 15px rgba(76, 175, 80, 0.9),
+                        0 0 25px rgba(76, 175, 80, 0.7),
+                        0 0 35px rgba(76, 175, 80, 0.5);
+           }
+       }
+
        .action-controls {
            display: flex;
            justify-content: center;
@@ -603,6 +647,11 @@
                padding: 8px 15px;
                font-size: 0.9rem;
            }
+           
+           .deal-btn {
+               padding: 10px 30px;
+               font-size: 1.2rem;
+           }
        }
 
        @media (max-width: 600px) {
@@ -639,6 +688,11 @@
                padding: 6px 12px;
                font-size: 0.8rem;
            }
+           
+           .deal-btn {
+               padding: 8px 25px;
+               font-size: 1.1rem;
+           }
        }
    </style>
 </head>
@@ -666,14 +720,19 @@
                <div class="bet-controls" id="bet-controls">
                    <div class="game-status" id="game-status">Place your bet to start</div>
                    <div class="bet-amount">Bet: <span id="bet-amount">0</span> coins</div>
+                   
+                   <!-- Deal button now above the betting buttons -->
+                   <button class="deal-btn" id="deal-btn">Deal</button>
+                   
                    <div class="bet-btns">
+                       <button class="bet-btn" data-amount="5">+5</button>
                        <button class="bet-btn" data-amount="10">+10</button>
                        <button class="bet-btn" data-amount="50">+50</button>
                        <button class="bet-btn" data-amount="100">+100</button>
                        <button class="bet-btn" data-amount="500">+500</button>
                        <button class="bet-btn" data-amount="1000">+1000</button>
+                       <button class="bet-btn" data-amount="max">Max</button>
                        <button class="bet-btn" data-amount="clear">Clear</button>
-                       <button class="bet-btn" id="deal-btn">Deal</button>
                    </div>
                </div>
                
@@ -1236,8 +1295,8 @@
     // Game Configuration
     const GAME_CONFIG = {
         gameId: 'blackjack_game', // ID for Firebase transactions
-        minBet: 10,           // Minimum bet amount
-        maxBet: 10000,        // Maximum bet amount
+        minBet: 5,            // Minimum bet amount (changed from 10 to 5)
+        maxBet: 1000000,      // Very high maximum bet (will be limited by player balance)
         blackjackPayout: 1.5, // Blackjack pays 3:2
         hiddenEntryFee: 5,    // Small hidden fee per hand (not shown to user)
         dealerStandValue: 17, // Dealer stands on all 17s
@@ -2188,20 +2247,27 @@
             
             // Update hash without validation
             gameStateHash = hashGameState();
+            
+            // Disable deal button if bet is cleared
+            if (dealBtn) {
+                dealBtn.disabled = true;
+            }
             return;
+        }
+        
+        // Handle "Max" bet option to bet all available coins
+        if (amount === 'max') {
+            // Get current player balance and set as the bet
+            amount = window.gameInterface.getBalance();
         }
         
         // Add to current bet
         const newBet = currentBet + amount;
         
-        // Validate bet against min/max and player balance
-        if (newBet > window.gameInterface.getBalance()) {
+        // Validate bet against player balance - use current balance as maximum
+        const currentBalance = window.gameInterface.getBalance();
+        if (newBet > currentBalance) {
             alert("You don't have enough coins for that bet!");
-            return;
-        }
-        
-        if (newBet > GAME_CONFIG.maxBet) {
-            alert(`Maximum bet is ${GAME_CONFIG.maxBet.toLocaleString()} coins!`);
             return;
         }
         
@@ -2531,11 +2597,20 @@
                     placeBet('clear');
                 } else if (this.id === 'deal-btn') {
                     startDeal();
+                } else if (betValue === 'max') {
+                    placeBet('max');
                 } else {
                     placeBet(parseInt(betValue));
                 }
             }));
         });
+        
+        // Deal button (it's now outside the bet buttons array)
+        if (dealBtn) {
+            dealBtn.addEventListener('click', secureAction(function() {
+                startDeal();
+            }));
+        }
         
         // Action buttons
         if (hitBtn) {
@@ -2644,7 +2719,7 @@
             }
         }, 500); // Short delay to ensure Firebase is initialized
         
-        // Make doubly sure the result screen is initially hidden
+// Make doubly sure the result screen is initially hidden
         const resultScreen = document.getElementById('result-screen');
         if (resultScreen) {
             resultScreen.classList.remove('visible');
