@@ -995,15 +995,19 @@
        }
 
        // Create a secure encapsulated game state manager (using IIFE pattern)
+       // Create this early to ensure it's available throughout the app lifecycle
        const _secureGameState = (function() {
            // Private variables that can't be accessed directly from console
-           let _balance = 0;
+           let _balance = 1000; // Default starting balance to avoid showing 0
            let _coinDisplay = null;
            let _transactionLock = false;
            
            // Initialize the display element reference
            function _initDisplay() {
                _coinDisplay = document.getElementById('coinDisplay');
+               if (_coinDisplay) {
+                   _coinDisplay.textContent = _balance.toLocaleString();
+               }
            }
            
            // Update the display with current balance
@@ -1013,6 +1017,11 @@
                    _coinDisplay.textContent = _balance.toLocaleString();
                }
            }
+           
+           // Call init on document ready
+           document.addEventListener('DOMContentLoaded', function() {
+               _initDisplay();
+           });
            
            // Return only the methods we want to expose
            return {
@@ -1025,6 +1034,7 @@
                        return false;
                    }
                    _balance = newBalance;
+                   _updateDisplay(); // Update display immediately
                    return true;
                },
                updateDisplay: function() {
@@ -1071,6 +1081,7 @@
        })();
 
        // Create and expose methods only through secure wrapper functions
+       // Define this early to ensure availability
        window.gameInterface = {
            getBalance: function() {
                return _secureGameState.getBalance();
@@ -1262,8 +1273,21 @@
         resultTitle = document.getElementById('result-title');
         resultMessage = document.getElementById('result-message');
         
-        // Ensure balance display is up to date
-        window.gameInterface.updateDisplay();
+        // Ensure balance display is up to date - with error handling
+        try {
+            if (window.gameInterface && typeof window.gameInterface.updateDisplay === 'function') {
+                window.gameInterface.updateDisplay();
+            } else {
+                console.log("Game interface not ready yet, display will update when ready");
+                // Fallback direct update
+                const coinDisplay = document.getElementById('coinDisplay');
+                if (coinDisplay) {
+                    coinDisplay.textContent = "1000";
+                }
+            }
+        } catch (err) {
+            console.error("Error updating coin display:", err);
+        }
     }
 
     // Update coin balance - Using the secure gameInterface instead of direct manipulation
@@ -2146,11 +2170,31 @@
         setupEventListeners();
         
         // Initialize with default coin balance and check Firebase
-        if (window.gameInterface && window.gameInterface.refreshBalance) {
-            window.gameInterface.refreshBalance().then(() => {
-                window.gameInterface.updateDisplay();
-            });
-        }
+        setTimeout(() => {
+            // Delayed initialization to ensure firebase is fully loaded
+            try {
+                if (window.gameInterface && window.gameInterface.refreshBalance) {
+                    window.gameInterface.refreshBalance().then(() => {
+                        window.gameInterface.updateDisplay();
+                    }).catch(err => {
+                        console.error("Error refreshing balance:", err);
+                        // Ensure a fallback value is displayed
+                        const coinDisplay = document.getElementById('coinDisplay');
+                        if (coinDisplay && coinDisplay.textContent === "0") {
+                            coinDisplay.textContent = "1000";
+                        }
+                    });
+                } else {
+                    // Direct fallback if interface isn't ready
+                    const coinDisplay = document.getElementById('coinDisplay');
+                    if (coinDisplay && coinDisplay.textContent === "0") {
+                        coinDisplay.textContent = "1000";
+                    }
+                }
+            } catch (err) {
+                console.error("Error in balance initialization:", err);
+            }
+        }, 500); // Short delay to ensure Firebase is initialized
         
         // Make doubly sure the result screen is initially hidden
         const resultScreen = document.getElementById('result-screen');
@@ -2229,14 +2273,17 @@
     window.setTimeout = monitorTimers(originalSetTimeout);
     window.setInterval = monitorTimers(originalSetInterval);
     
-    // Protect against prototype pollution
-    Object.freeze(Object.prototype);
-    Object.freeze(Array.prototype);
-    Object.freeze(Function.prototype);
+    // Protect gameInterface from modification, but don't freeze prototypes
+    // as that can cause conflicts with browser functions
     
-    // Lock down window.gameInterface after creation
+    // Only lock down window.gameInterface properties instead of freezing the whole object
     if (window.gameInterface) {
-        Object.freeze(window.gameInterface);
+        Object.defineProperties(window.gameInterface, {
+            getBalance: { writable: false, configurable: false },
+            processTransaction: { writable: false, configurable: false },
+            updateDisplay: { writable: false, configurable: false },
+            refreshBalance: { writable: false, configurable: false }
+        });
     }
 })();
    </script>
