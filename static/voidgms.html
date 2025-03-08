@@ -1220,18 +1220,12 @@ function findAndHighlightVoidNetwork() {
     });
 }
 
-// Refresh the leaderboard manually to force a new connection
+// Refresh the leaderboard manually
 function refreshLeaderboard() {
     console.log("Manual leaderboard refresh requested");
     
-    // Stop current listener and restart to force refresh
-    voidLeaderboard.stopLeaderboardUpdates();
-    
-    // Force a new connection attempt
-    voidLeaderboard.startLeaderboardUpdates();
-    
-    // After a short delay, manually look for Void Network
-    setTimeout(findAndHighlightVoidNetwork, 1000);
+    // Just call fetchLeaderboardData directly
+    voidLeaderboard.fetchLeaderboardData();
 }
 
 // Add periodic refresh to ensure leaderboard stays updated
@@ -1279,11 +1273,16 @@ window.addEventListener('load', () => {
 // Check on window resize
 window.addEventListener('resize', handleResponsiveLayout);
 
-// Function to directly update user's disabled status - simpler version
+// Simple function to manually disable a user
 async function manuallyDisableUser() {
     try {
         const userId = prompt("Enter the user ID to disable:");
         if (!userId) return;
+        
+        // Confirm the action
+        if (!confirm(`Are you sure you want to disable user ${userId}? This will remove them from the leaderboard.`)) {
+            return;
+        }
         
         const userRef = doc(db, 'users', userId);
         await updateDoc(userRef, {
@@ -1291,6 +1290,8 @@ async function manuallyDisableUser() {
         });
         
         alert(`User ${userId} has been disabled. Refreshing leaderboard.`);
+        
+        // Refresh the leaderboard
         refreshLeaderboard();
     } catch (error) {
         console.error("Error disabling user:", error);
@@ -1298,16 +1299,36 @@ async function manuallyDisableUser() {
     }
 }
 
+// Simple function for admin to check a user's status
+async function checkUserStatus() {
+    try {
+        const userId = prompt("Enter the user ID to check:");
+        if (!userId) return;
+        
+        const userRef = doc(db, 'users', userId);
+        const userDoc = await getDoc(userRef);
+        
+        if (!userDoc.exists()) {
+            alert(`User ${userId} does not exist.`);
+            return;
+        }
+        
+        const userData = userDoc.data();
+        alert(`User: ${userData.username}\nStatus:\n- Disabled: ${userData.disabled === true ? 'Yes' : 'No'}\n- Active: ${userData.isActive === false ? 'No' : 'Yes'}\n- Deleted: ${userData.accountDeleted === true ? 'Yes' : 'No'}\n- Balance: ${userData.accountBalance.toLocaleString()}`);
+    } catch (error) {
+        console.error("Error checking user:", error);
+        alert("Error: " + error.message);
+    }
+}
+
 // IMPROVED: Before we fetch data, ensure we're ready for live data mode
 function prepareForLiveData() {
-    // Clear any previous permission errors to force a fresh attempt
-    localStorage.removeItem('leaderboardPermissionError');
-    
-    // Add a refresh button to the leaderboard title
+    // Add admin tools to the leaderboard title
     const leaderboardTitle = document.querySelector('.leaderboard-title');
     if (leaderboardTitle) {
         // Check if we already have a refresh button
         if (!document.getElementById('refresh-leaderboard-btn')) {
+            // Add refresh button
             const refreshBtn = document.createElement('span');
             refreshBtn.id = 'refresh-leaderboard-btn';
             refreshBtn.innerHTML = '↻';
@@ -1321,7 +1342,7 @@ function prepareForLiveData() {
             });
             leaderboardTitle.appendChild(refreshBtn);
             
-            // Add a disable user button for admin use
+            // Add disable user button
             const disableUserBtn = document.createElement('span');
             disableUserBtn.id = 'disable-user-btn';
             disableUserBtn.innerHTML = '🚫';
@@ -1330,10 +1351,24 @@ function prepareForLiveData() {
             disableUserBtn.style.fontSize = '0.9em';
             disableUserBtn.title = 'Disable a user';
             disableUserBtn.addEventListener('click', function(e) {
-                e.stopPropagation(); // Don't trigger the toggle
+                e.stopPropagation();
                 manuallyDisableUser();
             });
             leaderboardTitle.appendChild(disableUserBtn);
+            
+            // Add check user button
+            const checkUserBtn = document.createElement('span');
+            checkUserBtn.id = 'check-user-btn';
+            checkUserBtn.innerHTML = '🔍';
+            checkUserBtn.style.marginLeft = '5px';
+            checkUserBtn.style.cursor = 'pointer';
+            checkUserBtn.style.fontSize = '0.9em';
+            checkUserBtn.title = 'Check user status';
+            checkUserBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                checkUserStatus();
+            });
+            leaderboardTitle.appendChild(checkUserBtn);
         }
     }
 }
