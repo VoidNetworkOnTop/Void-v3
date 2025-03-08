@@ -751,9 +751,19 @@
        // Firebase Imports
        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-       import { getFirestore, doc, getDoc, updateDoc, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+       import { 
+           getFirestore, 
+           doc, 
+           getDoc, 
+           updateDoc, 
+           setDoc, 
+           collection,
+           serverTimestamp,
+           increment,
+           runTransaction
+       } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
-       // Firebase Configuration - UPDATED
+       // Firebase Configuration
        const firebaseConfig = {
            apiKey: "AIzaSyCkAp_GCGCtw4zv7GgHJOE9GPgIaPEuOvQ",
            authDomain: "void-games-c8d9e.firebaseapp.com",
@@ -768,1143 +778,1733 @@
        const auth = getAuth(app);
        const db = getFirestore(app);
 
-       // Authentication and Coin Management
-       let currentUser = null;
-       let firebaseCoinBalance = 0;
-       window.transactionInProgress = false; // Add transaction lock
+       /* Create Secure Game Interface - Encapsulated from global scope */
+       const createSecureGameInterface = () => {
+           // Private variables - inaccessible from console
+           let _coinBalance = 0;
+           let _securityToken = '';
+           let _gameSessionId = '';
+           let _transactionLock = false;
+           let _pendingTransactions = [];
+           let _lastServerSync = 0;
+           let _sessionStartTime = Date.now();
+           let _securityChecks = {
+               lastCheck: Date.now(),
+               domIntegrityPassed: true,
+               windowObjectsClean: true
+           };
+           let _previousActions = [];
+           
+           // Generate a unique session ID for this game instance
+           const generateSessionId = () => {
+               const buffer = new Uint8Array(16);
+               window.crypto.getRandomValues(buffer);
+               return Array.from(buffer, b => b.toString(16).padStart(2, '0')).join('');
+           };
+           
+           // Create a security token with the Web Crypto API
+           const generateSecurityToken = async (userId) => {
+               if (!userId) return '';
+               
+               const timestamp = Date.now();
+               const rawToken = `${userId}:${timestamp}:${_gameSessionId}`;
+               
+               // Use SubtleCrypto for strong token generation
+               const encoder = new TextEncoder();
+               const data = encoder.encode(rawToken);
+               const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+               const hashArray = Array.from(new Uint8Array(hashBuffer));
+               const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+               
+               return `${timestamp.toString(36)}.${hashHex}`;
+           };
+           
+           // Initialize security systems
+           const initSecurity = async (userId) => {
+               // Generate a unique session ID
+               _gameSessionId = generateSessionId();
+               _securityToken = await generateSecurityToken(userId);
+               _sessionStartTime = Date.now();
+               _lastServerSync = Date.now();
+               
+               // Set up anti-debugging and anti-cheat measures
+               setupAntiTampering();
+               
+               // Start periodic security checks
+               scheduleSecurityChecks();
+           };
+           
+           // Setup anti-tampering protection
+           const setupAntiTampering = () => {
+               // Create trap properties on window that detect tampering attempts
+               Object.defineProperty(window, '_debugMode', {
+                   get: function() {
+                       recordTamperingAttempt('debug_access');
+                       return false;
+                   },
+                   configurable: false
+               });
+               
+               // Protect against function overrides (console methods)
+               const originalConsoleLog = console.log;
+               console.log = function(...args) {
+                   // Check for suspicious console activity
+                   const joined = args.join(' ').toLowerCase();
+                   if (joined.includes('coinbalance') || 
+                       joined.includes('updatecoins') || 
+                       joined.includes('firebase') || 
+                       joined.includes('hack')) {
+                       recordTamperingAttempt('console_hack_attempt');
+                   }
+                   return originalConsoleLog.apply(console, args);
+               };
+               
+               // Monitor for DevTools opening
+               window.addEventListener('resize', detectDevTools);
+               window.addEventListener('devtoolschange', function(e) {
+                   if (e.detail.open) {
+                       recordTamperingAttempt('devtools_opened');
+                   }
+               });
+           };
+           
+           // Detect DevTools opening via window dimensions
+           const detectDevTools = () => {
+               const widthThreshold = window.outerWidth - window.innerWidth > 160;
+               const heightThreshold = window.outerHeight - window.innerHeight > 160;
+               
+               if (widthThreshold || heightThreshold) {
+                   recordTamperingAttempt('devtools_detected');
+               }
+           };
+           
+           // Schedule regular security checks
+           const scheduleSecurityChecks = () => {
+               // Randomize check intervals to make them harder to predict
+               const interval = 5000 + Math.random() * 5000;
+               
+               setInterval(() => {
+                   performSecurityChecks();
+               }, interval);
+               
+               // Also check on user interactions like clicks
+               document.addEventListener('click', () => {
+                   // Only check occasionally (not every click) to avoid performance issues
+                   if (Math.random() < 0.2) {
+                       performSecurityChecks();
+                   }
+               }, true);
+           };
+           
+           // Perform comprehensive security checks
+           const performSecurityChecks = () => {
+               const now = Date.now();
+               _securityChecks.lastCheck = now;
+               
+               // Check DOM integrity
+               _securityChecks.domIntegrityPassed = verifyDomIntegrity();
+               
+               // Check for exposed game objects in window
+               _securityChecks.windowObjectsClean = verifyWindowObjects();
+               
+               // Check if synchronized with server recently
+               if (now - _lastServerSync > 60000) { // 1 minute
+                   refreshServerData();
+               }
+               
+               // If any check fails, take corrective action
+               if (!_securityChecks.domIntegrityPassed || !_securityChecks.windowObjectsClean) {
+                   handleSecurityViolation();
+               }
+           };
+           
+           // Verify DOM hasn't been tampered with
+           const verifyDomIntegrity = () => {
+               // Check if essential game elements exist and haven't been modified
+               const gameContainer = document.querySelector('.game-container');
+               const gameBoard = document.querySelector('.game-board');
+               const coinDisplay = document.getElementById('coinDisplay');
+               
+               if (!gameContainer || !gameBoard || !coinDisplay) {
+                   recordTamperingAttempt('dom_elements_missing');
+                   return false;
+               }
+               
+               // Check if the structure is as expected
+               if (gameContainer.children.length !== 3) {
+                   recordTamperingAttempt('dom_structure_modified');
+                   return false;
+               }
+               
+               return true;
+           };
+           
+           // Verify window objects haven't been tampered with
+           const verifyWindowObjects = () => {
+               // Check for exposed sensitive objects
+               if (window.coinBalance !== undefined || 
+                   window.updateCoins !== undefined || 
+                   window.GAME_CONFIG !== undefined) {
+                   recordTamperingAttempt('game_objects_exposed');
+                   return false;
+               }
+               
+               return true;
+           };
+           
+           // Handle security violations
+           const handleSecurityViolation = () => {
+               // Record the violation
+               recordTamperingAttempt('security_check_failed');
+               
+               // Take action based on severity and frequency
+               const violations = _previousActions.filter(a => a.type === 'security_violation').length;
+               
+               if (violations > 2) {
+                   // Third+ violation: Force page refresh
+                   forcePageRefresh();
+               } else {
+                   // First/second violation: Subtle interference
+                   createTechnicalDifficulties();
+               }
+           };
+           
+           // Create "technical difficulties" to subtly disrupt potential cheating
+           const createTechnicalDifficulties = () => {
+               // Make game behavior unpredictable but don't immediately reveal detection
+               setTimeout(() => {
+                   // Random actions to frustrate cheating attempts
+                   const difficultyActions = [
+                       () => {
+                           // Temporarily freeze UI
+                           const overlay = document.createElement('div');
+                           overlay.style.position = 'fixed';
+                           overlay.style.top = '0';
+                           overlay.style.left = '0';
+                           overlay.style.width = '100%';
+                           overlay.style.height = '100%';
+                           overlay.style.background = 'transparent';
+                           overlay.style.zIndex = '1000';
+                           document.body.appendChild(overlay);
+                           setTimeout(() => document.body.removeChild(overlay), 2000 + Math.random() * 3000);
+                       },
+                       () => {
+                           // Force synchronization with server
+                           refreshServerData();
+                       },
+                       () => {
+                           // Subtly modify UI without breaking functionality
+                           const buttons = document.querySelectorAll('button');
+                           buttons.forEach(btn => {
+                               const originalOnClick = btn.onclick;
+                               btn.onclick = function(e) {
+                                   // Add slight delay
+                                   setTimeout(() => {
+                                       if (originalOnClick) originalOnClick.call(this, e);
+                                   }, 200 + Math.random() * 500);
+                               };
+                           });
+                       }
+                   ];
+                   
+                   // Choose a random action
+                   const action = difficultyActions[Math.floor(Math.random() * difficultyActions.length)];
+                   action();
+               }, Math.random() * 5000);
+           };
+           
+           // Force page refresh as last resort against tampering
+           const forcePageRefresh = () => {
+               // Add random delay to make it harder to predict
+               setTimeout(() => {
+                   try {
+                       window.location.reload();
+                   } catch (e) {
+                       // If reload is blocked somehow, disable game functionality
+                       disableGameFunctionality();
+                   }
+               }, Math.random() * 3000);
+           };
+           
+           // Disable game functionality as fallback if refresh is blocked
+           const disableGameFunctionality = () => {
+               const gameElements = document.querySelectorAll('button, .path-circle');
+               gameElements.forEach(el => {
+                   el.disabled = true;
+                   el.style.pointerEvents = 'none';
+               });
+               
+               // Show subtle error message
+               const gameBoard = document.querySelector('.game-board');
+               if (gameBoard) {
+                   const errorMsg = document.createElement('div');
+                   errorMsg.style.position = 'absolute';
+                   errorMsg.style.top = '50%';
+                   errorMsg.style.left = '50%';
+                   errorMsg.style.transform = 'translate(-50%, -50%)';
+                   errorMsg.style.color = '#f44336';
+                   errorMsg.style.textAlign = 'center';
+                   errorMsg.innerHTML = 'Connection lost. Please refresh the page.';
+                   gameBoard.appendChild(errorMsg);
+               }
+           };
+           
+           // Record tampering attempts to Firebase
+           const recordTamperingAttempt = async (attemptType) => {
+               if (!auth.currentUser) return;
+               
+               try {
+                   // Add to local record for rate limiting responses
+                   _previousActions.push({
+                       type: 'security_violation',
+                       attemptType: attemptType,
+                       timestamp: Date.now()
+                   });
+                   
+                   // If too many records, remove oldest
+                   if (_previousActions.length > 20) {
+                       _previousActions.shift();
+                   }
+                   
+                   // Record to Firebase if not in rapid succession (rate limiting)
+                   const recentAttempts = _previousActions.filter(a => 
+                       a.type === 'security_violation' && 
+                       Date.now() - a.timestamp < 10000
+                   ).length;
+                   
+                   if (recentAttempts <= 3) {
+                       const tamperRef = doc(collection(db, 'security_events'));
+                       await setDoc(tamperRef, {
+                           userId: auth.currentUser.uid,
+                           gameId: 'chicken_run_game',
+                           attemptType: attemptType,
+                           timestamp: serverTimestamp(),
+                           userAgent: navigator.userAgent,
+                           sessionId: _gameSessionId
+                       });
+                   }
+               } catch (error) {
+                   console.error("Error recording security event");
+               }
+           };
+           
+           // Load coin balance securely from Firebase
+           const loadUserBalance = async () => {
+               if (!auth.currentUser) {
+                   console.log("No user available to load balance");
+                   return 1000; // Default fallback balance
+               }
+
+               try {
+                   // Perform transaction to ensure data consistency
+                   const userRef = doc(db, 'users', auth.currentUser.uid);
+                   
+                   // Use a transaction for data integrity
+                   const newBalance = await runTransaction(db, async (transaction) => {
+                       const userDoc = await transaction.get(userRef);
+                       
+                       if (!userDoc.exists()) {
+                           // Create initial user data if doesn't exist
+                           transaction.set(userRef, {
+                               accountBalance: 1000,
+                               username: auth.currentUser.displayName || "Player",
+                               email: auth.currentUser.email,
+                               createdAt: serverTimestamp(),
+                               totalGamesPlayed: 0,
+                               totalMoneySpent: 0,
+                               totalMoneyEarned: 0,
+                               lastActive: serverTimestamp()
+                           });
+                           return 1000;
+                       }
+                       
+                       // Update last active timestamp
+                       transaction.update(userRef, { lastActive: serverTimestamp() });
+                       
+                       // Return account balance
+                       return userDoc.data().accountBalance || 0;
+                   });
+                   
+                   // Update local balance securely (in closure)
+                   _coinBalance = newBalance;
+                   _lastServerSync = Date.now();
+                   
+                   // Update UI display without exposing _coinBalance
+                   updateDisplayedBalance();
+                   
+                   return newBalance;
+               } catch (error) {
+                   console.error("Error in secure balance loading:", error);
+                   return 1000; // Default fallback
+               }
+           };
+           
+           // Update displayed balance without exposing actual balance
+           const updateDisplayedBalance = () => {
+               const coinDisplay = document.getElementById('coinDisplay');
+               if (coinDisplay) {
+                   coinDisplay.textContent = _coinBalance.toLocaleString();
+               }
+               
+               // Also update start button appearance if needed
+               updateStartButtonState();
+           };
+           
+           // Update start button state based on selected level and balance
+           const updateStartButtonState = () => {
+               const startBtn = document.getElementById('start-btn');
+               if (!startBtn) return;
+               
+               // Get the currently selected level
+               const selectedLevel = document.querySelector('.level-btn.selected');
+               if (!selectedLevel) return;
+               
+               const level = parseInt(selectedLevel.dataset.level);
+               
+               // Game configuration is now securely within the closure
+               const SECURE_GAME_CONFIG = {
+                   levels: {
+                       10: { entryFee: 200 },
+                       20: { entryFee: 300 },
+                       30: { entryFee: 500 }
+                   }
+               };
+               
+               const levelConfig = SECURE_GAME_CONFIG.levels[level];
+               
+               // Update button appearance based on balance
+               if (_coinBalance < levelConfig.entryFee) {
+                   startBtn.classList.add('insufficient');
+               } else {
+                   startBtn.classList.remove('insufficient');
+               }
+           };
+           
+           // Secure transaction handling
+           const secureUpdateCoins = async (amount, reason) => {
+               if (!auth.currentUser || _transactionLock) {
+                   return false;
+               }
+               
+               // Check for unreasonable amounts (potential hack attempt)
+               if (Math.abs(amount) > 1000000 && reason !== 'jackpot') {
+                   console.error("Unreasonable transaction amount");
+                   recordTamperingAttempt('excessive_transaction');
+                   return false;
+               }
+               
+               // Set transaction lock to prevent concurrent updates
+               _transactionLock = true;
+               
+               try {
+                   // Generate a transaction security token
+                   const transactionToken = await generateSecurityToken(auth.currentUser.uid);
+                   
+                   // Record transaction timestamp and details for verification
+                   const transactionTimestamp = Date.now();
+                   const transactionId = `${transactionTimestamp.toString(36)}-${Math.random().toString(36).substr(2, 5)}`;
+                   
+                   // Track pending transaction
+                   _pendingTransactions.push({
+                       id: transactionId,
+                       amount: amount,
+                       reason: reason,
+                       timestamp: transactionTimestamp,
+                       status: 'pending',
+                       token: transactionToken
+                   });
+                   
+                   // Record the action
+                   _previousActions.push({
+                       type: 'transaction',
+                       amount: amount,
+                       reason: reason,
+                       timestamp: transactionTimestamp
+                   });
+                   
+                   // Perform atomic transaction in Firestore
+                   const userRef = doc(db, 'users', auth.currentUser.uid);
+                   
+                   await runTransaction(db, async (transaction) => {
+                       const userDoc = await transaction.get(userRef);
+                       
+                       if (!userDoc.exists()) {
+                           throw new Error("User document does not exist");
+                       }
+                       
+                       const userData = userDoc.data();
+                       let currentBalance = userData.accountBalance || 0;
+                       let newBalance = currentBalance + amount;
+                       
+                       // Record stats based on transaction type
+                       if (amount > 0 && (reason === 'win' || reason === 'cashout' || reason === 'jackpot')) {
+                           // Win transaction
+                           transaction.update(userRef, {
+                               accountBalance: newBalance,
+                               totalMoneyEarned: increment(amount),
+                               lastTransaction: serverTimestamp()
+                           });
+                       } else if (amount < 0 && reason === 'entry_fee') {
+                           // Entry fee transaction
+                           transaction.update(userRef, {
+                               accountBalance: newBalance,
+                               totalGamesPlayed: increment(1),
+                               totalMoneySpent: increment(Math.abs(amount)),
+                               lastTransaction: serverTimestamp()
+                           });
+                       } else {
+                           // Other transactions just update balance
+                           transaction.update(userRef, {
+                               accountBalance: newBalance,
+                               lastTransaction: serverTimestamp()
+                           });
+                       }
+                       
+                       // Create transaction record
+                       const transactionRef = doc(collection(db, 'transactions'), transactionId);
+                       transaction.set(transactionRef, {
+                           userId: auth.currentUser.uid,
+                           gameId: 'chicken_run_game',
+                           transactionType: reason,
+                           amount: amount,
+                           balanceBefore: currentBalance,
+                           balanceAfter: newBalance,
+                           timestamp: serverTimestamp(),
+                           securityToken: transactionToken,
+                           sessionId: _gameSessionId
+                       });
+                   });
+                   
+                   // Update local state
+                   _coinBalance += amount;
+                   _lastServerSync = Date.now();
+                   
+                   // Update display
+                   updateDisplayedBalance();
+                   
+                   // Update pending transaction status
+                   const txIndex = _pendingTransactions.findIndex(tx => tx.id === transactionId);
+                   if (txIndex >= 0) {
+                       _pendingTransactions[txIndex].status = 'completed';
+                   }
+                   
+                   return true;
+               } catch (error) {
+                   console.error("Secure transaction failed:", error);
+                   return false;
+               } finally {
+                   // Always release the transaction lock
+                   _transactionLock = false;
+               }
+           };
+           
+           // Force refresh server data
+           const refreshServerData = async () => {
+               await loadUserBalance();
+           };
+           
+           // Generate cryptographically secure random value for game logic
+           const secureRandom = () => {
+               // Use Web Crypto API for true randomness
+               const array = new Uint32Array(1);
+               window.crypto.getRandomValues(array);
+               return array[0] / (0xFFFFFFFF + 1); // Normalize to [0, 1)
+           };
+           
+           // Verify timing to detect speed hacking
+           const verifyTiming = (minTime) => {
+               // Get the most recent action
+               const mostRecentAction = _previousActions.length > 0 ? 
+                   _previousActions[_previousActions.length - 1] : 
+                   { timestamp: _sessionStartTime };
+               
+               const now = Date.now();
+               const elapsed = now - mostRecentAction.timestamp;
+               
+               // If actions are happening too quickly, it might be automated
+               if (elapsed < minTime) {
+                   recordTamperingAttempt('timing_manipulation');
+                   return false;
+               }
+               
+               return true;
+           };
+           
+           // Show login prompt if needed
+           const showSecureLoginPrompt = () => {
+               const overlay = document.createElement('div');
+               overlay.style.position = 'fixed';
+               overlay.style.top = '0';
+               overlay.style.left = '0';
+               overlay.style.width = '100%';
+               overlay.style.height = '100%';
+               overlay.style.background = 'rgba(0,0,0,0.8)';
+               overlay.style.display = 'flex';
+               overlay.style.justifyContent = 'center';
+               overlay.style.alignItems = 'center';
+               overlay.style.zIndex = '1000';
+
+               const modalContent = document.createElement('div');
+               modalContent.style.background = '#222';
+               modalContent.style.padding = '2rem';
+               modalContent.style.borderRadius = '10px';
+               modalContent.style.textAlign = 'center';
+               modalContent.style.color = 'white';
+
+               modalContent.innerHTML = `
+                   <h2>Login Required</h2>
+                   <p>Please log in to play Chicken Run and track your coins.</p>
+                   <div>
+                       <button id="loginBtn" style="
+                           background: #4CAF50;
+                           color: white;
+                           border: none;
+                           padding: 10px 20px;
+                           margin: 10px;
+                           border-radius: 5px;
+                           cursor: pointer;
+                       ">Go to Login</button>
+                       <button id="cancelBtn" style="
+                           background: #f44336;
+                           color: white;
+                           border: none;
+                           padding: 10px 20px;
+                           margin: 10px;
+                           border-radius: 5px;
+                           cursor: pointer;
+                       ">Cancel</button>
+                   </div>
+               `;
+
+               overlay.appendChild(modalContent);
+               document.body.appendChild(overlay);
+
+               // Add event listeners
+               document.getElementById('loginBtn').addEventListener('click', () => {
+                   window.location.href = '/voidgms.html';
+               });
+
+               document.getElementById('cancelBtn').addEventListener('click', () => {
+                   document.body.removeChild(overlay);
+                   
+                   // Set default balance for guest
+                   _coinBalance = 1000;
+                   updateDisplayedBalance();
+               });
+           };
+           
+           // Initialize the secure interface
+           const init = async () => {
+               if (auth.currentUser) {
+                   await initSecurity(auth.currentUser.uid);
+                   await loadUserBalance();
+               } else {
+                   // Default balance for guests
+                   _coinBalance = 1000;
+                   updateDisplayedBalance();
+               }
+           };
+           
+           // Return limited public interface
+           return {
+               init,
+               getCoinBalance: () => _coinBalance,
+               updateCoins: secureUpdateCoins,
+               showLoginPrompt: showSecureLoginPrompt,
+               verifyTiming,
+               generateSecureRandom: secureRandom,
+               refreshBalance: refreshServerData
+           };
+       };
+
+       // Create the secure game interface
+       const secureGameInterface = createSecureGameInterface();
 
        // Authentication State Listener
        onAuthStateChanged(auth, async (user) => {
            if (user) {
                // User is signed in
-               currentUser = user;
-               console.log("User signed in:", user.uid);
-               await loadFirebaseCoinBalance();
+               console.log("User signed in");
+               await secureGameInterface.init();
            } else {
-               // No user is signed in - use default balance
-               currentUser = null;
-               console.log("No user signed in, using default balance");
-               window.coinBalance = 1000; // Default fallback
-               window.updateCoinDisplay();
+               // No user is signed in
+               console.log("No user signed in, using guest mode");
+               secureGameInterface.showLoginPrompt();
            }
        });
-
-       // Load Coin Balance from Firebase
-       async function loadFirebaseCoinBalance() {
-           if (!currentUser) {
-               console.log("No user available to load balance");
-               return;
-           }
-
-           try {
-               console.log("Loading balance for user:", currentUser.uid);
-
-               // Use currentUser.uid and force server data retrieval
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
-
-               if (userDoc.exists()) {
-                   // Get coin balance from Firestore
-                   const userData = userDoc.data();
-
-                   // IMPORTANT: Use accountBalance field for consistency with main page
-                   firebaseCoinBalance = userData.accountBalance || 0;
-
-                   console.log("Loaded balance from Firebase:", firebaseCoinBalance);
-
-                   // Update local coin display and game state
-                   window.coinBalance = firebaseCoinBalance;
-                   
-                   // Update UI and game state
-                   if (typeof updateCoinDisplay === 'function') {
-                       updateCoinDisplay();
-                   } else if (window.updateCoinDisplay) {
-                       window.updateCoinDisplay();
-                   } else {
-                       console.error("updateCoinDisplay function not found");
-                       if (coinDisplay) {
-                           coinDisplay.textContent = window.coinBalance.toLocaleString();
-                       }
-                   }
-
-                   console.log("Updated local balance:", window.coinBalance);
-                   return firebaseCoinBalance;
-               } else {
-                   console.log("User document doesn't exist, creating new one");
-                   // Create initial balance if no document exists
-                   await setDoc(userRef, { 
-                     accountBalance: 1000,
-                     username: currentUser.displayName || "Player",
-                     email: currentUser.email,
-                     createdAt: new Date(),
-                     totalGamesPlayed: 0,
-                     totalMoneySpent: 0,
-                     totalMoneyEarned: 0
-                   });
-
-                   firebaseCoinBalance = 1000;
-                   window.coinBalance = 1000;
-                   window.updateCoinDisplay();
-                   return 1000;
+       
+       // Create the secure game engine
+       const createSecureGameEngine = (secureInterface) => {
+           // Game configuration - frozen to prevent modification
+           const GAME_CONFIG = Object.freeze({
+               gameId: 'chicken_run_game',
+               levels: Object.freeze({
+                   10: Object.freeze({
+                       maxSteps: 10,
+                       earnPerStep: 100,
+                       endReward: 1000000,
+                       deathPenalty: 200,
+                       initialSuccessRate: 0.85,
+                       finalSuccessRate: 0.65,
+                       difficultyIncreasePoint: 0.40,
+                       entryFee: 200
+                   }),
+                   20: Object.freeze({
+                       maxSteps: 20,
+                       earnPerStep: 200,
+                       endReward: 2000000,
+                       deathPenalty: 400,
+                       initialSuccessRate: 0.87,
+                       finalSuccessRate: 0.60,
+                       difficultyIncreasePoint: 0.35,
+                       entryFee: 300
+                   }),
+                   30: Object.freeze({
+                       maxSteps: 30,
+                       earnPerStep: 300,
+                       endReward: 3000000,
+                       deathPenalty: 600,
+                       initialSuccessRate: 0.90,
+                       finalSuccessRate: 0.55,
+                       difficultyIncreasePoint: 0.30,
+                       entryFee: 500
+                   })
+               }),
+               selectedLevel: 10
+           });
+           
+           // Private game state
+           let _canvas, _ctx;
+           let _canvasWidth, _canvasHeight;
+           let _animationFrame;
+           let _gameActive = false;
+           let _currentPosition = -1;
+           let _currentEarnings = 0;
+           let _animationInProgress = false;
+           let _levelButtons = {};
+           let _circles = [];
+           let _gameStateHistory = [];
+           let _moveTimestamps = [];
+           let _gameStartTime = 0;
+           let _lastMoveTime = 0;
+           
+           // DOM elements - will be initialized after DOM is loaded
+           let _coinDisplay;
+           let _startScreen;
+           let _resultScreen;
+           let _startBtn;
+           let _playAgainBtn;
+           let _backBtn;
+           let _cashoutBtn;
+           let _chickenRunContainer;
+           let _gameInfo;
+           let _chicken;
+           let _bloodSplatter;
+           let _chickenPath;
+           let _currentEarningDisplay;
+           let _resultTitle;
+           let _resultMessage;
+           
+           // Initialize DOM elements securely
+           const initDomElements = () => {
+               _coinDisplay = document.getElementById('coinDisplay');
+               _startScreen = document.getElementById('start-screen');
+               _resultScreen = document.getElementById('result-screen');
+               _startBtn = document.getElementById('start-btn');
+               _playAgainBtn = document.getElementById('play-again-btn');
+               _backBtn = document.getElementById('back-btn');
+               _cashoutBtn = document.getElementById('cashout-btn');
+               _chickenRunContainer = document.getElementById('chicken-run-container');
+               _gameInfo = document.getElementById('game-info');
+               _chicken = document.getElementById('chicken');
+               _bloodSplatter = document.getElementById('blood-splatter');
+               _chickenPath = document.getElementById('chicken-path');
+               _currentEarningDisplay = document.getElementById('current-earning');
+               _resultTitle = document.getElementById('result-title');
+               _resultMessage = document.getElementById('result-message');
+               
+               // Initialize level buttons
+               _levelButtons = {
+                   10: document.getElementById('level-10'),
+                   20: document.getElementById('level-20'),
+                   30: document.getElementById('level-30')
+               };
+           };
+           
+           // Update current earnings display
+           const updateCurrentEarnings = () => {
+               if (_currentEarningDisplay) {
+                   _currentEarningDisplay.textContent = `Current: ${_currentEarnings.toLocaleString()} coins`;
                }
-           } catch (error) {
-               console.error("Error loading coin balance:", error);
-               window.coinBalance = 1000; // Default fallback
-               window.updateCoinDisplay();
-               return 0;
-           }
-       }
-
-       // Update Coin Balance in Firebase
-       async function updateFirebaseCoinBalance(newBalance) {
-           if (!currentUser) {
-               console.log("No user available to update balance");
-               return false;
-           }
-
-           try {
-               console.log("Updating balance for user:", currentUser.uid, "New balance:", newBalance);
-
-               // Get the current document first to make sure we're updating the latest data
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
-
-               if (!userDoc.exists()) {
-                   console.error("Cannot update non-existent user document");
+           };
+           
+           // Helper function to clear all timeouts
+           const clearAllTimeouts = () => {
+               // Create a very large number (bigger than any reasonable timeout id)
+               const highestTimeoutId = setTimeout(() => {}, 0);
+               
+               // Clear all timeout IDs from 0 to the highest one
+               for (let i = 0; i < highestTimeoutId; i++) {
+                   clearTimeout(i);
+               }
+           };
+           
+           // Initialize canvas securely
+           const initCanvas = () => {
+               _canvas = document.getElementById('game-canvas');
+               if (!_canvas) {
+                   console.error("Canvas element not found!");
                    return false;
                }
 
-               // Update with the exact same field format as the main page
-               await updateDoc(userRef, { 
-                   accountBalance: newBalance 
-               });
+               _ctx = _canvas.getContext('2d');
 
-               firebaseCoinBalance = newBalance;
-               console.log("Firebase balance updated successfully");
+               const gameBoard = document.querySelector('.game-board');
+               if (!gameBoard) {
+                   console.error("Game board element not found!");
+                   return false;
+               }
 
-               return true;
-           } catch (error) {
-               console.error("Error updating coin balance:", error);
-               return false;
-           }
-       }
+               // Get actual dimensions of the game board
+               _canvasWidth = gameBoard.clientWidth;
+               _canvasHeight = gameBoard.clientHeight;
 
-       // Record Game Transaction with transaction lock for better tracking
-       async function recordGameTransaction(gameId, amount, isWin) {
-           if (!currentUser) return;
-
-           try {
-               console.log(`Recording transaction: ${isWin ? 'win' : 'play'} for ${Math.abs(amount)} coins`);
+               // Set canvas dimensions
+               _canvas.width = _canvasWidth;
+               _canvas.height = _canvasHeight;
+               _canvas.style.width = _canvasWidth + "px";
+               _canvas.style.height = _canvasHeight + "px";
                
-               // Set a transaction lock to prevent duplicate updates
-               if (window.transactionInProgress) {
-                   console.log("Transaction already in progress, waiting...");
-                   await new Promise(resolve => setTimeout(resolve, 300));
+               return true;
+           };
+           
+           // Create circles for the chicken path with secure positioning
+           const createCircles = () => {
+               // Clear previous circles
+               _chickenPath.innerHTML = '';
+               
+               // Add chicken and blood splatter back
+               _chickenPath.appendChild(_chicken);
+               _chickenPath.appendChild(_bloodSplatter);
+               
+               _circles = [];
+               
+               const currentLevelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+               const maxSteps = currentLevelConfig.maxSteps;
+               
+               // Adjust path height based on number of circles
+               if (maxSteps > 10) {
+                   _chickenPath.style.height = maxSteps > 20 ? '200px' : '170px';
+               } else {
+                   _chickenPath.style.height = '150px';
                }
                
-               window.transactionInProgress = true;
+               // Calculate padding for the first circle
+               const leftPadding = 5; // 5% left padding
+               const rightPadding = 5; // 5% right padding
+               const usableWidth = 100 - leftPadding - rightPadding;
+               
+               // Create lines and circles
+               for (let i = 0; i < maxSteps; i++) {
+                   // Create circle
+                   const circle = document.createElement('div');
+                   circle.className = 'path-circle';
+                   circle.dataset.position = i;
+                   circle.textContent = i + 1;
+                   
+                   // Calculate left position with improved spacing
+                   let leftPos;
+                   if (maxSteps <= 10) {
+                       // For 10 circles, use full width with padding
+                       leftPos = leftPadding + (i * (usableWidth / (maxSteps - 1)));
+                   } else {
+                       // For 20 and 30 circles, calculate position differently
+                       // We'll only show 10 circles at a time
+                       const circleGroup = Math.floor(i / 10);
+                       const posInGroup = i % 10;
+                       
+                       // Position within the current group of 10
+                       if (posInGroup === 0) {
+                           // Make first circle of each group more accessible
+                           leftPos = leftPadding;
+                       } else {
+                           leftPos = leftPadding + (posInGroup * (usableWidth / 9));
+                       }
+                       
+                       // Hide circles that are not in the current visible group
+                       if (circleGroup > 0) {
+                           circle.style.display = 'none';
+                           circle.dataset.group = circleGroup;
+                       }
+                   }
+                   
+                   circle.style.position = 'absolute';
+                   circle.style.left = `${leftPos}%`;
+                   
+                   // Add a z-index to ensure circles are clickable
+                   circle.style.zIndex = 10;
+                   
+                   // Make circle slightly larger for better clickability
+                   if (maxSteps > 10) {
+                       circle.style.width = '45px';
+                       circle.style.height = '45px';
+                   }
+                   
+                   // Add click handler with secure context
+                   circle.addEventListener('click', (e) => secureHandleCircleClick(e));
+                   
+                   _chickenPath.appendChild(circle);
+                   _circles.push(circle);
+                   
+                   // Create connecting line (except for last circle)
+                   if (i < maxSteps - 1 && (maxSteps <= 10 || i % 10 < 9)) {
+                       const line = document.createElement('div');
+                       line.className = 'path-line';
+                       _chickenPath.appendChild(line);
+                   }
+               }
+               
+               // Add group indicator for games with more than 10 circles
+               if (maxSteps > 10) {
+                   const groupIndicator = document.createElement('div');
+                   groupIndicator.id = 'group-indicator';
+                   groupIndicator.className = 'game-info';
+                   groupIndicator.style.position = 'absolute';
+                   groupIndicator.style.bottom = '-40px';
+                   groupIndicator.style.left = '50%';
+                   groupIndicator.style.transform = 'translateX(-50%)';
+                   groupIndicator.style.padding = '5px 15px';
+                   groupIndicator.style.fontSize = '0.9rem';
+                   groupIndicator.textContent = 'Group 1 of ' + Math.ceil(maxSteps / 10);
+                   _chickenPath.appendChild(groupIndicator);
+               }
+           };
+           
+           // Calculate success rate securely with tamper protection
+           const calculateSuccessRate = (position) => {
+               const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+               const maxSteps = levelConfig.maxSteps;
+               const initialRate = levelConfig.initialSuccessRate;
+               const finalRate = levelConfig.finalSuccessRate;
+               const difficultyIncreasePoint = levelConfig.difficultyIncreasePoint;
+               
+               // Validate position is within expected range
+               if (position < 0 || position >= maxSteps) {
+                   console.error("Invalid position in success rate calculation");
+                   return 0; // Force failure if data is invalid
+               }
+               
+               // If we're before the difficulty increase point, return the initial rate
+               if (position < maxSteps * difficultyIncreasePoint) {
+                   return initialRate;
+               }
+               
+               // Calculate how far into the difficulty zone we are
+               const progressAfterDifficulty = (position - maxSteps * difficultyIncreasePoint) / 
+                                             (maxSteps * (1 - difficultyIncreasePoint));
+               
+               // Linear interpolation between initial and final rates
+               return initialRate - progressAfterDifficulty * (initialRate - finalRate);
+           };
+           
+           // Handle circle click with security checks
+           const secureHandleCircleClick = (event) => {
+               const clickedPosition = parseInt(event.target.dataset.position);
+               
+               // Verify this is a valid next position
+               if (clickedPosition !== _currentPosition + 1 || _animationInProgress) {
+                   return;
+               }
+               
+               // Verify timing to prevent automated clicking
+               if (!secureInterface.verifyTiming(300)) {
+                   console.warn("Click timing manipulation detected");
+                   return;
+               }
+               
+               // Set animation flag
+               _animationInProgress = true;
+               
+               // Record move timestamp for pattern analysis
+               _moveTimestamps.push(Date.now());
+               
+               // Store current state for verification
+               const preMoveState = {
+                   position: _currentPosition,
+                   earnings: _currentEarnings,
+                   timestamp: Date.now()
+               };
+               _gameStateHistory.push(preMoveState);
+               
+               // Calculate current success rate based on position
+               const currentSuccessRate = calculateSuccessRate(clickedPosition);
+               
+               // Use cryptographically secure random for gameplay decisions
+               const randomValue = secureInterface.generateSecureRandom();
+               const isSuccessful = randomValue < currentSuccessRate;
+               
+               const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+               
+               if (isSuccessful) {
+                   // Move successful
+                   moveChicken(clickedPosition);
+                   
+                   // Update current position with validation
+                   if (clickedPosition !== _currentPosition + 1) {
+                       console.error("Position inconsistency detected");
+                       endGame(true);
+                       return;
+                   }
+                   _currentPosition = clickedPosition;
+                   
+                   // Update earnings
+                   _currentEarnings += levelConfig.earnPerStep;
+                   updateCurrentEarnings();
+                   
+                   // Mark circle as active
+                   for (let i = 0; i < _circles.length; i++) {
+                       if (i === clickedPosition) {
+                           _circles[i].classList.add('active');
+                       } else {
+                           _circles[i].classList.remove('active');
+                       }
+                   }
+                   
+                   // For games with more than 10 circles, handle circle group visibility
+                   if (levelConfig.maxSteps > 10) {
+                       // Check if we need to show the next group of circles
+                       const currentGroup = Math.floor(clickedPosition / 10);
+                       const nextGroup = Math.floor((clickedPosition + 1) / 10);
+                       
+                       // If moving to next group, update visibility
+                       if (nextGroup > currentGroup) {
+                           // Hide current group
+                           _circles.forEach((circle, index) => {
+                               if (Math.floor(index / 10) === currentGroup) {
+                                   circle.style.display = 'none';
+                               }
+                               
+                               // Show next group
+                               if (Math.floor(index / 10) === nextGroup) {
+                                   circle.style.display = '';
+                               }
+                           });
+                           
+                           // Update group indicator
+                           const groupIndicator = document.getElementById('group-indicator');
+                           if (groupIndicator) {
+                               groupIndicator.textContent = `Group ${nextGroup + 1} of ${Math.ceil(levelConfig.maxSteps / 10)}`;
+                           }
+                       }
+                   }
+                   
+                   // Detect suspicious patterns in moves
+                   if (_moveTimestamps.length >= 5) {
+                       detectSuspiciousPatterns();
+                   }
+                   
+                   // Check if reached the end
+                   if (clickedPosition === levelConfig.maxSteps - 1) {
+                       // Player reached the end!
+                       setTimeout(() => {
+                           // Verify game integrity before awarding jackpot
+                           if (verifyGameIntegrity()) {
+                               // Set earnings to the end reward
+                               _currentEarnings = levelConfig.endReward;
+                               
+                               // Show victory screen
+                               showVictoryScreen();
+                               
+                               // Award jackpot
+                               secureInterface.updateCoins(levelConfig.endReward, 'jackpot');
+                           } else {
+                               // Integrity check failed - forfeit win
+                               endGame(true);
+                           }
+                           
+                           // Reset animation flag
+                           _animationInProgress = false;
+                       }, 500);
+                   } else {
+                       // Enable cashout button after first successful move
+                       if (_cashoutBtn) {
+                           _cashoutBtn.disabled = false;
+                       }
+                       
+                       // Update game info without showing the exact percentage
+                       if (_gameInfo) {
+                           // Determine how far along they are to provide hint about risk
+                           const progressPercentage = (clickedPosition + 1) / levelConfig.maxSteps;
+                           let riskLevel = "low";
+                           
+                           if (progressPercentage > 0.7) {
+                               riskLevel = "high";
+                           } else if (progressPercentage > 0.4) {
+                               riskLevel = "moderate";
+                           }
+                           
+                           _gameInfo.textContent = `Success! Move to the next circle or cash out now with ${_currentEarnings.toLocaleString()} coins. Risk level: ${riskLevel}`;
+                       }
+                       
+                       // Reset animation flag
+                       _animationInProgress = false;
+                       _lastMoveTime = Date.now();
+                   }
+               } else {
+                   // Move failed - chicken dies!
+                   killChicken(clickedPosition);
+                   
+                   // Deduct coins for dying - after validation
+                   if (verifyGameIntegrity()) {
+                       secureInterface.updateCoins(-levelConfig.deathPenalty, 'death_penalty');
+                   }
+                   
+                   // Update game info
+                   if (_gameInfo) {
+                       _gameInfo.textContent = `Oh no! The chicken didn't make it... You lost ${levelConfig.deathPenalty} coins!`;
+                   }
+                   
+                   // Show death screen after animation
+                   setTimeout(() => {
+                       showDeathScreen();
+                       _animationInProgress = false;
+                   }, 1000);
+               }
+           };
+           
+           // Detect suspicious patterns in move timestamps
+           const detectSuspiciousPatterns = () => {
+               // Check for too-regular timing between clicks (automated play)
+               if (_moveTimestamps.length < 5) return;
+               
+               // Calculate time differences between clicks
+               const timeDiffs = [];
+               for (let i = 1; i < _moveTimestamps.length; i++) {
+                   timeDiffs.push(_moveTimestamps[i] - _moveTimestamps[i-1]);
+               }
+               
+               // Check if timing is suspiciously consistent (bot detection)
+               let suspiciouslyConsistent = true;
+               const firstDiff = timeDiffs[0];
+               
+               for (let diff of timeDiffs) {
+                   // Allow 100ms variance
+                   if (Math.abs(diff - firstDiff) > 100) {
+                       suspiciouslyConsistent = false;
+                       break;
+                   }
+               }
+               
+               if (suspiciouslyConsistent) {
+                   console.warn("Suspicious click pattern detected");
+                   endGame(true);
+                   return;
+               }
+               
+               // Check for impossibly fast clicks
+               const minDiff = Math.min(...timeDiffs);
+               if (minDiff < 200) {
+                   console.warn("Impossibly fast clicks detected");
+                   endGame(true);
+               }
+           };
+           
+           // Verify game integrity before awarding prizes
+           const verifyGameIntegrity = () => {
+               // Check if game state history is consistent
+               if (_gameStateHistory.length < 2) return true;
+               
+               for (let i = 1; i < _gameStateHistory.length; i++) {
+                   const prevState = _gameStateHistory[i-1];
+                   const currState = _gameStateHistory[i];
+                   
+                   // Position should increment by exactly 1
+                   if (currState.position !== prevState.position + 1) {
+                       console.warn("Position inconsistency detected");
+                       return false;
+                   }
+                   
+                   // Earnings should increase by the correct amount per step
+                   const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+                   const expectedEarnings = prevState.earnings + levelConfig.earnPerStep;
+                   
+                   if (currState.earnings !== expectedEarnings) {
+                       console.warn("Earnings inconsistency detected");
+                       return false;
+                   }
+                   
+                   // Check for suspicious timing
+                   const timeDiff = currState.timestamp - prevState.timestamp;
+                   if (timeDiff < 200) {
+                       console.warn("Suspicious timing between moves");
+                       return false;
+                   }
+               }
+               
+               return true;
+           };
+           
+           // Move chicken to the specified position
+           const moveChicken = (position) => {
+               if (!_chicken) return;
+               
+               const maxSteps = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel].maxSteps;
+               const currentGroup = Math.floor(position / 10);
+               const posInGroup = position % 10;
+               
+               // Calculate new left position based on the circle's position
+               let leftPos;
+               
+               if (maxSteps <= 10) {
+                   // For 10 circles, use previous calculation
+                   const leftPadding = 5;
+                   const usableWidth = 90;
+                   leftPos = leftPadding + (position * (usableWidth / (maxSteps - 1)));
+               } else {
+                   // For more than 10 circles, position within current group
+                   const leftPadding = 5;
+                   const usableWidth = 90;
+                   
+                   if (posInGroup === 0) {
+                       leftPos = leftPadding;
+                   } else {
+                       leftPos = leftPadding + (posInGroup * (usableWidth / 9));
+                   }
+               }
+               
+               _chicken.style.left = `${leftPos}%`;
+           };
+           
+           // Kill the chicken at the specified position
+           const killChicken = (position) => {
+               if (!_chicken || !_bloodSplatter) return;
+               
+               const maxSteps = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel].maxSteps;
+               const currentGroup = Math.floor(position / 10);
+               const posInGroup = position % 10;
+               
+               // Calculate position for death animation
+               let leftPos;
+               
+               if (maxSteps <= 10) {
+                   // For 10 circles, use previous calculation with padding
+                   const leftPadding = 5;
+                   const usableWidth = 90;
+                   leftPos = leftPadding + (position * (usableWidth / (maxSteps - 1)));
+               } else {
+                   // For more than 10 circles, position within current group
+                   const leftPadding = 5;
+                   const usableWidth = 90;
+                   
+                   if (posInGroup === 0) {
+                       leftPos = leftPadding;
+                   } else {
+                       leftPos = leftPadding + (posInGroup * (usableWidth / 9));
+                   }
+               }
+               
+               // Move chicken to the position
+               _chicken.style.left = `${leftPos}%`;
+               
+               // Add death class
+               _chicken.classList.add('chicken-dead');
+               
+               // Position and show blood splatter
+               _bloodSplatter.style.left = `${leftPos}%`;
+               _bloodSplatter.style.top = '50%';
+               _bloodSplatter.classList.add('active');
+               
+               // Mark circle as danger
+               if (_circles[position]) {
+                   _circles[position].classList.add('danger');
+               }
+           };
+           
+           // Cash out the current earnings
+           const secureCashout = async () => {
+               if (_currentEarnings <= 0 || !_gameActive || _animationInProgress) {
+                   return;
+               }
+               
+               // Verify game integrity before paying out
+               if (!verifyGameIntegrity()) {
+                   console.warn("Game integrity check failed during cashout");
+                   endGame(true);
+                   return;
+               }
+               
+               // Set animation flag
+               _animationInProgress = true;
+               
+               // Update game info
+               if (_gameInfo) {
+                   _gameInfo.textContent = `Cashed out with ${_currentEarnings.toLocaleString()} coins. Well played!`;
+               }
+               
+               // Add earnings to balance
+               const success = await secureInterface.updateCoins(_currentEarnings, 'cashout');
+               
+               if (success) {
+                   // Show cashout screen
+                   showCashoutScreen();
+               } else {
+                   // Transaction failed, show error
+                   if (_gameInfo) {
+                       _gameInfo.textContent = `Error processing cashout. Please try again.`;
+                   }
+                   _animationInProgress = false;
+               }
+           };
+           
+           // Show victory screen
+           const showVictoryScreen = () => {
+               if (!_resultScreen || !_resultTitle || !_resultMessage) {
+                   console.error("Result screen elements not found!");
+                   return;
+               }
+               
+               const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+               
+               // Set the result screen content
+               _resultTitle.textContent = "Victory!";
+               _resultTitle.className = "overlay-title win";
+               
+               // Update message
+               _resultMessage.innerHTML = `You reached the end!<br>
+                   You won the jackpot!<br>
+                   You won: <span class="win-amount">${_currentEarnings.toLocaleString()}</span> coins`;
+               
+               // Make result screen visible
+               _resultScreen.style.display = 'flex';
+               _resultScreen.classList.add('visible');
+               
+               // End the game
+               _gameActive = false;
+           };
+           
+           // Show death screen
+           const showDeathScreen = () => {
+               if (!_resultScreen || !_resultTitle || !_resultMessage) {
+                   console.error("Result screen elements not found!");
+                   return;
+               }
+               
+               const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+               
+               // Set the result screen content
+               _resultTitle.textContent = "Chicken Died!";
+               _resultTitle.className = "overlay-title lose";
+               
+               // Update message
+               _resultMessage.innerHTML = `The chicken didn't make it!<br>
+                   You made it to position ${_currentPosition + 1} of ${levelConfig.maxSteps}.<br>
+                   You lost ${levelConfig.deathPenalty} coins.`;
+               
+               // Make result screen visible
+               _resultScreen.style.display = 'flex';
+               _resultScreen.classList.add('visible');
+               
+               // End the game
+               _gameActive = false;
+           };
+           
+           // Show cashout screen
+           const showCashoutScreen = () => {
+               if (!_resultScreen || !_resultTitle || !_resultMessage) {
+                   console.error("Result screen elements not found!");
+                   return;
+               }
+               
+               const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+               
+               // Set the result screen content
+               _resultTitle.textContent = "Cashed Out!";
+               _resultTitle.className = "overlay-title win";
+               
+               // Update message
+               _resultMessage.innerHTML = `Smart move!<br>
+                   You made it to position ${_currentPosition + 1} of ${levelConfig.maxSteps}.<br>
+                   You won: <span class="win-amount">${_currentEarnings.toLocaleString()}</span> coins`;
+               
+               // Make result screen visible
+               _resultScreen.style.display = 'flex';
+               _resultScreen.classList.add('visible');
+               
+               // End the game
+               _gameActive = false;
+           };
+           
+           // End game with optional forced flag
+           const endGame = (forced = false) => {
+               _gameActive = false;
+               _animationInProgress = false;
+               
+               if (forced) {
+                   // Handle security violation ending
+                   if (_resultScreen && _resultTitle && _resultMessage) {
+                       _resultTitle.textContent = "Game Error";
+                       _resultTitle.className = "overlay-title lose";
+                       
+                       _resultMessage.innerHTML = `An unexpected error occurred.<br>
+                           The game has been terminated for security reasons.<br>
+                           Please try again later.`;
+                       
+                       _resultScreen.style.display = 'flex';
+                       _resultScreen.classList.add('visible');
+                   }
+               }
+           };
+           
+           // Complete game reset
+           const resetGame = () => {
+               // Reset game state
+               _gameActive = false;
+               _currentPosition = -1;
+               _currentEarnings = 0;
+               _animationInProgress = false;
+               _moveTimestamps = [];
+               _gameStateHistory = [];
+               
+               // Cancel any animation frames
+               if (_animationFrame) {
+                   cancelAnimationFrame(_animationFrame);
+                   _animationFrame = null;
+               }
+               
+               // Reset displays
+               updateCurrentEarnings();
+               
+               // Hide game elements
+               if (_chickenRunContainer) {
+                   _chickenRunContainer.style.display = 'none';
+               }
+               
+               // Reset chicken
+               if (_chicken) {
+                   _chicken.style.left = '10px'; // Starting position
+                   _chicken.classList.remove('chicken-dead');
+               }
+               
+               // Reset blood splatter
+               if (_bloodSplatter) {
+                   _bloodSplatter.classList.remove('active');
+               }
+               
+               // Hide result screen if visible
+               if (_resultScreen) {
+                   _resultScreen.classList.remove('visible');
+               }
+               
+               // Disable cashout button
+               if (_cashoutBtn) {
+                   _cashoutBtn.disabled = true;
+               }
+               
+               // Show start screen
+               if (_startScreen) {
+                   _startScreen.classList.add('visible');
+               }
                
                try {
-                   // Create transaction record with consistent data format
-                   const transactionRef = doc(collection(db, 'transactions'));
-                   await setDoc(transactionRef, {
-                       userId: currentUser.uid,
-                       gameId: gameId,
-                       transactionType: isWin ? 'game_win' : 'game_play',
-                       amount: Math.abs(amount),
-                       timestamp: new Date()
-                   });
-
-                   // Get latest user data from server
-                   const userRef = doc(db, 'users', currentUser.uid);
-                   const userDoc = await getDoc(userRef, { source: 'server' });
-
-                   if (userDoc.exists()) {
-                       const userData = userDoc.data();
-                       let updatedBalance = userData.accountBalance || 0;
-
-                       // Calculate new balance
-                       if (isWin) {
-                           updatedBalance += amount;
-                           console.log(`Adding ${amount} coins, new balance: ${updatedBalance}`);
-                           userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
-                       } else {
-                           updatedBalance -= Math.abs(amount);
-                           console.log(`Removing ${Math.abs(amount)} coins, new balance: ${updatedBalance}`);
-                           userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
-                           userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
-                       }
-
-                       // Update firebase and local state consistently
-                       await updateDoc(userRef, {
-                           accountBalance: updatedBalance,
-                           totalGamesPlayed: userData.totalGamesPlayed || 0,
-                           totalMoneySpent: userData.totalMoneySpent || 0,
-                           totalMoneyEarned: userData.totalMoneyEarned || 0,
-                           lastUpdated: new Date() // Add timestamp for tracking
-                       });
-
-                       // Make sure local state is synced with Firebase
-                       window.coinBalance = updatedBalance;
-                       firebaseCoinBalance = updatedBalance;
-
-                       // Update display
-                       window.updateCoinDisplay();
-
-                       return {
-                           transactionId: transactionRef.id,
-                           newBalance: updatedBalance
-                       };
-                   }
-               } finally {
-                   // Always release transaction lock
-                   window.transactionInProgress = false;
+                   // Clear any pending timeouts
+                   clearAllTimeouts();
+               } catch (e) {
+                   console.log("Error clearing timeouts:", e);
                }
-           } catch (error) {
-               console.error("Transaction Error:", error);
-               window.transactionInProgress = false; // Make sure lock is released
+           };
+           
+           // Initialize game with security verification
+           const initGame = async () => {
+               // Verify timing to prevent rapid game starts
+               if (!secureInterface.verifyTiming(1000)) {
+                   console.warn("Game started too quickly");
+                   return;
+               }
+               
+               // Get current level configuration
+               const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
+               
+               // Check if player has enough coins for entry fee
+               const playerBalance = secureInterface.getCoinBalance();
+               
+               if (playerBalance < levelConfig.entryFee) {
+                   // Show insufficient funds message
+                   if (_gameInfo) {
+                       _gameInfo.textContent = `Not enough coins to start the game! You need at least ${levelConfig.entryFee} coins.`;
+                   }
+                   return;
+               }
+               
+               // Record game start time for timing validation
+               _gameStartTime = Date.now();
+               _lastMoveTime = _gameStartTime;
+               
+               // Deduct entry fee with transaction verification
+               const deductionSuccess = await secureInterface.updateCoins(-levelConfig.entryFee, 'entry_fee');
+               
+               if (!deductionSuccess) {
+                   console.error("Failed to process entry fee");
+                   return;
+               }
+               
+               // Reset for new game
+               _gameActive = true;
+               _currentPosition = -1;
+               _currentEarnings = 0;
+               _animationInProgress = false;
+               _moveTimestamps = [];
+               _gameStateHistory = [];
+               
+               // Update current earnings display
+               updateCurrentEarnings();
+               
+               // Hide start screen
+               _startScreen.classList.remove('visible');
+               
+               // Create circles based on selected level
+               createCircles();
+               
+               // Show game container
+               if (_chickenRunContainer) {
+                   _chickenRunContainer.style.display = 'flex';
+               }
+               
+               // Reset chicken to starting position
+               if (_chicken) {
+                   _chicken.style.left = '10px';
+                   _chicken.classList.remove('chicken-dead');
+               }
+               
+               // Reset blood splatter
+               if (_bloodSplatter) {
+                   _bloodSplatter.classList.remove('active');
+               }
+               
+               // Disable cashout button until first move
+               if (_cashoutBtn) {
+                   _cashoutBtn.disabled = true;
+               }
+               
+               // Update game info
+               if (_gameInfo) {
+                   _gameInfo.textContent = `Level: ${GAME_CONFIG.selectedLevel} circles. Each step earns ${levelConfig.earnPerStep} coins. Click the first circle to start!`;
+               }
+               
+               // Start game loop for background effects
+               window.cancelAnimationFrame(_animationFrame);
+               gameLoop();
+           };
+           
+           // Draw stars in background
+           const drawStars = () => {
+               if (!_ctx || !_canvas) return;
+               
+               _ctx.clearRect(0, 0, _canvasWidth, _canvasHeight);
+               _ctx.fillStyle = '#FFFFFF';
+               
+               // Use cryptographically secure seed values to avoid predictable patterns
+               const timestamp = Date.now();
+               const secureRandomValues = new Uint8Array(100);
+               window.crypto.getRandomValues(secureRandomValues);
+               
+               for (let i = 0; i < 100; i++) {
+                   // Create a deterministic but varied star pattern using secure values
+                   const x = (_canvasWidth * secureRandomValues[i] / 255) % _canvasWidth;
+                   const y = (_canvasHeight * ((secureRandomValues[i] + timestamp) % 255) / 255) % _canvasHeight;
+                   
+                   // Vary the star sizes
+                   const size = (secureRandomValues[i] % 3) + 1;
+                   
+                   // Make stars twinkle with secure randomness
+                   const alpha = 0.3 + 0.7 * Math.sin(timestamp * 0.001 + i);
+                   
+                   _ctx.globalAlpha = alpha;
+                   _ctx.beginPath();
+                   _ctx.arc(x, y, size, 0, Math.PI * 2);
+                   _ctx.fill();
+               }
+               
+               _ctx.globalAlpha = 1.0;
+           };
+           
+           // Game loop
+           const gameLoop = () => {
+               // Draw background
+               drawStars();
+               
+               // Continue game loop
+               _animationFrame = requestAnimationFrame(gameLoop);
+           };
+           
+           // Set the active level button
+           const setActiveLevel = (level) => {
+               // Verify level is valid
+               const numLevel = parseInt(level);
+               if (![10, 20, 30].includes(numLevel)) {
+                   console.warn("Invalid level selection");
+                   return;
+               }
+               
+               // Update selected level in config
+               GAME_CONFIG.selectedLevel = numLevel;
+               
+               // Update UI to show selected level
+               for (const [levelKey, button] of Object.entries(_levelButtons)) {
+                   if (parseInt(levelKey) === GAME_CONFIG.selectedLevel) {
+                       button.classList.add('selected');
+                   } else {
+                       button.classList.remove('selected');
+                   }
+               }
+           };
+           
+           // Setup secure event listeners
+           const setupEventListeners = () => {
+               // Start button
+               if (_startBtn) {
+                   _startBtn.addEventListener('click', function() {
+                       // Verify timing to prevent automated clicking
+                       if (!secureInterface.verifyTiming(500)) return;
+                       
+                       initGame();
+                   });
+               }
+               
+               // Play again button
+               if (_playAgainBtn) {
+                   _playAgainBtn.addEventListener('click', function() {
+                       // Verify timing to prevent automated clicking
+                       if (!secureInterface.verifyTiming(500)) return;
+                       
+                       if (_resultScreen) {
+                           _resultScreen.classList.remove('visible');
+                           setTimeout(() => {
+                               resetGame();
+                           }, 300); // Give time for fade-out animation
+                       } else {
+                           resetGame();
+                       }
+                   });
+               }
+               
+               // Back button
+               if (_backBtn) {
+                   _backBtn.addEventListener('click', function() {
+                       window.location.href = '/voidgms.html';
+                   });
+               }
+               
+               // Cashout button
+               if (_cashoutBtn) {
+                   _cashoutBtn.addEventListener('click', function() {
+                       // Verify timing to prevent automated clicking
+                       if (!secureInterface.verifyTiming(500)) return;
+                       
+                       if (!_cashoutBtn.disabled && _gameActive) {
+                           secureCashout();
+                       }
+                   });
+               }
+               
+               // Level selection buttons
+               for (const [level, button] of Object.entries(_levelButtons)) {
+                   if (button) {
+                       button.addEventListener('click', function() {
+                           // Verify timing to prevent automated clicking
+                           if (!secureInterface.verifyTiming(300)) return;
+                           
+                           setActiveLevel(level);
+                       });
+                   }
+               }
+               
+               // Add resize event listener with rate limiting
+               let resizeTimeout;
+               window.addEventListener('resize', function() {
+                   // Clear previous timeout to avoid multiple handlers
+                   clearTimeout(resizeTimeout);
+                   
+                   // Set new timeout with delay to prevent performance issues
+                   resizeTimeout = setTimeout(() => {
+                       initCanvas();
+                       if (_gameActive) {
+                           drawStars();
+                       }
+                   }, 300);
+               });
+           };
+           
+           // Initialize the game
+           const init = () => {
+               // Initialize DOM elements
+               initDomElements();
+               
+               // Initialize canvas
+               initCanvas();
+               
+               // Setup event listeners
+               setupEventListeners();
+               
+               // Initial reset
+               resetGame();
+               
+               // Start game loop for background animation
+               gameLoop();
+           };
+           
+           // Return limited public interface to prevent exposing game internals
+           return {
+               init,
+               resetGame,
+               getGameState: () => ({
+                   level: GAME_CONFIG.selectedLevel,
+                   position: _currentPosition,
+                   active: _gameActive
+               })
+           };
+       };
+       
+       // Initialize game when page loads
+       document.addEventListener('DOMContentLoaded', function() {
+           // Create the game engine with the secure interface
+           const chickenGameEngine = createSecureGameEngine(secureGameInterface);
+           
+           // Initialize the game
+           chickenGameEngine.init();
+           
+           // Make doubly sure the result screen is initially hidden
+           const resultScreen = document.getElementById('result-screen');
+           if (resultScreen) {
+               resultScreen.classList.remove('visible');
            }
-       }
-
-       // Attach functions to window for game script access
-       window.loadFirebaseCoinBalance = loadFirebaseCoinBalance;
-       window.updateFirebaseCoinBalance = updateFirebaseCoinBalance;
-       window.recordGameTransaction = recordGameTransaction;
-   </script>
-
-   <script>
-// Game Configuration
-window.coinBalance = 1000; // Initialize at the top level before any other code runs
-
-// Updated Game Configuration with multiple difficulty levels
-const GAME_CONFIG = {
-    gameId: 'chicken_run_game', // ID for Firebase transactions
-    levels: {
-        10: {
-            maxSteps: 10,
-            earnPerStep: 100,
-            endReward: 1000000,  // 1 million coins for reaching the end of 10 circles
-            deathPenalty: 200,
-            initialSuccessRate: 0.85,  // Start with 85% success rate
-            finalSuccessRate: 0.65,    // End with 65% success rate
-            difficultyIncreasePoint: 0.40, // Start decreasing success rate after 40% of the way
-            entryFee: 200  // Entry fee for 10-circle game
-        },
-        20: {
-            maxSteps: 20,
-            earnPerStep: 200,
-            endReward: 2000000,  // 2 million coins for reaching the end of 20 circles
-            deathPenalty: 400,
-            initialSuccessRate: 0.87,  // Start with 87% success rate
-            finalSuccessRate: 0.60,    // End with 60% success rate
-            difficultyIncreasePoint: 0.35, // Start decreasing success rate after 35% of the way
-            entryFee: 300  // Entry fee for 20-circle game
-        },
-        30: {
-            maxSteps: 30,
-            earnPerStep: 300,
-            endReward: 3000000,  // 3 million coins for reaching the end of 30 circles
-            deathPenalty: 600,
-            initialSuccessRate: 0.90,  // Start with 90% success rate
-            finalSuccessRate: 0.55,    // End with 55% success rate
-            difficultyIncreasePoint: 0.30, // Start decreasing success rate after 30% of the way
-            entryFee: 500  // Entry fee for 30-circle game
-        }
-    },
-    selectedLevel: 10  // Default selected level
-};
-
-// Game state
-let canvas, ctx;
-let canvasWidth, canvasHeight;
-let animationFrame;
-let gameActive = false;
-let currentPosition = -1; // -1 means chicken is at the starting position
-let currentEarnings = 0;  // Current earnings this round
-let animationInProgress = false; // Flag to prevent multiple clicks during animations
-let levelButtons;
-
-// DOM elements - will initialize these after DOM is loaded
-let coinDisplay;
-let startScreen;
-let resultScreen;
-let startBtn;
-let playAgainBtn;
-let backBtn;
-let cashoutBtn;
-let chickenRunContainer;
-let gameInfo;
-let chicken;
-let bloodSplatter;
-let chickenPath;
-let currentEarningDisplay;
-let resultTitle;
-let resultMessage;
-let circles = []; // Will hold references to the circle elements
-
-// Helper function to clear all timeouts
-function clearAllTimeouts() {
-    // Create a very large number (bigger than any reasonable timeout id)
-    const highestTimeoutId = setTimeout(() => {}, 0);
-    
-    // Clear all timeout IDs from 0 to the highest one
-    for (let i = 0; i < highestTimeoutId; i++) {
-        clearTimeout(i);
-    }
-}
-
-// Initialize DOM elements
-function initDomElements() {
-    coinDisplay = document.getElementById('coinDisplay');
-    startScreen = document.getElementById('start-screen');
-    resultScreen = document.getElementById('result-screen');
-    startBtn = document.getElementById('start-btn');
-    playAgainBtn = document.getElementById('play-again-btn');
-    backBtn = document.getElementById('back-btn');
-    cashoutBtn = document.getElementById('cashout-btn');
-    chickenRunContainer = document.getElementById('chicken-run-container');
-    gameInfo = document.getElementById('game-info');
-    chicken = document.getElementById('chicken');
-    bloodSplatter = document.getElementById('blood-splatter');
-    chickenPath = document.getElementById('chicken-path');
-    currentEarningDisplay = document.getElementById('current-earning');
-    resultTitle = document.getElementById('result-title');
-    resultMessage = document.getElementById('result-message');
-    
-    // Initialize level buttons
-    levelButtons = {
-        10: document.getElementById('level-10'),
-        20: document.getElementById('level-20'),
-        30: document.getElementById('level-30')
-    };
-    
-    // Make sure coin display is updated immediately
-    updateCoinDisplay();
-}
-
-// Update coin display
-function updateCoinDisplay() {
-    if (coinDisplay) {
-        coinDisplay.textContent = window.coinBalance.toLocaleString();
-    }
-}
-
-// Make updateCoinDisplay available globally
-window.updateCoinDisplay = updateCoinDisplay;
-
-// Update current earnings display
-function updateCurrentEarnings() {
-    if (currentEarningDisplay) {
-        currentEarningDisplay.textContent = `Current: ${currentEarnings.toLocaleString()} coins`;
-    }
-}
-
-// Update coin balance - Using only recordTransaction to update Firebase
-function updateCoins(amount, isWin = true) {
-    // Calculate the new balance
-    const newBalance = window.coinBalance + amount;
-    
-    console.log(`Updating coins: current=${window.coinBalance}, change=${amount}, new=${newBalance}`);
-    
-    // Update local balance first
-    window.coinBalance = newBalance;
-    
-    // Update the display
-    updateCoinDisplay();
-
-    // Force update to Firebase
-    if (window.recordGameTransaction) {
-        // If amount is positive, it's a win, otherwise it's a play cost
-        window.recordGameTransaction(GAME_CONFIG.gameId, Math.abs(amount), isWin)
-            .then((result) => {
-                console.log("Transaction recorded successfully:", result);
-            })
-            .catch((error) => {
-                console.error("Error recording transaction:", error);
-                // Fallback to direct balance update if transaction fails
-                if (window.updateFirebaseCoinBalance) {
-                    window.updateFirebaseCoinBalance(newBalance);
-                }
-            });
-    } else if (window.updateFirebaseCoinBalance) {
-        // Fallback only if recordGameTransaction is not available
-        window.updateFirebaseCoinBalance(newBalance)
-            .then((success) => {
-                console.log("Direct balance update:", success);
-            })
-            .catch((error) => {
-                console.error("Error updating balance:", error);
-            });
-    }
-}
-
-// Initialize canvas for background
-function initCanvas() {
-    canvas = document.getElementById('game-canvas');
-    if (!canvas) {
-        console.error("Canvas element not found!");
-        return;
-    }
-
-    ctx = canvas.getContext('2d');
-
-    const gameBoard = document.querySelector('.game-board');
-    if (!gameBoard) {
-        console.error("Game board element not found!");
-        return;
-    }
-
-    // Get actual dimensions of the game board
-    canvasWidth = gameBoard.clientWidth;
-    canvasHeight = gameBoard.clientHeight;
-
-    // Set canvas dimensions
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-    canvas.style.width = canvasWidth + "px";
-    canvas.style.height = canvasHeight + "px";
-}
-
-// Create circles for the chicken path
-function createCircles() {
-    // Clear previous circles
-    chickenPath.innerHTML = '';
-    
-    // Add chicken and blood splatter back
-    chickenPath.appendChild(chicken);
-    chickenPath.appendChild(bloodSplatter);
-    
-    circles = [];
-    
-    const currentLevelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
-    const maxSteps = currentLevelConfig.maxSteps;
-    
-    // Adjust path height based on number of circles
-    if (maxSteps > 10) {
-        chickenPath.style.height = maxSteps > 20 ? '200px' : '170px';
-    } else {
-        chickenPath.style.height = '150px';
-    }
-    
-    // Create visible circles (maximum 10 visible at once)
-    const visibleCircles = Math.min(maxSteps, 10);
-    
-    // Calculate padding for the first circle to make it more accessible
-    const leftPadding = 5; // 5% left padding
-    const rightPadding = 5; // 5% right padding
-    const usableWidth = 100 - leftPadding - rightPadding;
-    
-    // Create lines and circles
-    for (let i = 0; i < maxSteps; i++) {
-        // Create circle
-        const circle = document.createElement('div');
-        circle.className = 'path-circle';
-        circle.dataset.position = i;
-        circle.textContent = i + 1;
-        
-        // Calculate left position with improved spacing
-        let leftPos;
-        if (maxSteps <= 10) {
-            // For 10 circles, use full width with padding
-            leftPos = leftPadding + (i * (usableWidth / (maxSteps - 1)));
-        } else {
-            // For 20 and 30 circles, calculate position differently
-            // We'll only show 10 circles at a time
-            const circleGroup = Math.floor(i / 10);
-            const posInGroup = i % 10;
-            
-            // Position within the current group of 10
-            if (posInGroup === 0) {
-                // Make first circle of each group more accessible
-                leftPos = leftPadding;
-            } else {
-                leftPos = leftPadding + (posInGroup * (usableWidth / 9));
-            }
-            
-            // Hide circles that are not in the current visible group
-            if (circleGroup > 0) {
-                circle.style.display = 'none';
-                circle.dataset.group = circleGroup;
-            }
-        }
-        
-        circle.style.position = 'absolute';
-        circle.style.left = `${leftPos}%`;
-        
-        // Add a z-index to ensure circles are clickable
-        circle.style.zIndex = 10;
-        
-        // Make circle slightly larger for better clickability
-        if (maxSteps > 10) {
-            circle.style.width = '45px';
-            circle.style.height = '45px';
-        }
-        
-        // Add click handler
-        circle.addEventListener('click', handleCircleClick);
-        
-        chickenPath.appendChild(circle);
-        circles.push(circle);
-        
-        // Create connecting line (except for last circle)
-        if (i < maxSteps - 1 && (maxSteps <= 10 || i % 10 < 9)) {
-            const line = document.createElement('div');
-            line.className = 'path-line';
-            chickenPath.appendChild(line);
-        }
-    }
-    
-    // Add logic to show the next group of circles when progressing
-    if (maxSteps > 10) {
-        // Add group indicator
-        const groupIndicator = document.createElement('div');
-        groupIndicator.id = 'group-indicator';
-        groupIndicator.className = 'game-info';
-        groupIndicator.style.position = 'absolute';
-        groupIndicator.style.bottom = '-40px';
-        groupIndicator.style.left = '50%';
-        groupIndicator.style.transform = 'translateX(-50%)';
-        groupIndicator.style.padding = '5px 15px';
-        groupIndicator.style.fontSize = '0.9rem';
-        groupIndicator.textContent = 'Group 1 of ' + Math.ceil(maxSteps / 10);
-        chickenPath.appendChild(groupIndicator);
-    }
-}
-
-// Calculate the success rate based on current position
-function calculateSuccessRate(position) {
-    const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
-    const maxSteps = levelConfig.maxSteps;
-    const initialRate = levelConfig.initialSuccessRate;
-    const finalRate = levelConfig.finalSuccessRate;
-    const difficultyIncreasePoint = levelConfig.difficultyIncreasePoint;
-    
-    // If we're before the difficulty increase point, return the initial rate
-    if (position < maxSteps * difficultyIncreasePoint) {
-        return initialRate;
-    }
-    
-    // Calculate how far into the difficulty zone we are (0 to 1)
-    const progressAfterDifficulty = (position - maxSteps * difficultyIncreasePoint) / 
-                                  (maxSteps * (1 - difficultyIncreasePoint));
-    
-    // Linear interpolation between initial and final rates
-    return initialRate - progressAfterDifficulty * (initialRate - finalRate);
-}
-
-// Handle circle click
-function handleCircleClick(event) {
-    const clickedPosition = parseInt(event.target.dataset.position);
-    
-    // Only allow clicking the next position and only if animation is not in progress
-    if (clickedPosition !== currentPosition + 1 || animationInProgress) {
-        return;
-    }
-    
-    // Set animation flag
-    animationInProgress = true;
-    
-    // Calculate current success rate based on position
-    const currentSuccessRate = calculateSuccessRate(clickedPosition);
-    
-    // Log probability for debugging (only visible in console)
-    console.log(`Position ${clickedPosition}: Success rate ${(currentSuccessRate * 100).toFixed(1)}%`);
-    
-    // Determine if the move is successful
-    const isSuccessful = Math.random() < currentSuccessRate;
-    
-    const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
-    
-    if (isSuccessful) {
-        // Move successful
-        moveChicken(clickedPosition);
-        
-        // Update current position
-        currentPosition = clickedPosition;
-        
-        // Update earnings
-        currentEarnings += levelConfig.earnPerStep;
-        updateCurrentEarnings();
-        
-        // Mark circle as active
-        for (let i = 0; i < circles.length; i++) {
-            if (i === clickedPosition) {
-                circles[i].classList.add('active');
-            } else {
-                circles[i].classList.remove('active');
-            }
-        }
-        
-        // For games with more than 10 circles, handle circle group visibility
-        if (levelConfig.maxSteps > 10) {
-            // Check if we need to show the next group of circles
-            const currentGroup = Math.floor(clickedPosition / 10);
-            const nextGroup = Math.floor((clickedPosition + 1) / 10);
-            
-            // If moving to next group, update visibility
-            if (nextGroup > currentGroup) {
-                // Hide current group
-                circles.forEach((circle, index) => {
-                    if (Math.floor(index / 10) === currentGroup) {
-                        circle.style.display = 'none';
-                    }
-                    
-                    // Show next group
-                    if (Math.floor(index / 10) === nextGroup) {
-                        circle.style.display = '';
-                    }
-                });
-                
-                // Update group indicator
-                const groupIndicator = document.getElementById('group-indicator');
-                if (groupIndicator) {
-                    groupIndicator.textContent = `Group ${nextGroup + 1} of ${Math.ceil(levelConfig.maxSteps / 10)}`;
-                }
-            }
-        }
-        
-        // Check if reached the end
-        if (clickedPosition === levelConfig.maxSteps - 1) {
-            // Player reached the end!
-            setTimeout(() => {
-                // Set earnings to the end reward
-                currentEarnings = levelConfig.endReward;
-                
-                // Show victory screen
-                showVictoryScreen();
-                
-                // Add earnings to balance
-                updateCoins(currentEarnings, true);
-                
-                // Reset animation flag
-                animationInProgress = false;
-            }, 500);
-        } else {
-            // Enable cashout button after first successful move
-            if (cashoutBtn) {
-                cashoutBtn.disabled = false;
-            }
-            
-            // Update game info without showing the exact percentage
-            if (gameInfo) {
-                // Determine how far along they are to provide hint about risk
-                const progressPercentage = (clickedPosition + 1) / levelConfig.maxSteps;
-                let riskLevel = "low";
-                
-                if (progressPercentage > 0.7) {
-                    riskLevel = "high";
-                } else if (progressPercentage > 0.4) {
-                    riskLevel = "moderate";
-                }
-                
-                gameInfo.textContent = `Success! Move to the next circle or cash out now with ${currentEarnings.toLocaleString()} coins. Risk level: ${riskLevel}`;
-            }
-            
-            // Reset animation flag
-            animationInProgress = false;
-        }
-    } else {
-        // Move failed - chicken dies!
-        killChicken(clickedPosition);
-        
-        // Deduct coins for dying
-        updateCoins(-levelConfig.deathPenalty, false);
-        
-        // Update game info
-        if (gameInfo) {
-            gameInfo.textContent = `Oh no! The chicken didn't make it... You lost ${levelConfig.deathPenalty} coins!`;
-        }
-        
-        // Show death screen after animation
-        setTimeout(() => {
-            showDeathScreen();
-            animationInProgress = false;
-        }, 1000);
-    }
-}
-
-// Move chicken to the specified position
-function moveChicken(position) {
-    if (!chicken) return;
-    
-    const maxSteps = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel].maxSteps;
-    const currentGroup = Math.floor(position / 10);
-    const posInGroup = position % 10;
-    
-    // Calculate new left position based on the circle's position
-    let leftPos;
-    
-    if (maxSteps <= 10) {
-        // For 10 circles, use previous calculation
-        const leftPadding = 5;
-        const usableWidth = 90;
-        leftPos = leftPadding + (position * (usableWidth / (maxSteps - 1)));
-    } else {
-        // For more than 10 circles, position within current group
-        const leftPadding = 5;
-        const usableWidth = 90;
-        
-        if (posInGroup === 0) {
-            leftPos = leftPadding;
-        } else {
-            leftPos = leftPadding + (posInGroup * (usableWidth / 9));
-        }
-    }
-    
-    chicken.style.left = `${leftPos}%`;
-}
-
-// Kill the chicken at the specified position
-function killChicken(position) {
-    if (!chicken || !bloodSplatter) return;
-    
-    const maxSteps = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel].maxSteps;
-    const currentGroup = Math.floor(position / 10);
-    const posInGroup = position % 10;
-    
-    // Calculate position for death animation
-    let leftPos;
-    
-    if (maxSteps <= 10) {
-        // For 10 circles, use previous calculation with padding
-        const leftPadding = 5;
-        const usableWidth = 90;
-        leftPos = leftPadding + (position * (usableWidth / (maxSteps - 1)));
-    } else {
-        // For more than 10 circles, position within current group
-        const leftPadding = 5;
-        const usableWidth = 90;
-        
-        if (posInGroup === 0) {
-            leftPos = leftPadding;
-        } else {
-            leftPos = leftPadding + (posInGroup * (usableWidth / 9));
-        }
-    }
-    
-    // Move chicken to the position
-    chicken.style.left = `${leftPos}%`;
-    
-    // Add death class
-    chicken.classList.add('chicken-dead');
-    
-    // Position and show blood splatter
-    bloodSplatter.style.left = `${leftPos}%`;
-    bloodSplatter.style.top = '50%';
-    bloodSplatter.classList.add('active');
-    
-    // Mark circle as danger
-    if (circles[position]) {
-        circles[position].classList.add('danger');
-    }
-}
-
-// Cash out the current earnings
-function cashout() {
-    if (currentEarnings <= 0 || !gameActive) {
-        return;
-    }
-    
-    // Update game info
-    if (gameInfo) {
-        gameInfo.textContent = `Cashed out with ${currentEarnings.toLocaleString()} coins. Well played!`;
-    }
-    
-    // Add earnings to balance
-    updateCoins(currentEarnings, true);
-    
-    // Show cashout screen
-    showCashoutScreen();
-}
-
-// Show victory screen
-function showVictoryScreen() {
-    if (!resultScreen || !resultTitle || !resultMessage) {
-        console.error("Result screen elements not found!");
-        return;
-    }
-    
-    const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
-    
-    // Set the result screen content
-    resultTitle.textContent = "Victory!";
-    resultTitle.className = "overlay-title win";
-    
-    // Calculate net profit (subtract entry fee from reward for analytics only)
-    const netProfit = currentEarnings - levelConfig.entryFee;
-    console.log(`Victory! Gross win: ${currentEarnings}, Entry fee: ${levelConfig.entryFee}, Net profit: ${netProfit}`);
-    
-    // Update message (don't mention entry fee to user)
-    resultMessage.innerHTML = `You reached the end!<br>
-        You won the jackpot!<br>
-        You won: <span class="win-amount">${currentEarnings.toLocaleString()}</span> coins`;
-    
-    // Make result screen visible
-    resultScreen.style.display = 'flex';
-    resultScreen.classList.add('visible');
-    
-    // Force balance update on screen before hiding the game
-    updateCoinDisplay();
-    
-    // End the game
-    gameActive = false;
-}
-
-// Show death screen
-function showDeathScreen() {
-    if (!resultScreen || !resultTitle || !resultMessage) {
-        console.error("Result screen elements not found!");
-        return;
-    }
-    
-    const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
-    
-    // Set the result screen content
-    resultTitle.textContent = "Chicken Died!";
-    resultTitle.className = "overlay-title lose";
-    
-    // Update message
-    resultMessage.innerHTML = `The chicken didn't make it!<br>
-        You made it to position ${currentPosition + 1} of ${levelConfig.maxSteps}.<br>
-        You lost ${levelConfig.deathPenalty} coins.`;
-    
-    // Make result screen visible
-    resultScreen.style.display = 'flex';
-    resultScreen.classList.add('visible');
-    
-    // Force balance update on screen before hiding the game
-    updateCoinDisplay();
-    
-    // Log total loss for analytics (but don't show to user)
-    console.log(`Total loss: ${levelConfig.entryFee + levelConfig.deathPenalty} coins (entry fee: ${levelConfig.entryFee}, death penalty: ${levelConfig.deathPenalty})`);
-    
-    // End the game
-    gameActive = false;
-}
-
-// Show cashout screen
-function showCashoutScreen() {
-    if (!resultScreen || !resultTitle || !resultMessage) {
-        console.error("Result screen elements not found!");
-        return;
-    }
-    
-    const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
-    
-    // Set the result screen content
-    resultTitle.textContent = "Cashed Out!";
-    resultTitle.className = "overlay-title win";
-    
-    // Calculate net profit (subtract entry fee from winnings for analytics only)
-    const netProfit = currentEarnings - levelConfig.entryFee;
-    console.log(`Cashout! Gross win: ${currentEarnings}, Entry fee: ${levelConfig.entryFee}, Net profit: ${netProfit}`);
-    
-    // Update message (don't mention entry fee to user)
-    resultMessage.innerHTML = `Smart move!<br>
-        You made it to position ${currentPosition + 1} of ${levelConfig.maxSteps}.<br>
-        You won: <span class="win-amount">${currentEarnings.toLocaleString()}</span> coins`;
-    
-    // Make result screen visible
-    resultScreen.style.display = 'flex';
-    resultScreen.classList.add('visible');
-    
-    // Force balance update on screen before hiding the game
-    updateCoinDisplay();
-    
-    // End the game
-    gameActive = false;
-}
-
-// Complete game reset
-function resetGame() {
-    // Reset game state
-    gameActive = false;
-    currentPosition = -1;
-    currentEarnings = 0;
-    animationInProgress = false;
-    
-    // Cancel any animation frames
-    if (animationFrame) {
-        cancelAnimationFrame(animationFrame);
-        animationFrame = null;
-    }
-    
-    // Reset displays
-    updateCurrentEarnings();
-    
-    // Hide game elements
-    if (chickenRunContainer) {
-        chickenRunContainer.style.display = 'none';
-    }
-    
-    // Reset chicken
-    if (chicken) {
-        chicken.style.left = '10px'; // Starting position
-        chicken.classList.remove('chicken-dead');
-    }
-    
-    // Reset blood splatter
-    if (bloodSplatter) {
-        bloodSplatter.classList.remove('active');
-    }
-    
-    // Hide result screen if visible
-    if (resultScreen) {
-        resultScreen.classList.remove('visible');
-    }
-    
-    // Disable cashout button
-    if (cashoutBtn) {
-        cashoutBtn.disabled = true;
-    }
-    
-    // Show start screen
-    if (startScreen) {
-        startScreen.classList.add('visible');
-    }
-    
-    try {
-        // Clear any pending timeouts
-        if (typeof clearAllTimeouts === 'function') {
-            clearAllTimeouts();
-        }
-    } catch (e) {
-        console.log("Error clearing timeouts:", e);
-    }
-}
-
-// Initialize game
-function initGame() {
-    // Get current level configuration
-    const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
-    
-    // Check if player has enough coins for entry fee
-    if (window.coinBalance < levelConfig.entryFee) {
-        // Show insufficient funds message
-        if (gameInfo) {
-            gameInfo.textContent = `Not enough coins to start the game! You need at least ${levelConfig.entryFee} coins.`;
-        }
-        return;
-    }
-    
-    // Deduct entry fee
-    updateCoins(-levelConfig.entryFee, false);
-    
-    // Reset for new game
-    gameActive = true;
-    currentPosition = -1;
-    currentEarnings = 0;
-    animationInProgress = false;
-    
-    // Update current earnings display
-    updateCurrentEarnings();
-    
-    // Hide start screen
-    startScreen.classList.remove('visible');
-    
-    // Create circles based on selected level
-    createCircles();
-    
-    // Show game container
-    if (chickenRunContainer) {
-        chickenRunContainer.style.display = 'flex';
-    }
-    
-    // Reset chicken to starting position
-    if (chicken) {
-        chicken.style.left = '10px';
-        chicken.classList.remove('chicken-dead');
-    }
-    
-    // Reset blood splatter
-    if (bloodSplatter) {
-        bloodSplatter.classList.remove('active');
-    }
-    
-    // Disable cashout button until first move
-    if (cashoutBtn) {
-        cashoutBtn.disabled = true;
-    }
-    
-    // Update game info based on selected level without showing exact percentage
-    if (gameInfo) {
-        gameInfo.textContent = `Level: ${GAME_CONFIG.selectedLevel} circles. Each step earns ${levelConfig.earnPerStep} coins. Click the first circle to start!`;
-    }
-    
-    // Start game loop for background effects
-    window.cancelAnimationFrame(animationFrame);
-    gameLoop();
-}
-
-// Draw stars in background
-function drawStars() {
-    if (!ctx || !canvas) return;
-    
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    ctx.fillStyle = '#FFFFFF';
-    
-    for (let i = 0; i < 100; i++) {
-        // Create a deterministic but varied star pattern
-        const seed = i * 12437; // Large prime number
-        const x = (seed % canvasWidth) % canvasWidth;
-        const y = (seed * 23 % canvasHeight) % canvasHeight;
-        
-        // Vary the star sizes
-        const size = (i % 3) + 1;
-        
-        // Make stars twinkle
-        const alpha = 0.3 + 0.7 * Math.sin(Date.now() * 0.001 + i);
-        
-        ctx.globalAlpha = alpha;
-        ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    
-    ctx.globalAlpha = 1.0;
-}
-
-// Game loop
-function gameLoop() {
-    // Draw background
-    drawStars();
-    
-    // Continue game loop
-    animationFrame = requestAnimationFrame(gameLoop);
-}
-
-// Set the active level button
-function setActiveLevel(level) {
-    // Update selected level in config
-    GAME_CONFIG.selectedLevel = parseInt(level);
-    
-    // Update UI to show selected level
-    for (const [levelKey, button] of Object.entries(levelButtons)) {
-        if (parseInt(levelKey) === GAME_CONFIG.selectedLevel) {
-            button.classList.add('selected');
-        } else {
-            button.classList.remove('selected');
-        }
-    }
-}
-
-// Initialize game after DOM is fully loaded
-function initializeGame() {
-    // Initialize DOM elements
-    initDomElements();
-    
-    // Initialize canvas
-    initCanvas();
-    
-    // Setup event listeners
-    setupEventListeners();
-    
-    // Initial reset
-    resetGame();
-    
-    // Initialize with default coin balance and check Firebase
-    if (window.loadFirebaseCoinBalance) {
-        window.loadFirebaseCoinBalance().then(() => {
-            updateCoinDisplay();
-        });
-    } else {
-        window.coinBalance = 1000; // Default fallback
-        updateCoinDisplay();
-    }
-}
-
-// Setup event listeners
-function setupEventListeners() {
-    // Start button
-    if (startBtn) {
-        startBtn.addEventListener('click', function() {
-            const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
-            
-            // Check if player has enough coins for entry fee
-            if (window.coinBalance < levelConfig.entryFee) {
-                alert(`You need more coins to play this game!`);
-                return;
-            }
-            
-            initGame();
-        });
-    }
-    
-    // Play again button
-    if (playAgainBtn) {
-        playAgainBtn.addEventListener('click', function() {
-            const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
-            
-            // Check if player has enough coins for entry fee
-            if (window.coinBalance < levelConfig.entryFee) {
-                alert(`You need more coins to play this game!`);
-                resetGame(); // Just reset to selection screen
-                return;
-            }
-            
-            if (resultScreen) {
-                resultScreen.classList.remove('visible');
-                setTimeout(() => {
-                    resetGame();
-                }, 300); // Give time for fade-out animation
-            } else {
-                resetGame();
-            }
-        });
-    }
-    
-    // Back button
-    if (backBtn) {
-        backBtn.addEventListener('click', function() {
-            window.location.href = '/voidgms.html';
-        });
-    }
-    
-    // Cashout button
-    if (cashoutBtn) {
-        cashoutBtn.addEventListener('click', function() {
-            if (!cashoutBtn.disabled && gameActive) {
-                cashout();
-            }
-        });
-    }
-    
-    // Level selection buttons
-    for (const [level, button] of Object.entries(levelButtons)) {
-        if (button) {
-            button.addEventListener('click', function() {
-                setActiveLevel(level);
-                
-                // Subtly hint at different costs without being explicit
-                const levelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
-                if (window.coinBalance < levelConfig.entryFee) {
-                    startBtn.classList.add('insufficient');
-                } else {
-                    startBtn.classList.remove('insufficient');
-                }
-            });
-        }
-    }
-    
-    // Add resize event listener
-    window.addEventListener('resize', function() {
-        initCanvas();
-        if (gameActive) {
-            drawStars();
-        }
-    });
-}
-
-// Initialize the game after DOM is fully loaded
-document.addEventListener('DOMContentLoaded', function() {
-    initializeGame();
-    
-    // Make doubly sure the result screen is initially hidden
-    const resultScreen = document.getElementById('result-screen');
-    if (resultScreen) {
-        resultScreen.classList.remove('visible');
-    }
-});
+           
+           // Add extra protection to prevent console API exposure
+           const sensitiveTermRegex = /coinBalance|updateCoins|GAME_CONFIG|secureInterface|balance|hack|cheat/i;
+           
+           // Monitor console input
+           const realConsole = { ...console };
+           for (const method of ['log', 'warn', 'error', 'info', 'debug']) {
+               console[method] = function(...args) {
+                   // Check for sensitive information
+                   const input = args.join(' ');
+                   if (sensitiveTermRegex.test(input)) {
+                       // Send alert to security monitoring (silently)
+                       try {
+                           const securityRef = doc(collection(db, 'security_events'));
+                           setDoc(securityRef, {
+                               type: 'console_abuse',
+                               content: input.substring(0, 100), // Limit content length
+                               timestamp: serverTimestamp(),
+                               userAgent: navigator.userAgent,
+                               page: 'chicken_run'
+                           });
+                       } catch (e) {} // Silent catch
+                   }
+                   // Still call original method to avoid detection
+                   return realConsole[method](...args);
+               };
+           }
+       });
    </script>
 </body>
 </html>
