@@ -662,10 +662,7 @@ class VoidNetworkAccounting {
                 accountBalance: 1000, // Starting balance
                 totalGamesPlayed: 0,
                 totalMoneySpent: 0,
-                totalMoneyEarned: 0,
-                disabled: false, // Add disabled flag (false by default)
-                isActive: true,  // Add active flag (true by default)
-                accountDeleted: false // Account deletion flag (false by default)
+                totalMoneyEarned: 0
             });
 
             console.log("User registered successfully:", user.uid);
@@ -726,13 +723,6 @@ class VoidNetworkAccounting {
             }
 
             const userData = userDoc.data();
-            
-            // Check if user is disabled or deleted
-            if (userData.disabled === true || userData.isActive === false || userData.accountDeleted === true) {
-                console.error("User account is disabled or deleted");
-                throw new Error('Account is disabled or has been deleted');
-            }
-
             console.log("Retrieved user data:", userData.username, "Balance:", userData.accountBalance);
             return userData;
         } catch (error) {
@@ -774,13 +764,6 @@ class VoidNetworkAccounting {
             }
             
             const userData = userDoc.data();
-            
-            // Check if user is disabled or deleted - prevent transactions for these accounts
-            if (userData.disabled === true || userData.isActive === false || userData.accountDeleted === true) {
-                console.error("Cannot perform transactions for disabled or deleted accounts");
-                throw new Error('Account is disabled or has been deleted');
-            }
-            
             let updatedBalance = userData.accountBalance || 0;
             
             // Update user metrics based on transaction type
@@ -914,23 +897,14 @@ class VoidLeaderboard {
     // Setup the real-time listener with multiple retries
     setupRealtimeListener() {
         try {
-            // Query the top users by account balance without using inequality filters
+            // Query the top 20 users by account balance (updated from 5 to 20)
             const usersRef = collection(this.db, 'users');
-            const q = query(
-                usersRef,
-                orderBy('accountBalance', 'desc'),
-                // Get more documents since we'll be filtering some out
-                limit(50)
-            );
+            const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(20));
             
-            console.log("Setting up real-time Firebase listener for players (with strict client-side filtering)");
+            console.log("Setting up real-time Firebase listener for top 20 players");
             
-            // Set up real-time listener with server-side data - force fresh data from server
+            // Set up real-time listener with server-side data
             this.unsubscribe = onSnapshot(q, 
-                { 
-                    includeMetadataChanges: true,
-                    source: 'server' // Force server data, not cache
-                }, 
                 {
                     includeMetadataChanges: true
                 },
@@ -1098,7 +1072,7 @@ class VoidLeaderboard {
         }
     }
     
-    // Update leaderboard UI with fresh data - FIXED with proper filtering for disabled/deleted users
+    // Update leaderboard UI with fresh data - FIXED for proper text truncation
     updateLeaderboardUI(querySnapshot) {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
@@ -1114,29 +1088,13 @@ class VoidLeaderboard {
         }
         
         console.log("Updating leaderboard with new data");
+        let rank = 1;
         
-        // Filter out deleted documents and disabled users before processing
+        // Filter out any deleted documents before processing
         const validDocs = [];
         querySnapshot.forEach((doc) => {
             if (doc.exists()) {
-                const userData = doc.data();
-                
-                // Check for disabled accounts - using explicit true/false checks
-                if (userData.disabled === true) {
-                    console.log(`Skipping disabled user: ${userData.username}`);
-                } 
-                // Check for inactive accounts
-                else if (userData.isActive === false) {
-                    console.log(`Skipping inactive user: ${userData.username}`);
-                } 
-                // Check for deleted accounts
-                else if (userData.accountDeleted === true) {
-                    console.log(`Skipping deleted user: ${userData.username}`);
-                } 
-                // Account is valid, add to our list
-                else {
-                    validDocs.push(doc);
-                }
+                validDocs.push(doc);
             } else {
                 console.log("Skipping deleted document in leaderboard");
             }
@@ -1148,12 +1106,8 @@ class VoidLeaderboard {
             return;
         }
         
-        // Only show top 20 players after filtering
-        const topValidDocs = validDocs.slice(0, 20);
-        let rank = 1;
-        
         // Create leaderboard items from valid documents
-        topValidDocs.forEach((doc) => {
+        validDocs.forEach((doc) => {
             const userData = doc.data();
             const leaderboardItem = document.createElement('div');
             leaderboardItem.className = 'leaderboard-item';
@@ -1180,7 +1134,7 @@ class VoidLeaderboard {
             }, 1000);
         });
         
-        console.log(`Leaderboard updated with ${topValidDocs.length} players out of ${validDocs.length} active accounts`);
+        console.log(`Leaderboard updated with ${validDocs.length} players`);
         
         // Find and highlight Void Network
         findAndHighlightVoidNetwork();
@@ -1220,10 +1174,18 @@ function findAndHighlightVoidNetwork() {
     });
 }
 
-// Refresh the leaderboard manually
+// Refresh the leaderboard manually to force a new connection
 function refreshLeaderboard() {
     console.log("Manual leaderboard refresh requested");
-    voidLeaderboard.fetchLeaderboard();
+    
+    // Stop current listener and restart to force refresh
+    voidLeaderboard.stopLeaderboardUpdates();
+    
+    // Force a new connection attempt
+    voidLeaderboard.startLeaderboardUpdates();
+    
+    // After a short delay, manually look for Void Network
+    setTimeout(findAndHighlightVoidNetwork, 1000);
 }
 
 // Add periodic refresh to ensure leaderboard stays updated
@@ -1271,81 +1233,16 @@ window.addEventListener('load', () => {
 // Check on window resize
 window.addEventListener('resize', handleResponsiveLayout);
 
-// Admin-only function to manually disable a user
-async function manuallyDisableUser() {
-    try {
-        const userId = prompt("Enter the user ID to disable:");
-        if (!userId) return;
-        
-        // Confirm the action
-        if (!confirm(`Are you sure you want to disable user ${userId}? This will remove them from the leaderboard.`)) {
-            return;
-        }
-        
-        // Get reference to the user document
-        const userRef = db.collection('users').doc(userId);
-        
-        // Update the document
-        await userRef.update({
-            disabled: true
-        });
-        
-        alert(`User ${userId} has been disabled. Refreshing leaderboard.`);
-        refreshLeaderboard();
-    } catch (error) {
-        console.error("Error disabling user:", error);
-        alert("Error: " + error.message);
-    }
-}
-
-// Admin-only function to check a user's status
-async function checkUserStatus() {
-    try {
-        const userId = prompt("Enter the user ID to check:");
-        if (!userId) return;
-        
-        // Get reference to the user document
-        const userRef = db.collection('users').doc(userId);
-        
-        // Get the document
-        const userDoc = await userRef.get();
-        
-        if (!userDoc.exists) {
-            alert(`User ${userId} does not exist.`);
-            return;
-        }
-        
-        const userData = userDoc.data();
-        alert(`User: ${userData.username}
-Email: ${userData.email || 'Not available'}
-Status:
-- Disabled: ${userData.disabled === true ? 'Yes' : 'No'}
-- Active: ${userData.isActive === false ? 'No' : 'Yes'}
-- Deleted: ${userData.accountDeleted === true ? 'Yes' : 'No'}
-- Balance: ${userData.accountBalance.toLocaleString()}`);
-    } catch (error) {
-        console.error("Error checking user:", error);
-        alert("Error: " + error.message);
-    }
-}
-
-// Function to check if current user is admin
-function isAdminUser() {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return false;
-    
-    // Check if this is the specified admin user
-    return currentUser.uid === 'umhru1hzQJZa4db0WKHgDtp2qLc2';
-}
-
-// IMPROVED: Before we fetch data, ensure we're ready
+// Before we fetch data, ensure we're ready for live data mode
 function prepareForLiveData() {
-    // Always add a refresh button to the leaderboard title
+    // Clear any previous permission errors to force a fresh attempt
+    localStorage.removeItem('leaderboardPermissionError');
+    
+    // Add a refresh button to the leaderboard title
     const leaderboardTitle = document.querySelector('.leaderboard-title');
     if (leaderboardTitle) {
         // Check if we already have a refresh button
         if (!document.getElementById('refresh-leaderboard-btn')) {
-            // Add refresh button
             const refreshBtn = document.createElement('span');
             refreshBtn.id = 'refresh-leaderboard-btn';
             refreshBtn.innerHTML = '↻';
@@ -1358,57 +1255,6 @@ function prepareForLiveData() {
                 refreshLeaderboard();
             });
             leaderboardTitle.appendChild(refreshBtn);
-            
-            // Wait for authentication to complete before adding admin buttons
-            const checkForAdmin = () => {
-                // Only add admin tools for the specified user
-                if (isAdminUser()) {
-                    console.log("Admin user detected, adding admin tools");
-                    
-                    // Add disable user button
-                    if (!document.getElementById('disable-user-btn')) {
-                        const disableUserBtn = document.createElement('span');
-                        disableUserBtn.id = 'disable-user-btn';
-                        disableUserBtn.innerHTML = '🚫';
-                        disableUserBtn.style.marginLeft = '5px';
-                        disableUserBtn.style.cursor = 'pointer';
-                        disableUserBtn.style.fontSize = '0.9em';
-                        disableUserBtn.title = 'Disable a user';
-                        disableUserBtn.addEventListener('click', function(e) {
-                            e.stopPropagation();
-                            manuallyDisableUser();
-                        });
-                        leaderboardTitle.appendChild(disableUserBtn);
-                    }
-                    
-                    // Add check user button
-                    if (!document.getElementById('check-user-btn')) {
-                        const checkUserBtn = document.createElement('span');
-                        checkUserBtn.id = 'check-user-btn';
-                        checkUserBtn.innerHTML = '🔍';
-                        checkUserBtn.style.marginLeft = '5px';
-                        checkUserBtn.style.cursor = 'pointer';
-                        checkUserBtn.style.fontSize = '0.9em';
-                        checkUserBtn.title = 'Check user status';
-                        checkUserBtn.addEventListener('click', function(e) {
-                            e.stopPropagation();
-                            checkUserStatus();
-                        });
-                        leaderboardTitle.appendChild(checkUserBtn);
-                    }
-                } else {
-                    // Remove admin buttons if they exist and user is not admin
-                    const disableBtn = document.getElementById('disable-user-btn');
-                    if (disableBtn) disableBtn.remove();
-                    
-                    const checkBtn = document.getElementById('check-user-btn');
-                    if (checkBtn) checkBtn.remove();
-                }
-            };
-            
-            // Check immediately and whenever auth state changes
-            checkForAdmin();
-            auth.onAuthStateChanged(checkForAdmin);
         }
     }
 }
@@ -1643,42 +1489,6 @@ window.addEventListener('load', async () => {
         
         // Prepare for live data
         prepareForLiveData();
-    
-    // Add a refresh button to the leaderboard title
-    const leaderboardTitle = document.querySelector('.leaderboard-title');
-    if (leaderboardTitle) {
-        // Check if we already have refresh buttons
-        if (!document.getElementById('refresh-leaderboard-btn')) {
-            // Add normal refresh button
-            const refreshBtn = document.createElement('span');
-            refreshBtn.id = 'refresh-leaderboard-btn';
-            refreshBtn.innerHTML = '↻';
-            refreshBtn.style.marginLeft = '10px';
-            refreshBtn.style.cursor = 'pointer';
-            refreshBtn.style.fontSize = '0.9em';
-            refreshBtn.title = 'Refresh leaderboard';
-            refreshBtn.addEventListener('click', function(e) {
-                e.stopPropagation(); // Don't trigger the toggle
-                refreshLeaderboard(false); // Normal refresh
-            });
-            leaderboardTitle.appendChild(refreshBtn);
-            
-            // Add force refresh button
-            const forceRefreshBtn = document.createElement('span');
-            forceRefreshBtn.id = 'force-refresh-leaderboard-btn';
-            forceRefreshBtn.innerHTML = '⟳';
-            forceRefreshBtn.style.marginLeft = '5px';
-            forceRefreshBtn.style.cursor = 'pointer';
-            forceRefreshBtn.style.fontSize = '0.9em';
-            forceRefreshBtn.style.color = '#ff5c5c';
-            forceRefreshBtn.title = 'Force refresh leaderboard (clear cache)';
-            forceRefreshBtn.addEventListener('click', function(e) {
-                e.stopPropagation(); // Don't trigger the toggle
-                refreshLeaderboard(true); // Force refresh
-            });
-            leaderboardTitle.appendChild(forceRefreshBtn);
-        }
-    }
         
         // Start leaderboard updates
         voidLeaderboard.startLeaderboardUpdates();
