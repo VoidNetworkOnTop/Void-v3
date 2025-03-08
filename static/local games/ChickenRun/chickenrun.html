@@ -496,7 +496,8 @@
            font-weight: bold;
            color: white;
            position: relative;
-           z-index: 5;
+           z-index: 10;
+           box-shadow: 0 0 10px rgba(77, 124, 255, 0.4);
        }
 
        .path-circle:hover {
@@ -984,27 +985,27 @@ const GAME_CONFIG = {
             earnPerStep: 100,
             endReward: 1000000,  // 1 million coins for reaching the end of 10 circles
             deathPenalty: 200,
-            initialSuccessRate: 0.80,  // Start with 80% success rate
-            finalSuccessRate: 0.60,    // End with 60% success rate
-            difficultyIncreasePoint: 0.33 // Start decreasing success rate after 1/3 of the way
+            initialSuccessRate: 0.90,  // Start with 90% success rate
+            finalSuccessRate: 0.70,    // End with 70% success rate
+            difficultyIncreasePoint: 0.40 // Start decreasing success rate after 40% of the way
         },
         20: {
             maxSteps: 20,
             earnPerStep: 200,
             endReward: 2000000,  // 2 million coins for reaching the end of 20 circles
             deathPenalty: 400,
-            initialSuccessRate: 0.85,  // Start with 85% success rate
-            finalSuccessRate: 0.55,    // End with 55% success rate
-            difficultyIncreasePoint: 0.25 // Start decreasing success rate after 1/4 of the way
+            initialSuccessRate: 0.92,  // Start with 92% success rate
+            finalSuccessRate: 0.65,    // End with 65% success rate
+            difficultyIncreasePoint: 0.35 // Start decreasing success rate after 35% of the way
         },
         30: {
             maxSteps: 30,
             earnPerStep: 300,
             endReward: 3000000,  // 3 million coins for reaching the end of 30 circles
             deathPenalty: 600,
-            initialSuccessRate: 0.90,  // Start with 90% success rate
-            finalSuccessRate: 0.50,    // End with 50% success rate
-            difficultyIncreasePoint: 0.20 // Start decreasing success rate after 1/5 of the way
+            initialSuccessRate: 0.95,  // Start with 95% success rate
+            finalSuccessRate: 0.60,    // End with 60% success rate
+            difficultyIncreasePoint: 0.30 // Start decreasing success rate after 30% of the way
         }
     },
     selectedLevel: 10  // Default selected level
@@ -1152,6 +1153,21 @@ function createCircles() {
     const currentLevelConfig = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel];
     const maxSteps = currentLevelConfig.maxSteps;
     
+    // Adjust path height based on number of circles
+    if (maxSteps > 10) {
+        chickenPath.style.height = maxSteps > 20 ? '200px' : '170px';
+    } else {
+        chickenPath.style.height = '150px';
+    }
+    
+    // Create visible circles (maximum 10 visible at once)
+    const visibleCircles = Math.min(maxSteps, 10);
+    
+    // Calculate padding for the first circle to make it more accessible
+    const leftPadding = 5; // 5% left padding
+    const rightPadding = 5; // 5% right padding
+    const usableWidth = 100 - leftPadding - rightPadding;
+    
     // Create lines and circles
     for (let i = 0; i < maxSteps; i++) {
         // Create circle
@@ -1160,10 +1176,43 @@ function createCircles() {
         circle.dataset.position = i;
         circle.textContent = i + 1;
         
-        // Calculate left position
-        const leftPos = (i + 1) * (100 / (maxSteps + 1));
+        // Calculate left position with improved spacing
+        let leftPos;
+        if (maxSteps <= 10) {
+            // For 10 circles, use full width with padding
+            leftPos = leftPadding + (i * (usableWidth / (maxSteps - 1)));
+        } else {
+            // For 20 and 30 circles, calculate position differently
+            // We'll only show 10 circles at a time
+            const circleGroup = Math.floor(i / 10);
+            const posInGroup = i % 10;
+            
+            // Position within the current group of 10
+            if (posInGroup === 0) {
+                // Make first circle of each group more accessible
+                leftPos = leftPadding;
+            } else {
+                leftPos = leftPadding + (posInGroup * (usableWidth / 9));
+            }
+            
+            // Hide circles that are not in the current visible group
+            if (circleGroup > 0) {
+                circle.style.display = 'none';
+                circle.dataset.group = circleGroup;
+            }
+        }
+        
         circle.style.position = 'absolute';
         circle.style.left = `${leftPos}%`;
+        
+        // Add a z-index to ensure circles are clickable
+        circle.style.zIndex = 10;
+        
+        // Make circle slightly larger for better clickability
+        if (maxSteps > 10) {
+            circle.style.width = '45px';
+            circle.style.height = '45px';
+        }
         
         // Add click handler
         circle.addEventListener('click', handleCircleClick);
@@ -1172,11 +1221,27 @@ function createCircles() {
         circles.push(circle);
         
         // Create connecting line (except for last circle)
-        if (i < maxSteps - 1) {
+        if (i < maxSteps - 1 && (maxSteps <= 10 || i % 10 < 9)) {
             const line = document.createElement('div');
             line.className = 'path-line';
             chickenPath.appendChild(line);
         }
+    }
+    
+    // Add logic to show the next group of circles when progressing
+    if (maxSteps > 10) {
+        // Add group indicator
+        const groupIndicator = document.createElement('div');
+        groupIndicator.id = 'group-indicator';
+        groupIndicator.className = 'game-info';
+        groupIndicator.style.position = 'absolute';
+        groupIndicator.style.bottom = '-40px';
+        groupIndicator.style.left = '50%';
+        groupIndicator.style.transform = 'translateX(-50%)';
+        groupIndicator.style.padding = '5px 15px';
+        groupIndicator.style.fontSize = '0.9rem';
+        groupIndicator.textContent = 'Group 1 of ' + Math.ceil(maxSteps / 10);
+        chickenPath.appendChild(groupIndicator);
     }
 }
 
@@ -1244,6 +1309,34 @@ function handleCircleClick(event) {
             }
         }
         
+        // For games with more than 10 circles, handle circle group visibility
+        if (levelConfig.maxSteps > 10) {
+            // Check if we need to show the next group of circles
+            const currentGroup = Math.floor(clickedPosition / 10);
+            const nextGroup = Math.floor((clickedPosition + 1) / 10);
+            
+            // If moving to next group, update visibility
+            if (nextGroup > currentGroup) {
+                // Hide current group
+                circles.forEach((circle, index) => {
+                    if (Math.floor(index / 10) === currentGroup) {
+                        circle.style.display = 'none';
+                    }
+                    
+                    // Show next group
+                    if (Math.floor(index / 10) === nextGroup) {
+                        circle.style.display = '';
+                    }
+                });
+                
+                // Update group indicator
+                const groupIndicator = document.getElementById('group-indicator');
+                if (groupIndicator) {
+                    groupIndicator.textContent = `Group ${nextGroup + 1} of ${Math.ceil(levelConfig.maxSteps / 10)}`;
+                }
+            }
+        }
+        
         // Check if reached the end
         if (clickedPosition === levelConfig.maxSteps - 1) {
             // Player reached the end!
@@ -1302,9 +1395,29 @@ function moveChicken(position) {
     if (!chicken) return;
     
     const maxSteps = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel].maxSteps;
+    const currentGroup = Math.floor(position / 10);
+    const posInGroup = position % 10;
     
     // Calculate new left position based on the circle's position
-    const leftPos = (position + 1) * (100 / (maxSteps + 1));
+    let leftPos;
+    
+    if (maxSteps <= 10) {
+        // For 10 circles, use previous calculation
+        const leftPadding = 5;
+        const usableWidth = 90;
+        leftPos = leftPadding + (position * (usableWidth / (maxSteps - 1)));
+    } else {
+        // For more than 10 circles, position within current group
+        const leftPadding = 5;
+        const usableWidth = 90;
+        
+        if (posInGroup === 0) {
+            leftPos = leftPadding;
+        } else {
+            leftPos = leftPadding + (posInGroup * (usableWidth / 9));
+        }
+    }
+    
     chicken.style.left = `${leftPos}%`;
 }
 
@@ -1313,9 +1426,28 @@ function killChicken(position) {
     if (!chicken || !bloodSplatter) return;
     
     const maxSteps = GAME_CONFIG.levels[GAME_CONFIG.selectedLevel].maxSteps;
+    const currentGroup = Math.floor(position / 10);
+    const posInGroup = position % 10;
     
     // Calculate position for death animation
-    const leftPos = (position + 1) * (100 / (maxSteps + 1));
+    let leftPos;
+    
+    if (maxSteps <= 10) {
+        // For 10 circles, use previous calculation with padding
+        const leftPadding = 5;
+        const usableWidth = 90;
+        leftPos = leftPadding + (position * (usableWidth / (maxSteps - 1)));
+    } else {
+        // For more than 10 circles, position within current group
+        const leftPadding = 5;
+        const usableWidth = 90;
+        
+        if (posInGroup === 0) {
+            leftPos = leftPadding;
+        } else {
+            leftPos = leftPadding + (posInGroup * (usableWidth / 9));
+        }
+    }
     
     // Move chicken to the position
     chicken.style.left = `${leftPos}%`;
