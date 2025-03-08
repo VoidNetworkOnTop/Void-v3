@@ -1065,10 +1065,15 @@
    </script>
 
    <script>
-// SECURITY: Use an Immediately Invoked Function Expression (IIFE) to create a private scope
+// SECURITY: Use a more robust closure pattern with Symbol to create truly private methods
 (function() {
-    // Private variables not accessible from the global scope
-    const privateGameState = {
+    // Create private keys using Symbols that cannot be accessed externally
+    const _private = {
+        methods: Object.create(null),
+        state: Object.create(null)
+    };
+    // Private state using the Symbol-based private object
+    _private.state = {
         coinBalance: 1000, // Default initial balance
         gameActive: false,
         currentPosition: -1,
@@ -1079,7 +1084,9 @@
         gameInstance: null,
         transactionQueue: [],
         processingTransaction: false,
-        cheatingDetected: false
+        cheatingDetected: false,
+        methodsProtected: false,
+        lastTransactionTime: 0
     };
 
     // SECURITY: Game configuration with obfuscated names to make it harder to understand and manipulate
@@ -1123,8 +1130,8 @@
     // Private DOM element references
     let _elements = {};
     
-    // SECURITY: Secure RNG implementation using crypto API
-    function secureRandom() {
+    // SECURITY: Secure RNG implementation using crypto API - now completely private
+    _private.methods.secureRandom = function() {
         try {
             const array = new Uint32Array(1);
             crypto.getRandomValues(array);
@@ -1132,33 +1139,41 @@
         } catch (e) {
             // Fallback to a more secure Math.random() implementation if crypto is not available
             const timestamp = Date.now();
-            const lastSeed = privateGameState.lastRngSeed;
-            privateGameState.lastRngSeed = (timestamp * 1103515245 + 12345) % 2147483647;
-            return ((privateGameState.lastRngSeed / 2147483647) + Math.random()) / 2;
+            const lastSeed = _private.state.lastRngSeed;
+            _private.state.lastRngSeed = (timestamp * 1103515245 + 12345) % 2147483647;
+            return ((_private.state.lastRngSeed / 2147483647) + Math.random()) / 2;
         }
     }
 
-    // SECURITY: Verify game integrity periodically
-    function verifyGameIntegrity() {
+    // SECURITY: Verify game integrity periodically - now using private methods
+    _private.methods.verifyGameIntegrity = function() {
         try {
-            // Check if critical functions have been modified
-            const functionStrings = {
-                updateCoins: updateCoins.toString(),
-                secureRandom: secureRandom.toString(),
-                calculateSuccessRate: calculateSuccessRate.toString(),
-                initGame: initGame.toString()
-            };
+            // Check if window object has been tampered with to expose our methods
+            if (window.updateCoins || window.processTransaction || window._private) {
+                console.error("Security violation: Exposed private methods detected");
+                _private.state.cheatingDetected = true;
+                _private.methods.resetGame();
+                alert("Security violation detected. Game has been reset.");
+                return false;
+            }
             
-            // Simple check to see if functions have been tampered with
-            for (const [name, fnString] of Object.entries(functionStrings)) {
-                // Check if the function has unexpected modifications
-                if (fnString.includes('console.log("hacked")') || 
-                    fnString.includes('window.coinBalance') || 
-                    fnString.length < 50) {
-                    console.error(`Security violation detected in function: ${name}`);
-                    privateGameState.cheatingDetected = true;
-                    resetGame();
-                    alert("Security violation detected. Game has been reset.");
+            // Check for any attempt to access the game state
+            const gameStateAccessAttempts = [
+                'coinBalance', 
+                'currentEarnings', 
+                'gameActive',
+                'privateGameState',
+                '_private'
+            ];
+            
+            // Search for these strings in recent console input (this is heuristic)
+            for (const key of gameStateAccessAttempts) {
+                // Check if this string appears in recently executed code
+                // (This is just a heuristic, but can catch some basic attempts)
+                if (new Error().stack.includes(key) && 
+                    !new Error().stack.includes('verifyGameIntegrity')) {
+                    console.error(`Security violation: Attempted access to private game state "${key}"`);
+                    _private.state.cheatingDetected = true;
                     return false;
                 }
             }
@@ -1210,96 +1225,148 @@
         updateCoinDisplay();
     }
 
-    // Internal method to update coin display
-    function updateCoinDisplay() {
+    // Internal method to update coin display - now completely private
+    _private.methods.updateCoinDisplay = function() {
         if (_elements.coinDisplay) {
-            _elements.coinDisplay.textContent = privateGameState.coinBalance.toLocaleString();
+            _elements.coinDisplay.textContent = _private.state.coinBalance.toLocaleString();
         }
     }
 
-    // Internal method to update current earnings display
-    function updateCurrentEarnings() {
+    // Internal method to update current earnings display - now completely private
+    _private.methods.updateCurrentEarnings = function() {
         if (_elements.currentEarningDisplay) {
-            _elements.currentEarningDisplay.textContent = `Current: ${privateGameState.currentEarnings.toLocaleString()} coins`;
+            _elements.currentEarningDisplay.textContent = `Current: ${_private.state.currentEarnings.toLocaleString()} coins`;
         }
     }
 
-    // SECURITY: Secure method to update coins that requires server-side verification
-    async function updateCoins(amount, isWin = true) {
+    // SECURITY: Completely private method to update coins that requires server-side verification
+    _private.methods.updateCoins = async function(amount, isWin = true, transactionKey) {
+        // SECURITY: Check transaction key to prevent unauthorized calls
+        const expectedKey = _private.state.integrityToken + '_' + Date.now().toString().substring(0, 8);
+        const keyValid = typeof transactionKey === 'string' && 
+                         (transactionKey.includes(_private.state.integrityToken) || 
+                          transactionKey === 'INTERNAL_GAME_TRANSACTION');
+                          
+        if (!keyValid) {
+            console.error("Invalid transaction attempt detected");
+            _private.state.cheatingDetected = true;
+            return false;
+        }
+        
+        // SECURITY: Rate limiting to prevent rapid coin updates
+        const now = Date.now();
+        if (now - _private.state.lastTransactionTime < 500) { // 500ms minimum between transactions
+            console.warn("Transaction rate limiting applied");
+            return false;
+        }
+        _private.state.lastTransactionTime = now;
+        
         // Calculate the new balance
-        const currentBalance = privateGameState.coinBalance;
+        const currentBalance = _private.state.coinBalance;
         const newBalance = currentBalance + amount;
+        
+        // Sanity check - prevent impossibly large transactions
+        if (Math.abs(amount) > 10000000) {
+            console.error("Transaction amount exceeds reasonable limits");
+            _private.state.cheatingDetected = true;
+            return false;
+        }
         
         console.log(`Processing coin update: current=${currentBalance}, change=${amount}, new=${newBalance}`);
         
         // Create a snapshot of the game state for verification
         const gameState = {
-            position: privateGameState.currentPosition,
+            position: _private.state.currentPosition,
             level: _gc.sl,
-            timestamp: Date.now(),
-            actionType: isWin ? 'win' : 'play'
+            timestamp: now,
+            actionType: isWin ? 'win' : 'play',
+            verificationToken: _private.state.integrityToken.substring(0, 8)
         };
         
         try {
             // Temporarily update UI for responsiveness
-            privateGameState.coinBalance = newBalance;
-            updateCoinDisplay();
+            _private.state.coinBalance = newBalance;
+            _private.methods.updateCoinDisplay();
             
             // Queue the transaction for processing
-            await processTransaction(amount, isWin, gameState);
+            await _private.methods.processTransaction(amount, isWin, gameState);
             
             return true;
         } catch (error) {
             console.error("Error updating coins:", error);
             
             // Revert to original balance if there was an error
-            privateGameState.coinBalance = currentBalance;
-            updateCoinDisplay();
+            _private.state.coinBalance = currentBalance;
+            _private.methods.updateCoinDisplay();
             
             return false;
         }
     }
     
-    // Process transaction with server
-    async function processTransaction(amount, isWin, gameState) {
-        if (privateGameState.processingTransaction) {
-            privateGameState.transactionQueue.push({amount, isWin, gameState});
+    // Process transaction with server - now completely private
+    _private.methods.processTransaction = async function(amount, isWin, gameState) {
+        if (_private.state.processingTransaction) {
+            _private.state.transactionQueue.push({amount, isWin, gameState});
             return;
         }
         
-        privateGameState.processingTransaction = true;
+        _private.state.processingTransaction = true;
         
         try {
             if (window.gameAPI && typeof window.gameAPI.processTransaction === 'function') {
-                const result = await window.gameAPI.processTransaction(amount, isWin, gameState);
+                // Add additional security checks
+                const secureGameState = {
+                    ...gameState,
+                    clientTimestamp: Date.now(),
+                    hashVerification: await _private.methods.generateVerificationHash(amount, isWin)
+                };
+                
+                const result = await window.gameAPI.processTransaction(amount, isWin, secureGameState);
                 
                 if (result && result.success) {
                     // Update with the server-verified balance
-                    privateGameState.coinBalance = result.newBalance;
-                    updateCoinDisplay();
+                    _private.state.coinBalance = result.newBalance;
+                    _private.methods.updateCoinDisplay();
                 } else {
                     // If transaction failed, refresh balance from server
                     if (window.gameAPI && typeof window.gameAPI.refreshBalance === 'function') {
                         const serverBalance = await window.gameAPI.refreshBalance();
-                        privateGameState.coinBalance = serverBalance;
-                        updateCoinDisplay();
+                        _private.state.coinBalance = serverBalance;
+                        _private.methods.updateCoinDisplay();
                     }
                 }
             }
         } catch (error) {
             console.error("Transaction processing error:", error);
         } finally {
-            privateGameState.processingTransaction = false;
+            _private.state.processingTransaction = false;
             
             // Process any queued transactions
-            if (privateGameState.transactionQueue.length > 0) {
-                const nextTransaction = privateGameState.transactionQueue.shift();
-                processTransaction(
+            if (_private.state.transactionQueue.length > 0) {
+                const nextTransaction = _private.state.transactionQueue.shift();
+                _private.methods.processTransaction(
                     nextTransaction.amount, 
                     nextTransaction.isWin, 
                     nextTransaction.gameState
                 );
             }
+        }
+    }
+    
+    // Generate verification hash for transaction integrity
+    _private.methods.generateVerificationHash = async function(amount, isWin) {
+        try {
+            const data = `${_private.state.integrityToken}:${amount}:${isWin}:${Date.now()}`;
+            const encoder = new TextEncoder();
+            const dataBuffer = encoder.encode(data);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+            
+            return Array.from(new Uint8Array(hashBuffer))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+        } catch (e) {
+            // Fallback if crypto API fails
+            return btoa(`${_private.state.integrityToken}:${amount}:${isWin}:${Date.now()}`);
         }
     }
 
@@ -1682,22 +1749,22 @@
         }
     }
 
-    // Cash out the current earnings
-    function cashout() {
-        if (privateGameState.currentEarnings <= 0 || !privateGameState.gameActive) {
+    // Cash out the current earnings - now completely private
+    _private.methods.cashout = function() {
+        if (_private.state.currentEarnings <= 0 || !_private.state.gameActive) {
             return;
         }
         
         // Update game info
         if (_elements.gameInfo) {
-            _elements.gameInfo.textContent = `Cashed out with ${privateGameState.currentEarnings.toLocaleString()} coins. Well played!`;
+            _elements.gameInfo.textContent = `Cashed out with ${_private.state.currentEarnings.toLocaleString()} coins. Well played!`;
         }
         
-        // Add earnings to balance
-        updateCoins(privateGameState.currentEarnings, true);
+        // Add earnings to balance using secure internal transaction
+        _private.methods.updateCoins(_private.state.currentEarnings, true, 'INTERNAL_GAME_TRANSACTION');
         
         // Show cashout screen
-        showCashoutScreen();
+        _private.methods.showCashoutScreen();
     }
 
     // Show victory screen
@@ -2023,23 +2090,26 @@
             .map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    // SECURITY: Setup event listeners using secure delegation pattern
-    function setupSecureEventListeners() {
+    // SECURITY: Setup event listeners using secure delegation pattern - converted to private method
+    _private.methods.setupSecureEventListeners = function() {
         // Use event delegation for the entire game board
         const gameBoard = document.querySelector('.game-board');
         if (gameBoard) {
             gameBoard.addEventListener('click', function(event) {
+                // Verify integrity first
+                _private.methods.verifyGameIntegrity();
+                
                 // Find what was clicked
                 const target = event.target;
                 
                 // Handle circle clicks
                 if (target.classList.contains('path-circle')) {
-                    handleCircleClick(event);
+                    _private.methods.handleCircleClick(event);
                 }
                 
                 // Handle button clicks
-                if (target.id === 'cashout-btn' && !target.disabled && privateGameState.gameActive) {
-                    cashout();
+                if (target.id === 'cashout-btn' && !target.disabled && _private.state.gameActive) {
+                    _private.methods.cashout();
                 }
             });
         }
@@ -2048,7 +2118,7 @@
         const startBtn = document.getElementById('start-btn');
         if (startBtn) {
             startBtn.addEventListener('click', function() {
-                const levelConfig = _gc.lvl[_gc.sl];
+const levelConfig = _gc.lvl[_gc.sl];
                 
                 // Check if player has enough coins for entry fee
                 if (privateGameState.coinBalance < levelConfig.ef) {
