@@ -1065,13 +1065,13 @@
    </script>
 
    <script>
-// Simple game implementation with direct event handling
+// Simple game implementation with Firebase integration
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM fully loaded");
     
     // Game state
     let gameState = {
-        coinBalance: 1000,
+        coinBalance: 1000, // Default value, will be updated from Firebase
         gameActive: false,
         currentPosition: -1,
         currentEarnings: 0,
@@ -1130,6 +1130,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // Check if elements are found
     console.log("Start button found:", !!elements.startBtn);
     console.log("Level buttons found:", !!elements.levelButtons[10], !!elements.levelButtons[20], !!elements.levelButtons[30]);
+    
+    // IMPORTANT: Initialize the game with Firebase
+    if (window.gameAPI && typeof window.gameAPI.initializeGame === 'function') {
+        const initialBalance = window.gameAPI.initializeGame({
+            // Provide method to the API to update our local balance
+            _setInternalBalance: function(balance) {
+                gameState.coinBalance = balance;
+                updateCoinDisplay();
+                console.log("Balance updated from Firebase:", balance);
+            }
+        });
+        
+        // Use the provided initial balance
+        if (initialBalance !== undefined) {
+            gameState.coinBalance = initialBalance;
+            updateCoinDisplay();
+        }
+    }
     
     // Update coin display
     function updateCoinDisplay() {
@@ -1199,10 +1217,59 @@ document.addEventListener('DOMContentLoaded', function() {
         if (elements.startScreen) {
             elements.startScreen.classList.add('visible');
         }
+        
+        // Refresh balance from Firebase
+        refreshBalanceFromFirebase();
+    }
+    
+    // Refresh balance from Firebase
+    async function refreshBalanceFromFirebase() {
+        if (window.gameAPI && typeof window.gameAPI.refreshBalance === 'function') {
+            const serverBalance = await window.gameAPI.refreshBalance();
+            if (serverBalance !== undefined) {
+                gameState.coinBalance = serverBalance;
+                updateCoinDisplay();
+                console.log("Balance refreshed from Firebase:", serverBalance);
+            }
+        }
+    }
+    
+    // Process transaction with Firebase
+    async function processTransaction(amount, isWin) {
+        console.log(`Processing transaction: ${isWin ? 'win' : 'play'} for ${Math.abs(amount)} coins`);
+        
+        if (window.gameAPI && typeof window.gameAPI.processTransaction === 'function') {
+            const gameStateData = {
+                position: gameState.currentPosition,
+                level: gameState.selectedLevel,
+                timestamp: Date.now()
+            };
+            
+            const result = await window.gameAPI.processTransaction(amount, isWin, gameStateData);
+            
+            if (result && result.success) {
+                // Update with the server-verified balance
+                gameState.coinBalance = result.newBalance;
+                updateCoinDisplay();
+                console.log("Transaction processed, new balance:", result.newBalance);
+                return true;
+            } else {
+                // If transaction failed, refresh balance
+                await refreshBalanceFromFirebase();
+                console.log("Transaction failed, refreshed balance");
+                return false;
+            }
+        } else {
+            // Fallback if no API available (local mode)
+            gameState.coinBalance += amount;
+            updateCoinDisplay();
+            console.log("Local transaction processed, new balance:", gameState.coinBalance);
+            return true;
+        }
     }
     
     // Initialize the game
-    function initGame() {
+    async function initGame() {
         console.log("Initializing game with level:", gameState.selectedLevel);
         
         const levelConfig = gameLevels[gameState.selectedLevel];
@@ -1213,9 +1280,12 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Deduct entry fee
-        gameState.coinBalance -= levelConfig.entryFee;
-        updateCoinDisplay();
+        // Deduct entry fee through Firebase
+        const deductionSuccess = await processTransaction(-levelConfig.entryFee, false);
+        if (!deductionSuccess) {
+            alert("Failed to start game. Please try again.");
+            return;
+        }
         
         // Reset for new game
         gameState.gameActive = true;
@@ -1344,11 +1414,13 @@ document.addEventListener('DOMContentLoaded', function() {
             // Check if reached the end
             if (position === levelConfig.maxSteps - 1) {
                 // Player won!
-                setTimeout(() => {
+                setTimeout(async () => {
                     gameState.currentEarnings = levelConfig.endReward;
+                    
+                    // Process the win transaction with Firebase
+                    await processTransaction(gameState.currentEarnings, true);
+                    
                     showVictoryScreen();
-                    gameState.coinBalance += gameState.currentEarnings;
-                    updateCoinDisplay();
                 }, 500);
             } else {
                 // Enable cashout button after first move
@@ -1370,9 +1442,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // Move failed - chicken dies!
             killChicken(position);
             
-            // Deduct penalty
-            gameState.coinBalance -= levelConfig.deathPenalty;
-            updateCoinDisplay();
+            // Process the death penalty transaction with Firebase
+            processTransaction(-levelConfig.deathPenalty, false);
             
             // Update game info
             elements.gameInfo.textContent = `Oh no! The chicken didn't make it... You lost ${levelConfig.deathPenalty} coins!`;
@@ -1426,14 +1497,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Cash out current earnings
-    function cashout() {
+    async function cashout() {
         if (gameState.currentEarnings <= 0 || !gameState.gameActive) {
             return;
         }
         
-        // Add earnings to balance
-        gameState.coinBalance += gameState.currentEarnings;
-        updateCoinDisplay();
+        // Process cashout with Firebase
+        await processTransaction(gameState.currentEarnings, true);
         
         // Update game info
         elements.gameInfo.textContent = `Cashed out with ${gameState.currentEarnings.toLocaleString()} coins. Well played!`;
@@ -1551,6 +1621,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (elements.startScreen) {
         elements.startScreen.classList.add('visible');
     }
+    
+    // Refresh balance from Firebase on load
+    refreshBalanceFromFirebase();
     
     console.log("Game initialization complete");
 });
