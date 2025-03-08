@@ -728,7 +728,7 @@
        // Firebase Imports
        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-       import { getFirestore, doc, getDoc, updateDoc, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+       import { getFirestore, doc, getDoc, updateDoc, setDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
        // Firebase Configuration - UPDATED
        const firebaseConfig = {
@@ -745,10 +745,56 @@
        const auth = getAuth(app);
        const db = getFirestore(app);
 
-       // Authentication and Coin Management
+       // Secure game session with a unique token
+       const sessionToken = generateSecureToken();
+       
+       // Authentication and Coin Management with security improvements
        let currentUser = null;
        let firebaseCoinBalance = 0;
-       window.transactionInProgress = false; // Add transaction lock
+       let lastServerBalance = 0; // Track last known server balance
+       let lastTransactionTime = Date.now(); // Track transaction timing for rate limiting
+       let gameSessionData = { // Store game session data with validation
+           initialBalance: 0,
+           transactions: [],
+           sessionToken: sessionToken
+       };
+
+       // Security function - Generate secure token for this session
+       function generateSecureToken() {
+           const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+           let token = '';
+           const randomValues = new Uint32Array(32);
+           crypto.getRandomValues(randomValues);
+           randomValues.forEach(val => {
+               token += chars[val % chars.length];
+           });
+           return token + Date.now().toString(36);
+       }
+
+       // Security function - Validate transaction request
+       function validateTransaction(amount, type, currentBalance) {
+           // Rate limiting check - prevent rapid transactions
+           const now = Date.now();
+           if (now - lastTransactionTime < 500) { // 500ms minimum between transactions
+               console.warn("Transaction rate limit exceeded");
+               return false;
+           }
+           
+           // Validate the amount makes sense for the transaction type
+           if (type === 'win' && amount <= 0) {
+               console.warn("Invalid win amount");
+               return false;
+           }
+           
+           if (type === 'bet' && (amount <= 0 || amount > currentBalance)) {
+               console.warn("Invalid bet amount");
+               return false;
+           }
+           
+           // Basic integrity check - transaction seems valid
+           lastTransactionTime = now;
+           return true;
+       }
 
        // Authentication State Listener
        onAuthStateChanged(auth, async (user) => {
@@ -757,16 +803,43 @@
                currentUser = user;
                console.log("User signed in:", user.uid);
                await loadFirebaseCoinBalance();
+               
+               // Setup session data for this player
+               gameSessionData.initialBalance = firebaseCoinBalance;
+               gameSessionData.userId = user.uid;
+               gameSessionData.sessionStartTime = Date.now();
+               
+               // Store initial game session in Firebase for validation
+               try {
+                   const sessionRef = doc(collection(db, 'gameSessions'));
+                   await setDoc(sessionRef, {
+                       userId: user.uid,
+                       gameId: 'blackjack_game',
+                       initialBalance: firebaseCoinBalance,
+                       sessionToken: sessionToken,
+                       startTime: serverTimestamp(),
+                       device: {
+                           userAgent: navigator.userAgent,
+                           platform: navigator.platform,
+                           screen: `${window.screen.width}x${window.screen.height}`
+                       }
+                   });
+                   gameSessionData.sessionId = sessionRef.id;
+               } catch (error) {
+                   console.error("Error creating game session:", error);
+               }
            } else {
                // No user is signed in - use default balance
                currentUser = null;
                console.log("No user signed in, using default balance");
-               window.coinBalance = 1000; // Default fallback
-               window.updateCoinDisplay();
+               
+               // Use the secure accessor function instead of direct window.coinBalance
+               _secureGameState.updateBalance(1000);
+               _secureGameState.updateDisplay();
            }
        });
 
-       // Load Coin Balance from Firebase
+       // Load Coin Balance from Firebase with additional validation
        async function loadFirebaseCoinBalance() {
            if (!currentUser) {
                console.log("No user available to load balance");
@@ -786,1019 +859,1386 @@
 
                    // IMPORTANT: Use accountBalance field for consistency with main page
                    firebaseCoinBalance = userData.accountBalance || 0;
-
+                   lastServerBalance = firebaseCoinBalance; // Store server balance
+                   
                    console.log("Loaded balance from Firebase:", firebaseCoinBalance);
 
-                   // Update local coin display and game state
-                   window.coinBalance = firebaseCoinBalance;
-                   
-                   // Update UI and game state
-                   if (typeof updateCoinDisplay === 'function') {
-                       updateCoinDisplay();
-                   } else if (window.updateCoinDisplay) {
-                       window.updateCoinDisplay();
-                   } else {
-                       console.error("updateCoinDisplay function not found");
-                       if (coinDisplay) {
-                           coinDisplay.textContent = window.coinBalance.toLocaleString();
-                       }
-                   }
+                   // Update local game state through secure function
+                   _secureGameState.updateBalance(firebaseCoinBalance);
+                   _secureGameState.updateDisplay();
 
-                   console.log("Updated local balance:", window.coinBalance);
+                   console.log("Updated local balance:", _secureGameState.getBalance());
                    return firebaseCoinBalance;
                } else {
                    console.log("User document doesn't exist, creating new one");
                    // Create initial balance if no document exists
+                   const initialBalance = 1000;
+                   
                    await setDoc(userRef, { 
-                     accountBalance: 1000,
+                     accountBalance: initialBalance,
                      username: currentUser.displayName || "Player",
                      email: currentUser.email,
-                     createdAt: new Date(),
+                     createdAt: serverTimestamp(),
                      totalGamesPlayed: 0,
                      totalMoneySpent: 0,
                      totalMoneyEarned: 0
                    });
 
-                   firebaseCoinBalance = 1000;
-                   window.coinBalance = 1000;
-                   window.updateCoinDisplay();
-                   return 1000;
+                   firebaseCoinBalance = initialBalance;
+                   lastServerBalance = initialBalance;
+                   
+                   _secureGameState.updateBalance(initialBalance);
+                   _secureGameState.updateDisplay();
+                   return initialBalance;
                }
            } catch (error) {
                console.error("Error loading coin balance:", error);
-               window.coinBalance = 1000; // Default fallback
-               window.updateCoinDisplay();
-               return 0;
+               
+               // Fallback to default value
+               const defaultBalance = 1000;
+               _secureGameState.updateBalance(defaultBalance);
+               _secureGameState.updateDisplay();
+               return defaultBalance;
            }
        }
 
-       // Update Coin Balance in Firebase
-       async function updateFirebaseCoinBalance(newBalance) {
-           if (!currentUser) {
-               console.log("No user available to update balance");
-               return false;
-           }
-
-           try {
-               console.log("Updating balance for user:", currentUser.uid, "New balance:", newBalance);
-
-               // Get the current document first to make sure we're updating the latest data
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef, { source: 'server' }); // Force server data
-
-               if (!userDoc.exists()) {
-                   console.error("Cannot update non-existent user document");
-                   return false;
-               }
-
-               // Update with the exact same field format as the main page
-               await updateDoc(userRef, { 
-                   accountBalance: newBalance 
-               });
-
-               firebaseCoinBalance = newBalance;
-               console.log("Firebase balance updated successfully");
-
-               return true;
-           } catch (error) {
-               console.error("Error updating coin balance:", error);
-               return false;
-           }
-       }
-
-       // Record Game Transaction with transaction lock for better tracking
+       // Record Game Transaction with enhanced security
        async function recordGameTransaction(gameId, amount, isWin) {
-           if (!currentUser) return;
+           if (!currentUser) return null;
+
+           // First validate the transaction
+           const transactionType = isWin ? 'win' : 'bet';
+           if (!validateTransaction(amount, transactionType, _secureGameState.getBalance())) {
+               console.error("Transaction validation failed");
+               return null;
+           }
 
            try {
-               console.log(`Recording transaction: ${isWin ? 'win' : 'play'} for ${Math.abs(amount)} coins`);
+               // Get current server balance before making changes
+               const userRef = doc(db, 'users', currentUser.uid);
+               const userDoc = await getDoc(userRef, { source: 'server' });
                
-               // Set a transaction lock to prevent duplicate updates
-               if (window.transactionInProgress) {
-                   console.log("Transaction already in progress, waiting...");
-                   await new Promise(resolve => setTimeout(resolve, 300));
+               if (!userDoc.exists()) {
+                   console.error("User document not found");
+                   return null;
                }
                
-               window.transactionInProgress = true;
+               const userData = userDoc.data();
+               const currentServerBalance = userData.accountBalance || 0;
                
-               try {
-                   // Create transaction record with consistent data format
-                   const transactionRef = doc(collection(db, 'transactions'));
-                   await setDoc(transactionRef, {
-                       userId: currentUser.uid,
-                       gameId: gameId,
-                       transactionType: isWin ? 'game_win' : 'game_play',
-                       amount: Math.abs(amount),
-                       timestamp: new Date()
-                   });
-
-                   // Get latest user data from server
-                   const userRef = doc(db, 'users', currentUser.uid);
-                   const userDoc = await getDoc(userRef, { source: 'server' });
-
-                   if (userDoc.exists()) {
-                       const userData = userDoc.data();
-                       let updatedBalance = userData.accountBalance || 0;
-
-                       // Calculate new balance
-                       if (isWin) {
-                           updatedBalance += amount;
-                           console.log(`Adding ${amount} coins, new balance: ${updatedBalance}`);
-                           userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
-                       } else {
-                           updatedBalance -= Math.abs(amount);
-                           console.log(`Removing ${Math.abs(amount)} coins, new balance: ${updatedBalance}`);
-                           userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
-                           userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
-                       }
-
-                       // Update firebase and local state consistently
-                       await updateDoc(userRef, {
-                           accountBalance: updatedBalance,
-                           totalGamesPlayed: userData.totalGamesPlayed || 0,
-                           totalMoneySpent: userData.totalMoneySpent || 0,
-                           totalMoneyEarned: userData.totalMoneyEarned || 0,
-                           lastUpdated: new Date() // Add timestamp for tracking
-                       });
-
-                       // Make sure local state is synced with Firebase
-                       window.coinBalance = updatedBalance;
-                       firebaseCoinBalance = updatedBalance;
-
-                       // Update display
-                       window.updateCoinDisplay();
-
-                       return {
-                           transactionId: transactionRef.id,
-                           newBalance: updatedBalance
-                       };
-                   }
-               } finally {
-                   // Always release transaction lock
-                   window.transactionInProgress = false;
+               // Verify balance hasn't been tampered with
+               if (Math.abs(currentServerBalance - lastServerBalance) > 10) {
+                   console.error("Balance verification failed - possible tampering detected");
+                   // Force refresh from server
+                   await loadFirebaseCoinBalance();
+                   return null;
                }
+               
+               // Calculate new balance
+               let newBalance = currentServerBalance;
+               if (isWin) {
+                   newBalance += amount;
+                   userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + amount;
+               } else {
+                   newBalance -= amount;
+                   userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
+                   userData.totalMoneySpent = (userData.totalMoneySpent || 0) + amount;
+               }
+               
+               // Create transaction record
+               const transactionRef = doc(collection(db, 'transactions'));
+               const transactionData = {
+                   userId: currentUser.uid,
+                   gameId: gameId,
+                   transactionType: isWin ? 'game_win' : 'game_play',
+                   amount: amount,
+                   timestamp: serverTimestamp(),
+                   previousBalance: currentServerBalance,
+                   newBalance: newBalance,
+                   sessionToken: sessionToken,
+                   sessionId: gameSessionData.sessionId || null
+               };
+               
+               // Store the transaction in our secure game state
+               gameSessionData.transactions.push({
+                   type: transactionType,
+                   amount: amount,
+                   timestamp: Date.now(),
+                   balance: _secureGameState.getBalance()
+               });
+               
+               // Update user document with new balance
+               await updateDoc(userRef, {
+                   accountBalance: newBalance,
+                   totalGamesPlayed: userData.totalGamesPlayed || 0,
+                   totalMoneySpent: userData.totalMoneySpent || 0,
+                   totalMoneyEarned: userData.totalMoneyEarned || 0,
+                   lastUpdated: serverTimestamp()
+               });
+               
+               // Record the transaction
+               await setDoc(transactionRef, transactionData);
+               
+               // Update our local tracking
+               lastServerBalance = newBalance;
+               _secureGameState.updateBalance(newBalance);
+               _secureGameState.updateDisplay();
+               
+               return {
+                   transactionId: transactionRef.id,
+                   newBalance: newBalance
+               };
            } catch (error) {
                console.error("Transaction Error:", error);
-               window.transactionInProgress = false; // Make sure lock is released
+               return null;
            }
        }
 
-       // Attach functions to window for game script access
-       window.loadFirebaseCoinBalance = loadFirebaseCoinBalance;
-       window.updateFirebaseCoinBalance = updateFirebaseCoinBalance;
-       window.recordGameTransaction = recordGameTransaction;
+       // Create a secure encapsulated game state manager (using IIFE pattern)
+       const _secureGameState = (function() {
+           // Private variables that can't be accessed directly from console
+           let _balance = 0;
+           let _coinDisplay = null;
+           let _transactionLock = false;
+           
+           // Initialize the display element reference
+           function _initDisplay() {
+               _coinDisplay = document.getElementById('coinDisplay');
+           }
+           
+           // Update the display with current balance
+           function _updateDisplay() {
+               if (!_coinDisplay) _initDisplay();
+               if (_coinDisplay) {
+                   _coinDisplay.textContent = _balance.toLocaleString();
+               }
+           }
+           
+           // Return only the methods we want to expose
+           return {
+               getBalance: function() {
+                   return _balance;
+               },
+               updateBalance: function(newBalance) {
+                   if (typeof newBalance !== 'number' || isNaN(newBalance)) {
+                       console.error("Invalid balance update attempted");
+                       return false;
+                   }
+                   _balance = newBalance;
+                   return true;
+               },
+               updateDisplay: function() {
+                   _updateDisplay();
+               },
+               applyTransaction: async function(amount, isWin) {
+                   // Use transaction lock to prevent concurrent modifications
+                   if (_transactionLock) return false;
+                   
+                   try {
+                       _transactionLock = true;
+                       
+                       // First update local state for responsive UI
+                       let newBalance = _balance;
+                       if (isWin) {
+                           newBalance += amount;
+                       } else {
+                           newBalance -= amount;
+                       }
+                       
+                       // Update local balance temporarily
+                       _balance = newBalance;
+                       _updateDisplay();
+                       
+                       // Apply server-side change
+                       const result = await recordGameTransaction('blackjack_game', amount, isWin);
+                       
+                       // If server transaction failed, revert the local update
+                       if (!result) {
+                           console.warn("Server transaction failed, reverting local balance");
+                           await loadFirebaseCoinBalance(); // Refresh from server
+                           return false;
+                       }
+                       
+                       return true;
+                   } catch (error) {
+                       console.error("Transaction error:", error);
+                       return false;
+                   } finally {
+                       _transactionLock = false;
+                   }
+               }
+           };
+       })();
+
+       // Create and expose methods only through secure wrapper functions
+       window.gameInterface = {
+           getBalance: function() {
+               return _secureGameState.getBalance();
+           },
+           processTransaction: async function(amount, isWin) {
+               return await _secureGameState.applyTransaction(amount, isWin);
+           },
+           updateDisplay: function() {
+               _secureGameState.updateDisplay();
+           },
+           refreshBalance: async function() {
+               return await loadFirebaseCoinBalance();
+           }
+       };
+
+       // Anti-debugging measure - detect console open
+       (function() {
+           let devtoolsOpen = false;
+           
+           // Method 1: Check for firebug
+           if (window.Firebug && window.Firebug.chrome && window.Firebug.chrome.isInitialized) {
+               devtoolsOpen = true;
+           }
+           
+           // Method 2: Console timing method
+           const threshold = 160;
+           const start = Date.now();
+           
+           function checkTime() {
+               // Check time spent executing this function
+               // If debugger is open, this takes longer to execute
+               const end = Date.now();
+               if (end - start > threshold) {
+                   console.warn("Developer tools detected");
+                   // Additional security measures could be taken here
+               }
+           }
+           
+           checkTime();
+           
+           // Method 3: Monitor console logging (limited protection)
+           const originalLog = console.log;
+           console.log = function() {
+               originalLog.apply(console, arguments);
+               
+               // Check if someone is trying to inspect the game state
+               const logString = Array.from(arguments).join(" ").toLowerCase();
+               if (logString.includes("coin") || logString.includes("balance") || 
+                   logString.includes("firebase") || logString.includes("cheat")) {
+                   console.warn("Suspicious console activity detected");
+               }
+           };
+       })();
+       
+       // Add protection against tampering
+       Object.freeze(window.gameInterface);
    </script>
 
    <script>
-// Game Configuration
-window.coinBalance = 1000; // Initialize at the top level before any other code runs
+// SECURE BLACKJACK GAME IMPLEMENTATION
+// All game logic is encapsulated in an IIFE to prevent direct access from console
 
-const GAME_CONFIG = {
-    gameId: 'blackjack_game', // ID for Firebase transactions
-    minBet: 10,           // Minimum bet amount
-    maxBet: 10000,        // Maximum bet amount
-    blackjackPayout: 1.5, // Blackjack pays 3:2
-    hiddenEntryFee: 5,    // Small hidden fee per hand (not shown to user)
-    dealerStandValue: 17, // Dealer stands on all 17s
-};
+(function() {
+    // Game Configuration
+    const GAME_CONFIG = {
+        gameId: 'blackjack_game', // ID for Firebase transactions
+        minBet: 10,           // Minimum bet amount
+        maxBet: 10000,        // Maximum bet amount
+        blackjackPayout: 1.5, // Blackjack pays 3:2
+        hiddenEntryFee: 5,    // Small hidden fee per hand (not shown to user)
+        dealerStandValue: 17, // Dealer stands on all 17s
+    };
 
-// Game state
-let canvas, ctx;
-let canvasWidth, canvasHeight;
-let animationFrame;
-let gameActive = false;
-let currentBet = 0;
-let dealerCards = [];
-let playerCards = [];
-let isDealerTurn = false;
-let gameResult = null; // 'win', 'lose', 'push', 'blackjack'
-let canDouble = false;
+    // Game state
+    let canvas, ctx;
+    let canvasWidth, canvasHeight;
+    let animationFrame;
+    let gameActive = false;
+    let currentBet = 0;
+    let dealerCards = [];
+    let playerCards = [];
+    let isDealerTurn = false;
+    let gameResult = null; // 'win', 'lose', 'push', 'blackjack'
+    let canDouble = false;
 
-// Deck state
-let deck = [];
-const suits = ['♥', '♦', '♠', '♣'];
-const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+    // Security - Hash of the game state for validation
+    let gameStateHash = '';
+    let lastGameAction = '';
+    let actionCounter = 0;
 
-// DOM elements
-let coinDisplay;
-let startScreen;
-let resultScreen;
-let startBtn;
-let playAgainBtn;
-let backBtn;
-let blackjackContainer;
-let dealerCardsContainer;
-let playerCardsContainer;
-let dealerValueDisplay;
-let playerValueDisplay;
-let betAmount;
-let betControls;
-let actionControls;
-let dealBtn;
-let hitBtn;
-let standBtn;
-let doubleBtn;
-let gameStatus;
-let resultTitle;
-let resultMessage;
+    // Deck state
+    let deck = [];
+    const suits = ['♥', '♦', '♠', '♣'];
+    const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 
-// Helper function to clear all timeouts
-function clearAllTimeouts() {
-    // Create a very large number (bigger than any reasonable timeout id)
-    const highestTimeoutId = setTimeout(() => {}, 0);
-    
-    // Clear all timeout IDs from 0 to the highest one
-    for (let i = 0; i < highestTimeoutId; i++) {
-        clearTimeout(i);
+    // DOM elements
+    let startScreen;
+    let resultScreen;
+    let startBtn;
+    let playAgainBtn;
+    let backBtn;
+    let blackjackContainer;
+    let dealerCardsContainer;
+    let playerCardsContainer;
+    let dealerValueDisplay;
+    let playerValueDisplay;
+    let betAmount;
+    let betControls;
+    let actionControls;
+    let dealBtn;
+    let hitBtn;
+    let standBtn;
+    let doubleBtn;
+    let gameStatus;
+    let resultTitle;
+    let resultMessage;
+
+    // Security function - Generate a hash for game state validation
+    function hashGameState() {
+        // Create a string representing critical game state
+        const stateString = JSON.stringify({
+            playerCards: playerCards,
+            dealerCards: dealerCards,
+            currentBet: currentBet,
+            balance: window.gameInterface.getBalance(),
+            gameActive: gameActive,
+            actionCounter: actionCounter,
+            lastAction: lastGameAction
+        });
+        
+        // Simple hash function
+        let hash = 0;
+        for (let i = 0; i < stateString.length; i++) {
+            const char = stateString.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        
+        return hash.toString(16);
     }
-}
-
-// Initialize DOM elements
-function initDomElements() {
-    coinDisplay = document.getElementById('coinDisplay');
-    startScreen = document.getElementById('start-screen');
-    resultScreen = document.getElementById('result-screen');
-    startBtn = document.getElementById('start-btn');
-    playAgainBtn = document.getElementById('play-again-btn');
-    backBtn = document.getElementById('back-btn');
-    blackjackContainer = document.getElementById('blackjack-container');
-    dealerCardsContainer = document.getElementById('dealer-cards');
-    playerCardsContainer = document.getElementById('player-cards');
-    dealerValueDisplay = document.getElementById('dealer-value');
-    playerValueDisplay = document.getElementById('player-value');
-    betAmount = document.getElementById('bet-amount');
-    betControls = document.getElementById('bet-controls');
-    actionControls = document.getElementById('action-controls');
-    dealBtn = document.getElementById('deal-btn');
-    hitBtn = document.getElementById('hit-btn');
-    standBtn = document.getElementById('stand-btn');
-    doubleBtn = document.getElementById('double-btn');
-    gameStatus = document.getElementById('game-status');
-    resultTitle = document.getElementById('result-title');
-    resultMessage = document.getElementById('result-message');
     
-    // Make sure coin display is updated immediately
-    updateCoinDisplay();
-}
-
-// Update coin display
-function updateCoinDisplay() {
-    if (coinDisplay) {
-        coinDisplay.textContent = window.coinBalance.toLocaleString();
-    }
-}
-
-// Make updateCoinDisplay available globally
-window.updateCoinDisplay = updateCoinDisplay;
-
-// Update coin balance - Using only recordTransaction to update Firebase
-function updateCoins(amount, isWin = true) {
-    // Calculate the new balance
-    const newBalance = window.coinBalance + amount;
-    
-    console.log(`Updating coins: current=${window.coinBalance}, change=${amount}, new=${newBalance}`);
-    
-    // Update local balance first
-    window.coinBalance = newBalance;
-    
-    // Update the display
-    updateCoinDisplay();
-
-    // Force update to Firebase
-    if (window.recordGameTransaction) {
-        // If amount is positive, it's a win, otherwise it's a play cost
-        window.recordGameTransaction(GAME_CONFIG.gameId, Math.abs(amount), isWin)
-            .then((result) => {
-                console.log("Transaction recorded successfully:", result);
-            })
-            .catch((error) => {
-                console.error("Error recording transaction:", error);
-                // Fallback to direct balance update if transaction fails
-                if (window.updateFirebaseCoinBalance) {
-                    window.updateFirebaseCoinBalance(newBalance);
-                }
-            });
-    } else if (window.updateFirebaseCoinBalance) {
-        // Fallback only if recordGameTransaction is not available
-        window.updateFirebaseCoinBalance(newBalance)
-            .then((success) => {
-                console.log("Direct balance update:", success);
-            })
-            .catch((error) => {
-                console.error("Error updating balance:", error);
-            });
-    }
-}
-
-// Initialize canvas for background
-function initCanvas() {
-    canvas = document.getElementById('game-canvas');
-    if (!canvas) {
-        console.error("Canvas element not found!");
-        return;
+    // Security function - Validate game state integrity
+    function validateGameState() {
+        const currentHash = hashGameState();
+        
+        // If we have a previous hash to compare against
+        if (gameStateHash && gameStateHash !== currentHash) {
+            console.error("Game state tampering detected");
+            // Could implement additional security measures here
+            return false;
+        }
+        
+        // Update the hash
+        gameStateHash = currentHash;
+        return true;
     }
 
-    ctx = canvas.getContext('2d');
-
-    const gameBoard = document.querySelector('.game-board');
-    if (!gameBoard) {
-        console.error("Game board element not found!");
-        return;
-    }
-
-    // Get actual dimensions of the game board
-    canvasWidth = gameBoard.clientWidth;
-    canvasHeight = gameBoard.clientHeight;
-
-    // Set canvas dimensions
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-    canvas.style.width = canvasWidth + "px";
-    canvas.style.height = canvasHeight + "px";
-}
-
-// Create a new shuffled deck
-function createDeck() {
-    deck = [];
-    for (let suit of suits) {
-        for (let value of values) {
-            deck.push({ suit, value });
+    // Helper function to clear all timeouts
+    function clearAllTimeouts() {
+        // Create a very large number (bigger than any reasonable timeout id)
+        const highestTimeoutId = setTimeout(() => {}, 0);
+        
+        // Clear all timeout IDs from 0 to the highest one
+        for (let i = 0; i < highestTimeoutId; i++) {
+            clearTimeout(i);
         }
     }
-    shuffleDeck();
-}
 
-// Shuffle the deck
-function shuffleDeck() {
-    // Fisher-Yates shuffle algorithm
-    for (let i = deck.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [deck[i], deck[j]] = [deck[j], deck[i]];
+    // Initialize DOM elements
+    function initDomElements() {
+        startScreen = document.getElementById('start-screen');
+        resultScreen = document.getElementById('result-screen');
+        startBtn = document.getElementById('start-btn');
+        playAgainBtn = document.getElementById('play-again-btn');
+        backBtn = document.getElementById('back-btn');
+        blackjackContainer = document.getElementById('blackjack-container');
+        dealerCardsContainer = document.getElementById('dealer-cards');
+        playerCardsContainer = document.getElementById('player-cards');
+        dealerValueDisplay = document.getElementById('dealer-value');
+        playerValueDisplay = document.getElementById('player-value');
+        betAmount = document.getElementById('bet-amount');
+        betControls = document.getElementById('bet-controls');
+        actionControls = document.getElementById('action-controls');
+        dealBtn = document.getElementById('deal-btn');
+        hitBtn = document.getElementById('hit-btn');
+        standBtn = document.getElementById('stand-btn');
+        doubleBtn = document.getElementById('double-btn');
+        gameStatus = document.getElementById('game-status');
+        resultTitle = document.getElementById('result-title');
+        resultMessage = document.getElementById('result-message');
+        
+        // Ensure balance display is up to date
+        window.gameInterface.updateDisplay();
     }
-}
 
-// Draw a card from the deck
-function drawCard() {
-    // If deck is running low, create a new one
-    if (deck.length < 10) {
-        createDeck();
+    // Update coin balance - Using the secure gameInterface instead of direct manipulation
+    async function updateCoins(amount, isWin = true) {
+        // Log the attempt for debugging
+        console.log(`Updating coins: current=${window.gameInterface.getBalance()}, change=${amount}`);
+        
+        // Use the secure game interface to update coins
+        const success = await window.gameInterface.processTransaction(Math.abs(amount), isWin);
+        
+        if (!success) {
+            console.error("Failed to update coins");
+            // Force refresh from server as a fallback
+            await window.gameInterface.refreshBalance();
+        }
+        
+        // Update game state hash after balance change
+        validateGameState();
     }
-    return deck.pop();
-}
 
-// Get the value of a card
-function getCardValue(card) {
-    if (card.value === 'A') {
-        return 11; // Ace is initially 11, will be adjusted for soft hands
-    } else if (['K', 'Q', 'J'].includes(card.value)) {
-        return 10;
-    } else {
-        return parseInt(card.value);
+    // Initialize canvas for background
+    function initCanvas() {
+        canvas = document.getElementById('game-canvas');
+        if (!canvas) {
+            console.error("Canvas element not found!");
+            return;
+        }
+
+        ctx = canvas.getContext('2d');
+
+        const gameBoard = document.querySelector('.game-board');
+        if (!gameBoard) {
+            console.error("Game board element not found!");
+            return;
+        }
+
+        // Get actual dimensions of the game board
+        canvasWidth = gameBoard.clientWidth;
+        canvasHeight = gameBoard.clientHeight;
+
+        // Set canvas dimensions
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        canvas.style.width = canvasWidth + "px";
+        canvas.style.height = canvasHeight + "px";
     }
-}
 
-// Calculate the total value of a hand
-function calculateHandValue(cards) {
-    let total = 0;
-    let aces = 0;
-    
-    // Sum up all cards
-    for (let card of cards) {
+    // Create a new shuffled deck with improved randomness
+    function createDeck() {
+        deck = [];
+        for (let suit of suits) {
+            for (let value of values) {
+                deck.push({ suit, value });
+            }
+        }
+        shuffleDeck();
+    }
+
+    // Shuffle the deck with cryptographically secure randomness
+    function shuffleDeck() {
+        // Get cryptographically secure random values if available
+        const getSecureRandom = () => {
+            if (window.crypto && window.crypto.getRandomValues) {
+                const rand = new Uint32Array(1);
+                window.crypto.getRandomValues(rand);
+                return rand[0] / (0xFFFFFFFF + 1);
+            } else {
+                return Math.random();
+            }
+        };
+        
+        // Fisher-Yates shuffle with secure randomness
+        for (let i = deck.length - 1; i > 0; i--) {
+            const j = Math.floor(getSecureRandom() * (i + 1));
+            [deck[i], deck[j]] = [deck[j], deck[i]];
+        }
+        
+        // Track the shuffle in game state
+        lastGameAction = 'shuffle';
+        actionCounter++;
+        validateGameState();
+    }
+
+    // Draw a card from the deck
+    function drawCard() {
+        // If deck is running low, create a new one
+        if (deck.length < 10) {
+            createDeck();
+        }
+        
+        const card = deck.pop();
+        
+        // Track the action
+        lastGameAction = 'draw';
+        actionCounter++;
+        validateGameState();
+        
+        return card;
+    }
+
+    // Get the value of a card
+    function getCardValue(card) {
         if (card.value === 'A') {
-            aces++;
-            total += 11;
+            return 11; // Ace is initially 11, will be adjusted for soft hands
         } else if (['K', 'Q', 'J'].includes(card.value)) {
-            total += 10;
+            return 10;
         } else {
-            total += parseInt(card.value);
+            return parseInt(card.value);
         }
     }
-    
-    // Adjust for aces if needed (convert from 11 to 1)
-    while (total > 21 && aces > 0) {
-        total -= 10; // Change one ace from 11 to 1
-        aces--;
+
+    // Calculate the total value of a hand
+    function calculateHandValue(cards) {
+        let total = 0;
+        let aces = 0;
+        
+        // Sum up all cards
+        for (let card of cards) {
+            if (card.value === 'A') {
+                aces++;
+                total += 11;
+            } else if (['K', 'Q', 'J'].includes(card.value)) {
+                total += 10;
+            } else {
+                total += parseInt(card.value);
+            }
+        }
+        
+        // Adjust for aces if needed (convert from 11 to 1)
+        while (total > 21 && aces > 0) {
+            total -= 10; // Change one ace from 11 to 1
+            aces--;
+        }
+        
+        return total;
     }
-    
-    return total;
-}
 
-// Check if a hand is a blackjack
-function isBlackjack(cards) {
-    return cards.length === 2 && calculateHandValue(cards) === 21;
-}
+    // Check if a hand is a blackjack
+    function isBlackjack(cards) {
+        return cards.length === 2 && calculateHandValue(cards) === 21;
+    }
 
-// Check if a hand is busted
-function isBusted(cards) {
-    return calculateHandValue(cards) > 21;
-}
+    // Check if a hand is busted
+    function isBusted(cards) {
+        return calculateHandValue(cards) > 21;
+    }
 
-// Create a card element
-function createCardElement(card, isHidden = false) {
-    const cardElement = document.createElement('div');
-    cardElement.className = 'card';
-    
-    if (isHidden) {
-        cardElement.classList.add('hidden');
+    // Create a card element
+    function createCardElement(card, isHidden = false) {
+        const cardElement = document.createElement('div');
+        cardElement.className = 'card';
+        
+        if (isHidden) {
+            cardElement.classList.add('hidden');
+            return cardElement;
+        }
+        
+        // Add red/black class based on suit
+        if (card.suit === '♥' || card.suit === '♦') {
+            cardElement.classList.add('red');
+        } else {
+            cardElement.classList.add('black');
+        }
+        
+        // Create card layout
+        const topSection = document.createElement('div');
+        topSection.className = 'card-top';
+        
+        const valueTop = document.createElement('div');
+        valueTop.className = 'card-value';
+        valueTop.textContent = card.value;
+        
+        const suitTop = document.createElement('div');
+        suitTop.className = 'card-suit';
+        suitTop.textContent = card.suit;
+        
+        topSection.appendChild(valueTop);
+        topSection.appendChild(suitTop);
+        
+        const centerSection = document.createElement('div');
+        centerSection.className = 'card-center';
+        centerSection.textContent = card.suit;
+        
+        const bottomSection = document.createElement('div');
+        bottomSection.className = 'card-bottom';
+        
+        const valueBottom = document.createElement('div');
+        valueBottom.className = 'card-value';
+        valueBottom.textContent = card.value;
+        
+        const suitBottom = document.createElement('div');
+        suitBottom.className = 'card-suit';
+        suitBottom.textContent = card.suit;
+        
+        bottomSection.appendChild(valueBottom);
+        bottomSection.appendChild(suitBottom);
+        
+        cardElement.appendChild(topSection);
+        cardElement.appendChild(centerSection);
+        cardElement.appendChild(bottomSection);
+        
+        // Add animation
+        cardElement.style.animation = 'dealCard 0.5s forwards';
+        
         return cardElement;
     }
-    
-    // Add red/black class based on suit
-    if (card.suit === '♥' || card.suit === '♦') {
-        cardElement.classList.add('red');
-    } else {
-        cardElement.classList.add('black');
-    }
-    
-    // Create card layout
-    const topSection = document.createElement('div');
-    topSection.className = 'card-top';
-    
-    const valueTop = document.createElement('div');
-    valueTop.className = 'card-value';
-    valueTop.textContent = card.value;
-    
-    const suitTop = document.createElement('div');
-    suitTop.className = 'card-suit';
-    suitTop.textContent = card.suit;
-    
-    topSection.appendChild(valueTop);
-    topSection.appendChild(suitTop);
-    
-    const centerSection = document.createElement('div');
-    centerSection.className = 'card-center';
-    centerSection.textContent = card.suit;
-    
-    const bottomSection = document.createElement('div');
-    bottomSection.className = 'card-bottom';
-    
-    const valueBottom = document.createElement('div');
-    valueBottom.className = 'card-value';
-    valueBottom.textContent = card.value;
-    
-    const suitBottom = document.createElement('div');
-    suitBottom.className = 'card-suit';
-    suitBottom.textContent = card.suit;
-    
-    bottomSection.appendChild(valueBottom);
-    bottomSection.appendChild(suitBottom);
-    
-    cardElement.appendChild(topSection);
-    cardElement.appendChild(centerSection);
-    cardElement.appendChild(bottomSection);
-    
-    // Add animation
-    cardElement.style.animation = 'dealCard 0.5s forwards';
-    
-    return cardElement;
-}
 
-// Update the displayed hand value
-function updateHandValues() {
-    if (playerValueDisplay) {
-        playerValueDisplay.textContent = calculateHandValue(playerCards);
-    }
-    
-    // Only show dealer's visible cards value if it's not dealer's turn
-    if (dealerValueDisplay) {
-        if (isDealerTurn) {
-            dealerValueDisplay.textContent = calculateHandValue(dealerCards);
-        } else {
-            // Show value of visible cards only
-            const visibleCards = dealerCards.slice(1);
-            dealerValueDisplay.textContent = calculateHandValue(visibleCards);
+    // Update the displayed hand value
+    function updateHandValues() {
+        if (playerValueDisplay) {
+            playerValueDisplay.textContent = calculateHandValue(playerCards);
+        }
+        
+        // Only show dealer's visible cards value if it's not dealer's turn
+        if (dealerValueDisplay) {
+            if (isDealerTurn) {
+                dealerValueDisplay.textContent = calculateHandValue(dealerCards);
+            } else {
+                // Show value of visible cards only
+                const visibleCards = dealerCards.slice(1);
+                dealerValueDisplay.textContent = calculateHandValue(visibleCards);
+            }
         }
     }
-}
 
-// Render cards to the containers
-function renderCards() {
-    // Clear containers
-    if (playerCardsContainer) {
-        playerCardsContainer.innerHTML = '';
+    // Render cards to the containers
+    function renderCards() {
+        // Clear containers
+        if (playerCardsContainer) {
+            playerCardsContainer.innerHTML = '';
+        }
+        if (dealerCardsContainer) {
+            dealerCardsContainer.innerHTML = '';
+        }
+        
+        // Render player cards
+        playerCards.forEach(card => {
+            const cardElement = createCardElement(card);
+            playerCardsContainer.appendChild(cardElement);
+        });
+        
+        // Render dealer cards
+        dealerCards.forEach((card, index) => {
+            // First card is hidden if not dealer's turn
+            const isHidden = index === 0 && !isDealerTurn;
+            const cardElement = createCardElement(card, isHidden);
+            dealerCardsContainer.appendChild(cardElement);
+        });
+        
+        // Update hand values
+        updateHandValues();
+        
+        // Validate game state after rendering
+        validateGameState();
     }
-    if (dealerCardsContainer) {
-        dealerCardsContainer.innerHTML = '';
-    }
-    
-    // Render player cards
-    playerCards.forEach(card => {
-        const cardElement = createCardElement(card);
-        playerCardsContainer.appendChild(cardElement);
-    });
-    
-    // Render dealer cards
-    dealerCards.forEach((card, index) => {
-        // First card is hidden if not dealer's turn
-        const isHidden = index === 0 && !isDealerTurn;
-        const cardElement = createCardElement(card, isHidden);
-        dealerCardsContainer.appendChild(cardElement);
-    });
-    
-    // Update hand values
-    updateHandValues();
-}
 
-// Deal initial cards
-function dealInitialCards() {
-    // Apply hidden entry fee
-    const entryFee = GAME_CONFIG.hiddenEntryFee;
-    if (entryFee > 0) {
-        console.log(`Applying hidden entry fee: ${entryFee} coins`);
-        updateCoins(-entryFee, false);
-    }
-    
-    // Reset cards
-    playerCards = [];
-    dealerCards = [];
-    
-    // Deal 2 cards to player and dealer (alternating)
-    playerCards.push(drawCard());
-    dealerCards.push(drawCard());
-    playerCards.push(drawCard());
-    dealerCards.push(drawCard());
-    
-    // Render the cards
-    renderCards();
-    
-    // Check for blackjack
-    const playerHasBlackjack = isBlackjack(playerCards);
-    const dealerHasBlackjack = isBlackjack(dealerCards);
-    
-    if (playerHasBlackjack || dealerHasBlackjack) {
-        // Reveal dealer's cards immediately for blackjack
-        isDealerTurn = true;
+    // Deal initial cards
+    async function dealInitialCards() {
+        // Validate current game state
+        if (!validateGameState()) {
+            console.error("Game state validation failed during deal");
+            await window.gameInterface.refreshBalance();
+            resetGame();
+            return;
+        }
+        
+        // Apply hidden entry fee
+        const entryFee = GAME_CONFIG.hiddenEntryFee;
+        if (entryFee > 0) {
+            console.log(`Applying hidden entry fee: ${entryFee} coins`);
+            await updateCoins(entryFee, false);
+        }
+        
+        // Reset cards
+        playerCards = [];
+        dealerCards = [];
+        
+        // Deal 2 cards to player and dealer (alternating)
+        playerCards.push(drawCard());
+        dealerCards.push(drawCard());
+        playerCards.push(drawCard());
+        dealerCards.push(drawCard());
+        
+        // Render the cards
         renderCards();
         
-        if (playerHasBlackjack && dealerHasBlackjack) {
-            // Both have blackjack - push
-            gameResult = 'push';
-            updateGameStatus("Both have Blackjack! Push!");
-            setTimeout(() => {
-                endGame();
-            }, 1500);
-        } else if (playerHasBlackjack) {
-            // Player has blackjack
-            gameResult = 'blackjack';
-            updateGameStatus("Blackjack! You win!");
-            setTimeout(() => {
-                endGame();
-            }, 1500);
+        // Track the deal
+        lastGameAction = 'deal';
+        actionCounter++;
+        validateGameState();
+        
+        // Check for blackjack
+        const playerHasBlackjack = isBlackjack(playerCards);
+        const dealerHasBlackjack = isBlackjack(dealerCards);
+        
+        if (playerHasBlackjack || dealerHasBlackjack) {
+            // Reveal dealer's cards immediately for blackjack
+            isDealerTurn = true;
+            renderCards();
+            
+            if (playerHasBlackjack && dealerHasBlackjack) {
+                // Both have blackjack - push
+                gameResult = 'push';
+                updateGameStatus("Both have Blackjack! Push!");
+                setTimeout(() => {
+                    endGame();
+                }, 1500);
+            } else if (playerHasBlackjack) {
+                // Player has blackjack
+                gameResult = 'blackjack';
+                updateGameStatus("Blackjack! You win!");
+                setTimeout(() => {
+                    endGame();
+                }, 1500);
+            } else {
+                // Dealer has blackjack
+                gameResult = 'lose';
+                updateGameStatus("Dealer has Blackjack! You lose.");
+                setTimeout(() => {
+                    endGame();
+                }, 1500);
+            }
         } else {
-            // Dealer has blackjack
+            // Game continues - enable player actions
+            enablePlayerActions();
+            
+            // Check if player can double down
+            canDouble = window.gameInterface.getBalance() >= currentBet;
+            doubleBtn.disabled = !canDouble;
+        }
+    }
+
+    // Enable player action buttons
+    function enablePlayerActions() {
+        if (actionControls) {
+            actionControls.style.display = 'flex';
+        }
+        if (betControls) {
+            betControls.style.display = 'none';
+        }
+        
+        // Update game status
+        updateGameStatus("Your turn");
+        
+        // Track the action
+        lastGameAction = 'enableActions';
+        actionCounter++;
+        validateGameState();
+    }
+
+    // Disable player action buttons
+    function disablePlayerActions() {
+        if (actionControls) {
+            actionControls.style.display = 'none';
+        }
+        
+        // Track the action
+        lastGameAction = 'disableActions';
+        actionCounter++;
+        validateGameState();
+    }
+
+    // Update the game status message
+    function updateGameStatus(message) {
+        if (gameStatus) {
+            gameStatus.textContent = message;
+        }
+    }
+
+    // Player hits - take another card
+    function playerHit() {
+        // Validate current game state
+        if (!validateGameState()) {
+            console.error("Game state validation failed during hit");
+            resetGame();
+            return;
+        }
+        
+        // Track the action
+        lastGameAction = 'hit';
+        actionCounter++;
+        
+        // Draw a card and add to player's hand
+        const card = drawCard();
+        playerCards.push(card);
+        
+        // Render cards
+        renderCards();
+        
+        // Check if player busts
+        if (isBusted(playerCards)) {
             gameResult = 'lose';
-            updateGameStatus("Dealer has Blackjack! You lose.");
+            updateGameStatus("Busted! You went over 21.");
+            disablePlayerActions();
             setTimeout(() => {
                 endGame();
             }, 1500);
         }
-    } else {
-        // Game continues - enable player actions
-        enablePlayerActions();
         
-        // Check if player can double down
-        canDouble = window.coinBalance >= currentBet;
-        doubleBtn.disabled = !canDouble;
+        // Validate state after action
+        validateGameState();
     }
-}
 
-// Enable player action buttons
-function enablePlayerActions() {
-    if (actionControls) {
-        actionControls.style.display = 'flex';
-    }
-    if (betControls) {
-        betControls.style.display = 'none';
-    }
-    
-    // Update game status
-    updateGameStatus("Your turn");
-}
-
-// Disable player action buttons
-function disablePlayerActions() {
-    if (actionControls) {
-        actionControls.style.display = 'none';
-    }
-}
-
-// Update the game status message
-function updateGameStatus(message) {
-    if (gameStatus) {
-        gameStatus.textContent = message;
-    }
-}
-
-// Player hits - take another card
-function playerHit() {
-    // Draw a card and add to player's hand
-    const card = drawCard();
-    playerCards.push(card);
-    
-    // Render cards
-    renderCards();
-    
-    // Check if player busts
-    if (isBusted(playerCards)) {
-        gameResult = 'lose';
-        updateGameStatus("Busted! You went over 21.");
+    // Player stands - end turn and dealer plays
+    function playerStand() {
+        // Validate current game state
+        if (!validateGameState()) {
+            console.error("Game state validation failed during stand");
+            resetGame();
+            return;
+        }
+        
+        // Track the action
+        lastGameAction = 'stand';
+        actionCounter++;
+        
         disablePlayerActions();
+        dealerPlay();
+        
+        // Validate state after action
+        validateGameState();
+    }
+
+    // Player doubles down
+    async function playerDoubleDown() {
+        // Validate current game state
+        if (!validateGameState()) {
+            console.error("Game state validation failed during double down");
+            resetGame();
+            return;
+        }
+        
+        // Track the action
+        lastGameAction = 'double';
+        actionCounter++;
+        
+        // Double the bet
+        await updateCoins(currentBet, false);
+        currentBet *= 2;
+        
+        // Update bet display
+        if (betAmount) {
+            betAmount.textContent = currentBet.toLocaleString();
+        }
+        
+        // Take only one card
+        playerHit();
+        
+        // If not busted, stand
+        if (!isBusted(playerCards)) {
+            setTimeout(() => {
+                playerStand();
+            }, 1000);
+        }
+        
+        // Validate state after action
+        validateGameState();
+    }
+
+    // Dealer plays their turn
+    function dealerPlay() {
+        // Track the action
+        lastGameAction = 'dealerPlay';
+        actionCounter++;
+        
+        isDealerTurn = true;
+        renderCards();
+        updateGameStatus("Dealer's turn");
+        
+        // Function to add cards to dealer with delay
+        function dealerDraw() {
+            // Validate state in each step
+            if (!validateGameState()) {
+                console.error("Game state validation failed during dealer draw");
+                resetGame();
+                return;
+            }
+            
+            // Get current dealer hand value
+            const dealerValue = calculateHandValue(dealerCards);
+            
+            if (dealerValue < GAME_CONFIG.dealerStandValue) {
+                // Dealer hits
+                setTimeout(() => {
+                    const card = drawCard();
+                    dealerCards.push(card);
+                    renderCards();
+                    
+                    // Continue drawing if needed
+                    dealerDraw();
+                }, 800); // Delay between dealer draws
+            } else {
+                // Dealer stands - evaluate result
+                setTimeout(() => {
+                    evaluateResult();
+                }, 1000);
+            }
+        }
+        
+        // Start dealer drawing
+        dealerDraw();
+        
+        // Validate state after action
+        validateGameState();
+    }
+
+    // Evaluate the game result
+    function evaluateResult() {
+        // Track the action
+        lastGameAction = 'evaluate';
+        actionCounter++;
+        
+        const playerValue = calculateHandValue(playerCards);
+        const dealerValue = calculateHandValue(dealerCards);
+        
+        if (isBusted(dealerCards)) {
+            // Dealer busts, player wins
+            gameResult = 'win';
+            updateGameStatus("Dealer busts! You win!");
+        } else if (playerValue > dealerValue) {
+            // Player has higher value
+            gameResult = 'win';
+            updateGameStatus("You win!");
+        } else if (playerValue < dealerValue) {
+            // Dealer has higher value
+            gameResult = 'lose';
+            updateGameStatus("Dealer wins!");
+        } else {
+            // Equal values - push
+            gameResult = 'push';
+            updateGameStatus("Push!");
+        }
+        
         setTimeout(() => {
             endGame();
         }, 1500);
-    }
-}
-
-// Player stands - end turn and dealer plays
-function playerStand() {
-    disablePlayerActions();
-    dealerPlay();
-}
-
-// Player doubles down
-function playerDoubleDown() {
-    // Double the bet
-    updateCoins(-currentBet, false);
-    currentBet *= 2;
-    
-    // Update bet display
-    if (betAmount) {
-        betAmount.textContent = currentBet.toLocaleString();
-    }
-    
-    // Take only one card
-    playerHit();
-    
-    // If not busted, stand
-    if (!isBusted(playerCards)) {
-        setTimeout(() => {
-            playerStand();
-        }, 1000);
-    }
-}
-
-// Dealer plays their turn
-function dealerPlay() {
-    isDealerTurn = true;
-    renderCards();
-    updateGameStatus("Dealer's turn");
-    
-    // Function to add cards to dealer with delay
-    function dealerDraw() {
-        // Get current dealer hand value
-        const dealerValue = calculateHandValue(dealerCards);
         
-        if (dealerValue < GAME_CONFIG.dealerStandValue) {
-            // Dealer hits
-            setTimeout(() => {
-                const card = drawCard();
-                dealerCards.push(card);
-                renderCards();
+        // Validate state after action
+        validateGameState();
+    }
+
+    // End the game and show result
+    async function endGame() {
+        // Track the action
+        lastGameAction = 'endGame';
+        actionCounter++;
+        
+        let winAmount = 0;
+        
+        switch (gameResult) {
+            case 'blackjack':
+                // Blackjack pays 3:2
+                winAmount = Math.floor(currentBet * GAME_CONFIG.blackjackPayout);
+                await updateCoins(currentBet + winAmount, true);
+                showResult("Blackjack!", `You hit 21 with two cards!<br>You won: <span class="win-amount">${winAmount}</span> coins!`, 'win');
+                break;
                 
-                // Continue drawing if needed
-                dealerDraw();
-            }, 800); // Delay between dealer draws
-        } else {
-            // Dealer stands - evaluate result
-            setTimeout(() => {
-                evaluateResult();
-            }, 1000);
+            case 'win':
+                // Regular win pays 1:1
+                winAmount = currentBet;
+                await updateCoins(currentBet + winAmount, true);
+                showResult("You Win!", `You beat the dealer!<br>You won: <span class="win-amount">${winAmount}</span> coins!`, 'win');
+                break;
+                
+            case 'lose':
+                // Player already paid bet at start
+                showResult("You Lose!", `The dealer won this round.<br>You lost: <span class="lose-amount">${currentBet}</span> coins.`, 'lose');
+                break;
+                
+            case 'push':
+                // Return the original bet
+                await updateCoins(currentBet, true);
+                showResult("Push!", "It's a tie! Your bet has been returned.", 'push');
+                break;
         }
+        
+        gameActive = false;
+        
+        // Validate final state
+        validateGameState();
     }
-    
-    // Start dealer drawing
-    dealerDraw();
-}
 
-// Evaluate the game result
-function evaluateResult() {
-    const playerValue = calculateHandValue(playerCards);
-    const dealerValue = calculateHandValue(dealerCards);
-    
-    if (isBusted(dealerCards)) {
-        // Dealer busts, player wins
-        gameResult = 'win';
-        updateGameStatus("Dealer busts! You win!");
-    } else if (playerValue > dealerValue) {
-        // Player has higher value
-        gameResult = 'win';
-        updateGameStatus("You win!");
-    } else if (playerValue < dealerValue) {
-        // Dealer has higher value
-        gameResult = 'lose';
-        updateGameStatus("Dealer wins!");
-    } else {
-        // Equal values - push
-        gameResult = 'push';
-        updateGameStatus("Push!");
+    // Show the result screen
+    function showResult(title, message, resultClass) {
+        if (!resultScreen || !resultTitle || !resultMessage) {
+            console.error("Result screen elements not found!");
+            return;
+        }
+        
+        // Set the result screen content
+        resultTitle.textContent = title;
+        resultTitle.className = `overlay-title ${resultClass}`;
+        resultMessage.innerHTML = message;
+        
+        // Make result screen visible
+        resultScreen.style.display = 'flex';
+        resultScreen.classList.add('visible');
+        
+        // Force coin display update
+        window.gameInterface.updateDisplay();
     }
-    
-    setTimeout(() => {
-        endGame();
-    }, 1500);
-}
 
-// End the game and show result
-function endGame() {
-    let winAmount = 0;
-    
-    switch (gameResult) {
-        case 'blackjack':
-            // Blackjack pays 3:2
-            winAmount = Math.floor(currentBet * GAME_CONFIG.blackjackPayout);
-            updateCoins(currentBet + winAmount, true);
-            showResult("Blackjack!", `You hit 21 with two cards!<br>You won: <span class="win-amount">${winAmount}</span> coins!`, 'win');
-            break;
+    // Place a bet
+    function placeBet(amount) {
+        // Track the action
+        lastGameAction = 'placeBet';
+        actionCounter++;
+        
+        // Clear bet if requested
+        if (amount === 'clear') {
+            currentBet = 0;
+            if (betAmount) {
+                betAmount.textContent = '0';
+            }
             
-        case 'win':
-            // Regular win pays 1:1
-            winAmount = currentBet;
-            updateCoins(currentBet + winAmount, true);
-            showResult("You Win!", `You beat the dealer!<br>You won: <span class="win-amount">${winAmount}</span> coins!`, 'win');
-            break;
-            
-        case 'lose':
-            // Player already paid bet at start
-            showResult("You Lose!", `The dealer won this round.<br>You lost: <span class="lose-amount">${currentBet}</span> coins.`, 'lose');
-            break;
-            
-        case 'push':
-            // Return the original bet
-            updateCoins(currentBet, true);
-            showResult("Push!", "It's a tie! Your bet has been returned.", 'push');
-            break;
+            // Validate state after action
+            validateGameState();
+            return;
+        }
+        
+        // Add to current bet
+        const newBet = currentBet + amount;
+        
+        // Validate bet against min/max and player balance
+        if (newBet > window.gameInterface.getBalance()) {
+            alert("You don't have enough coins for that bet!");
+            return;
+        }
+        
+        if (newBet > GAME_CONFIG.maxBet) {
+            alert(`Maximum bet is ${GAME_CONFIG.maxBet.toLocaleString()} coins!`);
+            return;
+        }
+        
+        // Update current bet
+        currentBet = newBet;
+        if (betAmount) {
+            betAmount.textContent = currentBet.toLocaleString();
+        }
+        
+        // Enable deal button if bet meets minimum
+        if (dealBtn) {
+            dealBtn.disabled = currentBet < GAME_CONFIG.minBet;
+        }
+        
+        // Validate state after action
+        validateGameState();
     }
-    
-    gameActive = false;
-}
 
-// Show the result screen
-function showResult(title, message, resultClass) {
-    if (!resultScreen || !resultTitle || !resultMessage) {
-        console.error("Result screen elements not found!");
-        return;
+    // Start dealing cards
+    async function startDeal() {
+        // Track the action
+        lastGameAction = 'startDeal';
+        actionCounter++;
+        
+        // Check minimum bet
+        if (currentBet < GAME_CONFIG.minBet) {
+            alert(`Minimum bet is ${GAME_CONFIG.minBet} coins!`);
+            return;
+        }
+        
+        // Check if player has enough balance
+        if (currentBet > window.gameInterface.getBalance()) {
+            alert("You don't have enough coins for that bet!");
+            return;
+        }
+        
+        // Deduct bet from balance
+        await updateCoins(currentBet, false);
+        
+        // Deal initial cards
+        await dealInitialCards();
+        
+        // Validate state after action
+        validateGameState();
     }
-    
-    // Set the result screen content
-    resultTitle.textContent = title;
-    resultTitle.className = `overlay-title ${resultClass}`;
-    resultMessage.innerHTML = message;
-    
-    // Make result screen visible
-    resultScreen.style.display = 'flex';
-    resultScreen.classList.add('visible');
-    
-    // Force coin display update
-    updateCoinDisplay();
-}
 
-// Place a bet
-function placeBet(amount) {
-    // Clear bet if requested
-    if (amount === 'clear') {
+    // Initialize game
+    function initGame() {
+        // Reset game state
+        gameActive = true;
         currentBet = 0;
+        playerCards = [];
+        dealerCards = [];
+        isDealerTurn = false;
+        gameResult = null;
+        canDouble = false;
+        actionCounter = 0;
+        lastGameAction = 'init';
+        
+        // Create and shuffle the deck
+        createDeck();
+        
+        // Update UI
         if (betAmount) {
             betAmount.textContent = '0';
         }
-        return;
-    }
-    
-    // Add to current bet
-    const newBet = currentBet + amount;
-    
-    // Validate bet against min/max and player balance
-    if (newBet > window.coinBalance) {
-        alert("You don't have enough coins for that bet!");
-        return;
-    }
-    
-    if (newBet > GAME_CONFIG.maxBet) {
-        alert(`Maximum bet is ${GAME_CONFIG.maxBet.toLocaleString()} coins!`);
-        return;
-    }
-    
-    // Update current bet
-    currentBet = newBet;
-    if (betAmount) {
-        betAmount.textContent = currentBet.toLocaleString();
-    }
-    
-    // Enable deal button if bet meets minimum
-    if (dealBtn) {
-        dealBtn.disabled = currentBet < GAME_CONFIG.minBet;
-    }
-}
-
-// Start dealing cards
-function startDeal() {
-    // Check minimum bet
-    if (currentBet < GAME_CONFIG.minBet) {
-        alert(`Minimum bet is ${GAME_CONFIG.minBet} coins!`);
-        return;
-    }
-    
-    // Check if player has enough balance
-    if (currentBet > window.coinBalance) {
-        alert("You don't have enough coins for that bet!");
-        return;
-    }
-    
-    // Deduct bet from balance
-    updateCoins(-currentBet, false);
-    
-    // Deal initial cards
-    dealInitialCards();
-}
-
-// Initialize game
-function initGame() {
-    // Reset game state
-    gameActive = true;
-    currentBet = 0;
-    playerCards = [];
-    dealerCards = [];
-    isDealerTurn = false;
-    gameResult = null;
-    canDouble = false;
-    
-    // Create and shuffle the deck
-    createDeck();
-    
-    // Update UI
-    if (betAmount) {
-        betAmount.textContent = '0';
-    }
-    
-    // Hide start screen
-    if (startScreen) {
-        startScreen.classList.remove('visible');
-    }
-    
-    // Show blackjack container
-    if (blackjackContainer) {
-        blackjackContainer.style.display = 'flex';
-    }
-    
-    // Show bet controls, hide action controls
-    if (betControls) {
-        betControls.style.display = 'block';
-    }
-    if (actionControls) {
-        actionControls.style.display = 'none';
-    }
-    
-    // Disable deal button until a valid bet is placed
-    if (dealBtn) {
-        dealBtn.disabled = true;
-    }
-    
-    // Update game status
-    updateGameStatus("Place your bet to start");
-    
-    // Start game loop for background effects
-    window.cancelAnimationFrame(animationFrame);
-    gameLoop();
-}
-
-// Reset the game
-function resetGame() {
-    // Clear any pending timeouts
-    clearAllTimeouts();
-    
-    // Hide result screen if visible
-    if (resultScreen) {
-        resultScreen.classList.remove('visible');
-    }
-    
-    // Reset game state for a new round
-    initGame();
-}
-
-// Draw stars in background
-function drawStars() {
-    if (!ctx || !canvas) return;
-    
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    ctx.fillStyle = '#FFFFFF';
-    
-    for (let i = 0; i < 100; i++) {
-        // Create a deterministic but varied star pattern
-        const seed = i * 12437; // Large prime number
-        const x = (seed % canvasWidth) % canvasWidth;
-        const y = (seed * 23 % canvasHeight) % canvasHeight;
         
-        // Vary the star sizes
-        const size = (i % 3) + 1;
+        // Hide start screen
+        if (startScreen) {
+            startScreen.classList.remove('visible');
+        }
         
-        // Make stars twinkle
-        const alpha = 0.3 + 0.7 * Math.sin(Date.now() * 0.001 + i);
+        // Show blackjack container
+        if (blackjackContainer) {
+            blackjackContainer.style.display = 'flex';
+        }
         
-        ctx.globalAlpha = alpha;
-        ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.fill();
+        // Show bet controls, hide action controls
+        if (betControls) {
+            betControls.style.display = 'block';
+        }
+        if (actionControls) {
+            actionControls.style.display = 'none';
+        }
+        
+        // Disable deal button until a valid bet is placed
+        if (dealBtn) {
+            dealBtn.disabled = true;
+        }
+        
+        // Update game status
+        updateGameStatus("Place your bet to start");
+        
+        // Start game loop for background effects
+        window.cancelAnimationFrame(animationFrame);
+        gameLoop();
+        
+        // Set initial game state hash
+        validateGameState();
     }
-    
-    ctx.globalAlpha = 1.0;
-}
 
-// Game loop
-function gameLoop() {
-    // Draw background
-    drawStars();
-    
-    // Continue game loop
-    animationFrame = requestAnimationFrame(gameLoop);
-}
+    // Reset the game
+    function resetGame() {
+        // Clear any pending timeouts
+        clearAllTimeouts();
+        
+        // Hide result screen if visible
+        if (resultScreen) {
+            resultScreen.classList.remove('visible');
+        }
+        
+        // Reset game state for a new round
+        initGame();
+    }
 
-// Setup event listeners
-function setupEventListeners() {
-    // Start button
-    if (startBtn) {
-        startBtn.addEventListener('click', function() {
-            initGame();
-        });
-    }
-    
-    // Play again button
-    if (playAgainBtn) {
-        playAgainBtn.addEventListener('click', function() {
-            resetGame();
-        });
-    }
-    
-    // Back button
-    if (backBtn) {
-        backBtn.addEventListener('click', function() {
-            window.location.href = '/voidgms.html';
-        });
-    }
-    
-    // Bet buttons
-    const betButtons = document.querySelectorAll('.bet-btn');
-    betButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const betValue = this.getAttribute('data-amount');
+    // Draw stars in background
+    function drawStars() {
+        if (!ctx || !canvas) return;
+        
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+        ctx.fillStyle = '#FFFFFF';
+        
+        for (let i = 0; i < 100; i++) {
+            // Create a deterministic but varied star pattern
+            const seed = i * 12437; // Large prime number
+            const x = (seed % canvasWidth) % canvasWidth;
+            const y = (seed * 23 % canvasHeight) % canvasHeight;
             
-            if (betValue === 'clear') {
-                placeBet('clear');
-            } else if (this.id === 'deal-btn') {
-                startDeal();
-            } else {
-                placeBet(parseInt(betValue));
+            // Vary the star sizes
+            const size = (i % 3) + 1;
+            
+            // Make stars twinkle
+            const alpha = 0.3 + 0.7 * Math.sin(Date.now() * 0.001 + i);
+            
+            ctx.globalAlpha = alpha;
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Game loop
+    function gameLoop() {
+        // Draw background
+        drawStars();
+        
+        // Continue game loop
+        animationFrame = requestAnimationFrame(gameLoop);
+    }
+
+    // Setup event listeners with security checks
+    function setupEventListeners() {
+        // Add a security check for all game actions
+        const secureAction = (action) => {
+            return function(event) {
+                // Verify game hasn't been tampered with
+                if (validateGameState()) {
+                    action.call(this, event);
+                } else {
+                    console.error("Game state validation failed");
+                    resetGame();
+                }
+            };
+        };
+        
+        // Start button
+        if (startBtn) {
+            startBtn.addEventListener('click', secureAction(function() {
+                initGame();
+            }));
+        }
+        
+        // Play again button
+        if (playAgainBtn) {
+            playAgainBtn.addEventListener('click', secureAction(function() {
+                resetGame();
+            }));
+        }
+        
+        // Back button
+        if (backBtn) {
+            backBtn.addEventListener('click', function() {
+                window.location.href = '/voidgms.html';
+            });
+        }
+        
+        // Bet buttons
+        const betButtons = document.querySelectorAll('.bet-btn');
+        betButtons.forEach(button => {
+            button.addEventListener('click', secureAction(function() {
+                const betValue = this.getAttribute('data-amount');
+                
+                if (betValue === 'clear') {
+                    placeBet('clear');
+                } else if (this.id === 'deal-btn') {
+                    startDeal();
+                } else {
+                    placeBet(parseInt(betValue));
+                }
+            }));
+        });
+        
+        // Action buttons
+        if (hitBtn) {
+            hitBtn.addEventListener('click', secureAction(playerHit));
+        }
+        
+        if (standBtn) {
+            standBtn.addEventListener('click', secureAction(playerStand));
+        }
+        
+        if (doubleBtn) {
+            doubleBtn.addEventListener('click', secureAction(playerDoubleDown));
+        }
+        
+        // Add resize event listener
+        window.addEventListener('resize', function() {
+            initCanvas();
+            if (gameActive) {
+                drawStars();
             }
         });
-    });
-    
-    // Action buttons
-    if (hitBtn) {
-        hitBtn.addEventListener('click', playerHit);
     }
-    
-    if (standBtn) {
-        standBtn.addEventListener('click', playerStand);
-    }
-    
-    if (doubleBtn) {
-        doubleBtn.addEventListener('click', playerDoubleDown);
-    }
-    
-    // Add resize event listener
-    window.addEventListener('resize', function() {
-        initCanvas();
-        if (gameActive) {
-            drawStars();
+
+    // Handle page visibility changes to prevent cheating via tab switching
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'hidden') {
+            lastGameAction = 'pageHidden';
+            actionCounter++;
+        } else {
+            lastGameAction = 'pageVisible';
+            actionCounter++;
+            // Re-validate when the page becomes visible again
+            validateGameState();
         }
     });
-}
 
-// Initialize the game after DOM is fully loaded
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize DOM elements
-    initDomElements();
+    // Initialize the game after DOM is fully loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize DOM elements
+        initDomElements();
+        
+        // Initialize canvas
+        initCanvas();
+        
+        // Setup event listeners
+        setupEventListeners();
+        
+        // Initialize with default coin balance and check Firebase
+        if (window.gameInterface && window.gameInterface.refreshBalance) {
+            window.gameInterface.refreshBalance().then(() => {
+                window.gameInterface.updateDisplay();
+            });
+        }
+        
+        // Make doubly sure the result screen is initially hidden
+        const resultScreen = document.getElementById('result-screen');
+        if (resultScreen) {
+            resultScreen.classList.remove('visible');
+        }
+        
+        // Set initial game state hash
+        validateGameState();
+    });
+
+    // Anti-tampering - freeze global objects to prevent modification
+    Object.freeze(GAME_CONFIG);
+})();
+
+// Security measures to prevent access to game internals
+(function() {
+    // Override common console methods used for cheating
+    const originalSetInterval = window.setInterval;
+    const originalSetTimeout = window.setTimeout;
+    const originalEval = window.eval;
     
-    // Initialize canvas
-    initCanvas();
+    // Override eval to prevent potential injection attacks
+    window.eval = function(code) {
+        if (typeof code === 'string') {
+            // Detect attempts to manipulate coins/balance
+            const suspiciousPatterns = [
+                'coin', 'balance', 'firebase', 'update', 
+                'gameInterface', 'secureGameState', 'transaction'
+            ];
+            
+            const lowerCode = code.toLowerCase();
+            const isSuspicious = suspiciousPatterns.some(pattern => 
+                lowerCode.includes(pattern.toLowerCase())
+            );
+            
+            if (isSuspicious) {
+                console.warn("Suspicious eval() detected and blocked");
+                return null;
+            }
+        }
+        
+        return originalEval.apply(window, arguments);
+    };
     
-    // Setup event listeners
-    setupEventListeners();
+    // Override setTimeout and setInterval to prevent timing attacks
+    const monitorTimers = (originalFn) => {
+        return function(handler, timeout, ...args) {
+            if (typeof handler === 'string') {
+                // Check for suspicious code in string handlers
+                const lowerHandler = handler.toLowerCase();
+                if (lowerHandler.includes('coin') || 
+                    lowerHandler.includes('balance') || 
+                    lowerHandler.includes('firebase')) {
+                    console.warn("Suspicious timer code detected and blocked");
+                    return null;
+                }
+            } else if (typeof handler === 'function') {
+                // Wrap function handlers to detect suspicious patterns
+                const wrappedHandler = function() {
+                    try {
+                        return handler.apply(this, arguments);
+                    } catch (e) {
+                        console.error("Timer function error:", e);
+                        return null;
+                    }
+                };
+                return originalFn.call(window, wrappedHandler, timeout, ...args);
+            }
+            
+            return originalFn.apply(window, arguments);
+        };
+    };
     
-    // Initialize with default coin balance and check Firebase
-    if (window.loadFirebaseCoinBalance) {
-        window.loadFirebaseCoinBalance().then(() => {
-            updateCoinDisplay();
-        });
-    } else {
-        window.coinBalance = 1000; // Default fallback
-        updateCoinDisplay();
+    // Apply timer monitoring
+    window.setTimeout = monitorTimers(originalSetTimeout);
+    window.setInterval = monitorTimers(originalSetInterval);
+    
+    // Protect against prototype pollution
+    Object.freeze(Object.prototype);
+    Object.freeze(Array.prototype);
+    Object.freeze(Function.prototype);
+    
+    // Lock down window.gameInterface after creation
+    if (window.gameInterface) {
+        Object.freeze(window.gameInterface);
     }
-    
-    // Make doubly sure the result screen is initially hidden
-    const resultScreen = document.getElementById('result-screen');
-    if (resultScreen) {
-        resultScreen.classList.remove('visible');
-    }
-});
+})();
    </script>
 </body>
 </html>
