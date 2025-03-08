@@ -584,7 +584,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-analytics.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, query, where, getDocs, orderBy, limit, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, query, where, getDocs, orderBy, limit, onSnapshot } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
         // Firebase Configuration - UPDATED
         const firebaseConfig = {
@@ -1114,49 +1114,27 @@ class VoidLeaderboard {
         }
         
         console.log("Updating leaderboard with new data");
-        let rank = 1;
         
         // Filter out deleted documents and disabled users before processing
         const validDocs = [];
-        let disabledCount = 0;
-        let inactiveCount = 0;
-        let deletedCount = 0;
-        
-        console.log("Processing leaderboard data, filtering disabled/inactive/deleted accounts...");
-        
         querySnapshot.forEach((doc) => {
             if (doc.exists()) {
                 const userData = doc.data();
-                const userId = doc.id;
                 
-                // Log each user's status for debugging
-                console.log(`User ${userData.username} (${userId}): disabled=${userData.disabled}, isActive=${userData.isActive}, accountDeleted=${userData.accountDeleted}`);
-                
-                // Filter all types of disabled/inactive users client-side - check each field individually
-                let isDisabled = false;
-                
-                // Check for explicitly disabled accounts
+                // Check for disabled accounts - using explicit true/false checks
                 if (userData.disabled === true) {
-                    console.log(`User ${userData.username} is marked as disabled in Firestore`);
-                    disabledCount++;
-                    isDisabled = true;
-                }
-                
+                    console.log(`Skipping disabled user: ${userData.username}`);
+                } 
                 // Check for inactive accounts
-                if (userData.isActive === false) {
-                    console.log(`User ${userData.username} is marked as inactive in Firestore`);
-                    inactiveCount++;
-                    isDisabled = true;
-                }
-                
+                else if (userData.isActive === false) {
+                    console.log(`Skipping inactive user: ${userData.username}`);
+                } 
                 // Check for deleted accounts
-                if (userData.accountDeleted === true) {
-                    console.log(`User ${userData.username} is marked as deleted in Firestore`);
-                    deletedCount++;
-                    isDisabled = true;
-                }
-                
-                if (!isDisabled) {
+                else if (userData.accountDeleted === true) {
+                    console.log(`Skipping deleted user: ${userData.username}`);
+                } 
+                // Account is valid, add to our list
+                else {
                     validDocs.push(doc);
                 }
             } else {
@@ -1164,17 +1142,17 @@ class VoidLeaderboard {
             }
         });
         
-        console.log(`Filtered out ${disabledCount} disabled, ${inactiveCount} inactive, and ${deletedCount} deleted accounts`);
-        
         // If all documents were filtered out, show empty state
         if (validDocs.length === 0) {
             this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
             return;
         }
         
-        // Create leaderboard items from valid documents
         // Only show top 20 players after filtering
         const topValidDocs = validDocs.slice(0, 20);
+        let rank = 1;
+        
+        // Create leaderboard items from valid documents
         topValidDocs.forEach((doc) => {
             const userData = doc.data();
             const leaderboardItem = document.createElement('div');
@@ -1242,44 +1220,15 @@ function findAndHighlightVoidNetwork() {
     });
 }
 
-// Refresh the leaderboard manually with force option
-function refreshLeaderboard(forceUpdate = false) {
-    console.log(`Manual leaderboard refresh requested${forceUpdate ? ' (force update)' : ''}`);
+// Refresh the leaderboard manually to force a new connection
+function refreshLeaderboard() {
+    console.log("Manual leaderboard refresh requested");
     
     // Stop current listener and restart to force refresh
     voidLeaderboard.stopLeaderboardUpdates();
     
     // Force a new connection attempt
     voidLeaderboard.startLeaderboardUpdates();
-    
-    // If force update is requested, attempt to clear Firestore cache
-    if (forceUpdate) {
-        console.log("Attempting to clear Firestore cache and force fresh data");
-        // No direct way to clear Firestore cache, but we can:
-        
-        // 1. Create a short-lived transaction to force cache refresh
-        const db = getFirestore();
-        const dummyRef = doc(db, 'leaderboard_refresh', new Date().toISOString());
-        setDoc(dummyRef, {
-            refreshTimestamp: new Date(),
-            cacheCleared: true
-        }).then(() => {
-            console.log("Created dummy document to help clear cache");
-            
-            // Delete it immediately
-            deleteDoc(dummyRef).then(() => {
-                console.log("Deleted dummy document");
-                
-                // After a short delay, restart the leaderboard again to ensure fresh data
-                setTimeout(() => {
-                    voidLeaderboard.stopLeaderboardUpdates();
-                    voidLeaderboard.startLeaderboardUpdates();
-                }, 1000);
-            });
-        }).catch(error => {
-            console.error("Error with cache clearing attempt:", error);
-        });
-    }
     
     // After a short delay, manually look for Void Network
     setTimeout(findAndHighlightVoidNetwork, 1000);
@@ -1330,61 +1279,22 @@ window.addEventListener('load', () => {
 // Check on window resize
 window.addEventListener('resize', handleResponsiveLayout);
 
-// Add manual function to check for disabled accounts and update them
-async function checkAndMarkDisabledAccounts() {
+// Function to directly update user's disabled status - simpler version
+async function manuallyDisableUser() {
     try {
-        console.log("Checking for accounts that need to be marked as disabled...");
-        const usersRef = collection(db, 'users');
-        const qAll = query(usersRef, limit(100)); // Get up to 100 users
+        const userId = prompt("Enter the user ID to disable:");
+        if (!userId) return;
         
-        const querySnapshot = await getDocs(qAll);
-        console.log(`Found ${querySnapshot.size} user accounts to check`);
+        const userRef = doc(db, 'users', userId);
+        await updateDoc(userRef, {
+            disabled: true
+        });
         
-        let updatedCount = 0;
-        
-        for (const doc of querySnapshot.docs) {
-            const userData = doc.data();
-            const userId = doc.id;
-            
-            // If disabled field doesn't exist, add it
-            if (userData.disabled === undefined) {
-                await updateDoc(doc.ref, {
-                    disabled: false
-                });
-                console.log(`Added disabled=false field to user: ${userData.username}`);
-                updatedCount++;
-            }
-            
-            // If isActive field doesn't exist, add it
-            if (userData.isActive === undefined) {
-                await updateDoc(doc.ref, {
-                    isActive: true
-                });
-                console.log(`Added isActive=true field to user: ${userData.username}`);
-                updatedCount++;
-            }
-            
-            // If accountDeleted field doesn't exist, add it
-            if (userData.accountDeleted === undefined) {
-                await updateDoc(doc.ref, {
-                    accountDeleted: false
-                });
-                console.log(`Added accountDeleted=false field to user: ${userData.username}`);
-                updatedCount++;
-            }
-        }
-        
-        console.log(`Updated ${updatedCount} fields on user accounts`);
-        
-        // After updates, refresh the leaderboard
-        if (updatedCount > 0) {
-            refreshLeaderboard(true);
-        }
-        
-        return updatedCount;
+        alert(`User ${userId} has been disabled. Refreshing leaderboard.`);
+        refreshLeaderboard();
     } catch (error) {
-        console.error("Error checking disabled accounts:", error);
-        return 0;
+        console.error("Error disabling user:", error);
+        alert("Error: " + error.message);
     }
 }
 
@@ -1411,25 +1321,19 @@ function prepareForLiveData() {
             });
             leaderboardTitle.appendChild(refreshBtn);
             
-            // Add a check accounts button
-            const checkAccountsBtn = document.createElement('span');
-            checkAccountsBtn.id = 'check-accounts-btn';
-            checkAccountsBtn.innerHTML = '🔍';
-            checkAccountsBtn.style.marginLeft = '5px';
-            checkAccountsBtn.style.cursor = 'pointer';
-            checkAccountsBtn.style.fontSize = '0.9em';
-            checkAccountsBtn.title = 'Check for disabled accounts';
-            checkAccountsBtn.addEventListener('click', function(e) {
+            // Add a disable user button for admin use
+            const disableUserBtn = document.createElement('span');
+            disableUserBtn.id = 'disable-user-btn';
+            disableUserBtn.innerHTML = '🚫';
+            disableUserBtn.style.marginLeft = '5px';
+            disableUserBtn.style.cursor = 'pointer';
+            disableUserBtn.style.fontSize = '0.9em';
+            disableUserBtn.title = 'Disable a user';
+            disableUserBtn.addEventListener('click', function(e) {
                 e.stopPropagation(); // Don't trigger the toggle
-                checkAndMarkDisabledAccounts().then(count => {
-                    if (count > 0) {
-                        alert(`Updated ${count} account fields. Refreshing leaderboard.`);
-                    } else {
-                        alert('No account updates needed.');
-                    }
-                });
+                manuallyDisableUser();
             });
-            leaderboardTitle.appendChild(checkAccountsBtn);
+            leaderboardTitle.appendChild(disableUserBtn);
         }
     }
 }
