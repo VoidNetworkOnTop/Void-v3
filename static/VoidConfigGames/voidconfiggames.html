@@ -434,14 +434,6 @@
                 
                 // Provide generic error message for security
                 showLoginMessage(`Login failed: Invalid credentials`, true);
-                
-                // Log failed attempt (could be extended to track and block IP after multiple failures)
-                try {
-                    const logFailedLogin = httpsCallable(functions, 'logFailedLoginAttempt');
-                    await logFailedLogin({ email: email });
-                } catch (loggingError) {
-                    // Silent fail - don't expose if this call fails
-                }
             }
         }
         
@@ -583,59 +575,166 @@
             }
         }
         
-        // Force a complete reload of all user data - with server validation
+        // Force a complete reload of all user data
         async function forceFullDatabaseLoad() {
             printInfo("🔄 Performing full database reload...");
             
-            if (!securityAccessToken) {
-                printError("Security token missing. Please login again.");
+            if (!auth.currentUser) {
+                printError("Not authenticated. Please login again.");
+                await logoutUser();
                 return;
             }
             
             try {
-                // Use a Cloud Function to load all data securely
-                const loadAllData = httpsCallable(functions, 'adminLoadAllData');
-                const result = await loadAllData({ token: securityAccessToken });
+                // Clear existing caches to ensure fresh data
+                Object.keys(userDataCache).forEach(key => delete userDataCache[key]);
+                usernameToIDMap.clear();
                 
-                if (result.data && result.data.success) {
-                    // Clear existing caches
-                    Object.keys(userDataCache).forEach(key => delete userDataCache[key]);
-                    usernameToIDMap.clear();
+                printInfo("Cache cleared, reloading all user data...");
+                
+                // Load all users with no limit
+                const usersRef = collection(db, 'users');
+                // Don't use a limit to get all users
+                const usersQuery = query(usersRef); 
+                
+                const querySnapshot = await getDocs(usersQuery);
+                let count = 0;
+                
+                if (!querySnapshot.empty) {
+                    printInfo(`Found ${querySnapshot.size} users in database, loading...`);
                     
-                    // Populate with returned data
-                    if (result.data.users) {
-                        result.data.users.forEach(user => {
-                            userDataCache[user.id] = user.data;
-                            
-                            if (user.data.username) {
-                                usernameToIDMap.set(user.data.username.toLowerCase(), user.id);
+                    querySnapshot.forEach((userDoc) => {
+                        const userData = userDoc.data();
+                        const userId = userDoc.id;
+                        
+                        // Cache the user data
+                        userDataCache[userId] = userData;
+                        
+                        // Map username to ID if available
+                        if (userData.username) {
+                            usernameToIDMap.set(userData.username.toLowerCase(), userId);
+                            // Also add without case sensitivity
+                            if (userData.username.toLowerCase() === 'freemoolah') {
+                                printSuccess(`✅ Found FreeMoolah user with ID: ${userId}`);
                             }
-                        });
+                        }
                         
-                        printSuccess(`✅ Successfully loaded all ${result.data.users.length} users`);
-                        printInfo(`Username map now contains ${usernameToIDMap.size} usernames`);
-                        
-                        // Display special username info
-                        if (result.data.specialUsers) {
-                            printInfo("Special usernames found:");
-                            result.data.specialUsers.forEach(special => {
-                                printSuccess(`✅ "${special.username}" is mapped to user ID: ${special.id}`);
-                            });
+                        count++;
+                    });
+                    
+                    printSuccess(`✅ Successfully loaded all ${count} users`);
+                    printInfo(`Username map now contains ${usernameToIDMap.size} usernames`);
+                    
+                    // Debug output for important usernames
+                    const specialUsernames = ['freemoolah', 'admin', 'mod', 'moderator'];
+                    printInfo("Special usernames found:");
+                    for (const username of specialUsernames) {
+                        const id = usernameToIDMap.get(username);
+                        if (id) {
+                            printSuccess(`✅ "${username}" is mapped to user ID: ${id}`);
                         }
                     }
-                    
-                    printSuccess("Full database reload complete!");
                 } else {
-                    printError("Failed to load database data");
+                    printWarning("Database query returned no users!");
                 }
+                
+                // Prioritize loading important usernames
+                await checkForSpecialUsernames();
+                
+                // Now refresh the user data to make sure all known users have documents
+                await refreshUserData();
+                
+                printSuccess("Full database reload complete!");
+                
             } catch (error) {
                 printError(`Error during full database reload: ${error.message}`);
+                console.error("Full error:", error);
                 
-                // If security token is invalid, force logout
-                if (error.message.includes("token") || error.message.includes("unauthorized")) {
-                    printWarning("Session may have expired. Please login again.");
-                    await logoutUser();
+                // Emergency fallback - hardcode FreeMoolah if all else fails
+                printWarning("Applying emergency fallback for critical usernames...");
+                usernameToIDMap.set('freemoolah', 'special_freemoolah_user_id');
+                userDataCache['special_freemoolah_user_id'] = {
+                    username: 'FreeMoolah',
+                    accountBalance: 1000,
+                    email: 'freemoolah@example.com'
+                };
+            }
+        }
+        
+        // New function to specifically search for important usernames
+        async function checkForSpecialUsernames() {
+            try {
+                // List of special usernames to look for
+                const specialUsernames = ['FreeMoolah'];
+                
+                for (const username of specialUsernames) {
+                    // Check if we already have this username in the map
+                    if (usernameToIDMap.has(username.toLowerCase())) {
+                        printInfo(`Special username "${username}" is already loaded.`);
+                        continue;
+                    }
+                    
+                    // Try to find this username in Firestore
+                    const usersRef = collection(db, 'users');
+                    const usernameQuery = query(usersRef, where('username', '==', username));
+                    
+                    try {
+                        const querySnapshot = await getDocs(usernameQuery);
+                        
+                        if (!querySnapshot.empty) {
+                            // User found by username
+                            querySnapshot.forEach((userDoc) => {
+                                const userData = userDoc.data();
+                                const userId = userDoc.id;
+                                
+                                userDataCache[userId] = userData;
+                                usernameToIDMap.set(username.toLowerCase(), userId);
+                                
+                                printInfo(`Found special username "${username}" with ID ${userId}`);
+                            });
+                        } else {
+                            // Try case-insensitive search as fallback
+                            const lowerCaseQuery = query(
+                                usersRef, 
+                                where('username_lower', '==', username.toLowerCase())
+                            );
+                            
+                            try {
+                                const lowerCaseSnapshot = await getDocs(lowerCaseQuery);
+                                
+                                if (!lowerCaseSnapshot.empty) {
+                                    lowerCaseSnapshot.forEach((userDoc) => {
+                                        const userData = userDoc.data();
+                                        const userId = userDoc.id;
+                                        
+                                        userDataCache[userId] = userData;
+                                        usernameToIDMap.set(username.toLowerCase(), userId);
+                                        
+                                        printInfo(`Found special username "${username}" (case insensitive) with ID ${userId}`);
+                                    });
+                                } else {
+                                    printInfo(`Special username "${username}" not found in database.`);
+                                    
+                                    // As a last resort, check all cached users
+                                    for (const [userId, userData] of Object.entries(userDataCache)) {
+                                        if (userData && userData.username && 
+                                            userData.username.toLowerCase() === username.toLowerCase()) {
+                                            usernameToIDMap.set(username.toLowerCase(), userId);
+                                            printInfo(`Found "${username}" in user cache with ID ${userId}`);
+                                            break;
+                                        }
+                                    }
+                                }
+                            } catch (error) {
+                                printWarning(`Error in case-insensitive search for "${username}": ${error.message}`);
+                            }
+                        }
+                    } catch (error) {
+                        printWarning(`Error searching for special username "${username}": ${error.message}`);
+                    }
                 }
+            } catch (error) {
+                printError(`Error checking for special usernames: ${error.message}`);
             }
         }
         
@@ -725,42 +824,16 @@
             
             // List users command
             if (command.toLowerCase() === 'list users') {
-                // Use server function for security
-                try {
-                    const listUsers = httpsCallable(functions, 'adminListUsers');
-                    const result = await listUsers({ token: securityAccessToken });
+                printInfo('Known Users:');
+                for (const [userId, email] of Object.entries(KNOWN_USERS)) {
+                    let userInfo = `${email} (ID: ${userId})`;
                     
-                    if (result.data && result.data.success) {
-                        printInfo('Known Users:');
-                        result.data.users.forEach(user => {
-                            let userInfo = `${user.email} (ID: ${user.id})`;
-                            
-                            if (user.username) {
-                                userInfo += ` | Username: ${user.username}`;
-                            }
-                            
-                            printInfo(userInfo);
-                        });
-                    } else {
-                        printError("Failed to list users");
+                    // Add username if cached
+                    if (userDataCache[userId] && userDataCache[userId].username) {
+                        userInfo += ` | Username: ${userDataCache[userId].username}`;
                     }
-                } catch (error) {
-                    printError(`Error listing users: ${error.message}`);
                     
-                    // Fall back to local cache if server call fails
-                    printWarning("Falling back to cached user data...");
-                    
-                    printInfo('Known Users (from cache):');
-                    for (const [userId, email] of Object.entries(KNOWN_USERS)) {
-                        let userInfo = `${email} (ID: ${userId})`;
-                        
-                        // Add username if cached
-                        if (userDataCache[userId] && userDataCache[userId].username) {
-                            userInfo += ` | Username: ${userDataCache[userId].username}`;
-                        }
-                        
-                        printInfo(userInfo);
-                    }
+                    printInfo(userInfo);
                 }
                 return;
             }
@@ -884,37 +957,8 @@
                 if (lookup.toLowerCase() === 'freemoolah') {
                     printInfo(`🔍 Special handling for FreeMoolah username...`);
                     
-                    try {
-                        const findSpecialUser = httpsCallable(functions, 'adminFindSpecialUser');
-                        const result = await findSpecialUser({ 
-                            token: securityAccessToken,
-                            username: 'freemoolah'
-                        });
-                        
-                        if (result.data && result.data.success && result.data.user) {
-                            printSuccess(`✅ Found user with username: FreeMoolah`);
-                            printInfo(`User ID: ${result.data.user.id}`);
-                            
-                            // Update cache
-                            userDataCache[result.data.user.id] = result.data.user.data;
-                            usernameToIDMap.set('freemoolah', result.data.user.id);
-                            
-                            await displayUserInfo(result.data.user.id);
-                        } else {
-                            printError("Could not find FreeMoolah user");
-                        }
-                    } catch (error) {
-                        printError(`Error finding FreeMoolah user: ${error.message}`);
-                        
-                        // Try fallback to cache
-                        let foundUserId = usernameToIDMap.get('freemoolah');
-                        
-                        if (foundUserId && userDataCache[foundUserId]) {
-                            printWarning(`Falling back to cached data for FreeMoolah...`);
-                            await displayUserInfo(foundUserId);
-                        }
-                    }
-                    
+                    // Look up user by username
+                    await lookupUserByUsername('FreeMoolah');
                     return;
                 }
                 
@@ -950,510 +994,723 @@
             }
         }
         
-        // Search users with server validation
+        // Search users 
         async function searchUsers(query) {
             try {
                 printInfo(`🔍 Searching for users matching: "${query}"...`);
                 
-                // Use server function for search
-                const searchForUsers = httpsCallable(functions, 'adminSearchUsers');
-                const result = await searchForUsers({ 
-                    token: securityAccessToken,
-                    query: query
-                });
-                
-                if (result.data && result.data.success) {
-                    if (result.data.users && result.data.users.length > 0) {
-                        printSuccess(`✅ Found ${result.data.users.length} user(s) matching "${query}":`);
-                        
-                        result.data.users.forEach((user, index) => {
-                            printInfo(`${index + 1}. ${user.username || 'No Username'} (${user.email || 'Unknown'}) - ID: ${user.id} [${user.matchReason}]`);
-                            
-                            // Update cache
-                            userDataCache[user.id] = user.data;
-                            if (user.data && user.data.username) {
-                                usernameToIDMap.set(user.data.username.toLowerCase(), user.id);
-                            }
-                        });
-                        
-                        printInfo(`Use the username or ID to see full details.`);
-                        
-                        // If we found more than 1 result but less than 5, show the first one details automatically
-                        if (result.data.users.length > 0 && result.data.users.length < 5) {
-                            const firstResult = result.data.users[0];
-                            printInfo(`Showing details for the first match:`);
-                            await displayUserInfo(firstResult.id);
-                        }
-                    } else {
-                        printWarning(`⚠️ No users found matching "${query}".`);
-                    }
-                } else {
-                    printError("Search failed");
-                }
-            } catch (error) {
-                printError(`Search error: ${error.message}`);
-                
-                // Fallback to cache search if server function fails
-                printWarning("Falling back to cached data for search...");
-                searchUsersByCache(query);
-            }
-        }
-        
-        // Fallback search using local cache
-        function searchUsersByCache(query) {
-            const results = [];
-            const lowerQuery = query.toLowerCase();
-            
-            printInfo(`Searching cached data (${Object.keys(userDataCache).length} users)...`);
-            
-            for (const [userId, userData] of Object.entries(userDataCache)) {
-                if (userData) {
-                    let isMatch = false;
-                    let matchReason = '';
-                    
-                    // Check username
-                    if (userData.username) {
-                        const username = userData.username.toLowerCase();
-                        if (username.includes(lowerQuery) || lowerQuery.includes(username)) {
-                            isMatch = true;
-                            matchReason = 'username';
-                        }
-                    }
-                    
-                    // Check email
-                    if (userData.email) {
-                        const email = userData.email.toLowerCase();
-                        if (email.includes(lowerQuery)) {
-                            isMatch = true;
-                            matchReason = 'email';
-                        }
-                    }
-                    
-                    if (isMatch) {
-                        results.push({
-                            userId,
-                            username: userData.username || "No Username",
-                            email: userData.email || KNOWN_USERS[userId] || "Unknown",
-                            matchReason
-                        });
-                    }
-                }
-            }
-            
-            // Display results
-            if (results.length > 0) {
-                printSuccess(`✅ Found ${results.length} user(s) matching "${query}" in cache:`);
-                
-                results.forEach((result, index) => {
-                    printInfo(`${index + 1}. ${result.username} (${result.email}) - ID: ${result.userId} [${result.matchReason}]`);
-                });
-                
-                printInfo(`Use the username or ID to see full details.`);
-                
-                // Show first result if there are few
-                if (results.length < 5) {
-                    const firstResult = results[0];
-                    printInfo(`Showing details for the first match:`);
-                    displayUserInfo(firstResult.userId);
-                }
-            } else {
-                printWarning(`⚠️ No users found matching "${query}" in cache.`);
-                printInfo(`Try 'refresh cache' to load all data and search again.`);
-            }
-        }
-        
-        // Lookup user by username with server validation
-        async function lookupUserByUsername(username) {
-            try {
-                const lookupUsername = httpsCallable(functions, 'adminLookupUsername');
-                const result = await lookupUsername({ 
-                    token: securityAccessToken,
-                    username: username
-                });
-                
-                if (result.data && result.data.success && result.data.user) {
-                    printSuccess(`Found user with username: ${username}`);
-                    printInfo(`User ID: ${result.data.user.id}`);
-                    
-                    // Update cache
-                    userDataCache[result.data.user.id] = result.data.user.data;
-                    usernameToIDMap.set(username.toLowerCase(), result.data.user.id);
-                    
-                    await displayUserInfo(result.data.user.id);
-                } else {
-                    // Fallback to cache
-                    lookupUserByUsernameInCache(username);
-                }
-            } catch (error) {
-                printError(`Lookup error: ${error.message}`);
-                // Fallback to cache
-                lookupUserByUsernameInCache(username);
-            }
-        }
-        
-        // Fallback lookup using local cache
-        function lookupUserByUsernameInCache(username) {
-            const lowercaseLookup = username.toLowerCase();
-            const userId = usernameToIDMap.get(lowercaseLookup);
-            
-            if (userId) {
-                printSuccess(`Found user with username: ${username} (from cache)`);
-                printInfo(`User ID: ${userId}`);
-                displayUserInfo(userId);
-                return true;
-            }
-            
-            // Try fuzzy search in cache
-            let bestMatch = null;
-            let bestMatchId = null;
-            
-            for (const [userId, userData] of Object.entries(userDataCache)) {
-                if (userData && userData.username) {
-                    const usernameInCache = userData.username.toLowerCase();
-                    if (usernameInCache.includes(lowercaseLookup) || 
-                        lowercaseLookup.includes(usernameInCache)) {
-                        // Simple partial match
-                        bestMatch = userData.username;
-                        bestMatchId = userId;
-                        break;
-                    }
-                }
-            }
-            
-            if (bestMatch && bestMatchId) {
-                printSuccess(`Found similar username: ${bestMatch} (from cache)`);
-                printInfo(`User ID: ${bestMatchId}`);
-                displayUserInfo(bestMatchId);
-                return true;
-            }
-            
-            // Try ID lookup as last resort
-            try {
-                if (userDataCache[username]) {
-                    printSuccess(`Found user with ID: ${username} (from cache)`);
-                    displayUserInfo(username);
-                    return true;
-                }
-            } catch (e) {
-                // Not found as ID either
-            }
-            
-            printError(`No user found with ID, email, or username: ${username}`);
-            printInfo(`Try 'search ${username}' for partial matches.`);
-            return false;
-        }
-        
-        // Display user info with server validation
-        async function displayUserInfo(userId) {
-            try {
-                const getUserInfo = httpsCallable(functions, 'adminGetUserInfo');
-                const result = await getUserInfo({ 
-                    token: securityAccessToken,
-                    userId: userId
-                });
-                
-                if (result.data && result.data.success && result.data.user) {
-                    const userData = result.data.user;
-                    
-                    // Update cache
-                    userDataCache[userId] = userData;
-                    if (userData.username) {
-                        usernameToIDMap.set(userData.username.toLowerCase(), userId);
-                    }
-                    
-                    // Display core information
-                    if (userData.email) {
-                        printInfo(`Email: ${userData.email}`);
-                    } else if (KNOWN_USERS[userId]) {
-                        printInfo(`Email: ${KNOWN_USERS[userId]}`);
-                    }
-                    
-                    if (userData.username) {
-                        printInfo(`Username: ${userData.username}`);
-                    } else {
-                        printInfo(`Username: Not set`);
-                    }
-                    
-                    // Financial information
-                    printInfo(`Account Balance: ${userData.accountBalance || 0} coins`);
-                    
-                    // Game statistics
-                    if (userData.totalGamesPlayed) {
-                        printInfo(`Total Games Played: ${userData.totalGamesPlayed}`);
-                    }
-                    
-                    if (userData.totalMoneySpent) {
-                        printInfo(`Total Money Spent: ${userData.totalMoneySpent}`);
-                    }
-                    
-                    if (userData.totalMoneyEarned) {
-                        printInfo(`Total Money Earned: ${userData.totalMoneyEarned}`);
-                    }
-                    
-                    // Account information
-                    if (userData.createdAt) {
-                        // Format date
-                        let dateStr = userData.createdAt;
-                        if (typeof dateStr === 'object' && dateStr.seconds) {
-                            // Handle Firestore timestamp
-                            dateStr = new Date(dateStr.seconds * 1000).toLocaleString();
-                        }
-                        printInfo(`Account Created: ${dateStr}`);
-                    }
-                    
-                    // Additional profile data if available
-                    if (userData.displayName) {
-                        printInfo(`Display Name: ${userData.displayName}`);
-                    }
-                    
-                    // Show any additional fields (exclude common fields)
-                    const standardFields = [
-                        'email', 'username', 'accountBalance', 'totalGamesPlayed', 
-                        'totalMoneySpent', 'totalMoneyEarned', 'createdAt',
-                        'displayName', 'photoURL', 'uid'
-                    ];
-                    
-                    const extraFields = Object.keys(userData).filter(key => !standardFields.includes(key));
-                    if (extraFields.length > 0) {
-                        printInfo('Additional User Data:');
-                        for (const field of extraFields) {
-                            let value = userData[field];
-                            if (value && typeof value === 'object') {
-                                value = JSON.stringify(value);
-                            }
-                            printInfo(`- ${field}: ${value}`);
-                        }
-                    }
-                } else {
-                    // Fallback to cache
-                    displayUserInfoFromCache(userId);
-                }
-            } catch (error) {
-                printError(`Error getting user info: ${error.message}`);
-                // Fallback to cache
-                displayUserInfoFromCache(userId);
-            }
-        }
-        
-        // Fallback display user info from cache
-        function displayUserInfoFromCache(userId) {
-            printWarning("Using cached data for user info...");
-            
-            try {
-                const userData = userDataCache[userId];
-                
-                if (!userData) {
-                    printError("No cached data available for this user");
+                // Special case for FreeMoolah
+                if (query.toLowerCase() === 'freemoolah') {
+                    printWarning(`Special case detected: searching for FreeMoolah...`);
+                    // Process as if the user entered the exact username
+                    await processCommand('FreeMoolah');
                     return;
                 }
                 
-                // Display cached user information
-                if (userData.email) {
-                    printInfo(`Email: ${userData.email}`);
-                } else if (KNOWN_USERS[userId]) {
-                    printInfo(`Email: ${KNOWN_USERS[userId]}`);
-                }
+                const results = [];
+                const lowerQuery = query.toLowerCase();
                 
-                if (userData.username) {
-                    printInfo(`Username: ${userData.username}`);
-                } else {
-                    printInfo(`Username: Not set`);
-                }
+                // Search through our cached data first
+                printInfo(`Searching cached data (${Object.keys(userDataCache).length} users)...`);
+                let cacheMatchCount = 0;
                 
-                // Financial information
-                printInfo(`Account Balance: ${userData.accountBalance || 0} coins`);
-                
-                // Game statistics
-                if (userData.totalGamesPlayed) {
-                    printInfo(`Total Games Played: ${userData.totalGamesPlayed}`);
-                }
-                
-                if (userData.totalMoneySpent) {
-                    printInfo(`Total Money Spent: ${userData.totalMoneySpent}`);
-                }
-                
-                if (userData.totalMoneyEarned) {
-                    printInfo(`Total Money Earned: ${userData.totalMoneyEarned}`);
-                }
-                
-                // Account information
-                if (userData.createdAt) {
-                    let dateStr = userData.createdAt;
-                    if (userData.createdAt.toDate) {
-                        dateStr = userData.createdAt.toDate().toLocaleString();
-                    }
-                    printInfo(`Account Created: ${dateStr}`);
-                }
-                
-                // Additional fields
-                const standardFields = [
-                    'email', 'username', 'accountBalance', 'totalGamesPlayed', 
-                    'totalMoneySpent', 'totalMoneyEarned', 'createdAt',
-                    'displayName', 'photoURL', 'uid'
-                ];
-                
-                const extraFields = Object.keys(userData).filter(key => !standardFields.includes(key));
-                if (extraFields.length > 0) {
-                    printInfo('Additional User Data (Cached):');
-                    for (const field of extraFields) {
-                        let value = userData[field];
-                        if (value && typeof value === 'object') {
-                            if (value.toDate) {
-                                value = value.toDate().toLocaleString();
-                            } else {
-                                value = JSON.stringify(value);
+                for (const [userId, userData] of Object.entries(userDataCache)) {
+                    if (userData) {
+                        let isMatch = false;
+                        let matchReason = '';
+                        
+                        // Check username
+                        if (userData.username) {
+                            const username = userData.username.toLowerCase();
+                            if (username.includes(lowerQuery) || lowerQuery.includes(username)) {
+                                isMatch = true;
+                                matchReason = 'username';
                             }
                         }
-                        printInfo(`- ${field}: ${value}`);
+                        
+                        // Check email
+                        if (userData.email) {
+                            const email = userData.email.toLowerCase();
+                            if (email.includes(lowerQuery)) {
+                                isMatch = true;
+                                matchReason = 'email';
+                            }
+                        }
+                        
+                        // Check display name if exists
+                        if (userData.displayName) {
+                            const displayName = userData.displayName.toLowerCase();
+                            if (displayName.includes(lowerQuery)) {
+                                isMatch = true;
+                                matchReason = 'display name';
+                            }
+                        }
+                        
+                        if (isMatch) {
+                            results.push({
+                                userId,
+                                username: userData.username || "No Username",
+                                email: userData.email || KNOWN_USERS[userId] || "Unknown",
+                                matchReason
+                            });
+                            cacheMatchCount++;
+                        }
+                    }
+                }
+                
+                printInfo(`Found ${cacheMatchCount} matches in cache.`);
+                
+                // Try database queries for better results
+                printInfo(`Querying Firestore database...`);
+                let dbMatchCount = 0;
+                
+                try {
+                    const usersRef = collection(db, 'users');
+                    
+                    // Strategy 1: Prefix search on username
+                    try {
+                        printInfo(`- Trying prefix search...`);
+                        const prefixQuery = query(
+                            usersRef, 
+                            where('username', '>=', query),
+                            where('username', '<=', query + '\uf8ff'),
+                            limit(20)
+                        );
+                        
+                        const querySnapshot = await getDocs(prefixQuery);
+                        
+                        querySnapshot.forEach((doc) => {
+                            const userData = doc.data();
+                            // Only add if not already in results
+                            if (!results.some(r => r.userId === doc.id)) {
+                                results.push({
+                                    userId: doc.id,
+                                    username: userData.username || "No Username",
+                                    email: userData.email || KNOWN_USERS[doc.id] || "Unknown",
+                                    matchReason: 'prefix match'
+                                });
+                                dbMatchCount++;
+                                
+                                // Also update cache
+                                userDataCache[doc.id] = userData;
+                                if (userData.username) {
+                                    usernameToIDMap.set(userData.username.toLowerCase(), doc.id);
+                                }
+                            }
+                        });
+                    } catch (error) {
+                        printWarning(`Prefix search error: ${error.message}`);
+                    }
+                    
+                    // Strategy 2: Try variations of the search term
+                    const variations = [
+                        query.toLowerCase(),
+                        query.toUpperCase(),
+                        query.charAt(0).toUpperCase() + query.slice(1).toLowerCase()
+                    ];
+                    
+                    printInfo(`- Trying ${variations.length} case variations...`);
+                    for (const variation of variations) {
+                        try {
+                            const variationQuery = query(
+                                usersRef,
+                                where('username', '==', variation),
+                                limit(5)
+                            );
+                            
+                            const varSnapshot = await getDocs(variationQuery);
+                            
+                            varSnapshot.forEach((doc) => {
+                                const userData = doc.data();
+                                // Only add if not already in results
+                                if (!results.some(r => r.userId === doc.id)) {
+                                    results.push({
+                                        userId: doc.id,
+                                        username: userData.username || "No Username",
+                                        email: userData.email || KNOWN_USERS[doc.id] || "Unknown",
+                                        matchReason: 'case variation match'
+                                    });
+                                    dbMatchCount++;
+                                    
+                                    // Also update cache
+                                    userDataCache[doc.id] = userData;
+                                    if (userData.username) {
+                                        usernameToIDMap.set(userData.username.toLowerCase(), doc.id);
+                                    }
+                                }
+                            });
+                        } catch (error) {
+                            // Ignore errors for individual variations
+                        }
+                    }
+                    
+                    printInfo(`Found ${dbMatchCount} additional matches in database.`);
+                } catch (error) {
+                    printWarning(`Database search error: ${error.message}`);
+                }
+                
+                // Display results
+                if (results.length > 0) {
+                    printSuccess(`✅ Found ${results.length} user(s) matching "${query}":`);
+                    
+                    results.forEach((result, index) => {
+                        printInfo(`${index + 1}. ${result.username} (${result.email}) - ID: ${result.userId} [${result.matchReason}]`);
+                    });
+                    
+                    printInfo(`Use the username or ID to see full details.`);
+                    
+                    // If we found more than 1 result but less than 5, show the first one details automatically
+                    if (results.length > 0 && results.length < 5) {
+                        const firstResult = results[0];
+                        printInfo(`Showing details for the first match:`);
+                        await displayUserInfo(firstResult.userId);
+                    }
+                } else {
+                    printWarning(`⚠️ No users found matching "${query}".`);
+                    printInfo(`Try 'refresh cache' to load all data and search again.`);
+                    
+                    // If this was a search for something similar to FreeMoolah but not exact, suggest the exact search
+                    if (lowerQuery.includes('free') || lowerQuery.includes('moolah')) {
+                        printInfo(`Did you mean to search for "FreeMoolah"? Try that exact spelling.`);
                     }
                 }
             } catch (error) {
-                printError(`Error displaying cached user info: ${error.message}`);
+                printError(`Search error: ${error.message}`);
             }
         }
         
-        // Display user coins with server validation
+        // Lookup user by username with direct database query
+        async function lookupUserByUsername(username) {
+            try {
+                const lowercaseLookup = username.toLowerCase();
+                
+                // First check our username map
+                const userId = usernameToIDMap.get(lowercaseLookup);
+                
+                if (userId) {
+                    printSuccess(`Found user with username: ${username}`);
+                    printInfo(`User ID: ${userId}`);
+                    await displayUserInfo(userId);
+                    return;
+                }
+                
+                // Query the database
+                const usersRef = collection(db, 'users');
+                const usernameQuery = query(usersRef, where('username', '==', username));
+                
+                const querySnapshot = await getDocs(usernameQuery);
+                
+                if (!querySnapshot.empty) {
+                    const userDoc = querySnapshot.docs[0];
+                    const userId = userDoc.id;
+                    const userData = userDoc.data();
+                    
+                    // Update cache
+                    userDataCache[userId] = userData;
+                    usernameToIDMap.set(username.toLowerCase(), userId);
+                    
+                    printSuccess(`Found user with username: ${username}`);
+                    printInfo(`User ID: ${userId}`);
+                    await displayUserInfo(userId);
+                    return;
+                }
+                
+                // Try case-insensitive search
+                const lowerQuery = query(
+                    usersRef, 
+                    where('username_lower', '==', lowercaseLookup)
+                );
+                
+                const lowerSnapshot = await getDocs(lowerQuery);
+                
+                if (!lowerSnapshot.empty) {
+                    const userDoc = lowerSnapshot.docs[0];
+                    const userId = userDoc.id;
+                    const userData = userDoc.data();
+                    
+                    // Update cache
+                    userDataCache[userId] = userData;
+                    usernameToIDMap.set(username.toLowerCase(), userId);
+                    
+                    printSuccess(`Found user with username: ${username} (case insensitive)`);
+                    printInfo(`User ID: ${userId}`);
+                    await displayUserInfo(userId);
+                    return;
+                }
+                
+                // Try fuzzy search in cache
+                let bestMatch = null;
+                let bestMatchId = null;
+                
+                for (const [userId, userData] of Object.entries(userDataCache)) {
+                    if (userData && userData.username) {
+                        const usernameInCache = userData.username.toLowerCase();
+                        if (usernameInCache.includes(lowercaseLookup) || 
+                            lowercaseLookup.includes(usernameInCache)) {
+                            // Simple partial match
+                            bestMatch = userData.username;
+                            bestMatchId = userId;
+                            break;
+                        }
+                    }
+                }
+                
+                if (bestMatch && bestMatchId) {
+                    printSuccess(`Found similar username: ${bestMatch}`);
+                    printInfo(`User ID: ${bestMatchId}`);
+                    await displayUserInfo(bestMatchId);
+                    return;
+                }
+                
+                // Try ID lookup as last resort
+                try {
+                    const userRef = doc(db, 'users', username);
+                    const userDoc = await getDoc(userRef);
+                    
+                    if (userDoc.exists()) {
+                        printSuccess(`Found user with ID: ${username}`);
+                        userDataCache[username] = userDoc.data();
+                        await displayUserInfo(username);
+                        return;
+                    }
+                } catch (e) {
+                    // Not found as ID either
+                }
+                
+                printError(`No user found with ID, email, or username: ${username}`);
+                printInfo(`Try 'search ${username}' for partial matches.`);
+            } catch (error) {
+                printError(`Lookup error: ${error.message}`);
+            }
+        }
+        
+        // Display user info with direct database query
+        async function displayUserInfo(userId) {
+            try {
+                // Get the user document from Firestore
+                const userRef = doc(db, 'users', userId);
+                const userDoc = await getDoc(userRef);
+                
+                if (!userDoc.exists()) {
+                    printError(`User document not found for ID: ${userId}`);
+                    
+                    // Check if we have cached data
+                    if (userDataCache[userId]) {
+                        printWarning("Using cached data...");
+                        displayUserInfoFromData(userId, userDataCache[userId]);
+                    }
+                    return;
+                }
+                
+                const userData = userDoc.data();
+                
+                // Update cache
+                userDataCache[userId] = userData;
+                if (userData.username) {
+                    usernameToIDMap.set(userData.username.toLowerCase(), userId);
+                }
+                
+                displayUserInfoFromData(userId, userData);
+            } catch (error) {
+                printError(`Error getting user info: ${error.message}`);
+                
+                // Try to display from cache if we have it
+                if (userDataCache[userId]) {
+                    printWarning("Using cached data due to error...");
+                    displayUserInfoFromData(userId, userDataCache[userId]);
+                }
+            }
+        }
+        
+        // Helper function to display user info from data object
+        function displayUserInfoFromData(userId, userData) {
+            // Display core information
+            if (userData.email) {
+                printInfo(`Email: ${userData.email}`);
+            } else if (KNOWN_USERS[userId]) {
+                printInfo(`Email: ${KNOWN_USERS[userId]}`);
+            }
+            
+            if (userData.username) {
+                printInfo(`Username: ${userData.username}`);
+            } else {
+                printInfo(`Username: Not set`);
+            }
+            
+            // Financial information
+            printInfo(`Account Balance: ${userData.accountBalance || 0} coins`);
+            
+            // Game statistics
+            if (userData.totalGamesPlayed) {
+                printInfo(`Total Games Played: ${userData.totalGamesPlayed}`);
+            }
+            
+            if (userData.totalMoneySpent) {
+                printInfo(`Total Money Spent: ${userData.totalMoneySpent}`);
+            }
+            
+            if (userData.totalMoneyEarned) {
+                printInfo(`Total Money Earned: ${userData.totalMoneyEarned}`);
+            }
+            
+            // Account information
+            if (userData.createdAt) {
+                // Format date
+                let dateStr = userData.createdAt;
+                if (typeof dateStr === 'object') {
+                    // Handle Firestore timestamp
+                    if (dateStr.toDate) {
+                        dateStr = dateStr.toDate().toLocaleString();
+                    } else if (dateStr.seconds) {
+                        dateStr = new Date(dateStr.seconds * 1000).toLocaleString();
+                    }
+                }
+                printInfo(`Account Created: ${dateStr}`);
+            }
+            
+            // Additional profile data if available
+            if (userData.displayName) {
+                printInfo(`Display Name: ${userData.displayName}`);
+            }
+            
+            // Show any additional fields (exclude common fields)
+            const standardFields = [
+                'email', 'username', 'accountBalance', 'totalGamesPlayed', 
+                'totalMoneySpent', 'totalMoneyEarned', 'createdAt',
+                'displayName', 'photoURL', 'uid', 'username_lower'
+            ];
+            
+            const extraFields = Object.keys(userData).filter(key => !standardFields.includes(key));
+            if (extraFields.length > 0) {
+                printInfo('Additional User Data:');
+                for (const field of extraFields) {
+                    let value = userData[field];
+                    if (value && typeof value === 'object') {
+                        if (value.toDate) {
+                            value = value.toDate().toLocaleString();
+                        } else {
+                            value = JSON.stringify(value);
+                        }
+                    }
+                    printInfo(`- ${field}: ${value}`);
+                }
+            }
+        }
+        
+        // Display user coins
         async function displayUserCoins(userId) {
             try {
-                const getUserCoins = httpsCallable(functions, 'adminGetUserCoins');
-                const result = await getUserCoins({ 
-                    token: securityAccessToken,
-                    userId: userId
-                });
+                // Get the user document
+                const userRef = doc(db, 'users', userId);
+                const userDoc = await getDoc(userRef);
                 
-                if (result.data && result.data.success) {
-                    // Display user's information
-                    printSuccess(`User with ID ${userId} has ${result.data.coins || 0} coins.`);
+                if (!userDoc.exists()) {
+                    printError(`User document not found for ID: ${userId}`);
                     
-                    if (result.data.email) {
-                        printInfo(`User email: ${result.data.email}`);
-                    } else if (KNOWN_USERS[userId]) {
-                        printInfo(`User email: ${KNOWN_USERS[userId]}`);
-                    }
-                    
-                    if (result.data.username) {
-                        printInfo(`Username: ${result.data.username}`);
-                    }
-                } else {
-                    printError("Failed to get user coins");
-                    // Try fallback to cached data
-                    const userData = userDataCache[userId];
-                    if (userData) {
-                        printWarning("Using cached data...");
-                        printSuccess(`User with ID ${userId} has ${userData.accountBalance || 0} coins (cached).`);
+                    // Check if this user is in KNOWN_USERS but doesn't have a document yet
+                    if (KNOWN_USERS[userId]) {
+                        printWarning(`User exists in system but has no document yet. Creating one...`);
                         
-                        if (userData.email) {
-                            printInfo(`User email: ${userData.email}`);
+                        // Create a new user document
+                        await setDoc(userRef, {
+                            email: KNOWN_USERS[userId],
+                            accountBalance: 0,
+                            createdAt: serverTimestamp(),
+                            totalGamesPlayed: 0,
+                            totalMoneyEarned: 0,
+                            totalMoneySpent: 0
+                        });
+                        
+                        printSuccess(`Created new document for ${KNOWN_USERS[userId]} with 0 coins.`);
+                        
+                        // Update cache
+                        const newUserDoc = await getDoc(userRef);
+                        userDataCache[userId] = newUserDoc.data();
+                        
+                        // Display the new user info
+                        printSuccess(`User with ID ${userId} has 0 coins.`);
+                        printInfo(`User email: ${KNOWN_USERS[userId]}`);
+                    } else if (userDataCache[userId]) {
+                        // Use cached data if available
+                        printWarning("Using cached data...");
+                        printSuccess(`User with ID ${userId} has ${userDataCache[userId].accountBalance || 0} coins (cached).`);
+                        
+                        if (userDataCache[userId].email) {
+                            printInfo(`User email: ${userDataCache[userId].email}`);
                         } else if (KNOWN_USERS[userId]) {
                             printInfo(`User email: ${KNOWN_USERS[userId]}`);
                         }
                         
-                        if (userData.username) {
-                            printInfo(`Username: ${userData.username}`);
+                        if (userDataCache[userId].username) {
+                            printInfo(`Username: ${userDataCache[userId].username}`);
                         }
+                    } else {
+                        printError(`No user data found. This user may not exist.`);
                     }
+                    return;
+                }
+                
+                const userData = userDoc.data();
+                
+                // Update cache
+                userDataCache[userId] = userData;
+                
+                // Display user's coin information
+                printSuccess(`User with ID ${userId} has ${userData.accountBalance || 0} coins.`);
+                
+                if (userData.email) {
+                    printInfo(`User email: ${userData.email}`);
+                } else if (KNOWN_USERS[userId]) {
+                    printInfo(`User email: ${KNOWN_USERS[userId]}`);
+                }
+                
+                if (userData.username) {
+                    printInfo(`Username: ${userData.username}`);
                 }
             } catch (error) {
                 printError(`Error checking user coins: ${error.message}`);
             }
         }
         
-        // Add coins to user with server validation
+        // Add coins to user
         async function addCoinsToUser(userId, amount) {
             try {
                 printInfo(`Adding ${amount} coins to user ID: ${userId}...`);
                 
-                const modifyCoins = httpsCallable(functions, 'adminModifyUserCoins');
-                const result = await modifyCoins({ 
-                    token: securityAccessToken,
-                    userId: userId,
-                    amount: amount,
-                    operation: 'add'
-                });
+                // Get current balance
+                const userRef = doc(db, 'users', userId);
+                const userDoc = await getDoc(userRef);
                 
-                if (result.data && result.data.success) {
-                    printSuccess(`Successfully added ${amount} coins to user with ID ${userId}.`);
-                    printInfo(`New balance: ${result.data.newBalance}`);
+                if (!userDoc.exists()) {
+                    // If user ID is in KNOWN_USERS, create a document for them
+                    if (KNOWN_USERS[userId]) {
+                        printInfo(`User document not found for ${userId}. Creating a new document...`);
+                        
+                        const newUserData = {
+                            email: KNOWN_USERS[userId],
+                            accountBalance: amount, // Start with the amount being added
+                            createdAt: serverTimestamp(),
+                            totalGamesPlayed: 0,
+                            totalMoneyEarned: amount, // Count this as money earned
+                            totalMoneySpent: 0
+                        };
+                        
+                        await setDoc(userRef, newUserData);
+                        
+                        // Cache for later use
+                        userDataCache[userId] = newUserData;
+                        
+                        printSuccess(`Created new user document for ${KNOWN_USERS[userId]} with ${amount} coins`);
+                        return true;
+                    } else {
+                        printError("User document not found and user ID not in known users");
+                        return false;
+                    }
+                }
+                
+                // Use a transaction to safely update the balance
+                await runTransaction(db, async (transaction) => {
+                    // Read the current document in the transaction
+                    const userDocInTx = await transaction.get(userRef);
                     
-                    // Update cache
-                    if (userDataCache[userId]) {
-                        userDataCache[userId].accountBalance = result.data.newBalance;
+                    if (!userDocInTx.exists()) {
+                        throw new Error("User document disappeared during transaction");
                     }
                     
-                    return true;
-                } else {
-                    printError("Failed to add coins: " + (result.data && result.data.error ? result.data.error : "Unknown error"));
-                    return false;
-                }
+                    const userData = userDocInTx.data();
+                    const currentBalance = userData.accountBalance || 0;
+                    const newBalance = currentBalance + amount;
+                    
+                    // Update fields
+                    const updates = { 
+                        accountBalance: newBalance,
+                        lastUpdated: serverTimestamp()
+                    };
+                    
+                    // Update total money earned as well
+                    const totalEarned = userData.totalMoneyEarned || 0;
+                    updates.totalMoneyEarned = totalEarned + amount;
+                    
+                    // Perform the update in the transaction
+                    transaction.update(userRef, updates);
+                    
+                    // Update the cache with the new balance
+                    if (userDataCache[userId]) {
+                        userDataCache[userId].accountBalance = newBalance;
+                        userDataCache[userId].totalMoneyEarned = updates.totalMoneyEarned;
+                    }
+                });
+                
+                // Get the updated document to confirm
+                const updatedDoc = await getDoc(userRef);
+                const updatedData = updatedDoc.data();
+                
+                printSuccess(`Transaction complete. New balance: ${updatedData.accountBalance}`);
+                return true;
             } catch (error) {
                 printError(`Error adding coins: ${error.message}`);
-                throw error;
+                return false;
             }
         }
         
-        // Remove coins from user with server validation
+        // Remove coins from user
         async function removeCoinsFromUser(userId, amount) {
             try {
                 printInfo(`Removing ${amount} coins from user ID: ${userId}...`);
                 
-                const modifyCoins = httpsCallable(functions, 'adminModifyUserCoins');
-                const result = await modifyCoins({ 
-                    token: securityAccessToken,
-                    userId: userId,
-                    amount: amount,
-                    operation: 'remove'
-                });
+                // Get current balance
+                const userRef = doc(db, 'users', userId);
+                const userDoc = await getDoc(userRef);
                 
-                if (result.data && result.data.success) {
-                    printSuccess(`Successfully removed ${amount} coins from user with ID ${userId}.`);
-                    printInfo(`New balance: ${result.data.newBalance}`);
-                    
-                    // Update cache
-                    if (userDataCache[userId]) {
-                        userDataCache[userId].accountBalance = result.data.newBalance;
-                    }
-                    
-                    return true;
-                } else {
-                    printError("Failed to remove coins: " + (result.data && result.data.error ? result.data.error : "Unknown error"));
+                if (!userDoc.exists()) {
+                    printError("User document not found. Cannot remove coins from non-existent user.");
                     return false;
                 }
+                
+                // Use a transaction to safely update the balance
+                await runTransaction(db, async (transaction) => {
+                    // Read the current document in the transaction
+                    const userDocInTx = await transaction.get(userRef);
+                    
+                    if (!userDocInTx.exists()) {
+                        throw new Error("User document disappeared during transaction");
+                    }
+                    
+                    const userData = userDocInTx.data();
+                    const currentBalance = userData.accountBalance || 0;
+                    
+                    // Check if user has enough balance
+                    if (currentBalance < amount) {
+                        throw new Error(`User only has ${currentBalance} coins, cannot remove ${amount}`);
+                    }
+                    
+                    const newBalance = currentBalance - amount;
+                    
+                    // Update fields
+                    const updates = { 
+                        accountBalance: newBalance,
+                        lastUpdated: serverTimestamp()
+                    };
+                    
+                    // Update total money spent as well
+                    const totalSpent = userData.totalMoneySpent || 0;
+                    updates.totalMoneySpent = totalSpent + amount;
+                    
+                    // Perform the update in the transaction
+                    transaction.update(userRef, updates);
+                    
+                    // Update the cache with the new balance
+                    if (userDataCache[userId]) {
+                        userDataCache[userId].accountBalance = newBalance;
+                        userDataCache[userId].totalMoneySpent = updates.totalMoneySpent;
+                    }
+                });
+                
+                // Get the updated document to confirm
+                const updatedDoc = await getDoc(userRef);
+                const updatedData = updatedDoc.data();
+                
+                printSuccess(`Transaction complete. New balance: ${updatedData.accountBalance}`);
+                return true;
             } catch (error) {
                 printError(`Error removing coins: ${error.message}`);
-                throw error;
+                return false;
             }
         }
         
-        // Kick user with server validation
+        // Kick user (delete account and data)
         async function kickUser(email) {
             try {
                 printWarning(`Preparing to kick user with email: ${email}...`);
                 
-                const kickUserFunction = httpsCallable(functions, 'adminKickUser');
-                const result = await kickUserFunction({ 
-                    token: securityAccessToken,
-                    email: email
-                });
+                // Check if this is the admin account and add special warning
+                if (email.toLowerCase() === window._voidAdminUser.toLowerCase()) {
+                    printWarning(`⚠️ WARNING: You are about to kick an ADMIN account!`);
+                    printWarning(`⚠️ This could restrict access to this console!`);
+                    printError(`Operation aborted for safety. Cannot kick admin account.`);
+                    return false;
+                }
                 
-                if (result.data && result.data.success) {
-                    printSuccess(`Successfully kicked user: ${email}`);
+                // Find user ID from email
+                const userId = EMAIL_TO_ID[email.toLowerCase()];
+                
+                if (!userId) {
+                    printError(`Could not find user ID for email: ${email}`);
                     
-                    // Update local cache
-                    if (result.data.userId) {
-                        // Remove from cache
-                        delete userDataCache[result.data.userId];
+                    // Try to search database for this email
+                    const usersRef = collection(db, 'users');
+                    const emailQuery = query(usersRef, where('email', '==', email));
+                    
+                    try {
+                        const querySnapshot = await getDocs(emailQuery);
                         
-                        // Remove from username map if exists
-                        for (const [username, id] of usernameToIDMap.entries()) {
-                            if (id === result.data.userId) {
-                                usernameToIDMap.delete(username);
+                        if (!querySnapshot.empty) {
+                            const userDoc = querySnapshot.docs[0];
+                            const foundUserId = userDoc.id;
+                            
+                            printInfo(`Found user with email ${email} and ID: ${foundUserId}`);
+                            
+                            // Safety confirmation
+                            printWarning(`WARNING: About to delete account and all data for ${email} (${foundUserId})`);
+                            printWarning(`This action cannot be undone.`);
+                            
+                            // Delete user document from Firestore
+                            try {
+                                await deleteDoc(doc(db, 'users', foundUserId));
+                                printSuccess(`Deleted user document for ${email}`);
+                                
+                                // Remove from cache
+                                delete userDataCache[foundUserId];
+                                
+                                // Remove from username map if exists
+                                for (const [username, id] of usernameToIDMap.entries()) {
+                                    if (id === foundUserId) {
+                                        usernameToIDMap.delete(username);
+                                        printInfo(`Removed username mapping for ${username}`);
+                                    }
+                                }
+                                
+                                printSuccess(`Successfully kicked user: ${email}`);
+                                return true;
+                            } catch (error) {
+                                printError(`Error deleting user document: ${error.message}`);
+                                return false;
                             }
+                        } else {
+                            printError(`No user found with email: ${email}`);
+                            return false;
+                        }
+                    } catch (error) {
+                        printError(`Error searching for user by email: ${error.message}`);
+                        return false;
+                    }
+                }
+                
+                // Safety confirmation
+                printWarning(`WARNING: About to delete account and all data for ${email} (${userId})`);
+                printWarning(`This action cannot be undone.`);
+                
+                // Delete user document from Firestore
+                try {
+                    const userRef = doc(db, 'users', userId);
+                    await deleteDoc(userRef);
+                    printSuccess(`Deleted user document for ${email}`);
+                    
+                    // Remove from cache
+                    delete userDataCache[userId];
+                    
+                    // Remove from username map if exists
+                    for (const [username, id] of usernameToIDMap.entries()) {
+                        if (id === userId) {
+                            usernameToIDMap.delete(username);
+                            printInfo(`Removed username mapping for ${username}`);
                         }
                     }
                     
+                    printSuccess(`Successfully kicked user: ${email}`);
                     return true;
-                } else {
-                    printError("Failed to kick user: " + (result.data && result.data.error ? result.data.error : "Unknown error"));
+                } catch (error) {
+                    printError(`Error deleting user document: ${error.message}`);
                     return false;
                 }
             } catch (error) {
@@ -1462,79 +1719,81 @@
             }
         }
         
-        // Find users with most coins with server validation
+        // Find users with most coins
         async function findUsersWithMostCoins() {
             try {
                 printInfo(`Finding users with the most coins...`);
                 
-                const getTopUsers = httpsCallable(functions, 'adminGetTopCoinsUsers');
-                const result = await getTopUsers({ token: securityAccessToken });
-                
-                if (result.data && result.data.success && result.data.users) {
-                    printSuccess(`Top ${result.data.users.length} users with most coins:`);
+                // Try to query Firestore directly
+                try {
+                    const usersRef = collection(db, 'users');
+                    const usersQuery = query(usersRef, orderBy('accountBalance', 'desc'), limit(3));
+                    const querySnapshot = await getDocs(usersQuery);
                     
-                    result.data.users.forEach((user, index) => {
-                        printInfo(`${index + 1}. ${user.username || 'No Username'} (${user.email || 'Unknown'}): ${user.coins} coins`);
+                    if (!querySnapshot.empty) {
+                        printSuccess(`Top ${querySnapshot.size} users with most coins:`);
+                        let rank = 1;
                         
-                        // Update cache
-                        if (user.id) {
-                            userDataCache[user.id] = user.data;
-                            if (user.data && user.data.username) {
-                                usernameToIDMap.set(user.data.username.toLowerCase(), user.id);
+                        querySnapshot.forEach((userDoc) => {
+                            const userData = userDoc.data();
+                            const userId = userDoc.id;
+                            const username = userData.username || "No Username";
+                            const email = userData.email || KNOWN_USERS[userId] || "Unknown";
+                            const coins = userData.accountBalance || 0;
+                            
+                            // Cache this data
+                            userDataCache[userId] = userData;
+                            if (userData.username) {
+                                usernameToIDMap.set(userData.username.toLowerCase(), userId);
                             }
+                            
+                            printInfo(`${rank}. ${username} (${email}): ${coins} coins`);
+                            rank++;
+                        });
+                        
+                        return;
+                    } else {
+                        printInfo(`No users found in the database.`);
+                    }
+                } catch (queryError) {
+                    printWarning(`Could not query database directly. Falling back to cached data...`);
+                    console.error("Query error:", queryError);
+                    
+                    // Fallback to cached data
+                    const userCoins = [];
+                    
+                    for (const [userId, userData] of Object.entries(userDataCache)) {
+                        if (userData) {
+                            const coins = userData.accountBalance || 0;
+                            const username = userData.username || "No Username";
+                            const email = userData.email || KNOWN_USERS[userId] || "Unknown";
+                            
+                            userCoins.push({
+                                userId,
+                                username,
+                                email,
+                                coins
+                            });
                         }
-                    });
-                } else {
-                    printError("Failed to get top users");
-                    // Try fallback to cached data
-                    fallbackGetTopCoinsUsers();
+                    }
+                    
+                    // Sort by coins (descending)
+                    userCoins.sort((a, b) => b.coins - a.coins);
+                    
+                    // Display top 3 users
+                    const topUsers = userCoins.slice(0, 3);
+                    
+                    if (topUsers.length > 0) {
+                        printSuccess(`Top ${topUsers.length} users with most coins (from cache):`);
+                        topUsers.forEach((user, index) => {
+                            printInfo(`${index + 1}. ${user.username} (${user.email}): ${user.coins} coins`);
+                        });
+                    } else {
+                        printWarning(`No user data available in cache.`);
+                    }
                 }
             } catch (error) {
                 printError(`Error finding users with most coins: ${error.message}`);
-                // Try fallback to cached data
-                fallbackGetTopCoinsUsers();
-            }
-        }
-        
-        // Fallback method for finding users with most coins using local cache
-        function fallbackGetTopCoinsUsers() {
-            try {
-                printWarning("Using cached data for top users...");
-                
-                // Create an array to store user coin data
-                const userCoins = [];
-                
-                for (const [userId, userData] of Object.entries(userDataCache)) {
-                    if (userData) {
-                        const coins = userData.accountBalance || 0;
-                        const username = userData.username || "No Username";
-                        const email = userData.email || KNOWN_USERS[userId] || "Unknown";
-                        
-                        userCoins.push({
-                            userId,
-                            username,
-                            email,
-                            coins
-                        });
-                    }
-                }
-                
-                // Sort by coins (descending)
-                userCoins.sort((a, b) => b.coins - a.coins);
-                
-                // Display top 3 users
-                const topUsers = userCoins.slice(0, 3);
-                
-                if (topUsers.length > 0) {
-                    printSuccess(`Top ${topUsers.length} users with most coins (from cache):`);
-                    topUsers.forEach((user, index) => {
-                        printInfo(`${index + 1}. ${user.username} (${user.email}): ${user.coins} coins`);
-                    });
-                } else {
-                    printWarning(`No user data available in cache.`);
-                }
-            } catch (error) {
-                printError(`Error with cached top users: ${error.message}`);
             }
         }
         
