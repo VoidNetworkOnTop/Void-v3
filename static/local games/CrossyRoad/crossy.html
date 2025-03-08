@@ -1850,8 +1850,7 @@
     // Place bombs with cryptographic security
     function placeBombs() {
         const bombCount = parseInt(bombSlider.value);
-        const bombIndices = [];
-
+        
         // Generate bomb positions using cryptographically secure random
         const positions = new Set();
         
@@ -1899,13 +1898,12 @@
             
             cell.className = 'mine-cell';
             
-            // Store index in a data attribute with strong encryption
-            // Include the nonce to prevent replay attacks
-            cell.dataset[`x${gameNonce.substring(0, 8)}`] = encryptData({
-                i: i,                 // Cell index
-                n: gameNonce,         // Game nonce
-                v: window.crypto.randomUUID() // Unique per-cell verification
-            });
+            // Use a simpler data attribute approach that works better
+            const dataKey = `data-cell-${gameNonce.substring(0, 8)}`;
+            cell.setAttribute(dataKey, i);
+            
+            // Add a nonce attribute for verification
+            cell.setAttribute('data-nonce', gameNonce);
             
             // Add click handling with bind to maintain context
             cell.onclick = function(event) {
@@ -1934,34 +1932,33 @@
         // Get the cell that was clicked
         const cell = event.currentTarget;
 
-        if (!cell || !cell.dataset) {
+        if (!cell) {
             return;
         }
         
-        // Find the encrypted index data attribute using the game nonce
-        const dataKey = Object.keys(cell.dataset)
-                        .find(key => key.startsWith(`x${gameNonce.substring(0, 8)}`));
-        
-        if (!dataKey) {
-            console.warn("Cell data attribute not found");
+        // Verify the nonce matches to prevent replay attacks
+        const cellNonce = cell.getAttribute('data-nonce');
+        if (cellNonce !== gameNonce) {
+            console.warn("Cell nonce mismatch - possible tampering");
             return;
         }
         
-        const encryptedData = cell.dataset[dataKey];
-                              
-        if (!encryptedData) {
+        // Get the index directly using the simpler approach
+        const dataKey = `data-cell-${gameNonce.substring(0, 8)}`;
+        const indexStr = cell.getAttribute(dataKey);
+        
+        if (!indexStr) {
+            console.warn("Cell index not found");
             return;
         }
         
-        // Decrypt the cell index with validation
-        const data = decryptData(encryptedData);
-        if (!data || data.n !== gameNonce) {
-            // Invalid data or tampered nonce
-            console.warn("Cell data tampering detected");
+        const index = parseInt(indexStr);
+        
+        // Basic validation
+        if (isNaN(index) || index < 0 || index >= totalSquares) {
+            console.warn("Invalid cell index");
             return;
         }
-        
-        const index = data.i;
 
         // Check if already revealed
         if (_secureRevealState.isRevealed(index)) {
@@ -2031,20 +2028,14 @@
         cells.forEach((cell) => {
             if (cell === hitCell) return; // Skip the bomb that was already hit
 
-            // Find the encrypted data attribute using the same pattern
-            const dataKey = Object.keys(cell.dataset)
-                           .find(key => key.startsWith(`x${gameNonce.substring(0, 8)}`));
-                                  
-            if (!dataKey) return;
+            // Use the simpler approach to get cell index
+            const dataKey = `data-cell-${gameNonce.substring(0, 8)}`;
+            const indexStr = cell.getAttribute(dataKey);
             
-            const encryptedData = cell.dataset[dataKey];
-            if (!encryptedData) return;
+            if (!indexStr) return;
+            const index = parseInt(indexStr);
             
-            // Decrypt the cell index
-            const data = decryptData(encryptedData);
-            if (!data) return;
-            
-            const index = data.i;
+            if (isNaN(index)) return;
             
             // Check if it's a bomb
             if (_secureGameState.checkBomb(index)) {
