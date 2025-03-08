@@ -1185,19 +1185,19 @@
         }
     }
 
-    // Set up periodic integrity checks
-    setInterval(verifyGameIntegrity, 5000);
+    // Set up periodic integrity checks from inside the private scope
+    const integrityCheckInterval = setInterval(() => _private.methods.verifyGameIntegrity(), 5000);
 
-    // Helper function to clear all timeouts
-    function clearAllTimeouts() {
+    // Helper function to clear all timeouts - now private
+    _private.methods.clearAllTimeouts = function() {
         const highestTimeoutId = setTimeout(() => {}, 0);
         for (let i = 0; i < highestTimeoutId; i++) {
             clearTimeout(i);
         }
     }
 
-    // Initialize DOM elements
-    function initDomElements() {
+    // Initialize DOM elements - converted to private method
+    _private.methods.initDomElements = function() {
         _elements = {
             coinDisplay: document.getElementById('coinDisplay'),
             startScreen: document.getElementById('start-screen'),
@@ -1222,7 +1222,7 @@
         };
         
         // Make sure coin display is updated immediately
-        updateCoinDisplay();
+        _private.methods.updateCoinDisplay();
     }
 
     // Internal method to update coin display - now completely private
@@ -1376,8 +1376,8 @@
     let animationFrame;
     let circles = []; // Will hold references to the circle elements
 
-    // Initialize canvas for background
-    function initCanvas() {
+    // Initialize canvas for background - converted to private method
+    _private.methods.initCanvas = function() {
         canvas = document.getElementById('game-canvas');
         if (!canvas) {
             console.error("Canvas element not found!");
@@ -1510,8 +1510,8 @@
         }
     }
 
-    // SECURITY: Secure implementation of success rate calculation
-    function calculateSuccessRate(position) {
+    // SECURITY: Secure implementation of success rate calculation - converted to private method
+    _private.methods.calculateSuccessRate = function(position) {
         const levelConfig = _gc.lvl[_gc.sl];
         const maxSteps = levelConfig.ms;
         const initialRate = levelConfig.isr;
@@ -1921,13 +1921,13 @@
         }
     }
 
-    // Initialize game
-    function initGame() {
+    // Initialize game - now a private method
+    _private.methods.initGame = function() {
         // Get current level configuration
         const levelConfig = _gc.lvl[_gc.sl];
         
         // Check if player has enough coins for entry fee
-        if (privateGameState.coinBalance < levelConfig.ef) {
+        if (_private.state.coinBalance < levelConfig.ef) {
             // Show insufficient funds message
             if (_elements.gameInfo) {
                 _elements.gameInfo.textContent = `Not enough coins to start the game! You need at least ${levelConfig.ef} coins.`;
@@ -1936,8 +1936,8 @@
         }
         
         // SECURITY: Verify game integrity before starting
-        if (!verifyGameIntegrity()) {
-            resetGame();
+        if (!_private.methods.verifyGameIntegrity()) {
+            _private.methods.resetGame();
             alert("Game security verification failed. Please refresh the page.");
             return;
         }
@@ -2055,38 +2055,38 @@
         }
     }
 
-    // Secure entry point for game initialization
-    function initializeGame() {
+    // Secure entry point for game initialization - converted to private method
+    _private.methods.initializeGame = function() {
         // Register with the gameAPI
         if (window.gameAPI && typeof window.gameAPI.initializeGame === 'function') {
             const initialBalance = window.gameAPI.initializeGame({
                 // Provide secure methods to the API
                 _setInternalBalance: function(balance) {
-                    privateGameState.coinBalance = balance;
-                    updateCoinDisplay();
+                    _private.state.coinBalance = balance;
+                    _private.methods.updateCoinDisplay();
                 }
             });
             
             // Use the provided initial balance
             if (initialBalance !== undefined) {
-                privateGameState.coinBalance = initialBalance;
+                _private.state.coinBalance = initialBalance;
             }
         }
         
         // Initialize DOM elements
-        initDomElements();
+        _private.methods.initDomElements();
         
         // Initialize canvas
-        initCanvas();
+        _private.methods.initCanvas();
         
         // SECURITY: Use event delegation for all game interactions
-        setupSecureEventListeners();
+        _private.methods.setupSecureEventListeners();
         
         // Initial reset
-        resetGame();
+        _private.methods.resetGame();
         
         // Generate a new integrity token for this session
-        privateGameState.integrityToken = Array.from(crypto.getRandomValues(new Uint8Array(8)))
+        _private.state.integrityToken = Array.from(crypto.getRandomValues(new Uint8Array(16)))
             .map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
@@ -2118,15 +2118,15 @@
         const startBtn = document.getElementById('start-btn');
         if (startBtn) {
             startBtn.addEventListener('click', function() {
-const levelConfig = _gc.lvl[_gc.sl];
+                const levelConfig = _gc.lvl[_gc.sl];
                 
                 // Check if player has enough coins for entry fee
-                if (privateGameState.coinBalance < levelConfig.ef) {
+                if (_private.state.coinBalance < levelConfig.ef) {
                     alert(`You need more coins to play this game!`);
                     return;
                 }
                 
-                initGame();
+_private.methods.initGame();
             });
         }
         
@@ -2137,19 +2137,19 @@ const levelConfig = _gc.lvl[_gc.sl];
                 const levelConfig = _gc.lvl[_gc.sl];
                 
                 // Check if player has enough coins for entry fee
-                if (privateGameState.coinBalance < levelConfig.ef) {
+                if (_private.state.coinBalance < levelConfig.ef) {
                     alert(`You need more coins to play this game!`);
-                    resetGame(); // Just reset to selection screen
+                    _private.methods.resetGame(); // Just reset to selection screen
                     return;
                 }
                 
                 if (_elements.resultScreen) {
                     _elements.resultScreen.classList.remove('visible');
                     setTimeout(() => {
-                        resetGame();
+                        _private.methods.resetGame();
                     }, 300); // Give time for fade-out animation
                 } else {
-                    resetGame();
+                    _private.methods.resetGame();
                 }
             });
         }
@@ -2170,11 +2170,11 @@ const levelConfig = _gc.lvl[_gc.sl];
                 if (target.classList.contains('level-btn')) {
                     const level = target.dataset.level;
                     if (level) {
-                        setActiveLevel(level);
+                        _private.methods.setActiveLevel(level);
                         
                         // Subtly hint at different costs without being explicit
                         const levelConfig = _gc.lvl[_gc.sl];
-                        if (privateGameState.coinBalance < levelConfig.ef) {
+                        if (_private.state.coinBalance < levelConfig.ef) {
                             _elements.startBtn.classList.add('insufficient');
                         } else {
                             _elements.startBtn.classList.remove('insufficient');
@@ -2192,9 +2192,9 @@ const levelConfig = _gc.lvl[_gc.sl];
         
         // Add resize event listener
         window.addEventListener('resize', function() {
-            initCanvas();
-            if (privateGameState.gameActive) {
-                drawStars();
+            _private.methods.initCanvas();
+            if (_private.state.gameActive) {
+                _private.methods.drawStars();
             }
         });
         
@@ -2206,86 +2206,10 @@ const levelConfig = _gc.lvl[_gc.sl];
                 (e.metaKey && e.altKey && e.key === 'i')) {
                 console.log("DevTools keyboard shortcut detected");
                 // Optionally trigger integrity verification
-                verifyGameIntegrity();
+                _private.methods.verifyGameIntegrity();
             }
         });
     }
-
-    // SECURITY: Observer to detect DOM modifications
-    function setupDOMObserver() {
-        // Create a MutationObserver to monitor for DOM tampering
-        const observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                // Check for suspicious modifications
-                if (mutation.type === 'childList' && 
-                    (mutation.target.id === 'coinDisplay' || 
-                     mutation.target.classList.contains('coin-amount'))) {
-                    console.warn("Potential tampering detected: DOM modification");
-                    // Force a balance refresh from server
-                    if (window.gameAPI && typeof window.gameAPI.refreshBalance === 'function') {
-                        window.gameAPI.refreshBalance().then(serverBalance => {
-                            privateGameState.coinBalance = serverBalance;
-                            updateCoinDisplay();
-                        });
-                    }
-                }
-            });
-        });
-        
-        // Observe coin display elements
-        const coinDisplay = document.getElementById('coinDisplay');
-        if (coinDisplay) {
-            observer.observe(coinDisplay, { childList: true, characterData: true, subtree: true });
-        }
-    }
-    
-    // SECURITY: Anti-debugging protection
-    function setupAntiDebugging() {
-        // Make it harder to debug by detecting when devtools is open
-        const antiDebugLoop = function() {
-            const start = performance.now();
-            debugger; // This statement does nothing when DevTools is closed
-            const end = performance.now();
-            
-            // If DevTools is open, the debugger statement will pause execution
-            // making the time difference larger
-            if (end - start > 100) {
-                console.warn("Debug mode detected");
-                // Reset the game or refresh balance
-                if (window.gameAPI && typeof window.gameAPI.refreshBalance === 'function') {
-                    window.gameAPI.refreshBalance().then(serverBalance => {
-                        privateGameState.coinBalance = serverBalance;
-                        updateCoinDisplay();
-                    });
-                }
-            }
-            
-            // Run in random intervals
-            setTimeout(antiDebugLoop, Math.floor(Math.random() * 5000) + 2000);
-        };
-        
-        // Start anti-debugging protection with a randomized delay
-        setTimeout(antiDebugLoop, Math.floor(Math.random() * 2000) + 1000);
-    }
-
-    // Initialize the game after DOM is fully loaded
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize the game
-        initializeGame();
-        
-        // Setup anti-cheat protections
-        setupDOMObserver();
-        setupAntiDebugging();
-        
-        // Perform an initial integrity check
-        verifyGameIntegrity();
-        
-        // Make doubly sure the result screen is initially hidden
-        const resultScreen = document.getElementById('result-screen');
-        if (resultScreen) {
-            resultScreen.classList.remove('visible');
-        }
-    });
     
     // SECURITY: Override console methods to detect tampering attempts
     const originalConsoleLog = console.log;
@@ -2302,12 +2226,49 @@ const levelConfig = _gc.lvl[_gc.sl];
                     arg.includes('coinBalance')) {
                     // Log suspicious activity
                     originalConsoleWarn.call(console, "Suspicious console activity detected");
-                    verifyGameIntegrity();
+                    _private.methods.verifyGameIntegrity();
                 }
             }
         }
         return originalConsoleLog.apply(console, arguments);
     };
+    
+    // Set up periodic integrity checks from inside the private scope
+    const integrityCheckInterval = setInterval(() => _private.methods.verifyGameIntegrity(), 5000);
+    
+    // Initialize the game after DOM is fully loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize the game using our private methods
+        _private.methods.initializeGame();
+        
+        // Setup anti-cheat protections
+        _private.methods.setupDOMObserver();
+        _private.methods.setupAntiDebugging();
+        
+        // Perform an initial integrity check
+        _private.methods.verifyGameIntegrity();
+        
+        // Make doubly sure the result screen is initially hidden
+        const resultScreen = document.getElementById('result-screen');
+        if (resultScreen) {
+            resultScreen.classList.remove('visible');
+        }
+    });
+    
+    // Create fake/decoy functions to confuse cheaters
+    window.updateCoins = function(amount) {
+        console.log("Nice try! Cheating attempt detected and logged.");
+        _private.state.cheatingDetected = true;
+        _private.methods.resetGame();
+        alert("Cheating detected! Game has been reset.");
+        return false;
+    };
+    
+    // Use a property descriptor to make the function appear normal but be impossible to modify
+    Object.defineProperty(window, 'updateCoins', {
+        configurable: false,
+        writable: false
+    });
     
     // No exposed global functions or variables - everything is encapsulated
 })();
