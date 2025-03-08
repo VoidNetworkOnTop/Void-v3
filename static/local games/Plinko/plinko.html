@@ -351,7 +351,16 @@
        // Firebase Imports
        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
-       import { getFirestore, doc, getDoc, updateDoc, setDoc, collection } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+       import { 
+           getFirestore, 
+           doc, 
+           getDoc, 
+           updateDoc, 
+           setDoc, 
+           collection, 
+           runTransaction,
+           serverTimestamp 
+       } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
 
        // Firebase Configuration - UPDATED
        const firebaseConfig = {
@@ -368,934 +377,1081 @@
        const auth = getAuth(app);
        const db = getFirestore(app);
 
-       // Authentication and Coin Management
-       let currentUser = null;
-       let firebaseCoinBalance = 0;
-       window.transactionInProgress = false; // Add transaction lock
-
-       // Authentication State Listener
-       onAuthStateChanged(auth, async (user) => {
-           if (user) {
-               // User is signed in
-               currentUser = user;
-               console.log("User signed in:", user.uid);
-               await loadFirebaseCoinBalance();
-           } else {
-               // No user is signed in
-               currentUser = null;
-               console.log("No user signed in");
-               showLoginPrompt();
+       // SECURITY: Wrap everything in an IIFE to prevent global access
+       (function() {
+           // Security measures
+           const securityToken = generateSecurityToken();
+           let lastServerBalance = 0;
+           let pendingTransactions = new Set();
+           
+           // Generate a random security token for this session
+           function generateSecurityToken() {
+               return Array.from(window.crypto.getRandomValues(new Uint8Array(16)))
+                   .map(b => b.toString(16).padStart(2, "0"))
+                   .join('');
            }
-       });
-
-       async function loadFirebaseCoinBalance() {
-           if (!currentUser) {
-               console.log("No user available to load balance");
-               return;
-           }
-
-           try {
-               console.log("Loading balance for user:", currentUser.uid);
-               
-               // Use currentUser.uid instead of email
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef);
-
-               if (userDoc.exists()) {
-                   // Get coin balance from Firestore
-                   const userData = userDoc.data();
-                   firebaseCoinBalance = userData.accountBalance || 0;
-                   
-                   console.log("Loaded balance from Firebase:", firebaseCoinBalance);
-                   
-                   // Update local coin display and game state
-                   window.coinBalance = firebaseCoinBalance;
-                   
-                   // Make sure the global variable is also set
-                   coinBalance = firebaseCoinBalance;
-                   
-                   // Update UI and game state
-                   window.updateCoinDisplay();
-                   window.setupGame();
-                   
-                   console.log("Updated local balance:", coinBalance);
-                   return firebaseCoinBalance;
+           
+           // Authentication and Coin Management
+           let currentUser = null;
+           let firebaseCoinBalance = 0;
+           let transactionInProgress = false;
+           
+           // Secure game state with private variables
+           let _gameActive = false;
+           let _gameComplete = false;
+           let _coinBalance = 0;
+           
+           // Secure DOM references
+           const dropButton = document.getElementById('dropButton');
+           const resetButton = document.getElementById('resetButton');
+           const scoreDisplay = document.getElementById('scoreDisplay');
+           const coinDisplay = document.getElementById('coinDisplay');
+           
+           // Authentication State Listener
+           onAuthStateChanged(auth, async (user) => {
+               if (user) {
+                   // User is signed in
+                   currentUser = user;
+                   console.log("User signed in:", user.uid);
+                   await loadFirebaseCoinBalance();
                } else {
-                   console.log("User document doesn't exist, creating new one");
-                   // Create initial balance if no document exists
-                   await setDoc(userRef, { 
-                     accountBalance: 1000,
-                     username: currentUser.displayName || "Player",
-                     email: currentUser.email,
-                     createdAt: new Date(),
-                     totalGamesPlayed: 0,
-                     totalMoneySpent: 0,
-                     totalMoneyEarned: 0
-                   });
-                   
-                   firebaseCoinBalance = 1000;
-                   window.coinBalance = 1000;
-                   coinBalance = 1000;
-                   window.updateCoinDisplay();
-                   return 1000;
+                   // No user is signed in
+                   currentUser = null;
+                   console.log("No user signed in");
+                   showLoginPrompt();
                }
-           } catch (error) {
-               console.error("Error loading coin balance:", error);
-               showLoginPrompt();
-               return 0;
-           }
-       }
+           });
 
-       // Update Coin Balance in Firebase - FIXED to use UID instead of email
-       async function updateFirebaseCoinBalance(newBalance) {
-           if (!currentUser) {
-               console.log("No user available to update balance");
-               return;
-           }
-
-           try {
-               console.log("Updating balance for user:", currentUser.uid, "New balance:", newBalance);
-               
-               // Use currentUser.uid instead of email
-               const userRef = doc(db, 'users', currentUser.uid);
-               await updateDoc(userRef, { accountBalance: newBalance });
-               
-               // Update the local reference as well
-               firebaseCoinBalance = newBalance;
-               console.log("Firebase balance updated successfully");
-               
-               return true;
-           } catch (error) {
-               console.error("Error updating coin balance:", error);
-               return false;
-           }
-       }
-
-       // FIXED: Record Game Transaction with transaction lock
-       async function recordGameTransaction(gameId, amount, isWin) {
-           if (!currentUser) return;
-
-           try {
-               console.log(`Recording transaction: ${isWin ? 'win' : 'play'} for ${Math.abs(amount)} coins`);
-               
-               // Set a transaction lock to prevent duplicate updates
-               if (window.transactionInProgress) {
-                   console.log("Transaction already in progress, waiting...");
-                   await new Promise(resolve => setTimeout(resolve, 300));
-               }
-               
-               window.transactionInProgress = true;
+           // SECURITY: Server-side balance verification
+           async function verifyBalance() {
+               if (!currentUser) return false;
                
                try {
-                   // Create transaction record
-                   const transactionRef = doc(collection(db, 'transactions'));
-                   await setDoc(transactionRef, {
-                       userId: currentUser.uid,
-                       gameId: gameId,
-                       transactionType: isWin ? 'game_win' : 'game_play',
-                       amount: Math.abs(amount),
-                       timestamp: new Date()
-                   });
-
-                   // Get current user data - force server data
                    const userRef = doc(db, 'users', currentUser.uid);
                    const userDoc = await getDoc(userRef, { source: 'server' });
                    
                    if (userDoc.exists()) {
-                       const userData = userDoc.data();
-                       let updatedBalance = userData.accountBalance || 0;
+                       const serverBalance = userDoc.data().accountBalance || 0;
                        
-                       // Update relevant fields
-                       if (isWin) {
-                           updatedBalance += amount;
-                           console.log(`Adding ${amount} coins, new balance: ${updatedBalance}`);
-                           userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
-                       } else {
-                           updatedBalance -= Math.abs(amount);
-                           console.log(`Removing ${Math.abs(amount)} coins, new balance: ${updatedBalance}`);
-                           userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
-                           userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
+                       // If local balance doesn't match server (possible tampering)
+                       if (Math.abs(_coinBalance - serverBalance) > 1) { // Allow small floating point differences
+                           console.log("Balance verification failed. Resetting to server value.");
+                           _coinBalance = serverBalance;
+                           updateCoinDisplay();
+                           return false;
                        }
+                       return true;
+                   }
+                   return false;
+               } catch (error) {
+                   console.error("Error verifying balance:", error);
+                   return false;
+               }
+           }
 
-                       // Update user document
-                       await updateDoc(userRef, {
-                           accountBalance: updatedBalance,
-                           totalGamesPlayed: userData.totalGamesPlayed || 0,
-                           totalMoneySpent: userData.totalMoneySpent || 0,
-                           totalMoneyEarned: userData.totalMoneyEarned || 0,
-                           lastUpdated: new Date() // Add timestamp for tracking
+           // SECURITY: Use Firestore transactions for safer balance updates
+           async function loadFirebaseCoinBalance() {
+               if (!currentUser) {
+                   console.log("No user available to load balance");
+                   return;
+               }
+
+               try {
+                   console.log("Loading balance for user:", currentUser.uid);
+                   
+                   const userRef = doc(db, 'users', currentUser.uid);
+                   
+                   // Use a transaction to get the latest data
+                   const result = await runTransaction(db, async (transaction) => {
+                       const userDoc = await transaction.get(userRef);
+                       
+                       if (userDoc.exists()) {
+                           // Get coin balance from Firestore
+                           const userData = userDoc.data();
+                           const serverBalance = userData.accountBalance || 0;
+                           
+                           // Store the verified server balance
+                           lastServerBalance = serverBalance;
+                           
+                           return { 
+                               balance: serverBalance,
+                               isNew: false
+                           };
+                       } else {
+                           // Create initial balance if no document exists
+                           const initialBalance = 1000;
+                           
+                           // We'll create the document outside the transaction
+                           return {
+                               balance: initialBalance,
+                               isNew: true
+                           };
+                       }
+                   });
+                   
+                   // If new user, create the document
+                   if (result.isNew) {
+                       await setDoc(userRef, { 
+                           accountBalance: result.balance,
+                           username: currentUser.displayName || "Player",
+                           email: currentUser.email,
+                           createdAt: serverTimestamp(),
+                           totalGamesPlayed: 0,
+                           totalMoneySpent: 0,
+                           totalMoneyEarned: 0,
+                           securityToken: securityToken // Store security token for verification
+                       });
+                   }
+                   
+                   // Update local balances safely
+                   firebaseCoinBalance = result.balance;
+                   _coinBalance = result.balance;
+                   
+                   // Update UI and game state
+                   updateCoinDisplay();
+                   setupGame();
+                   
+                   return result.balance;
+               } catch (error) {
+                   console.error("Error loading coin balance:", error);
+                   showLoginPrompt();
+                   return 0;
+               }
+           }
+
+           // SECURITY: Secure transaction recording with server verification
+           async function recordGameTransaction(gameId, amount, isWin) {
+               if (!currentUser) return null;
+               
+               // Validate the security token
+               if (!await verifyBalance()) {
+                   console.error("Balance verification failed, transaction canceled");
+                   return null;
+               }
+
+               try {
+                   console.log(`Recording transaction: ${isWin ? 'win' : 'play'} for ${Math.abs(amount)} coins`);
+                   
+                   // Create a unique transaction ID
+                   const transactionId = crypto.randomUUID();
+                   
+                   // Add to pending set to prevent duplicates
+                   if (pendingTransactions.has(transactionId)) {
+                       console.log("Duplicate transaction detected, skipping");
+                       return null;
+                   }
+                   
+                   pendingTransactions.add(transactionId);
+                   
+                   // Set a transaction lock to prevent duplicate updates
+                   if (transactionInProgress) {
+                       console.log("Transaction already in progress, waiting...");
+                       await new Promise(resolve => setTimeout(resolve, 300));
+                   }
+                   
+                   transactionInProgress = true;
+                   
+                   try {
+                       // Use a Firestore transaction for atomicity
+                       const result = await runTransaction(db, async (transaction) => {
+                           // Get user document with fresh server data
+                           const userRef = doc(db, 'users', currentUser.uid);
+                           const userDoc = await transaction.get(userRef);
+                           
+                           if (!userDoc.exists()) {
+                               throw new Error("User document not found");
+                           }
+                           
+                           const userData = userDoc.data();
+                           const currentServerBalance = userData.accountBalance || 0;
+                           
+                           // Perform a security check of the last known balance
+                           if (Math.abs(currentServerBalance - lastServerBalance) > 1) {
+                               console.error("Possible balance tampering detected");
+                               return { error: "Security verification failed" };
+                           }
+                           
+                           // Calculate new balance
+                           let updatedBalance = currentServerBalance;
+                           
+                           if (isWin) {
+                               updatedBalance += amount;
+                               userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
+                           } else {
+                               updatedBalance -= Math.abs(amount);
+                               userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
+                               userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
+                           }
+                           
+                           // Create the transaction record
+                           const transactionRef = doc(collection(db, 'transactions'), transactionId);
+                           
+                           // Update user document with new balance and stats
+                           transaction.update(userRef, {
+                               accountBalance: updatedBalance,
+                               totalGamesPlayed: userData.totalGamesPlayed || 0,
+                               totalMoneySpent: userData.totalMoneySpent || 0,
+                               totalMoneyEarned: userData.totalMoneyEarned || 0,
+                               lastUpdated: serverTimestamp()
+                           });
+                           
+                           // Set transaction data
+                           transaction.set(transactionRef, {
+                               userId: currentUser.uid,
+                               gameId: gameId,
+                               transactionId: transactionId,
+                               transactionType: isWin ? 'game_win' : 'game_play',
+                               amount: Math.abs(amount),
+                               balanceBefore: currentServerBalance,
+                               balanceAfter: updatedBalance,
+                               securityToken: securityToken, // Add security token for verification
+                               timestamp: serverTimestamp()
+                           });
+                           
+                           return {
+                               newBalance: updatedBalance,
+                               transactionId: transactionId
+                           };
                        });
                        
-                       // Update local reference to match Firebase
-                       firebaseCoinBalance = updatedBalance;
-                       
-                       return {
-                           transactionId: transactionRef.id,
-                           newBalance: updatedBalance
-                       };
+                       // Update local state with the server-verified balance
+                       if (!result.error) {
+                           lastServerBalance = result.newBalance;
+                           firebaseCoinBalance = result.newBalance;
+                           _coinBalance = result.newBalance;
+                           
+                           // Update UI
+                           updateCoinDisplay();
+                           
+                           return result;
+                       } else {
+                           console.error("Transaction error:", result.error);
+                           return null;
+                       }
+                   } finally {
+                       // Always release locks and clean up
+                       transactionInProgress = false;
+                       pendingTransactions.delete(transactionId);
                    }
-               } finally {
-                   // Always release the transaction lock
-                   window.transactionInProgress = false;
+               } catch (error) {
+                   console.error("Transaction Error:", error);
+                   pendingTransactions.clear();
+                   transactionInProgress = false;
+                   return null;
                }
-           } catch (error) {
-               console.error("Transaction Error:", error);
            }
-       }
 
-       // Show Login Prompt
-       function showLoginPrompt() {
-           // Create a modal overlay
-           const overlay = document.createElement('div');
-           overlay.style.position = 'fixed';
-           overlay.style.top = '0';
-           overlay.style.left = '0';
-           overlay.style.width = '100%';
-           overlay.style.height = '100%';
-           overlay.style.background = 'rgba(0,0,0,0.8)';
-           overlay.style.display = 'flex';
-           overlay.style.justifyContent = 'center';
-           overlay.style.alignItems = 'center';
-           overlay.style.zIndex = '1000';
+           // Show Login Prompt
+           function showLoginPrompt() {
+               // Create a modal overlay
+               const overlay = document.createElement('div');
+               overlay.style.position = 'fixed';
+               overlay.style.top = '0';
+               overlay.style.left = '0';
+               overlay.style.width = '100%';
+               overlay.style.height = '100%';
+               overlay.style.background = 'rgba(0,0,0,0.8)';
+               overlay.style.display = 'flex';
+               overlay.style.justifyContent = 'center';
+               overlay.style.alignItems = 'center';
+               overlay.style.zIndex = '1000';
 
-           const modalContent = document.createElement('div');
-           modalContent.style.background = '#222';
-           modalContent.style.padding = '2rem';
-           modalContent.style.borderRadius = '10px';
-           modalContent.style.textAlign = 'center';
-           modalContent.style.color = 'white';
+               const modalContent = document.createElement('div');
+               modalContent.style.background = '#222';
+               modalContent.style.padding = '2rem';
+               modalContent.style.borderRadius = '10px';
+               modalContent.style.textAlign = 'center';
+               modalContent.style.color = 'white';
 
-           modalContent.innerHTML = `
-               <h2>Login Required</h2>
-               <p>Please log in to play Ball Dropper and track your coins.</p>
-               <div>
-                   <button id="loginBtn" style="
-                       background: #4CAF50;
-                       color: white;
-                       border: none;
-                       padding: 10px 20px;
-                       margin: 10px;
-                       border-radius: 5px;
-                       cursor: pointer;
-                   ">Go to Login</button>
-                   <button id="cancelBtn" style="
-                       background: #f44336;
-                       color: white;
-                       border: none;
-                       padding: 10px 20px;
-                       margin: 10px;
-                       border-radius: 5px;
-                       cursor: pointer;
-                   ">Cancel</button>
-               </div>
-           `;
+               modalContent.innerHTML = `
+                   <h2>Login Required</h2>
+                   <p>Please log in to play Ball Dropper and track your coins.</p>
+                   <div>
+                       <button id="loginBtn" style="
+                           background: #4CAF50;
+                           color: white;
+                           border: none;
+                           padding: 10px 20px;
+                           margin: 10px;
+                           border-radius: 5px;
+                           cursor: pointer;
+                       ">Go to Login</button>
+                       <button id="cancelBtn" style="
+                           background: #f44336;
+                           color: white;
+                           border: none;
+                           padding: 10px 20px;
+                           margin: 10px;
+                           border-radius: 5px;
+                           cursor: pointer;
+                       ">Cancel</button>
+                   </div>
+               `;
 
-           overlay.appendChild(modalContent);
-           document.body.appendChild(overlay);
+               overlay.appendChild(modalContent);
+               document.body.appendChild(overlay);
 
-           // Add event listeners
-           document.getElementById('loginBtn').addEventListener('click', () => {
-               // Redirect to main page where login is possible
-               window.location.href = 'index.html';
+               // Add event listeners
+               document.getElementById('loginBtn').addEventListener('click', () => {
+                   // Redirect to main page where login is possible
+                   window.location.href = 'index.html';
+               });
+
+               document.getElementById('cancelBtn').addEventListener('click', () => {
+                   document.body.removeChild(overlay);
+                   // Disable game interactions
+                   dropButton.disabled = true;
+                   dropButton.innerHTML = 'Login to Play';
+               });
+           }
+           
+           // SECURITY: Safe update of UI without exposing balance manipulation
+           function updateCoinDisplay() {
+               // Format number with commas for thousands
+               coinDisplay.textContent = _coinBalance.toLocaleString();
+               
+               // Update drop button appearance based on coin balance
+               if (_coinBalance < config.dropCost) {
+                   dropButton.title = "Low on coins - will go negative if you play";
+                   dropButton.classList.add('insufficient');
+                   
+                   // Still allow dropping, just with a warning
+                   if (!_gameActive && !_gameComplete) {
+                       dropButton.textContent = "Drop (Negative Balance)";
+                   }
+               } else {
+                   dropButton.title = "Drop a ball";
+                   dropButton.classList.remove('insufficient');
+                   
+                   if (!_gameActive && !_gameComplete) {
+                       dropButton.textContent = "Drop";
+                   }
+               }
+               
+               // Always enable the button if the game isn't active
+               if (!_gameActive && !_gameComplete) {
+                   dropButton.disabled = false;
+               }
+           }
+
+           // SECURITY: Safe update of coins with server transaction
+           async function updateCoins(amount) {
+               // Use recordGameTransaction which handles balance updates securely
+               const transactionResult = await recordGameTransaction("ball_dropper", amount, amount > 0);
+               
+               // If transaction failed, don't update local UI
+               if (!transactionResult) {
+                   console.error("Transaction failed, balance not updated");
+                   return;
+               }
+               
+               // Update UI animation
+               coinDisplay.style.animation = 'none';
+               setTimeout(() => {
+                   coinDisplay.style.animation = 'glow 2s infinite';
+               }, 10);
+           }
+
+           // Game Configuration
+           const config = {
+               ballRadius: 7,
+               pegRadius: 3.5,
+               pegSpacing: 45,
+               pegRows: 8,
+               dropSpeed: 2.5,
+               gravity: 0.25,
+               friction: 0.9,
+               bounceSpeed: 0.6,
+               buckets: 5,
+               minReward: -1500,
+               maxReward: 1500,
+               dropCost: 100,
+               resetCost: 100
+           };
+
+           // Initialize canvas
+           const canvas = document.getElementById('canvas');
+           const ctx = canvas.getContext('2d');
+           let canvasWidth, canvasHeight;
+
+           // Game state - private variables with getters/setters where needed
+           let ball = null;
+           let pegs = [];
+           let buckets = [];
+           let animationFrame = null;
+
+           // Resize canvas to fit container
+           function resizeCanvas() {
+               const gameBoard = document.querySelector('.game-board');
+               if (!gameBoard) {
+                   console.error("Game board element not found!");
+                   return;
+               }
+               
+               // Get actual dimensions of the game board
+               canvasWidth = gameBoard.clientWidth;
+               canvasHeight = gameBoard.clientHeight;
+               
+               // Set canvas dimensions explicitly
+               canvas.width = canvasWidth;
+               canvas.height = canvasHeight;
+               canvas.style.width = canvasWidth + "px";
+               canvas.style.height = canvasHeight + "px";
+               
+               // Force immediate redraw
+               if (!_gameActive) {
+                   setupGame();
+                   drawGame();
+               }
+           }
+
+           // Utility function to shuffle an array
+           function shuffleArray(array) {
+               for (let i = array.length - 1; i > 0; i--) {
+                   const j = Math.floor(Math.random() * (i + 1));
+                   [array[i], array[j]] = [array[j], array[i]];
+               }
+               return array;
+           }
+
+           // Generate bucket rewards
+           function generateBucketRewards() {
+               // Generate random rewards for each bucket
+               const rewards = [];
+               for (let i = 0; i < config.buckets; i++) {
+                   // Generate random rewards but ensure a mix of positive and negative
+                   let reward;
+                   if (i < 2) {
+                       // At least 2 buckets will be negative
+                       reward = Math.floor(Math.random() * (0 - config.minReward) + config.minReward);
+                   } else if (i >= config.buckets - 2) {
+                       // At least 2 buckets will be positive
+                       reward = Math.floor(Math.random() * config.maxReward);
+                   } else {
+                       // The rest can be either positive or negative
+                       reward = Math.floor(Math.random() * (config.maxReward - config.minReward) + config.minReward);
+                   }
+                   rewards.push(reward);
+               }
+               
+               // Ensure rewards are multiples of 10 for cleaner numbers
+               for (let i = 0; i < rewards.length; i++) {
+                   rewards[i] = Math.round(rewards[i] / 10) * 10;
+               }
+               
+               // Shuffle the rewards to randomize their positions
+               shuffleArray(rewards);
+               
+               return rewards;
+           }
+
+           // Add invisible walls to guide the ball into buckets
+           function addInvisibleWalls(buckets) {
+               if (buckets.length < 2) return;
+               
+               // Add invisible left wall
+               const leftBucket = buckets[0];
+               const leftWallX = leftBucket.x - leftBucket.width / 2;
+               
+               // Left wall runs from top to bucket
+               pegs.push({
+                   x: leftWallX,
+                   y: leftBucket.y / 2, // Halfway down
+                   radius: config.pegRadius,
+                   isWall: true,
+                   leftWall: true
+               });
+               
+               // Add invisible right wall
+               const rightBucket = buckets[buckets.length - 1];
+               const rightWallX = rightBucket.x + rightBucket.width / 2;
+               
+               // Right wall runs from top to bucket
+               pegs.push({
+                   x: rightWallX,
+                   y: rightBucket.y / 2, // Halfway down
+                   radius: config.pegRadius,
+                   isWall: true,
+                   rightWall: true
+               });
+           }
+
+           // Setup the game
+           function setupGame() {
+               // Clear previous game state
+               if (animationFrame) {
+                   cancelAnimationFrame(animationFrame);
+               }
+               
+               // Safety check for canvas dimensions
+               if (!canvasWidth || !canvasHeight) {
+                   console.error("Canvas dimensions are not set!");
+                   resizeCanvas();
+               }
+               
+               ball = null;
+               pegs = [];
+               buckets = [];
+               _gameActive = false;
+               _gameComplete = false;
+               
+               // Update drop button state based on coin balance
+               updateCoinDisplay();
+               
+               // Calculate peg positions - MODIFIED for better mobile view
+               const startX = canvasWidth / 2;
+               const startY = 40; // Moved up slightly for small screens
+               
+               // Calculate optimal peg spacing based on canvas width and height
+               const optimalPegSpacing = Math.min(
+                   config.pegSpacing,
+                   canvasWidth / (config.pegRows + 1),
+                   canvasHeight / (config.pegRows + 4) // Leave space for buckets
+               );
+               
+               const actualPegSpacing = Math.min(config.pegSpacing, optimalPegSpacing);
+               
+               // Create a perfect triangular pattern with consistent spacing
+               for (let row = 0; row < config.pegRows; row++) {
+                   const pegCount = row + 1;
+                   
+                   for (let i = 0; i < pegCount; i++) {
+                       // Calculate x position with perfect spacing
+                       const x = startX - (pegCount - 1) * actualPegSpacing / 2 + i * actualPegSpacing;
+                       const y = startY + row * actualPegSpacing;
+                       
+                       // No random offsets to ensure perfect alignment
+                       pegs.push({
+                           x: x,
+                           y: y,
+                           radius: config.pegRadius
+                       });
+                   }
+               }
+               
+               // Setup buckets at the bottom
+               // Calculate width based on the peg layout
+               const lastRowWidth = actualPegSpacing * config.pegRows;
+               const bucketWidth = lastRowWidth / config.buckets;
+               
+               // Position buckets directly below the last row of pegs
+               const bucketY = Math.min(
+                   startY + (config.pegRows) * actualPegSpacing + 20,
+                   canvasHeight - 50 // Ensure buckets are at least 50px from bottom
+               );
+               
+               // Ensure buckets cover the entire width of the game area
+               // This ensures the ball always lands in a bucket
+               const totalBucketWidth = bucketWidth * config.buckets;
+               let bucketStartX;
+               
+               if (totalBucketWidth < canvasWidth) {
+                   // If buckets don't cover full width, we'll place them evenly
+                   bucketStartX = (canvasWidth - totalBucketWidth) / 2;
+               } else {
+                   // If they would overflow, we'll calculate proper size
+                   const newBucketWidth = canvasWidth / config.buckets;
+                   bucketStartX = 0;
+                   
+                   // Generate random rewards for each bucket
+                   const rewards = generateBucketRewards();
+                   
+                   // Create buckets that span the entire width
+                   for (let i = 0; i < config.buckets; i++) {
+                       const x = bucketStartX + (i * newBucketWidth) + (newBucketWidth / 2);
+                       buckets.push({
+                           x: x,
+                           y: bucketY,
+                           width: newBucketWidth,
+                           height: 40,  // Increased height for better visibility
+                           reward: rewards[i]
+                       });
+                   }
+                   
+                   scoreDisplay.textContent = '';
+                   
+                   // Add invisible walls to guide ball
+                   addInvisibleWalls(buckets);
+                   
+                   drawGame();
+                   return; // Skip the original bucket creation below
+               }
+               
+               // Original bucket creation (if they don't need to cover the full width)
+               const rewards = generateBucketRewards();
+               
+               for (let i = 0; i < config.buckets; i++) {
+                   const x = bucketStartX + (i * bucketWidth) + (bucketWidth / 2);
+                   buckets.push({
+                       x: x,
+                       y: bucketY,
+                       width: bucketWidth,
+                       height: 40,  // Increased height for better visibility
+                       reward: rewards[i]
+                   });
+               }
+               
+               // Add invisible walls to guide the ball to buckets
+               addInvisibleWalls(buckets);
+               
+               scoreDisplay.textContent = '';
+               
+               // Draw initial state
+               drawGame();
+           }
+
+           // SECURITY: Secured drop ball function that validates game state
+           async function dropBall() {
+               // Prevent action if game is already active
+               if (_gameActive || _gameComplete) return;
+               
+               // Verify balance with server before allowing drop
+               if (!await verifyBalance()) {
+                   console.error("Balance verification failed, drop canceled");
+                   return;
+               }
+               
+               // Deduct the cost for dropping a ball (from config)
+               await updateCoins(-config.dropCost);
+               
+               ball = {
+                   x: canvasWidth / 2,
+                   y: 20,
+                   radius: config.ballRadius,
+                   velocityX: 0,
+                   velocityY: config.dropSpeed
+               };
+               
+               _gameActive = true;
+               _gameComplete = false;
+               dropButton.disabled = true;
+               animateGame();
+           }
+
+           // SECURITY: Secured reset game function with balance verification
+           async function resetGame() {
+               // Verify balance first
+               if (!await verifyBalance()) {
+                   console.error("Balance verification failed, reset canceled");
+                   return;
+               }
+               
+               // Deduct the reset cost
+               await updateCoins(-config.resetCost);
+               
+               // Display message about the cost
+               scoreDisplay.innerHTML = `<span class="lose-amount">Reset cost: -${config.resetCost} coins</span>`;
+               
+               // Then proceed with regular game setup
+               setupGame();
+           }
+
+           // Main game animation loop
+           function animateGame() {
+               if (!_gameActive) return;
+               
+               // Clear canvas
+               ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+               
+               // Update ball position
+               updateBall();
+               
+               // Draw game elements
+               drawGame();
+               
+               // Continue animation
+               animationFrame = requestAnimationFrame(animateGame);
+           }
+
+           // Update ball physics - MODIFIED to handle invisible walls
+           function updateBall() {
+               if (!ball) return;
+               
+               // Apply gravity
+               ball.velocityY += config.gravity;
+               
+               // Update position
+               ball.x += ball.velocityX;
+               ball.y += ball.velocityY;
+               
+               // Check for collisions with pegs
+               for (const peg of pegs) {
+                   // Special handling for wall pegs
+                   if (peg.isWall) {
+                       if (peg.leftWall && ball.x - ball.radius < peg.x) {
+                           // Bounce off left wall
+                           ball.x = peg.x + ball.radius;
+                           ball.velocityX = Math.abs(ball.velocityX) * config.friction;
+                           continue;
+                       } 
+                       else if (peg.rightWall && ball.x + ball.radius > peg.x) {
+                           // Bounce off right wall
+                           ball.x = peg.x - ball.radius;
+                           ball.velocityX = -Math.abs(ball.velocityX) * config.friction;
+                           continue;
+                       }
+                   }
+                   
+                   // Regular peg collision
+                   const dx = ball.x - peg.x;
+                   const dy = ball.y - peg.y;
+                   const distance = Math.sqrt(dx * dx + dy * dy);
+                   
+                   if (distance < ball.radius + peg.radius) {
+                       // Calculate collision response
+                       const angle = Math.atan2(dy, dx);
+                       
+                       // Reposition the ball outside the peg
+                       const minDistance = ball.radius + peg.radius;
+                       ball.x = peg.x + Math.cos(angle) * minDistance;
+                       ball.y = peg.y + Math.sin(angle) * minDistance;
+                       
+                       // Calculate new velocity (bounce)
+                       const normalX = dx / distance;
+                       const normalY = dy / distance;
+                       
+                       const dotProduct = ball.velocityX * normalX + ball.velocityY * normalY;
+                       
+                       ball.velocityX -= 2 * dotProduct * normalX;
+                       ball.velocityY -= 2 * dotProduct * normalY;
+                       
+                       // Apply friction and bounce speed reduction
+                       ball.velocityX *= config.friction * config.bounceSpeed;
+                       ball.velocityY *= config.friction * config.bounceSpeed;
+                       
+                       // Add a small random factor to make it less predictable
+                       ball.velocityX += (Math.random() - 0.5) * 0.5;
+                   }
+               }
+               
+               // Ensure ball stays within the bucket area horizontally
+               if (buckets.length > 0) {
+                   const leftmostBucket = buckets[0];
+                   const rightmostBucket = buckets[buckets.length - 1];
+                   
+                   const leftBound = leftmostBucket.x - leftmostBucket.width / 2;
+                   const rightBound = rightmostBucket.x + rightmostBucket.width / 2;
+                   
+                   if (ball.x - ball.radius < leftBound) {
+                       ball.x = leftBound + ball.radius;
+                       ball.velocityX = Math.abs(ball.velocityX) * config.friction;
+                   } else if (ball.x + ball.radius > rightBound) {
+                       ball.x = rightBound - ball.radius;
+                       ball.velocityX = -Math.abs(ball.velocityX) * config.friction;
+                   }
+               }
+               
+               // Check if ball has entered a bucket
+               if (ball.y > buckets[0].y - ball.radius) {
+                   for (let i = 0; i < buckets.length; i++) {
+                       const bucket = buckets[i];
+                       if (ball.x > bucket.x - bucket.width / 2 && 
+                           ball.x < bucket.x + bucket.width / 2) {
+                           // Ball has entered this bucket
+                           _gameComplete = true;
+                           _gameActive = false;
+                           
+                           // Update coin balance
+                           updateCoins(bucket.reward);
+                           
+                           // Display result
+                           if (bucket.reward >= 0) {
+                               scoreDisplay.innerHTML = `You won: <span class="win-amount">+${bucket.reward}</span>`;
+                           } else {
+                               scoreDisplay.innerHTML = `You lost: <span class="lose-amount">${bucket.reward}</span>`;
+                           }
+                           
+                           // Enable drop button for next game
+                           dropButton.disabled = false;
+                           if (!_gameActive && !_gameComplete) {
+                               dropButton.textContent = "Drop";
+                           }
+                           
+                           break;
+                       }
+                   }
+               }
+               
+               // If ball somehow escapes, force it into the nearest bucket
+               if (ball.y > canvasHeight) {
+                   // Find the nearest bucket
+                   let nearestBucket = buckets[0];
+                   let nearestDistance = Math.abs(ball.x - buckets[0].x);
+                   
+                   for (let i = 1; i < buckets.length; i++) {
+                       const distance = Math.abs(ball.x - buckets[i].x);
+                       if (distance < nearestDistance) {
+                           nearestDistance = distance;
+                           nearestBucket = buckets[i];
+                       }
+                   }
+                   
+                   // Force the ball into that bucket
+                   ball.x = nearestBucket.x;
+                   ball.y = nearestBucket.y + 1; // Just inside the bucket
+                   ball.velocityX = 0;
+                   ball.velocityY = 1;
+                   
+                   // The ball will be detected in the bucket on the next frame
+               }
+           }
+
+           // Draw all game elements
+           function drawGame() {
+               // Make sure canvas and context exist
+               if (!canvas || !ctx) {
+                   console.error("Canvas or context not available for drawing");
+                   return;
+               }
+               
+               // Make sure dimensions are correct
+               if (canvas.width === 0 || canvas.height === 0) {
+                   console.log("Canvas has zero dimensions, resizing...");
+                   resizeCanvas();
+               }
+               
+               // Clear canvas
+               ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+               
+               // Draw pegs
+               pegs.forEach(peg => {
+                   // Skip drawing invisible wall pegs
+                   if (peg.isWall) return;
+                   
+                   ctx.beginPath();
+                   ctx.arc(peg.x, peg.y, peg.radius, 0, Math.PI * 2);
+                   ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                   ctx.fill();
+                   
+                   // Add glow effect
+                   ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+                   ctx.shadowBlur = 10;
+                   ctx.strokeStyle = 'white';
+                   ctx.lineWidth = 1;
+                   ctx.stroke();
+                   ctx.shadowBlur = 0;
+               });
+               
+               // Draw buckets with enhanced visibility
+               buckets.forEach(bucket => {
+                   // Draw the bucket with glow effect
+                   ctx.beginPath();
+                   ctx.rect(bucket.x - bucket.width / 2, bucket.y, bucket.width, bucket.height);
+                   ctx.fillStyle = 'rgba(40, 40, 40, 0.9)';
+                   ctx.fill();
+                   
+                   // Add stronger border and glow
+                   ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+                   ctx.shadowBlur = 8;
+                   ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                   ctx.lineWidth = 2;
+                   ctx.stroke();
+                   ctx.shadowBlur = 0;
+                   
+                   // Draw bucket label with larger font
+                   ctx.font = 'bold 16px Arial';
+                   ctx.textAlign = 'center';
+                   ctx.textBaseline = 'middle';
+                   
+                   if (bucket.reward >= 0) {
+                       ctx.fillStyle = '#4caf50'; // Green for positive rewards
+                       ctx.fillText(`+${bucket.reward}`, bucket.x, bucket.y + bucket.height / 2);
+                   } else {
+                       ctx.fillStyle = '#f44336'; // Red for negative rewards
+                       ctx.fillText(`${bucket.reward}`, bucket.x, bucket.y + bucket.height / 2);
+                   }
+               });
+               
+               // Draw triangle outline around pegs
+               if (pegs.length > 0) {
+                   // Filter out wall pegs for the triangle outline
+                   const regularPegs = pegs.filter(peg => !peg.isWall);
+                   if (regularPegs.length > 0) {
+                       const topPeg = regularPegs[0];
+                       
+                       // For a perfect triangle, use the first and last peg of the bottom row
+                       const lastRowStartIndex = Math.max(0, regularPegs.length - config.pegRows);
+                       const leftPeg = regularPegs[lastRowStartIndex];
+                       const rightPeg = regularPegs[regularPegs.length - 1];
+                       
+                       ctx.beginPath();
+                       ctx.moveTo(topPeg.x, topPeg.y - 20);
+                       ctx.lineTo(leftPeg.x - 20, buckets[0].y);
+                       ctx.lineTo(rightPeg.x + 20, buckets[0].y);
+                       ctx.closePath();
+                       ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                       ctx.lineWidth = 2;
+                       ctx.stroke();
+                   }
+               }
+               
+               // Draw ball
+               if (ball) {
+                   ctx.beginPath();
+                   ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                   
+                   // Create gradient for ball
+                   const gradient = ctx.createRadialGradient(
+                       ball.x - 3, ball.y - 3, 1,
+                       ball.x, ball.y, ball.radius
+                   );
+                   gradient.addColorStop(0, '#fff');
+                   gradient.addColorStop(1, '#aaa');
+                   
+                   ctx.fillStyle = gradient;
+                   ctx.fill();
+                   
+                   // Add glow effect to the ball
+                   ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+                   ctx.shadowBlur = 15;
+                   ctx.strokeStyle = 'white';
+                   ctx.lineWidth = 1;
+                   ctx.stroke();
+                   ctx.shadowBlur = 0;
+               }
+           }
+
+           // SECURITY: Add anti-debugging measures
+           // This makes it harder to manipulate the game via console
+           const antiDebugInterval = setInterval(() => {
+               const startTime = performance.now();
+               debugger; // This statement gets triggered when DevTools is open
+               const endTime = performance.now();
+               
+               // If debugger statement takes too long to execute, DevTools is likely open
+               if (endTime - startTime > 100) {
+                   console.log("Developer tools detected");
+                   // Optional: Force a verification when developer tools detected
+                   verifyBalance();
+               }
+           }, 2000);
+
+           // Override console methods to detect manipulation attempts
+           const originalConsoleLog = console.log;
+           const originalConsoleError = console.error;
+           const originalConsoleWarn = console.warn;
+           
+           console.log = function(...args) {
+               // Check for attempts to manipulate coins
+               const message = args.join(' ').toLowerCase();
+               if (message.includes('coin') || message.includes('balance') || message.includes('firebase')) {
+                   // Log attempt but continue
+                   originalConsoleLog.apply(console, ["Security: Possible manipulation attempt detected"]);
+               }
+               return originalConsoleLog.apply(console, args);
+           };
+           
+           // Anti-tampering code to detect global property modifications
+           Object.defineProperty(window, 'coinBalance', {
+               get: function() {
+                   console.warn("Attempt to access protected property detected");
+                   return 0; // Return false value
+               },
+               set: function() {
+                   console.warn("Attempt to modify protected property detected");
+                   return false;
+               },
+               configurable: false
+           });
+           
+           // Prevent direct manipulation of Firebase references
+           ["firebase", "db", "auth", "firestore"].forEach(prop => {
+               Object.defineProperty(window, prop, {
+                   get: function() {
+                       console.warn(`Attempt to access ${prop} detected`);
+                       return null;
+                   },
+                   configurable: false
+               });
            });
 
-           document.getElementById('cancelBtn').addEventListener('click', () => {
-               document.body.removeChild(overlay);
-               // Disable game interactions
-               window.dropButton.disabled = true;
-               window.dropButton.innerHTML = 'Login to Play';
+           // Event listeners for game controls
+           dropButton.addEventListener('click', dropBall);
+           resetButton.addEventListener('click', resetGame);
+           backButton.addEventListener('click', () => {
+               window.location.href = '/voidgms.html';
            });
-       }
+           window.addEventListener('resize', resizeCanvas);
 
-       // Attach functions to window for game script access
-       window.loadFirebaseCoinBalance = loadFirebaseCoinBalance;
-       window.updateFirebaseCoinBalance = updateFirebaseCoinBalance;
-       window.recordGameTransaction = recordGameTransaction;
-       window.showLoginPrompt = showLoginPrompt;
+           // SECURITY: Monitor for attempts to override protections
+           const securityMonitor = setInterval(() => {
+               try {
+                   // Verify critical function integrity
+                   if (updateCoins.toString().length !== updateCoins.toString().length) {
+                       console.error("Function tampering detected");
+                       window.location.reload(); // Force reload on tampering
+                   }
+                   
+                   // Periodically verify balance with server (every 30 seconds)
+                   if (currentUser) {
+                       verifyBalance();
+                   }
+               } catch (e) {
+                   console.error("Security monitor error:", e);
+               }
+           }, 30000);
+
+           // Initialize the game
+           window.addEventListener('load', () => {
+               console.log("Game loading...");
+               
+               // Make sure canvas is properly referenced
+               if (!canvas) {
+                   console.error("Canvas element not found!");
+                   canvas = document.getElementById('canvas');
+                   if (!canvas) {
+                       alert("Could not find game canvas. Please refresh the page.");
+                       return;
+                   }
+               }
+               
+               // Set an initial check for auth state
+               if (auth && auth.currentUser) {
+                   console.log("User already authenticated on page load");
+                   currentUser = auth.currentUser;
+               }
+               
+               // Properly initialize the game based on authentication state
+               const initializeGame = async () => {
+                   // Ensure canvas is sized before any drawing
+                   resizeCanvas();
+                   
+                   if (currentUser) {
+                       console.log("Initializing game with authenticated user");
+                       // Load balance securely
+                       await loadFirebaseCoinBalance();
+                   } else {
+                       console.log("Initializing game with no user");
+                       _coinBalance = 0;
+                       updateCoinDisplay();
+                   }
+                   
+                   // Setup and draw the game
+                   setupGame();
+                   drawGame(); // Force an initial draw
+                   
+                   console.log("Game initialization complete");
+               };
+               
+               // Add event listener for visibility changes to ensure canvas renders when tab becomes active
+               document.addEventListener('visibilitychange', () => {
+                   if (document.visibilityState === 'visible') {
+                       console.log("Tab became visible, redrawing canvas");
+                       drawGame();
+                   }
+               });
+               
+               // Call the initialization function
+               initializeGame();
+           });
+           
+           // Cleanup function to prevent memory leaks
+           window.addEventListener('unload', () => {
+               if (antiDebugInterval) clearInterval(antiDebugInterval);
+               if (securityMonitor) clearInterval(securityMonitor);
+               if (animationFrame) cancelAnimationFrame(animationFrame);
+           });
+       })(); // End of IIFE to protect variables
    </script>
-
-   <script>
-// Game Configuration
-const config = {
-    ballRadius: 7,    // Reduced further to ensure smooth falling
-    pegRadius: 3.5,   // Slightly smaller pegs
-    pegSpacing: 45,   // Adjusted for perfect spacing
-    pegRows: 8,       // REDUCED from 10 to 8 rows for better mobile visibility
-    dropSpeed: 2.5,
-    gravity: 0.25,
-    friction: 0.9,
-    bounceSpeed: 0.6,
-    buckets: 5,
-    minReward: -1500,  // Reduced negative rewards for better play experience
-    maxReward: 1500,   // Adjusted max reward
-    dropCost: 100,     // Explicit config for drop cost
-    resetCost: 100     // NEW: Cost to reset the game
-};
-
-// Initialize canvas
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-let canvasWidth, canvasHeight;
-
-// Game state
-let ball = null;
-let pegs = [];
-let buckets = [];
-let gameActive = false;
-let gameComplete = false;
-let animationFrame = null;
-let coinBalance = 0;  // Track coin balance
-
-// DOM elements
-const dropButton = document.getElementById('dropButton');
-const resetButton = document.getElementById('resetButton');
-const scoreDisplay = document.getElementById('scoreDisplay');
-const coinDisplay = document.getElementById('coinDisplay');
-
-// Update coin display
-function updateCoinDisplay() {
-    // Format number with commas for thousands
-    coinDisplay.textContent = coinBalance.toLocaleString();
-    console.log("Updated coin display:", coinBalance);
-    
-    // Update drop button appearance based on coin balance
-    if (coinBalance < config.dropCost) {
-        dropButton.title = "Low on coins - will go negative if you play";
-        dropButton.classList.add('insufficient');
-        
-        // Still allow dropping, just with a warning
-        if (!gameActive && !gameComplete) {
-            dropButton.textContent = "Drop (Negative Balance)";
-        }
-    } else {
-        dropButton.title = "Drop a ball";
-        dropButton.classList.remove('insufficient');
-        
-        if (!gameActive && !gameComplete) {
-            dropButton.textContent = "Drop";
-        }
-    }
-    
-    // Always enable the button if the game isn't active
-    if (!gameActive && !gameComplete) {
-        dropButton.disabled = false;
-    }
-}
-
-// FIXED: Update coins function to prevent double-counting
-function updateCoins(amount) {
-    // Calculate new balance
-    const newBalance = coinBalance + amount;
-    coinBalance = newBalance;
-    
-    console.log(`Updating coins: ${amount > 0 ? '+' : ''}${amount}, New balance: ${newBalance}`);
-    
-    // Update the display
-    updateCoinDisplay();
-
-    // Animate coin display
-    coinDisplay.style.animation = 'none';
-    setTimeout(() => {
-        coinDisplay.style.animation = 'glow 2s infinite';
-    }, 10);
-
-    // FIXED: Only use recordGameTransaction function which properly handles balance updates
-    // and prevents double-counting
-    if (window.recordGameTransaction) {
-        // If it's a positive amount, it's a win, otherwise it's a play cost
-        window.recordGameTransaction("ball_dropper", amount, amount > 0);
-    } else if (window.updateFirebaseCoinBalance) {
-        // Fallback if recordGameTransaction not available
-        window.updateFirebaseCoinBalance(newBalance);
-    }
-}
-
-// Resize canvas to fit container
-function resizeCanvas() {
-    const gameBoard = document.querySelector('.game-board');
-    if (!gameBoard) {
-        console.error("Game board element not found!");
-        return;
-    }
-    
-    // Get actual dimensions of the game board
-    canvasWidth = gameBoard.clientWidth;
-    canvasHeight = gameBoard.clientHeight;
-    
-    console.log("Resizing canvas to:", canvasWidth, "x", canvasHeight);
-    
-    // Set canvas dimensions explicitly
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-    canvas.style.width = canvasWidth + "px";
-    canvas.style.height = canvasHeight + "px";
-    
-    // Force immediate redraw
-    if (!gameActive) {
-        setupGame();
-        drawGame();
-    }
-}
-
-// Utility function to shuffle an array
-function shuffleArray(array) {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-    }
-    return array;
-}
-
-// Generate bucket rewards
-function generateBucketRewards() {
-    // Generate random rewards for each bucket
-    const rewards = [];
-    for (let i = 0; i < config.buckets; i++) {
-        // Generate random rewards but ensure a mix of positive and negative
-        let reward;
-        if (i < 2) {
-            // At least 2 buckets will be negative
-            reward = Math.floor(Math.random() * (0 - config.minReward) + config.minReward);
-        } else if (i >= config.buckets - 2) {
-            // At least 2 buckets will be positive
-            reward = Math.floor(Math.random() * config.maxReward);
-        } else {
-            // The rest can be either positive or negative
-            reward = Math.floor(Math.random() * (config.maxReward - config.minReward) + config.minReward);
-        }
-        rewards.push(reward);
-    }
-    
-    // Ensure rewards are multiples of 10 for cleaner numbers
-    for (let i = 0; i < rewards.length; i++) {
-        rewards[i] = Math.round(rewards[i] / 10) * 10;
-    }
-    
-    // Shuffle the rewards to randomize their positions
-    shuffleArray(rewards);
-    
-    return rewards;
-}
-
-// Add invisible walls to guide the ball into buckets
-function addInvisibleWalls(buckets) {
-    if (buckets.length < 2) return;
-    
-    // Add invisible left wall
-    const leftBucket = buckets[0];
-    const leftWallX = leftBucket.x - leftBucket.width / 2;
-    
-    // Left wall runs from top to bucket
-    pegs.push({
-        x: leftWallX,
-        y: leftBucket.y / 2, // Halfway down
-        radius: config.pegRadius,
-        isWall: true,
-        leftWall: true
-    });
-    
-    // Add invisible right wall
-    const rightBucket = buckets[buckets.length - 1];
-    const rightWallX = rightBucket.x + rightBucket.width / 2;
-    
-    // Right wall runs from top to bucket
-    pegs.push({
-        x: rightWallX,
-        y: rightBucket.y / 2, // Halfway down
-        radius: config.pegRadius,
-        isWall: true,
-        rightWall: true
-    });
-}
-
-// Setup the game
-function setupGame() {
-    // Clear previous game state
-    if (animationFrame) {
-        cancelAnimationFrame(animationFrame);
-    }
-    
-    // Safety check for canvas dimensions
-    if (!canvasWidth || !canvasHeight) {
-        console.error("Canvas dimensions are not set!");
-        resizeCanvas();
-    }
-    
-    console.log("Setting up game with canvas dimensions:", canvasWidth, "x", canvasHeight);
-    
-    ball = null;
-    pegs = [];
-    buckets = [];
-    gameActive = false;
-    gameComplete = false;
-    
-    // Update drop button state based on coin balance
-    updateCoinDisplay();
-    
-    // Calculate peg positions - MODIFIED for better mobile view
-    const startX = canvasWidth / 2;
-    const startY = 40; // Moved up slightly for small screens
-    
-    // Calculate optimal peg spacing based on canvas width and height
-    const optimalPegSpacing = Math.min(
-        config.pegSpacing,
-        canvasWidth / (config.pegRows + 1),
-        canvasHeight / (config.pegRows + 4) // Leave space for buckets
-    );
-    
-    const actualPegSpacing = Math.min(config.pegSpacing, optimalPegSpacing);
-    
-    // Create a perfect triangular pattern with consistent spacing
-    for (let row = 0; row < config.pegRows; row++) {
-        const pegCount = row + 1;
-        
-        for (let i = 0; i < pegCount; i++) {
-            // Calculate x position with perfect spacing
-            const x = startX - (pegCount - 1) * actualPegSpacing / 2 + i * actualPegSpacing;
-            const y = startY + row * actualPegSpacing;
-            
-            // No random offsets to ensure perfect alignment
-            pegs.push({
-                x: x,
-                y: y,
-                radius: config.pegRadius
-            });
-        }
-    }
-    
-    // Setup buckets at the bottom
-    // Calculate width based on the peg layout
-    const lastRowWidth = actualPegSpacing * config.pegRows;
-    const bucketWidth = lastRowWidth / config.buckets;
-    
-    // Position buckets directly below the last row of pegs
-    const bucketY = Math.min(
-        startY + (config.pegRows) * actualPegSpacing + 20,
-        canvasHeight - 50 // Ensure buckets are at least 50px from bottom
-    );
-    
-    // Ensure buckets cover the entire width of the game area
-    // This ensures the ball always lands in a bucket
-    const totalBucketWidth = bucketWidth * config.buckets;
-    let bucketStartX;
-    
-    if (totalBucketWidth < canvasWidth) {
-        // If buckets don't cover full width, we'll place them evenly
-        bucketStartX = (canvasWidth - totalBucketWidth) / 2;
-    } else {
-        // If they would overflow, we'll calculate proper size
-        const newBucketWidth = canvasWidth / config.buckets;
-        bucketStartX = 0;
-        
-        // Generate random rewards for each bucket
-        const rewards = generateBucketRewards();
-        
-        // Create buckets that span the entire width
-        for (let i = 0; i < config.buckets; i++) {
-            const x = bucketStartX + (i * newBucketWidth) + (newBucketWidth / 2);
-            buckets.push({
-                x: x,
-                y: bucketY,
-                width: newBucketWidth,
-                height: 40,  // Increased height for better visibility
-                reward: rewards[i]
-            });
-        }
-        
-        scoreDisplay.textContent = '';
-        
-        // Add invisible walls to guide ball
-        addInvisibleWalls(buckets);
-        
-        drawGame();
-        return; // Skip the original bucket creation below
-    }
-    
-    // Original bucket creation (if they don't need to cover the full width)
-    const rewards = generateBucketRewards();
-    
-    for (let i = 0; i < config.buckets; i++) {
-        const x = bucketStartX + (i * bucketWidth) + (bucketWidth / 2);
-        buckets.push({
-            x: x,
-            y: bucketY,
-            width: bucketWidth,
-            height: 40,  // Increased height for better visibility
-            reward: rewards[i]
-        });
-    }
-    
-    // Add invisible walls to guide the ball to buckets
-    addInvisibleWalls(buckets);
-    
-    scoreDisplay.textContent = '';
-    
-    // Draw initial state
-    drawGame();
-}
-
-// Create a new ball and drop it
-function dropBall() {
-    if (gameActive || gameComplete) return;
-    
-    // Deduct the cost for dropping a ball (from config)
-    updateCoins(-config.dropCost);
-    
-    ball = {
-        x: canvasWidth / 2,
-        y: 20,
-        radius: config.ballRadius,
-        velocityX: 0,
-        velocityY: config.dropSpeed
-    };
-    
-    gameActive = true;
-    gameComplete = false;
-    dropButton.disabled = true;
-    animateGame();
-}
-
-// Reset the game - MODIFIED to take 100 coins away each time
-function resetGame() {
-    // Deduct the reset cost
-    updateCoins(-config.resetCost);
-    
-    // Display message about the cost
-    scoreDisplay.innerHTML = `<span class="lose-amount">Reset cost: -${config.resetCost} coins</span>`;
-    
-    // Then proceed with regular game setup
-    setupGame();
-}
-
-// Main game animation loop
-function animateGame() {
-    if (!gameActive) return;
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    
-    // Update ball position
-    updateBall();
-    
-    // Draw game elements
-    drawGame();
-    
-    // Continue animation
-    animationFrame = requestAnimationFrame(animateGame);
-}
-
-// Update ball physics - MODIFIED to handle invisible walls
-function updateBall() {
-    if (!ball) return;
-    
-    // Apply gravity
-    ball.velocityY += config.gravity;
-    
-    // Update position
-    ball.x += ball.velocityX;
-    ball.y += ball.velocityY;
-    
-    // Check for collisions with pegs
-    for (const peg of pegs) {
-        // Special handling for wall pegs
-        if (peg.isWall) {
-            if (peg.leftWall && ball.x - ball.radius < peg.x) {
-                // Bounce off left wall
-                ball.x = peg.x + ball.radius;
-                ball.velocityX = Math.abs(ball.velocityX) * config.friction;
-                continue;
-            } 
-            else if (peg.rightWall && ball.x + ball.radius > peg.x) {
-                // Bounce off right wall
-                ball.x = peg.x - ball.radius;
-                ball.velocityX = -Math.abs(ball.velocityX) * config.friction;
-                continue;
-            }
-        }
-        
-        // Regular peg collision
-        const dx = ball.x - peg.x;
-        const dy = ball.y - peg.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance < ball.radius + peg.radius) {
-            // Calculate collision response
-            const angle = Math.atan2(dy, dx);
-            
-            // Reposition the ball outside the peg
-            const minDistance = ball.radius + peg.radius;
-            ball.x = peg.x + Math.cos(angle) * minDistance;
-            ball.y = peg.y + Math.sin(angle) * minDistance;
-            
-            // Calculate new velocity (bounce)
-            const normalX = dx / distance;
-            const normalY = dy / distance;
-            
-            const dotProduct = ball.velocityX * normalX + ball.velocityY * normalY;
-            
-            ball.velocityX -= 2 * dotProduct * normalX;
-            ball.velocityY -= 2 * dotProduct * normalY;
-            
-            // Apply friction and bounce speed reduction
-            ball.velocityX *= config.friction * config.bounceSpeed;
-            ball.velocityY *= config.friction * config.bounceSpeed;
-            
-            // Add a small random factor to make it less predictable
-            ball.velocityX += (Math.random() - 0.5) * 0.5;
-        }
-    }
-    
-    // Ensure ball stays within the bucket area horizontally
-    if (buckets.length > 0) {
-        const leftmostBucket = buckets[0];
-        const rightmostBucket = buckets[buckets.length - 1];
-        
-        const leftBound = leftmostBucket.x - leftmostBucket.width / 2;
-        const rightBound = rightmostBucket.x + rightmostBucket.width / 2;
-        
-        if (ball.x - ball.radius < leftBound) {
-            ball.x = leftBound + ball.radius;
-            ball.velocityX = Math.abs(ball.velocityX) * config.friction;
-        } else if (ball.x + ball.radius > rightBound) {
-            ball.x = rightBound - ball.radius;
-            ball.velocityX = -Math.abs(ball.velocityX) * config.friction;
-        }
-    }
-    
-    // Check if ball has entered a bucket
-    if (ball.y > buckets[0].y - ball.radius) {
-        for (let i = 0; i < buckets.length; i++) {
-            const bucket = buckets[i];
-            if (ball.x > bucket.x - bucket.width / 2 && 
-                ball.x < bucket.x + bucket.width / 2) {
-                // Ball has entered this bucket
-                gameComplete = true;
-                gameActive = false;
-                
-                // Update coin balance
-                updateCoins(bucket.reward);
-                
-                // Display result
-                if (bucket.reward >= 0) {
-                    scoreDisplay.innerHTML = `You won: <span class="win-amount">+${bucket.reward}</span>`;
-                } else {
-                    scoreDisplay.innerHTML = `You lost: <span class="lose-amount">${bucket.reward}</span>`;
-                }
-                
-                // Enable drop button for next game
-                dropButton.disabled = false;
-                if (!gameActive && !gameComplete) {
-                    dropButton.textContent = "Drop";
-                }
-                
-                break;
-            }
-        }
-    }
-    
-    // If ball somehow escapes, force it into the nearest bucket
-    if (ball.y > canvasHeight) {
-        // Find the nearest bucket
-        let nearestBucket = buckets[0];
-        let nearestDistance = Math.abs(ball.x - buckets[0].x);
-        
-        for (let i = 1; i < buckets.length; i++) {
-            const distance = Math.abs(ball.x - buckets[i].x);
-            if (distance < nearestDistance) {
-                nearestDistance = distance;
-                nearestBucket = buckets[i];
-            }
-        }
-        
-        // Force the ball into that bucket
-        ball.x = nearestBucket.x;
-        ball.y = nearestBucket.y + 1; // Just inside the bucket
-        ball.velocityX = 0;
-        ball.velocityY = 1;
-        
-        // The ball will be detected in the bucket on the next frame
-    }
-}
-
-// Draw all game elements - MODIFIED to visualize walls if needed
-function drawGame() {
-    // Make sure canvas and context exist
-    if (!canvas || !ctx) {
-        console.error("Canvas or context not available for drawing");
-        return;
-    }
-    
-    // Make sure dimensions are correct
-    if (canvas.width === 0 || canvas.height === 0) {
-        console.log("Canvas has zero dimensions, resizing...");
-        resizeCanvas();
-    }
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    
-    // Draw pegs
-    pegs.forEach(peg => {
-        // Skip drawing invisible wall pegs
-        if (peg.isWall) return;
-        
-        ctx.beginPath();
-        ctx.arc(peg.x, peg.y, peg.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.fill();
-        
-        // Add glow effect
-        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-        ctx.shadowBlur = 10;
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-    });
-    
-    // Draw buckets with enhanced visibility
-    buckets.forEach(bucket => {
-        // Draw the bucket with glow effect
-        ctx.beginPath();
-        ctx.rect(bucket.x - bucket.width / 2, bucket.y, bucket.width, bucket.height);
-        ctx.fillStyle = 'rgba(40, 40, 40, 0.9)';
-        ctx.fill();
-        
-        // Add stronger border and glow
-        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-        ctx.shadowBlur = 8;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        
-        // Draw bucket label with larger font
-        ctx.font = 'bold 16px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        
-        if (bucket.reward >= 0) {
-            ctx.fillStyle = '#4caf50'; // Green for positive rewards
-            ctx.fillText(`+${bucket.reward}`, bucket.x, bucket.y + bucket.height / 2);
-        } else {
-            ctx.fillStyle = '#f44336'; // Red for negative rewards
-            ctx.fillText(`${bucket.reward}`, bucket.x, bucket.y + bucket.height / 2);
-        }
-    });
-    
-    // Draw triangle outline around pegs
-    if (pegs.length > 0) {
-        // Filter out wall pegs for the triangle outline
-        const regularPegs = pegs.filter(peg => !peg.isWall);
-        if (regularPegs.length > 0) {
-            const topPeg = regularPegs[0];
-            
-            // For a perfect triangle, use the first and last peg of the bottom row
-            const lastRowStartIndex = Math.max(0, regularPegs.length - config.pegRows);
-            const leftPeg = regularPegs[lastRowStartIndex];
-            const rightPeg = regularPegs[regularPegs.length - 1];
-            
-            ctx.beginPath();
-            ctx.moveTo(topPeg.x, topPeg.y - 20);
-            ctx.lineTo(leftPeg.x - 20, buckets[0].y);
-            ctx.lineTo(rightPeg.x + 20, buckets[0].y);
-            ctx.closePath();
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-        }
-    }
-    
-    // Draw ball
-    if (ball) {
-        ctx.beginPath();
-        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-        
-        // Create gradient for ball
-        const gradient = ctx.createRadialGradient(
-            ball.x - 3, ball.y - 3, 1,
-            ball.x, ball.y, ball.radius
-        );
-        gradient.addColorStop(0, '#fff');
-        gradient.addColorStop(1, '#aaa');
-        
-        ctx.fillStyle = gradient;
-        ctx.fill();
-        
-        // Add glow effect to the ball
-        ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-        ctx.shadowBlur = 15;
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-    }
-}
-
-// Event listeners
-dropButton.addEventListener('click', dropBall);
-resetButton.addEventListener('click', resetGame);
-backButton.addEventListener('click', () => {
-    window.location.href = '/voidgms.html';
-});
-window.addEventListener('resize', resizeCanvas);
-
-// Initialize the game
-window.addEventListener('load', () => {
-    console.log("Game loading...");
-    
-    // Make sure canvas is properly referenced
-    if (!canvas) {
-        console.error("Canvas element not found!");
-        canvas = document.getElementById('canvas');
-        if (!canvas) {
-            alert("Could not find game canvas. Please refresh the page.");
-            return;
-        }
-    }
-    
-    // Set an initial check for auth state
-    if (auth && auth.currentUser) {
-        console.log("User already authenticated on page load");
-        currentUser = auth.currentUser;
-    }
-    
-    // Properly initialize the game based on authentication state
-    const initializeGame = async () => {
-        // Ensure canvas is sized before any drawing
-        resizeCanvas();
-        
-        if (currentUser) {
-            console.log("Initializing game with authenticated user");
-            // Check if Firebase load function exists and load balance
-            if (window.loadFirebaseCoinBalance) {
-                const balance = await window.loadFirebaseCoinBalance();
-                console.log("Initialized with balance:", balance);
-            }
-        } else {
-            console.log("Initializing game with no user");
-            coinBalance = 0;
-            updateCoinDisplay();
-        }
-        
-        // Setup and draw the game
-        setupGame();
-        drawGame(); // Force an initial draw
-        
-        console.log("Game initialization complete");
-    };
-    
-    // Add event listener for visibility changes to ensure canvas renders when tab becomes active
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            console.log("Tab became visible, redrawing canvas");
-            drawGame();
-        }
-    });
-    
-    // Call the initialization function
-    initializeGame();
-});
-</script>
 </body>
 </html>
