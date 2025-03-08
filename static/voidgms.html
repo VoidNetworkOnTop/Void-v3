@@ -914,21 +914,18 @@ class VoidLeaderboard {
     // Setup the real-time listener with multiple retries
     setupRealtimeListener() {
         try {
-            // Query the top 20 users by account balance (updated from 5 to 20)
-            // Firestore only allows one '!=' operator per query, so we'll do initial filtering here
-            // and additional filtering when processing results
+            // Query the top users by account balance without using inequality filters
+            // to avoid the need for composite indexes
             const usersRef = collection(this.db, 'users');
             const q = query(
                 usersRef,
-                // Only use one '!=' filter in the query - for disabled accounts
-                where('disabled', '!=', true),
-                // Order by balance to get top players
+                // Only order by account balance - we'll filter out disabled users client-side
                 orderBy('accountBalance', 'desc'),
-                // Get more than 20 since we'll be filtering some out
-                limit(30)
+                // Get more documents since we'll be filtering some out
+                limit(50)
             );
             
-            console.log("Setting up real-time Firebase listener for active players");
+            console.log("Setting up real-time Firebase listener for players (with client-side filtering)");
             
             // Set up real-time listener with server-side data
             this.unsubscribe = onSnapshot(q, 
@@ -1122,10 +1119,9 @@ class VoidLeaderboard {
         querySnapshot.forEach((doc) => {
             if (doc.exists()) {
                 const userData = doc.data();
-                // We filtered 'disabled' in the query, but need to filter 'isActive' and 'accountDeleted' here
-                // Skip users that are marked as inactive or deleted in Firestore
-                if (userData.isActive === false || userData.accountDeleted === true) {
-                    console.log("Skipping inactive/deleted user in leaderboard:", userData.username);
+                // Filter all types of disabled/inactive users client-side since we can't use '!=' in the query with orderBy
+                if (userData.disabled === true || userData.isActive === false || userData.accountDeleted === true) {
+                    console.log("Skipping disabled/inactive/deleted user in leaderboard:", userData.username);
                 } else {
                     validDocs.push(doc);
                 }
