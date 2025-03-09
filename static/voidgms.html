@@ -641,6 +641,92 @@
             }
         }
 
+        // ADD THIS FUNCTION: Mark deleted users from Firebase Auth
+        async function markUserAsDeletedFromAuth(userId, reason = 'unknown') {
+            try {
+                console.log(`Marking user ${userId} as deleted from Auth (reason: ${reason})`);
+                
+                const userRef = doc(db, 'users', userId);
+                await updateDoc(userRef, {
+                    auth_deleted: true,
+                    auth_deleted_reason: reason,
+                    auth_deleted_at: new Date()
+                });
+                
+                console.log(`Successfully marked user ${userId} as deleted`);
+                
+                // Refresh the leaderboard to reflect changes
+                refreshLeaderboard();
+            } catch (error) {
+                console.error(`Error marking user ${userId} as deleted:`, error);
+            }
+        }
+
+        // ADD THIS FUNCTION: Check for orphaned user accounts
+        async function checkForOrphanedUsers() {
+            // Only proceed if we have a logged-in user (for security)
+            if (!auth.currentUser) {
+                return;
+            }
+            
+            try {
+                console.log("Checking for orphaned user accounts...");
+                
+                // Get users that haven't been checked for deletion recently
+                const usersRef = collection(db, 'users');
+                const oneMonthAgo = new Date();
+                oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                
+                // Check users who:
+                // 1. Haven't been marked as deleted
+                // 2. Haven't been checked recently or never checked
+                // 3. Haven't been active in a while
+                const q = query(
+                    usersRef,
+                    where('auth_deleted', '==', false),
+                    limit(5) // Process in small batches for performance
+                );
+                
+                const querySnapshot = await getDocs(q);
+                
+                if (querySnapshot.empty) {
+                    console.log("No users to check for orphaned accounts");
+                    return;
+                }
+                
+                console.log(`Found ${querySnapshot.size} users to check for orphaned accounts`);
+                
+                // We'll add this to auth state changes to detect when users might have been deleted
+                for (const doc of querySnapshot.docs) {
+                    const userId = doc.id;
+                    const userData = doc.data();
+                    
+                    // Skip the current user (we know they exist)
+                    if (userId === auth.currentUser.uid) {
+                        continue;
+                    }
+                    
+                    // Mark user as checked
+                    await updateDoc(doc.ref, {
+                        auth_checked_at: new Date()
+                    });
+                    
+                    // If the user hasn't been active for a very long time, mark them as potentially deleted
+                    const lastActivity = userData.lastActivity ? userData.lastActivity.toDate() : null;
+                    const longInactive = lastActivity && (new Date() - lastActivity > 180 * 24 * 60 * 60 * 1000); // 180 days
+                    
+                    if (longInactive) {
+                        console.log(`User ${userData.username} has been inactive for over 6 months`);
+                        await markUserAsDeletedFromAuth(userId, 'long_inactivity');
+                    }
+                }
+                
+                console.log("Finished checking for orphaned user accounts");
+            } catch (error) {
+                console.error("Error checking for orphaned users:", error);
+            }
+        }
+
         // Security - prevent console modifications by using closures and private functions
         const adminControls = (function() {
             // Private variables
@@ -926,7 +1012,9 @@ class VoidNetworkAccounting {
                 accountBalance: 1000, // Starting balance
                 totalGamesPlayed: 0,
                 totalMoneySpent: 0,
-                totalMoneyEarned: 0
+                totalMoneyEarned: 0,
+                auth_deleted: false, // Add this field to track Auth deletion
+                lastActivity: new Date() // Add this to track user activity
             });
 
             console.log("User registered successfully:", user.uid);
@@ -937,15 +1025,49 @@ class VoidNetworkAccounting {
         }
     }
 
-    // User Login
+    // UPDATED: User Login with deleted user detection
     async loginUser(email, password) {
         try {
             console.log("Logging in user:", email);
             const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
             console.log("User logged in successfully:", userCredential.user.uid);
+            
+            // Update last activity timestamp
+            const userRef = doc(this.db, 'users', userCredential.user.uid);
+            await updateDoc(userRef, {
+                lastActivity: new Date(),
+                auth_deleted: false // Ensure this is set to false if they can log in
+            });
+            
             return userCredential.user;
         } catch (error) {
             console.error("Login Error:", error);
+            
+            // Check for errors that might indicate a deleted user
+            if (error.code === 'auth/user-not-found' || error.code === 'auth/user-disabled') {
+                console.log(`Potential deleted user detected: ${email} (${error.code})`);
+                
+                // Try to find the user in Firestore by email
+                const usersRef = collection(this.db, 'users');
+                const q = query(usersRef, where('email', '==', email));
+                
+                try {
+                    const querySnapshot = await getDocs(q);
+                    
+                    if (!querySnapshot.empty) {
+                        console.log(`Found ${querySnapshot.size} matching user(s) for ${email}`);
+                        
+                        querySnapshot.forEach((doc) => {
+                            markUserAsDeletedFromAuth(doc.id, error.code);
+                        });
+                    } else {
+                        console.log(`No matching users found for ${email}`);
+                    }
+                } catch (findError) {
+                    console.error(`Error finding user by email ${email}:`, findError);
+                }
+            }
+            
             throw error;
         }
     }
@@ -988,6 +1110,12 @@ class VoidNetworkAccounting {
 
             const userData = userDoc.data();
             console.log("Retrieved user data:", userData.username, "Balance:", userData.accountBalance);
+            
+            // Update last activity timestamp
+            await updateDoc(userRef, {
+                lastActivity: new Date()
+            });
+            
             return userData;
         } catch (error) {
             console.error("Account Details Error:", error);
@@ -1056,6 +1184,7 @@ class VoidNetworkAccounting {
                 totalGamesPlayed: userData.totalGamesPlayed || 0,
                 totalMoneySpent: userData.totalMoneySpent || 0,
                 totalMoneyEarned: userData.totalMoneyEarned || 0,
+                lastActivity: new Date(), // Update last activity timestamp
                 lastUpdated: new Date() // Add timestamp for tracking purposes
             });
 
@@ -1081,7 +1210,7 @@ class VoidNetworkAccounting {
     }
 }
 
-// IMPROVED: Leaderboard Class for real-time updates - MODIFIED to always show 20 users
+// IMPROVED: Leaderboard Class for real-time updates - MODIFIED to always show 20 users and handle deleted auth users
 class VoidLeaderboard {
     constructor(db) {
         this.db = db;
@@ -1163,7 +1292,7 @@ class VoidLeaderboard {
     setupRealtimeListener() {
         try {
             // Query more users to ensure we can always show 20 after filtering banned ones
-            // Fetch 40 instead of 20 to give ample buffer for banned users
+            // Fetch 40 instead of 20 to give ample buffer for banned/deleted users
             const usersRef = collection(this.db, 'users');
             const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(40));
             
@@ -1338,7 +1467,7 @@ class VoidLeaderboard {
         }
     }
     
-    // Update leaderboard UI with fresh data - IMPROVED to always show exactly 20 users
+    // UPDATED: Update leaderboard UI with fresh data - Now also filters out auth_deleted users
     updateLeaderboardUI(querySnapshot) {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
@@ -1355,16 +1484,21 @@ class VoidLeaderboard {
         
         console.log("Updating leaderboard with new data");
         
-        // Filter out any deleted documents and banned users before processing
+        // Filter out any deleted documents, banned users, and users deleted from Auth
         const validDocs = [];
         querySnapshot.forEach((doc) => {
             if (doc.exists()) {
                 const userData = doc.data();
-                // Skip banned users
-                if (!userData.banned) {
+                // Skip banned users and Auth-deleted users
+                if (!userData.banned && !userData.auth_deleted) {
                     validDocs.push(doc);
                 } else {
-                    console.log(`Skipping banned user: ${userData.username}`);
+                    if (userData.banned) {
+                        console.log(`Skipping banned user: ${userData.username}`);
+                    }
+                    if (userData.auth_deleted) {
+                        console.log(`Skipping Auth-deleted user: ${userData.username}`);
+                    }
                 }
             } else {
                 console.log("Skipping deleted document in leaderboard");
@@ -1467,17 +1601,17 @@ class VoidLeaderboard {
                 usersRef, 
                 orderBy('accountBalance', 'desc'),
                 where('accountBalance', '<', lastBalance),
-                limit(40) // Get more to account for potential banned users
+                limit(40) // Get more to account for potential banned/deleted users
             );
             
             const querySnapshot = await getDocs(q);
             
-            // Filter out banned users
+            // Filter out banned and deleted users
             const validDocs = [];
             querySnapshot.forEach((doc) => {
                 if (doc.exists()) {
                     const userData = doc.data();
-                    if (!userData.banned) {
+                    if (!userData.banned && !userData.auth_deleted) {
                         validDocs.push(doc);
                     }
                 }
@@ -1801,11 +1935,14 @@ function updateUIForLoggedOutUser() {
     document.getElementById('user-profile').style.display = 'none';
 }
 
-// MODIFIED: Listen for authentication state changes with enhanced admin check
+// MODIFIED: Listen for authentication state changes with enhanced admin check and orphaned user check
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         console.log("Auth state changed: User is signed in", user.uid);
         await updateUIForLoggedInUser(user);
+        
+        // Check for orphaned users
+        setTimeout(checkForOrphanedUsers, 5000);
         
         // Security-enhanced admin check
         if (user.email === 'six7588@gmail.com') {
@@ -2014,6 +2151,23 @@ window.addEventListener('load', async () => {
             console.log("User already logged in:", user.uid);
             await updateUIForLoggedInUser(user);
         }
+        
+        // Ensure each user has auth_deleted field set
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, limit(50));
+        const snapshot = await getDocs(q);
+        
+        snapshot.forEach(async (userDoc) => {
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                if (userData.auth_deleted === undefined) {
+                    console.log(`Adding auth_deleted field to user ${userDoc.id}`);
+                    await updateDoc(doc(db, 'users', userDoc.id), {
+                        auth_deleted: false
+                    });
+                }
+            }
+        });
     } catch (err) {
         console.error('Error during initialization:', err);
     }
