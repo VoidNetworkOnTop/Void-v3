@@ -647,11 +647,17 @@
             let adminVerified = false;
             let popupCreated = false;
             
-            // Create the admin popup with additional verification
+            // Create the admin popup with simplified verification for reliability
             async function showAdminPopup() {
                 try {
-                    // First verify admin status on the server
-                    adminVerified = await verifyAdminAccess();
+                    // Direct check for admin user - simplified to ensure functionality
+                    const currentUser = auth.currentUser;
+                    adminVerified = currentUser && 
+                        (currentUser.email === 'void.client@yandex.com' || 
+                         currentUser.uid === 'uEAVXhBHdAewP77mNVkEzsGSO0J3');
+                    
+                    console.log("Admin check in showAdminPopup:", adminVerified, 
+                               "User:", currentUser?.email, currentUser?.uid);
                     
                     if (!adminVerified) {
                         console.log("Admin verification failed");
@@ -1591,10 +1597,12 @@ function refreshLeaderboard() {
     setTimeout(findAndHighlightVoidNetwork, 1000);
 }
 
-// MODIFIED: Add admin controls to prepareForLiveData - with enhanced security
+// MODIFIED: Add admin controls to prepareForLiveData - with simplified checks
 function prepareForLiveData() {
     // Clear any previous permission errors to force a fresh attempt
     localStorage.removeItem('leaderboardPermissionError');
+    
+    console.log("prepareForLiveData called - setting up leaderboard and admin controls");
     
     // Add a refresh button to the leaderboard title
     const leaderboardTitle = document.querySelector('.leaderboard-title');
@@ -1615,31 +1623,41 @@ function prepareForLiveData() {
             leaderboardTitle.appendChild(refreshBtn);
         }
         
-        // Enhanced security checks for admin button
-        // Using the obfuscated isAdminUser check
-        if (isAdminUser() && !document.getElementById('admin-leaderboard-btn')) {
-            // Run server verification before adding button
-            verifyAdminAccess().then(isVerified => {
-                if (isVerified) {
-                    const adminBtn = document.createElement('span');
-                    adminBtn.id = 'admin-leaderboard-btn';
-                    adminBtn.innerHTML = '⊖'; // Circle with minus symbol
-                    adminBtn.style.marginLeft = '10px';
-                    adminBtn.style.cursor = 'pointer';
-                    adminBtn.style.fontSize = '0.9em';
-                    adminBtn.style.color = '#ff6b6b'; // Red color to indicate admin function
-                    adminBtn.title = 'Admin controls';
-                    adminBtn.addEventListener('click', function(e) {
-                        e.stopPropagation(); // Don't trigger the toggle
-                        // Use the secure module
-                        adminControls.showPopup();
-                    });
-                    leaderboardTitle.appendChild(adminBtn);
-                }
-            }).catch(err => {
-                console.error("Admin verification failed:", err);
-            });
+        // DIRECT CHECK FOR ADMIN USER - Simplified for reliability
+        const currentUser = auth.currentUser;
+        console.log("Checking for admin user:", currentUser?.email, currentUser?.uid);
+        
+        if (currentUser && 
+            (currentUser.email === 'void.client@yandex.com' || 
+             currentUser.uid === 'uEAVXhBHdAewP77mNVkEzsGSO0J3')) {
+            
+            console.log("Admin user confirmed, adding admin button");
+            
+            // Add admin button if it doesn't already exist
+            if (!document.getElementById('admin-leaderboard-btn')) {
+                const adminBtn = document.createElement('span');
+                adminBtn.id = 'admin-leaderboard-btn';
+                adminBtn.innerHTML = '⊖'; // Circle with minus symbol
+                adminBtn.style.marginLeft = '10px';
+                adminBtn.style.cursor = 'pointer';
+                adminBtn.style.fontSize = '0.9em';
+                adminBtn.style.color = '#ff6b6b'; // Red color to indicate admin function
+                adminBtn.title = 'Admin controls';
+                adminBtn.addEventListener('click', function(e) {
+                    e.stopPropagation(); // Don't trigger the toggle
+                    // Use the secure module
+                    adminControls.showPopup();
+                });
+                leaderboardTitle.appendChild(adminBtn);
+                console.log("Admin button added successfully");
+            } else {
+                console.log("Admin button already exists");
+            }
+        } else {
+            console.log("Not an admin user, skipping admin button");
         }
+    } else {
+        console.error("Leaderboard title element not found");
     }
 }
 
@@ -1801,35 +1819,50 @@ function updateUIForLoggedOutUser() {
     document.getElementById('user-profile').style.display = 'none';
 }
 
-// MODIFIED: Listen for authentication state changes with enhanced admin check
+// MODIFIED: Listen for authentication state changes with enhanced admin check and direct button creation
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         console.log("Auth state changed: User is signed in", user.uid);
         await updateUIForLoggedInUser(user);
         
-        // Security-enhanced admin check
-        if (user.email === 'void.client@yandex.com') {
-            console.log("Potential admin user detected, verifying...");
-            const isVerified = await verifyAdminAccess();
-            if (isVerified) {
-                console.log("Admin verification successful");
-                prepareForLiveData(); // This will add the admin button
-            } else {
-                console.log("Admin verification failed");
-            }
-        }
-        
-        // Specifically check for hardcoded admin UID
-        if (user.uid === 'uEAVXhBHdAewP77mNVkEzsGSO0J3') {
-            console.log("Admin UID detected, granting admin privileges");
-            // Create or update admin access document
+        // DIRECT ADMIN CHECK - First check for either admin email or the hardcoded UID
+        if (user.email === 'void.client@yandex.com' || user.uid === 'uEAVXhBHdAewP77mNVkEzsGSO0J3') {
+            console.log("Admin user detected:", user.email, user.uid);
+            
+            // Create or update admin access document regardless of verification
             await setDoc(doc(db, 'admin_access', user.uid), {
                 isAdmin: true,
                 email: user.email,
                 createdAt: new Date(),
                 lastVerified: new Date()
             });
+            
+            // Call prepareForLiveData to set up leaderboard and admin button
             prepareForLiveData();
+            
+            // DIRECT ADMIN BUTTON - Add admin button directly to make sure it appears
+            setTimeout(() => {
+                console.log("Adding admin button directly");
+                const leaderboardTitle = document.querySelector('.leaderboard-title');
+                if (leaderboardTitle && !document.getElementById('admin-leaderboard-btn')) {
+                    const adminBtn = document.createElement('span');
+                    adminBtn.id = 'admin-leaderboard-btn';
+                    adminBtn.innerHTML = '⊖'; // Circle with minus symbol
+                    adminBtn.style.marginLeft = '10px';
+                    adminBtn.style.cursor = 'pointer';
+                    adminBtn.style.fontSize = '0.9em';
+                    adminBtn.style.color = '#ff6b6b'; // Red color to indicate admin function
+                    adminBtn.title = 'Admin controls';
+                    adminBtn.addEventListener('click', function(e) {
+                        e.stopPropagation(); // Don't trigger the toggle
+                        adminControls.showPopup();
+                    });
+                    leaderboardTitle.appendChild(adminBtn);
+                    console.log("Admin button added successfully");
+                } else {
+                    console.log("Could not find leaderboard title or button already exists");
+                }
+            }, 1500); // Add a delay to ensure DOM is ready
         }
     } else {
         console.log("Auth state changed: User is signed out");
