@@ -692,6 +692,12 @@
                             <input type="text" id="unban-username" placeholder="Username" style="width: 100%; padding: 10px; margin-bottom: 10px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; border-radius: 5px;">
                             <button id="unban-button" style="width: 100%; padding: 10px; background: rgba(0, 255, 0, 0.3); color: #fff; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px;">Unban User</button>
                         </div>
+                        <!-- NEW: Added soft delete section -->
+                        <div id="delete-section">
+                            <p style="color: #fff; margin-bottom: 10px;">Enter username to mark as deleted:</p>
+                            <input type="text" id="delete-username" placeholder="Username" style="width: 100%; padding: 10px; margin-bottom: 10px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; border-radius: 5px;">
+                            <button id="delete-button" style="width: 100%; padding: 10px; background: rgba(255, 0, 0, 0.3); color: #fff; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px;">Mark as Deleted</button>
+                        </div>
                         <button id="close-popup" style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.2); color: #fff; border: none; border-radius: 5px; cursor: pointer;">Close</button>
                     `;
                     
@@ -712,6 +718,16 @@
                         const username = document.getElementById('unban-username').value.trim();
                         if (username) {
                             unbanUser(username);
+                        } else {
+                            alert('Please enter a username');
+                        }
+                    });
+                    
+                    // NEW: Added delete button event listener
+                    document.getElementById('delete-button').addEventListener('click', function() {
+                        const username = document.getElementById('delete-username').value.trim();
+                        if (username) {
+                            markUserAsDeleted(username);
                         } else {
                             alert('Please enter a username');
                         }
@@ -853,6 +869,58 @@
             }
         }
 
+        // NEW: Mark user as deleted functionality
+        async function markUserAsDeleted(username) {
+            try {
+                // Verify admin status
+                const isAdmin = await verifyAdminAccess();
+                if (!isAdmin) {
+                    console.error('Admin verification failed');
+                    return;
+                }
+                
+                // Find user document by username
+                const usersRef = collection(db, 'users');
+                const q = query(usersRef, where('username', '==', username));
+                const querySnapshot = await getDocs(q);
+                
+                if (querySnapshot.empty) {
+                    alert(`User "${username}" not found`);
+                    return;
+                }
+                
+                let deletedCount = 0;
+                
+                await Promise.all(querySnapshot.docs.map(async (userDoc) => {
+                    const userId = userDoc.id;
+                    
+                    // Mark user as deleted in Firestore
+                    await updateDoc(doc(db, 'users', userId), {
+                        deleted: true,
+                        deletedAt: new Date(),
+                        deletedBy: auth.currentUser.email
+                    });
+                    
+                    deletedCount++;
+                }));
+                
+                if (deletedCount > 0) {
+                    if (deletedCount > 1) {
+                        alert(`${deletedCount} users with username "${username}" have been marked as deleted`);
+                    } else {
+                        alert(`User "${username}" has been marked as deleted`);
+                    }
+                    refreshLeaderboard(); // Refresh to update the display
+                } else {
+                    alert(`No users found with username "${username}"`);
+                }
+                
+            } catch (error) {
+                console.error('Error marking user as deleted:', error);
+                alert('Failed to mark user as deleted: ' + error.message);
+            }
+        }
+
         // FIXED: Profile Icon Toggle Functionality
         const profileIcon = document.getElementById('profile-icon');
         const authContainer = document.getElementById('auth-container');
@@ -926,7 +994,8 @@ class VoidNetworkAccounting {
                 accountBalance: 1000, // Starting balance
                 totalGamesPlayed: 0,
                 totalMoneySpent: 0,
-                totalMoneyEarned: 0
+                totalMoneyEarned: 0,
+                deleted: false // Add deleted flag initially set to false
             });
 
             console.log("User registered successfully:", user.uid);
@@ -937,13 +1006,45 @@ class VoidNetworkAccounting {
         }
     }
 
-    // User Login
+    // User Login - UPDATED to handle deleted accounts
     async loginUser(email, password) {
         try {
             console.log("Logging in user:", email);
             const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
-            console.log("User logged in successfully:", userCredential.user.uid);
-            return userCredential.user;
+            const user = userCredential.user;
+            
+            // IMPORTANT: Check if this user still has a valid Firestore document
+            const userRef = doc(this.db, 'users', user.uid);
+            const userDoc = await getDoc(userRef);
+            
+            if (!userDoc.exists()) {
+                console.error("User exists in Auth but missing Firestore document");
+                // Create a new document for this user with default values
+                await setDoc(userRef, {
+                    username: email.split('@')[0], // Default username from email
+                    email: email,
+                    createdAt: new Date(),
+                    accountBalance: 1000, // Starting balance
+                    totalGamesPlayed: 0,
+                    totalMoneySpent: 0,
+                    totalMoneyEarned: 0,
+                    restoredAccount: true // Flag to indicate this was restored
+                });
+                console.log("Created new Firestore document for existing Auth user");
+            } else {
+                // User exists in Firestore - check if they have "deleted" flag
+                const userData = userDoc.data();
+                if (userData.deleted === true) {
+                    console.log("This user was previously marked as deleted, restoring access");
+                    await updateDoc(userRef, {
+                        deleted: false,
+                        lastLogin: new Date()
+                    });
+                }
+            }
+            
+            console.log("User logged in successfully:", user.uid);
+            return user;
         } catch (error) {
             console.error("Login Error:", error);
             throw error;
@@ -1158,16 +1259,23 @@ class VoidLeaderboard {
         }
     }
     
-    // Setup the real-time listener with multiple retries
-    // ENHANCED: Query more users initially to ensure we can always show 20 non-banned users
+    // UPDATED: Setup the real-time listener with multiple retries - Now filters out deleted users
     setupRealtimeListener() {
         try {
-            // Query more users to ensure we can always show 20 after filtering banned ones
-            // Fetch 40 instead of 20 to give ample buffer for banned users
+            // Query more users to ensure we can always show 20 after filtering banned/deleted ones
+            // Fetch 40 instead of 20 to give ample buffer
             const usersRef = collection(this.db, 'users');
-            const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(40));
             
-            console.log("Setting up real-time Firebase listener for top players");
+            // Create a query that filters out both banned and deleted users
+            const q = query(
+                usersRef, 
+                orderBy('accountBalance', 'desc'),
+                // Filter out deleted users
+                where('deleted', '!=', true),
+                limit(40)
+            );
+            
+            console.log("Setting up real-time Firebase listener for top players (excluding deleted)");
             
             // Set up real-time listener with server-side data
             this.unsubscribe = onSnapshot(q, 
@@ -1355,16 +1463,17 @@ class VoidLeaderboard {
         
         console.log("Updating leaderboard with new data");
         
-        // Filter out any deleted documents and banned users before processing
+        // Filter out any deleted documents, banned users, and deleted users before processing
         const validDocs = [];
         querySnapshot.forEach((doc) => {
             if (doc.exists()) {
                 const userData = doc.data();
-                // Skip banned users
-                if (!userData.banned) {
+                // Skip banned or deleted users
+                if (!userData.banned && !userData.deleted) {
                     validDocs.push(doc);
                 } else {
-                    console.log(`Skipping banned user: ${userData.username}`);
+                    const reason = userData.banned ? "banned" : "deleted";
+                    console.log(`Skipping ${reason} user: ${userData.username}`);
                 }
             } else {
                 console.log("Skipping deleted document in leaderboard");
@@ -1440,7 +1549,7 @@ class VoidLeaderboard {
         }
     }
     
-    // New method to fetch more users if we don't have 20 yet
+    // New method to fetch more users if we don't have 20 yet - UPDATED to filter deleted users
     async fetchMoreUsers(currentCount) {
         try {
             // Only proceed if we already have some users but fewer than 20
@@ -1461,23 +1570,25 @@ class VoidLeaderboard {
             const userData = userDoc.data();
             const lastBalance = userData.accountBalance;
             
-            // Query for more users with lower balance
+            // Query for more users with lower balance - exclude banned AND deleted users
             const usersRef = collection(db, 'users');
             const q = query(
                 usersRef, 
                 orderBy('accountBalance', 'desc'),
                 where('accountBalance', '<', lastBalance),
-                limit(40) // Get more to account for potential banned users
+                where('banned', '!=', true),
+                where('deleted', '!=', true),
+                limit(40) // Get more to account for potential banned/deleted users
             );
             
             const querySnapshot = await getDocs(q);
             
-            // Filter out banned users
+            // Filter out banned and deleted users (extra check - should be filtered by query)
             const validDocs = [];
             querySnapshot.forEach((doc) => {
                 if (doc.exists()) {
                     const userData = doc.data();
-                    if (!userData.banned) {
+                    if (!userData.banned && !userData.deleted) {
                         validDocs.push(doc);
                     }
                 }
