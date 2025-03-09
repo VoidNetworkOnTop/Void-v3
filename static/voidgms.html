@@ -24,6 +24,48 @@
             overflow-x: hidden;
         }
 
+        /* Theme Background Container - Full-screen with animation */
+        #theme-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 0;
+            opacity: 0;
+            transition: opacity 1s ease;
+            pointer-events: none;
+        }
+
+        #theme-background.active {
+            opacity: 0.6; /* Semi-transparent to not overwhelm UI elements */
+        }
+
+        /* Theme Overlay for Darker Look */
+        #theme-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Place all UI elements above the theme */
+        .header-container, #auth-container, #shop-container, 
+        .leaderboard-container, .container, .games-box,
+        .leaderboard-box {
+            position: relative;
+            z-index: 2;
+        }
+
         .header-container {
             display: flex;
             justify-content: flex-end;
@@ -239,6 +281,22 @@
             background: rgba(255, 0, 0, 0.2);
             cursor: not-allowed;
             opacity: 0.7;
+        }
+
+        .buy-button.equip {
+            background: rgba(0, 150, 255, 0.3);
+        }
+
+        .buy-button.equip:hover {
+            background: rgba(0, 150, 255, 0.4);
+        }
+
+        .buy-button.unequip {
+            background: rgba(255, 150, 0, 0.3);
+        }
+
+        .buy-button.unequip:hover {
+            background: rgba(255, 150, 0, 0.4);
         }
 
         .shop-close {
@@ -701,6 +759,10 @@
     </style>
 </head>
 <body>
+    <!-- Theme Background Image (Hidden by Default) -->
+    <img id="theme-background" src="" alt="Theme Background">
+    <div id="theme-overlay"></div>
+
     <!-- Header with Profile Icon and Shop Icon -->
     <div class="header-container">
         <div id="shop-icon">
@@ -1115,6 +1177,171 @@
             }, 3000);
         }
 
+        // Theme manager to handle theme application
+        const themeManager = {
+            // Track the currently equipped theme
+            currentTheme: null,
+            
+            // Themes data with URLs
+            themes: {
+                'forest_theme': {
+                    url: 'https://lh7-us.googleusercontent.com/v_s_bK2lQgL2sAvLaZfdZJoy1A9V6x_feCZubeL1von2XD-QQhD5l9A8GmGcdJKGzSOcGkJTrTJB34rY3V-xzRr_4x5qgZB5a8L3Pg5YMeNwZnSuM740jUjvuupmAD4-D4ARNIlfVqwiECIG1fWnDadh0tri-Q',
+                    name: 'Forest Theme'
+                },
+                'placeholder_1': {
+                    url: '/api/placeholder/400/320',
+                    name: 'Ocean Theme'
+                },
+                'placeholder_2': {
+                    url: '/api/placeholder/400/320',
+                    name: 'Space Theme'
+                }
+            },
+            
+            // Load a user's theme preference
+            async loadUserTheme(userId) {
+                try {
+                    console.log("Loading user theme preference");
+                    
+                    // Check if user has any equipped theme in user settings
+                    const userSettingsRef = doc(db, 'user_settings', userId);
+                    const userSettingsDoc = await getDoc(userSettingsRef);
+                    
+                    if (userSettingsDoc.exists()) {
+                        const settings = userSettingsDoc.data();
+                        
+                        if (settings.equippedTheme) {
+                            console.log("Found equipped theme:", settings.equippedTheme);
+                            this.equipTheme(settings.equippedTheme);
+                            this.currentTheme = settings.equippedTheme;
+                            
+                            // Update shop UI
+                            const button = document.querySelector(`.buy-button[data-item-id="${settings.equippedTheme}"]`);
+                            if (button) {
+                                button.textContent = "Unequip";
+                                button.classList.add('unequip');
+                                button.classList.remove('equip');
+                            }
+                            
+                            return settings.equippedTheme;
+                        }
+                    }
+                    
+                    return null;
+                } catch (error) {
+                    console.error("Error loading user theme:", error);
+                    return null;
+                }
+            },
+            
+            // Check which items a user has purchased
+            async checkPurchasedItems(userId) {
+                try {
+                    console.log("Checking user purchased items");
+                    
+                    // Get user purchases collection
+                    const purchasesRef = collection(db, 'user_purchases', userId, 'items');
+                    const purchasesSnapshot = await getDocs(purchasesRef);
+                    
+                    const purchasedItems = {};
+                    
+                    purchasesSnapshot.forEach(doc => {
+                        const data = doc.data();
+                        purchasedItems[data.itemId] = true;
+                    });
+                    
+                    console.log("User purchased items:", purchasedItems);
+                    
+                    // Update UI for purchased items
+                    Object.keys(purchasedItems).forEach(itemId => {
+                        const button = document.querySelector(`.buy-button[data-item-id="${itemId}"]`);
+                        if (button) {
+                            // Change to "Equip" if not already equipped
+                            if (itemId !== this.currentTheme) {
+                                button.textContent = "Equip";
+                                button.classList.add('equip');
+                                button.disabled = false;
+                            }
+                        }
+                    });
+                    
+                    return purchasedItems;
+                } catch (error) {
+                    console.error("Error checking purchased items:", error);
+                    return {};
+                }
+            },
+            
+            // Equip a theme
+            equipTheme(themeId) {
+                if (!this.themes[themeId]) {
+                    console.error("Theme not found:", themeId);
+                    return false;
+                }
+                
+                const themeBackground = document.getElementById('theme-background');
+                themeBackground.src = this.themes[themeId].url;
+                themeBackground.alt = this.themes[themeId].name;
+                
+                // Show the theme with animation
+                setTimeout(() => {
+                    themeBackground.classList.add('active');
+                }, 100);
+                
+                this.currentTheme = themeId;
+                
+                console.log(`Equipped theme: ${themeId}`);
+                return true;
+            },
+            
+            // Unequip the current theme
+            unequipTheme() {
+                const themeBackground = document.getElementById('theme-background');
+                
+                // Hide the theme with animation
+                themeBackground.classList.remove('active');
+                
+                // Clear src after animation is complete
+                setTimeout(() => {
+                    themeBackground.src = '';
+                    themeBackground.alt = '';
+                }, 1000);
+                
+                this.currentTheme = null;
+                
+                console.log("Theme unequipped");
+                return true;
+            },
+            
+            // Save theme preference to user settings
+            async saveThemePreference(userId, themeId) {
+                try {
+                    console.log(`Saving theme preference: ${themeId} for user: ${userId}`);
+                    
+                    const userSettingsRef = doc(db, 'user_settings', userId);
+                    
+                    if (themeId) {
+                        // Equipping a theme
+                        await setDoc(userSettingsRef, {
+                            equippedTheme: themeId,
+                            lastUpdated: new Date()
+                        }, { merge: true });
+                    } else {
+                        // Unequipping a theme
+                        await setDoc(userSettingsRef, {
+                            equippedTheme: null,
+                            lastUpdated: new Date()
+                        }, { merge: true });
+                    }
+                    
+                    return true;
+                } catch (error) {
+                    console.error("Error saving theme preference:", error);
+                    return false;
+                }
+            }
+        };
+
         // FIXED: Profile Icon Toggle Functionality
         const profileIcon = document.getElementById('profile-icon');
         const authContainer = document.getElementById('auth-container');
@@ -1158,7 +1385,7 @@
         const shopContainer = document.getElementById('shop-container');
         const shopCloseBtn = document.querySelector('.shop-close');
         
-        shopIcon.addEventListener('click', () => {
+        shopIcon.addEventListener('click', async () => {
             // Close auth container if open
             authContainer.style.display = 'none';
             authContainer.classList.remove('visible');
@@ -1182,16 +1409,25 @@
                 }, 10);
                 
                 // Refresh balance in shop
-                voidAccounting.getUserAccountDetails(auth.currentUser.uid)
-                    .then(userDetails => {
-                        document.getElementById('shop-balance-display').textContent = userDetails.accountBalance.toLocaleString();
-                        
-                        // Update buy buttons based on user balance
-                        updateShopButtonsState(userDetails.accountBalance);
-                    })
-                    .catch(error => {
-                        console.error("Error refreshing shop balance:", error);
-                    });
+                const userDetails = await voidAccounting.getUserAccountDetails(auth.currentUser.uid);
+                document.getElementById('shop-balance-display').textContent = userDetails.accountBalance.toLocaleString();
+                
+                // Reset all buttons first
+                document.querySelectorAll('.buy-button').forEach(button => {
+                    if (!button.disabled) {
+                        button.textContent = "Buy";
+                        button.classList.remove('equip', 'unequip');
+                    }
+                });
+                
+                // Check purchased items and update buttons
+                const purchasedItems = await themeManager.checkPurchasedItems(auth.currentUser.uid);
+                
+                // Check currently equipped theme
+                await themeManager.loadUserTheme(auth.currentUser.uid);
+                
+                // Update buy buttons based on user balance
+                updateShopButtonsState(userDetails.accountBalance, purchasedItems);
             }
         });
         
@@ -1203,24 +1439,47 @@
             }, 300);
         });
 
-        // Update shop buttons based on user balance
-        function updateShopButtonsState(userBalance) {
+        // Update shop buttons based on user balance and purchased items
+        function updateShopButtonsState(userBalance, purchasedItems = {}) {
             const shopItems = document.querySelectorAll('.shop-item');
             
             shopItems.forEach(item => {
+                const itemId = item.dataset.itemId;
                 const itemPrice = parseInt(item.dataset.price);
                 const buyButton = item.querySelector('.buy-button');
                 
                 // Skip buttons that are disabled for other reasons (e.g. coming soon)
-                if (buyButton.textContent !== 'Coming Soon') {
-                    // If user can't afford it
-                    if (userBalance < itemPrice) {
-                        buyButton.disabled = true;
-                        buyButton.textContent = 'Not enough coins';
-                    } else {
-                        buyButton.disabled = false;
-                        buyButton.textContent = 'Buy';
-                    }
+                if (buyButton.textContent === 'Coming Soon') {
+                    return;
+                }
+                
+                // If this is the equipped theme
+                if (themeManager.currentTheme === itemId) {
+                    buyButton.textContent = 'Unequip';
+                    buyButton.disabled = false;
+                    buyButton.classList.add('unequip');
+                    buyButton.classList.remove('equip');
+                    return;
+                }
+                
+                // If user already purchased this item
+                if (purchasedItems[itemId]) {
+                    buyButton.textContent = 'Equip';
+                    buyButton.disabled = false;
+                    buyButton.classList.add('equip');
+                    buyButton.classList.remove('unequip');
+                    return;
+                }
+                
+                // If user can't afford it
+                if (userBalance < itemPrice) {
+                    buyButton.disabled = true;
+                    buyButton.textContent = 'Not enough coins';
+                    buyButton.classList.remove('equip', 'unequip');
+                } else {
+                    buyButton.disabled = false;
+                    buyButton.textContent = 'Buy';
+                    buyButton.classList.remove('equip', 'unequip');
                 }
             });
         }
@@ -1265,15 +1524,93 @@
                 document.getElementById('shop-balance-display').textContent = transaction.newBalance.toLocaleString();
                 document.getElementById('balance-display').textContent = transaction.newBalance.toLocaleString();
                 
-                // Update buttons state
-                updateShopButtonsState(transaction.newBalance);
+                // Update button to "Equip"
+                const button = document.querySelector(`.buy-button[data-item-id="${itemId}"]`);
+                if (button) {
+                    button.textContent = "Equip";
+                    button.classList.add('equip');
+                }
                 
                 // Show success notification
                 showNotification(`Successfully purchased ${getItemNameById(itemId)}!`, 'success');
                 
+                // Auto-equip the theme after purchase
+                await equipItem(itemId);
+                
             } catch (error) {
                 console.error('Purchase error:', error);
                 showNotification('Failed to complete purchase: ' + error.message, 'error');
+            }
+        }
+        
+        // Function to handle equipping an item
+        async function equipItem(itemId) {
+            if (!auth.currentUser) {
+                showNotification('Please log in to equip items', 'error');
+                return;
+            }
+            
+            try {
+                // Reset all buttons
+                document.querySelectorAll('.buy-button.unequip').forEach(button => {
+                    if (button.dataset.itemId !== itemId) {
+                        button.textContent = "Equip";
+                        button.classList.remove('unequip');
+                        button.classList.add('equip');
+                    }
+                });
+                
+                // Update the button for this item
+                const button = document.querySelector(`.buy-button[data-item-id="${itemId}"]`);
+                if (button) {
+                    button.textContent = "Unequip";
+                    button.classList.remove('equip');
+                    button.classList.add('unequip');
+                }
+                
+                // Equip the theme
+                themeManager.equipTheme(itemId);
+                
+                // Save the preference to user settings
+                await themeManager.saveThemePreference(auth.currentUser.uid, itemId);
+                
+                // Show success notification
+                showNotification(`Equipped ${getItemNameById(itemId)}!`, 'success');
+                
+            } catch (error) {
+                console.error('Equip error:', error);
+                showNotification('Failed to equip item: ' + error.message, 'error');
+            }
+        }
+        
+        // Function to handle unequipping an item
+        async function unequipItem(itemId) {
+            if (!auth.currentUser) {
+                showNotification('Please log in to unequip items', 'error');
+                return;
+            }
+            
+            try {
+                // Update the button for this item
+                const button = document.querySelector(`.buy-button[data-item-id="${itemId}"]`);
+                if (button) {
+                    button.textContent = "Equip";
+                    button.classList.remove('unequip');
+                    button.classList.add('equip');
+                }
+                
+                // Unequip the theme
+                themeManager.unequipTheme();
+                
+                // Save the preference to user settings
+                await themeManager.saveThemePreference(auth.currentUser.uid, null);
+                
+                // Show success notification
+                showNotification(`Unequipped ${getItemNameById(itemId)}`, 'success');
+                
+            } catch (error) {
+                console.error('Unequip error:', error);
+                showNotification('Failed to unequip item: ' + error.message, 'error');
             }
         }
         
@@ -1288,15 +1625,22 @@
             return itemNames[itemId] || 'Unknown Item';
         }
         
-        // Add event listeners to buy buttons
+        // Add event listeners to shop buttons
         document.querySelectorAll('.buy-button').forEach(button => {
             if (button.textContent !== 'Coming Soon') {
-                button.addEventListener('click', function() {
+                button.addEventListener('click', async function() {
                     const itemId = this.dataset.itemId;
                     const itemElement = document.querySelector(`.shop-item[data-item-id="${itemId}"]`);
                     const price = parseInt(itemElement.dataset.price);
                     
-                    purchaseItem(itemId, price);
+                    // Check button state (Buy/Equip/Unequip)
+                    if (this.textContent === 'Buy') {
+                        await purchaseItem(itemId, price);
+                    } else if (this.textContent === 'Equip') {
+                        await equipItem(itemId);
+                    } else if (this.textContent === 'Unequip') {
+                        await unequipItem(itemId);
+                    }
                 });
             }
         });
@@ -1976,10 +2320,10 @@ class VoidLeaderboard {
                     placeholderItem.innerHTML = `
                         <span class="leaderboard-rank">#${i + 1}</span>
                         <div class="leaderboard-username-container">
-                            <span class="leaderboard-username">...</span>
-                        </div>
-                        <span class="leaderboard-balance">--</span>
-                    `;
+<span class="leaderboard-username">...</span>
+                    </div>
+                    <span class="leaderboard-balance">--</span>
+                `;
                     
                     this.leaderboardElement.appendChild(placeholderItem);
                 }
@@ -2234,6 +2578,11 @@ document.getElementById('register-btn')?.addEventListener('click', async () => {
 
 document.getElementById('logout-btn')?.addEventListener('click', async () => {
     try {
+        // Unequip any theme before logging out
+        if (themeManager.currentTheme) {
+            themeManager.unequipTheme();
+        }
+        
         await voidAccounting.logout();
         updateUIForLoggedOutUser();
         
@@ -2260,6 +2609,9 @@ async function updateUIForLoggedInUser(user) {
         document.getElementById('username-display').textContent = userDetails.username;
         document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
         console.log("Updated UI with balance:", userDetails.accountBalance);
+        
+        // Load user's theme if they have one equipped
+        await themeManager.loadUserTheme(user.uid);
     } catch (error) {
         console.error("Error updating UI:", error);
         alert('Could not load user details. Please try again.');
@@ -2279,47 +2631,50 @@ onAuthStateChanged(auth, async (user) => {
         await updateUIForLoggedInUser(user);
         
         // DIRECT ADMIN CHECK - First check for either admin email or the hardcoded UID
-if (user.email === 'void.client@yandex.com' || user.uid === 'uEAVXhBHdAewP77mNVkEzsGSO0J3') {
-    console.log("Admin user detected:", user.email, user.uid);
-    
-    // Create or update admin access document regardless of verification
-    await setDoc(doc(db, 'admin_access', user.uid), {
-        isAdmin: true,
-        email: user.email,
-        createdAt: new Date(),
-        lastVerified: new Date()
-    });
-    
-    // Call prepareForLiveData to set up leaderboard and admin button
-    prepareForLiveData();
-    
-    // DIRECT ADMIN BUTTON - Add admin button directly to make sure it appears
-    setTimeout(() => {
-        console.log("Adding admin button directly");
-        const leaderboardTitle = document.querySelector('.leaderboard-title');
-        if (leaderboardTitle && !document.getElementById('admin-leaderboard-btn')) {
-            const adminBtn = document.createElement('span');
-            adminBtn.id = 'admin-leaderboard-btn';
-            adminBtn.innerHTML = '⊖'; // Circle with minus symbol
-            adminBtn.style.marginLeft = '10px';
-            adminBtn.style.cursor = 'pointer';
-            adminBtn.style.fontSize = '0.9em';
-            adminBtn.style.color = '#ff6b6b'; // Red color to indicate admin function
-            adminBtn.title = 'Admin controls';
-            adminBtn.addEventListener('click', function(e) {
-                e.stopPropagation(); // Don't trigger the toggle
-                adminControls.showPopup();
+        if (user.email === 'void.client@yandex.com' || user.uid === 'uEAVXhBHdAewP77mNVkEzsGSO0J3') {
+            console.log("Admin user detected:", user.email, user.uid);
+            
+            // Create or update admin access document regardless of verification
+            await setDoc(doc(db, 'admin_access', user.uid), {
+                isAdmin: true,
+                email: user.email,
+                createdAt: new Date(),
+                lastVerified: new Date()
             });
-            leaderboardTitle.appendChild(adminBtn);
-            console.log("Admin button added successfully");
-        } else {
-            console.log("Could not find leaderboard title or button already exists");
+            
+            // Call prepareForLiveData to set up leaderboard and admin button
+            prepareForLiveData();
+            
+            // DIRECT ADMIN BUTTON - Add admin button directly to make sure it appears
+            setTimeout(() => {
+                console.log("Adding admin button directly");
+                const leaderboardTitle = document.querySelector('.leaderboard-title');
+                if (leaderboardTitle && !document.getElementById('admin-leaderboard-btn')) {
+                    const adminBtn = document.createElement('span');
+                    adminBtn.id = 'admin-leaderboard-btn';
+                    adminBtn.innerHTML = '⊖'; // Circle with minus symbol
+                    adminBtn.style.marginLeft = '10px';
+                    adminBtn.style.cursor = 'pointer';
+                    adminBtn.style.fontSize = '0.9em';
+                    adminBtn.style.color = '#ff6b6b'; // Red color to indicate admin function
+                    adminBtn.title = 'Admin controls';
+                    adminBtn.addEventListener('click', function(e) {
+                        e.stopPropagation(); // Don't trigger the toggle
+                        adminControls.showPopup();
+                    });
+                    leaderboardTitle.appendChild(adminBtn);
+                    console.log("Admin button added successfully");
+                } else {
+                    console.log("Could not find leaderboard title or button already exists");
+                }
+            }, 1500); // Add a delay to ensure DOM is ready
         }
-    }, 1500); // Add a delay to ensure DOM is ready
-}
     } else {
         console.log("Auth state changed: User is signed out");
         updateUIForLoggedOutUser();
+        
+        // Make sure theme is unequipped when logged out
+        themeManager.unequipTheme();
     }
 });
 
@@ -2528,6 +2883,6 @@ window.addEventListener('load', async () => {
 window.addEventListener('beforeunload', () => {
     voidLeaderboard.stopLeaderboardUpdates();
 });
-</script>
+    </script>
 </body>
 </html>
