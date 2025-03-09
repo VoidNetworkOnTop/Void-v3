@@ -641,28 +641,57 @@
             }
         }
 
-        // ADD THIS FUNCTION: Mark deleted users from Firebase Auth
+        // MODIFIED: Mark deleted users in local storage instead of Firestore
         async function markUserAsDeletedFromAuth(userId, reason = 'unknown') {
             try {
                 console.log(`Marking user ${userId} as deleted from Auth (reason: ${reason})`);
                 
-                const userRef = doc(db, 'users', userId);
-                await updateDoc(userRef, {
-                    auth_deleted: true,
-                    auth_deleted_reason: reason,
-                    auth_deleted_at: new Date()
-                });
+                // Check if we have write permissions
+                let hasWritePermission = false;
+                if (auth.currentUser) {
+                    try {
+                        // Try to write to the user's own document first
+                        if (userId === auth.currentUser.uid) {
+                            const userRef = doc(db, 'users', userId);
+                            await updateDoc(userRef, {
+                                auth_deleted: true,
+                                auth_deleted_reason: reason,
+                                auth_deleted_at: new Date()
+                            });
+                            hasWritePermission = true;
+                            console.log("Successfully marked user as deleted in Firestore");
+                        } else if (isAdminUser()) {
+                            // If admin, we can update any user
+                            const userRef = doc(db, 'users', userId);
+                            await updateDoc(userRef, {
+                                auth_deleted: true,
+                                auth_deleted_reason: reason,
+                                auth_deleted_at: new Date()
+                            });
+                            hasWritePermission = true;
+                            console.log("Admin successfully marked user as deleted in Firestore");
+                        }
+                    } catch (error) {
+                        console.log("No write permission, using local storage instead:", error.message);
+                        hasWritePermission = false;
+                    }
+                }
                 
-                console.log(`Successfully marked user ${userId} as deleted`);
+                // If we don't have write permission, store in localStorage
+                if (!hasWritePermission) {
+                    // Store in local storage using the leaderboard helper
+                    voidLeaderboard.addDeletedAuthId(userId);
+                }
                 
                 // Refresh the leaderboard to reflect changes
                 refreshLeaderboard();
+                
             } catch (error) {
                 console.error(`Error marking user ${userId} as deleted:`, error);
             }
         }
 
-        // ADD THIS FUNCTION: Check for orphaned user accounts
+        // MODIFIED: Check for orphaned user accounts with permission safety
         async function checkForOrphanedUsers() {
             // Only proceed if we have a logged-in user (for security)
             if (!auth.currentUser) {
@@ -672,18 +701,26 @@
             try {
                 console.log("Checking for orphaned user accounts...");
                 
+                // First verify if we have write permissions
+                let hasWritePermission = false;
+                try {
+                    const userRef = doc(db, 'users', auth.currentUser.uid);
+                    await updateDoc(userRef, {
+                        lastActivity: new Date()
+                    });
+                    hasWritePermission = true;
+                } catch (permError) {
+                    console.log("No write permissions, using local storage for deleted users");
+                    hasWritePermission = false;
+                }
+                
+                // Only admin can check for orphaned users efficiently
+                const isAdmin = await verifyAdminAccess();
+                
                 // Get users that haven't been checked for deletion recently
                 const usersRef = collection(db, 'users');
-                const oneMonthAgo = new Date();
-                oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-                
-                // Check users who:
-                // 1. Haven't been marked as deleted
-                // 2. Haven't been checked recently or never checked
-                // 3. Haven't been active in a while
                 const q = query(
                     usersRef,
-                    where('auth_deleted', '==', false),
                     limit(5) // Process in small batches for performance
                 );
                 
@@ -697,31 +734,52 @@
                 console.log(`Found ${querySnapshot.size} users to check for orphaned accounts`);
                 
                 // We'll add this to auth state changes to detect when users might have been deleted
-                for (const doc of querySnapshot.docs) {
-                    const userId = doc.id;
-                    const userData = doc.data();
+                for (const docSnapshot of querySnapshot.docs) {
+                    const userId = docSnapshot.id;
+                    const userData = docSnapshot.data();
                     
                     // Skip the current user (we know they exist)
                     if (userId === auth.currentUser.uid) {
                         continue;
                     }
                     
-                    // Mark user as checked
-                    await updateDoc(doc.ref, {
-                        auth_checked_at: new Date()
-                    });
+                    // Check if user is very inactive (potential orphan)
+                    const lastActivity = userData.lastActivity ? 
+                        (userData.lastActivity.toDate ? userData.lastActivity.toDate() : userData.lastActivity) : 
+                        null;
                     
-                    // If the user hasn't been active for a very long time, mark them as potentially deleted
-                    const lastActivity = userData.lastActivity ? userData.lastActivity.toDate() : null;
-                    const longInactive = lastActivity && (new Date() - lastActivity > 180 * 24 * 60 * 60 * 1000); // 180 days
+                    const longInactive = lastActivity && 
+                        (new Date() - lastActivity > 180 * 24 * 60 * 60 * 1000); // 180 days
                     
                     if (longInactive) {
                         console.log(`User ${userData.username} has been inactive for over 6 months`);
-                        await markUserAsDeletedFromAuth(userId, 'long_inactivity');
+                        
+                        // If we have write permission and we're admin, update the database
+                        if (hasWritePermission && isAdmin) {
+                            try {
+                                await updateDoc(docSnapshot.ref, {
+                                    auth_deleted: true,
+                                    auth_deleted_reason: 'long_inactivity',
+                                    auth_deleted_at: new Date()
+                                });
+                                console.log(`Marked inactive user ${userData.username} as deleted in Firestore`);
+                            } catch (error) {
+                                console.log("Permission error updating inactive user:", error);
+                                // Fallback to local storage
+                                voidLeaderboard.addDeletedAuthId(userId);
+                            }
+                        } else {
+                            // Otherwise, use the local storage approach
+                            voidLeaderboard.addDeletedAuthId(userId);
+                            console.log(`Added inactive user ${userData.username} to local deleted list`);
+                        }
                     }
                 }
                 
                 console.log("Finished checking for orphaned user accounts");
+                
+                // Refresh the leaderboard to reflect any changes
+                refreshLeaderboard();
             } catch (error) {
                 console.error("Error checking for orphaned users:", error);
             }
@@ -1032,12 +1090,16 @@ class VoidNetworkAccounting {
             const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
             console.log("User logged in successfully:", userCredential.user.uid);
             
-            // Update last activity timestamp
-            const userRef = doc(this.db, 'users', userCredential.user.uid);
-            await updateDoc(userRef, {
-                lastActivity: new Date(),
-                auth_deleted: false // Ensure this is set to false if they can log in
-            });
+            // Try to update last activity timestamp (may fail if no permission)
+            try {
+                const userRef = doc(this.db, 'users', userCredential.user.uid);
+                await updateDoc(userRef, {
+                    lastActivity: new Date(),
+                    auth_deleted: false // Ensure this is set to false if they can log in
+                });
+            } catch (updateError) {
+                console.log("Could not update lastActivity due to permissions, continuing anyway");
+            }
             
             return userCredential.user;
         } catch (error) {
@@ -1057,9 +1119,13 @@ class VoidNetworkAccounting {
                     if (!querySnapshot.empty) {
                         console.log(`Found ${querySnapshot.size} matching user(s) for ${email}`);
                         
+                        // Store deleted user IDs in local storage instead of writing to Firestore
                         querySnapshot.forEach((doc) => {
-                            markUserAsDeletedFromAuth(doc.id, error.code);
+                            voidLeaderboard.addDeletedAuthId(doc.id);
                         });
+                        
+                        // Refresh the leaderboard to apply the changes
+                        refreshLeaderboard();
                     } else {
                         console.log(`No matching users found for ${email}`);
                     }
@@ -1111,10 +1177,14 @@ class VoidNetworkAccounting {
             const userData = userDoc.data();
             console.log("Retrieved user data:", userData.username, "Balance:", userData.accountBalance);
             
-            // Update last activity timestamp
-            await updateDoc(userRef, {
-                lastActivity: new Date()
-            });
+            // Try to update last activity timestamp but don't fail if no permission
+            try {
+                await updateDoc(userRef, {
+                    lastActivity: new Date()
+                });
+            } catch (permError) {
+                console.log("Could not update lastActivity (permissions)");
+            }
             
             return userData;
         } catch (error) {
@@ -1226,6 +1296,33 @@ class VoidLeaderboard {
         const toggleBtn = document.getElementById('leaderboardToggle');
         if (toggleBtn) {
             toggleBtn.addEventListener('click', () => this.toggleLeaderboard());
+        }
+    }
+    
+    // NEW: Get a list of known deleted auth user IDs from local storage
+    getDeletedAuthIds() {
+        try {
+            const storedIds = localStorage.getItem('void_deleted_auth_ids');
+            return storedIds ? JSON.parse(storedIds) : [];
+        } catch (error) {
+            console.error("Error getting deleted auth IDs:", error);
+            return [];
+        }
+    }
+    
+    // NEW: Add a user ID to the list of known deleted auth users
+    addDeletedAuthId(userId) {
+        try {
+            const deletedIds = this.getDeletedAuthIds();
+            if (!deletedIds.includes(userId)) {
+                deletedIds.push(userId);
+                localStorage.setItem('void_deleted_auth_ids', JSON.stringify(deletedIds));
+                console.log(`Added ${userId} to local deleted auth users list`);
+            }
+            return true;
+        } catch (error) {
+            console.error("Error adding deleted auth ID:", error);
+            return false;
         }
     }
     
@@ -1467,7 +1564,7 @@ class VoidLeaderboard {
         }
     }
     
-    // UPDATED: Update leaderboard UI with fresh data - Now also filters out auth_deleted users
+    // UPDATED: Update leaderboard UI with fresh data - Now also filters out auth_deleted users from local storage
     updateLeaderboardUI(querySnapshot) {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
@@ -1484,20 +1581,28 @@ class VoidLeaderboard {
         
         console.log("Updating leaderboard with new data");
         
+        // Get the list of locally tracked deleted users
+        const deletedAuthIds = new Set(this.getDeletedAuthIds());
+        
         // Filter out any deleted documents, banned users, and users deleted from Auth
         const validDocs = [];
         querySnapshot.forEach((doc) => {
             if (doc.exists()) {
                 const userData = doc.data();
-                // Skip banned users and Auth-deleted users
-                if (!userData.banned && !userData.auth_deleted) {
+                const userId = doc.id;
+                
+                // Skip banned users, auth_deleted users, and locally tracked deleted users
+                if (!userData.banned && !userData.auth_deleted && !deletedAuthIds.has(userId)) {
                     validDocs.push(doc);
                 } else {
                     if (userData.banned) {
                         console.log(`Skipping banned user: ${userData.username}`);
                     }
                     if (userData.auth_deleted) {
-                        console.log(`Skipping Auth-deleted user: ${userData.username}`);
+                        console.log(`Skipping Firestore-marked Auth-deleted user: ${userData.username}`);
+                    }
+                    if (deletedAuthIds.has(userId)) {
+                        console.log(`Skipping locally-tracked deleted user: ${userData.username}`);
                     }
                 }
             } else {
@@ -1595,6 +1700,9 @@ class VoidLeaderboard {
             const userData = userDoc.data();
             const lastBalance = userData.accountBalance;
             
+            // Get the list of locally tracked deleted users
+            const deletedAuthIds = new Set(this.getDeletedAuthIds());
+            
             // Query for more users with lower balance
             const usersRef = collection(db, 'users');
             const q = query(
@@ -1611,7 +1719,10 @@ class VoidLeaderboard {
             querySnapshot.forEach((doc) => {
                 if (doc.exists()) {
                     const userData = doc.data();
-                    if (!userData.banned && !userData.auth_deleted) {
+                    const userId = doc.id;
+                    
+                    // Skip banned users, auth_deleted users, and locally tracked deleted users
+                    if (!userData.banned && !userData.auth_deleted && !deletedAuthIds.has(userId)) {
                         validDocs.push(doc);
                     }
                 }
@@ -2116,7 +2227,7 @@ document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
         const args = Array.from(arguments);
         const joinedArgs = args.join(' ');
         
-        // Check for suspicious console commands
+// Check for suspicious console commands
         if (joinedArgs.includes('isAdminUser') || 
             joinedArgs.includes('adminControls') || 
             joinedArgs.includes('banUser') ||
@@ -2133,7 +2244,7 @@ document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
     };
 })();
 
-// Load apps and start leaderboard on page load
+// MODIFIED: Load apps and start leaderboard on page load - with permission checking
 window.addEventListener('load', async () => {
     try {
         console.log("Page loaded, initializing app");
@@ -2152,22 +2263,45 @@ window.addEventListener('load', async () => {
             await updateUIForLoggedInUser(user);
         }
         
-        // Ensure each user has auth_deleted field set
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, limit(50));
-        const snapshot = await getDocs(q);
-        
-        snapshot.forEach(async (userDoc) => {
-            if (userDoc.exists()) {
-                const userData = userDoc.data();
-                if (userData.auth_deleted === undefined) {
-                    console.log(`Adding auth_deleted field to user ${userDoc.id}`);
-                    await updateDoc(doc(db, 'users', userDoc.id), {
-                        auth_deleted: false
+        // Initialize auth_deleted field with permission checking
+        try {
+            // Check permissions by trying to update a single field on current user
+            if (auth.currentUser) {
+                const userRef = doc(db, 'users', auth.currentUser.uid);
+                
+                try {
+                    await updateDoc(userRef, {
+                        lastActivity: new Date()
                     });
+                    
+                    console.log("User has write permissions, proceeding with initializing auth_deleted field");
+                    
+                    // Only initialize a small batch of users (5 at a time)
+                    const usersRef = collection(db, 'users');
+                    const q = query(usersRef, limit(5));
+                    const snapshot = await getDocs(q);
+                    
+                    snapshot.forEach(async (userDoc) => {
+                        if (userDoc.exists()) {
+                            const userData = userDoc.data();
+                            if (userData.auth_deleted === undefined) {
+                                console.log(`Adding auth_deleted field to user ${userDoc.id}`);
+                                await updateDoc(doc(db, 'users', userDoc.id), {
+                                    auth_deleted: false
+                                });
+                            }
+                        }
+                    });
+                } catch (permError) {
+                    console.log("Insufficient permissions for direct updates, using local storage instead");
+                    // We'll use the local storage approach instead
                 }
+            } else {
+                console.log("No authenticated user, skipping auth_deleted field initialization");
             }
-        });
+        } catch (err) {
+            console.log("Error during auth_deleted initialization:", err);
+        }
     } catch (err) {
         console.error('Error during initialization:', err);
     }
