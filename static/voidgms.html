@@ -914,7 +914,7 @@
     </div>
 
     <!-- Improved Shop Container with New Themes -->
-    <div id="shop-container">
+    <div id="shop-container" style="display: none;">
         <button class="shop-close">&times;</button>
         <div class="shop-header">
             <h2 class="shop-title">Void Network Shop</h2>
@@ -1519,14 +1519,28 @@
             }
         };
 
+        // Make sure shop container is properly hidden on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const shopContainer = document.getElementById('shop-container');
+            if (shopContainer) {
+                shopContainer.style.display = 'none';
+                shopContainer.classList.remove('visible');
+            }
+        });
+
         // FIXED: Profile Icon Toggle Functionality
         const profileIcon = document.getElementById('profile-icon');
         const authContainer = document.getElementById('auth-container');
         
-        profileIcon.addEventListener('click', () => {
+        profileIcon.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent click from bubbling up
+            
             // Close shop container if open
-            shopContainer.style.display = 'none';
-            shopContainer.classList.remove('visible');
+            const shopContainer = document.getElementById('shop-container');
+            if (shopContainer) {
+                shopContainer.style.display = 'none';
+                shopContainer.classList.remove('visible');
+            }
             
             // Toggle visibility of auth container with animation
             if (authContainer.style.display === 'block') {
@@ -1557,12 +1571,13 @@
             }
         });
 
-        // Shop Icon Toggle Functionality
+        // Improved Shop Icon Toggle Functionality
         const shopIcon = document.getElementById('shop-icon');
         const shopContainer = document.getElementById('shop-container');
-        const shopCloseBtn = document.querySelector('.shop-close');
         
-        shopIcon.addEventListener('click', async () => {
+        shopIcon.addEventListener('click', async (e) => {
+            e.stopPropagation(); // Prevent click from bubbling up
+            
             // Close auth container if open
             authContainer.style.display = 'none';
             authContainer.classList.remove('visible');
@@ -1613,12 +1628,44 @@
             }
         });
         
-        // Shop close button
-        shopCloseBtn.addEventListener('click', () => {
+        // Improved shop close button
+        const shopCloseBtn = document.querySelector('.shop-close');
+        shopCloseBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent click from bubbling up
             shopContainer.classList.remove('visible');
             setTimeout(() => {
                 shopContainer.style.display = 'none';
             }, 300);
+        });
+
+        // Improved click-outside handling
+        document.addEventListener('click', (event) => {
+            const profileIcon = document.getElementById('profile-icon');
+            const authContainer = document.getElementById('auth-container');
+            const shopIcon = document.getElementById('shop-icon');
+            const shopContainer = document.getElementById('shop-container');
+            
+            // Only process if the elements exist and are visible
+            if (shopContainer && shopContainer.style.display === 'block') {
+                // Check if click was outside the shop and not on the shop icon
+                if (!shopContainer.contains(event.target) && !shopIcon.contains(event.target)) {
+                    // Close shop container
+                    shopContainer.classList.remove('visible');
+                    setTimeout(() => {
+                        shopContainer.style.display = 'none';
+                    }, 300);
+                }
+            }
+            
+            if (authContainer && authContainer.style.display === 'block') {
+                if (!authContainer.contains(event.target) && !profileIcon.contains(event.target)) {
+                    // Close auth container
+                    authContainer.classList.remove('visible');
+                    setTimeout(() => {
+                        authContainer.style.display = 'none';
+                    }, 300);
+                }
+            }
         });
 
         // Update shop buttons based on user balance and purchased items
@@ -1855,31 +1902,6 @@
                         await unequipItem(itemId);
                     }
                 });
-            }
-        });
-
-        // Close containers when clicking outside
-        document.addEventListener('click', (event) => {
-            if (!profileIcon.contains(event.target) && 
-                !authContainer.contains(event.target) && 
-                !shopIcon.contains(event.target) && 
-                !shopContainer.contains(event.target)) {
-                
-                // Close auth container
-                if (authContainer.style.display === 'block') {
-                    authContainer.classList.remove('visible');
-                    setTimeout(() => {
-                        authContainer.style.display = 'none';
-                    }, 300);
-                }
-                
-                // Close shop container
-                if (shopContainer.style.display === 'block') {
-                    shopContainer.classList.remove('visible');
-                    setTimeout(() => {
-                        shopContainer.style.display = 'none';
-                    }, 300);
-                }
             }
         });
 
@@ -2201,205 +2223,314 @@ class VoidLeaderboard {
         }
     }
     
-    // Handle leaderboard errors with retry mechanism
-    handleLeaderboardError(message) {
-        // Clear any existing retries
-        if (this.retryTimeout) {
-            clearTimeout(this.retryTimeout);
-        }
-        
-        // Show error with retry button if we haven't reached max retries
-        if (this.retryCount < this.maxRetries) {
-            this.retryCount++;
-            
-const remainingRetries = this.maxRetries - this.retryCount + 1;
-            
-            if (this.leaderboardElement) {
-                this.leaderboardElement.innerHTML = `
-                    <div class="leaderboard-error">${message}</div>
-                    <div class="leaderboard-retry">
-                        <button id="retry-leaderboard">Retry (${remainingRetries} left)</button>
-                    </div>
-                `;
-                
-                // Add event listener to retry button
-                const retryBtn = document.getElementById('retry-leaderboard');
-                if (retryBtn) {
-                    retryBtn.addEventListener('click', () => {
-                        this.startLeaderboardUpdates();
-                    });
-                }
-            }
-            
-            // Auto-retry after a delay (with exponential backoff)
-            const backoffTime = Math.min(2000 * Math.pow(2, this.retryCount - 1), 30000);
-            this.retryTimeout = setTimeout(() => {
-                console.log(`Auto-retrying leaderboard (attempt ${this.retryCount})`);
-                this.startLeaderboardUpdates();
-            }, backoffTime);
-            
-        } else {
-            // Max retries reached, show fallback content
-            this.showFallbackLeaderboard();
-        }
+// Handle leaderboard errors with retry mechanism
+handleLeaderboardError(message) {
+    // Clear any existing retries
+    if (this.retryTimeout) {
+        clearTimeout(this.retryTimeout);
     }
     
-    // Show fallback static leaderboard - Updated to show 20 players
-    showFallbackLeaderboard() {
+    // Show error with retry button if we haven't reached max retries
+    if (this.retryCount < this.maxRetries) {
+        this.retryCount++;
+        
+        const remainingRetries = this.maxRetries - this.retryCount + 1;
+        
         if (this.leaderboardElement) {
-            // Clear any existing timeout
-            if (this.loadTimeout) {
-                clearTimeout(this.loadTimeout);
-            }
-            
-            // Clear any existing unsubscribe
-            if (this.unsubscribe) {
-                this.unsubscribe();
-                this.unsubscribe = null;
-            }
-            
-            // Create static leaderboard with 20 players
-            let fallbackHTML = '';
-            const fallbackNames = [
-                'Void Network', 'VoidNetworkOnTop', 'GameMaster', 'VoidPlayer', 'GamerPro',
-                'CoinMaster', 'LuckyStrike', 'VoidChampion', 'GoldRush', 'MegaGamer',
-                'ProPlayer', 'LuckyOne', 'TopGun', 'VoidDreamer', 'StarGazer',
-                'CosmicWinner', 'MegaMind', 'VoidKnight', 'GalaxyRacer', 'LuckyCharm'
-            ];
-            
-            const fallbackBalances = [
-                89750, 85420, 48300, 36250, 29840,
-                27500, 23450, 21000, 19500, 17800,
-                15600, 14200, 12800, 11500, 10200,
-                9800, 8500, 7200, 6500, 5800
-            ];
-            
-            for (let i = 0; i < 20; i++) {
-                fallbackHTML += `
-                    <div class="leaderboard-item">
-                        <span class="leaderboard-rank">#${i+1}</span>
-                        <div class="leaderboard-username-container">
-                            <span class="leaderboard-username">${fallbackNames[i]}</span>
-                        </div>
-                        <span class="leaderboard-balance">${fallbackBalances[i].toLocaleString()}</span>
-                    </div>
-                `;
-            }
-            
-            fallbackHTML += `
-                <div class="leaderboard-message" style="text-align: center; margin-top: 10px; color: rgba(255,255,255,0.5); font-size: 0.8rem;">
-                    Offline leaderboard
+            this.leaderboardElement.innerHTML = `
+                <div class="leaderboard-error">${message}</div>
+                <div class="leaderboard-retry">
+                    <button id="retry-leaderboard">Retry (${remainingRetries} left)</button>
                 </div>
             `;
             
-            this.leaderboardElement.innerHTML = fallbackHTML;
-            
-            // Style Void Network specially in the fallback
-            const usernameElements = this.leaderboardElement.querySelectorAll('.leaderboard-username');
-            usernameElements.forEach(el => {
-                if (el.textContent === 'Void Network' || el.textContent === 'VoidNetworkOnTop') {
-                    el.style.color = '#1DA1F2';
-                    el.style.textShadow = '0 0 5px rgba(29, 161, 242, 0.3)';
-                    el.style.fontWeight = 'bold';
-                    
-                    // Add verification badge if it doesn't exist
-                    if (!el.querySelector('.verified-badge')) {
-                        const badge = document.createElement('span');
-                        badge.className = 'verified-badge';
-                        badge.textContent = '✓';
-                        badge.style.marginLeft = '4px';
-                        badge.style.color = '#1DA1F2';
-                        el.appendChild(badge);
-                    }
-                }
-            });
-            
-            // Add success styling to show this loaded properly
-            this.leaderboardElement.querySelectorAll('.leaderboard-item').forEach(item => {
-                item.classList.add('leaderboard-updated');
-                setTimeout(() => {
-                    item.classList.remove('leaderboard-updated');
-                }, 1000);
-            });
-        }
-    }
-    
-    // Stop leaderboard updates
-    stopLeaderboardUpdates() {
-        if (this.unsubscribe) {
-            console.log("Stopping leaderboard updates");
-            this.unsubscribe();
-            this.unsubscribe = null;
+            // Add event listener to retry button
+            const retryBtn = document.getElementById('retry-leaderboard');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', () => {
+                    this.startLeaderboardUpdates();
+                });
+            }
         }
         
-        // Clear any pending timeouts
+        // Auto-retry after a delay (with exponential backoff)
+        const backoffTime = Math.min(2000 * Math.pow(2, this.retryCount - 1), 30000);
+        this.retryTimeout = setTimeout(() => {
+            console.log(`Auto-retrying leaderboard (attempt ${this.retryCount})`);
+            this.startLeaderboardUpdates();
+        }, backoffTime);
+        
+    } else {
+        // Max retries reached, show fallback content
+        this.showFallbackLeaderboard();
+    }
+}
+
+// Show fallback static leaderboard - Updated to show 20 players
+showFallbackLeaderboard() {
+    if (this.leaderboardElement) {
+        // Clear any existing timeout
         if (this.loadTimeout) {
             clearTimeout(this.loadTimeout);
         }
         
-        if (this.retryTimeout) {
-            clearTimeout(this.retryTimeout);
+        // Clear any existing unsubscribe
+        if (this.unsubscribe) {
+            this.unsubscribe();
+            this.unsubscribe = null;
+        }
+        
+        // Create static leaderboard with 20 players
+        let fallbackHTML = '';
+        const fallbackNames = [
+            'Void Network', 'VoidNetworkOnTop', 'GameMaster', 'VoidPlayer', 'GamerPro',
+            'CoinMaster', 'LuckyStrike', 'VoidChampion', 'GoldRush', 'MegaGamer',
+            'ProPlayer', 'LuckyOne', 'TopGun', 'VoidDreamer', 'StarGazer',
+            'CosmicWinner', 'MegaMind', 'VoidKnight', 'GalaxyRacer', 'LuckyCharm'
+        ];
+        
+        const fallbackBalances = [
+            89750, 85420, 48300, 36250, 29840,
+            27500, 23450, 21000, 19500, 17800,
+            15600, 14200, 12800, 11500, 10200,
+            9800, 8500, 7200, 6500, 5800
+        ];
+        
+        for (let i = 0; i < 20; i++) {
+            fallbackHTML += `
+                <div class="leaderboard-item">
+                    <span class="leaderboard-rank">#${i+1}</span>
+                    <div class="leaderboard-username-container">
+                        <span class="leaderboard-username">${fallbackNames[i]}</span>
+                    </div>
+                    <span class="leaderboard-balance">${fallbackBalances[i].toLocaleString()}</span>
+                </div>
+            `;
+        }
+        
+        fallbackHTML += `
+            <div class="leaderboard-message" style="text-align: center; margin-top: 10px; color: rgba(255,255,255,0.5); font-size: 0.8rem;">
+                Offline leaderboard
+            </div>
+        `;
+        
+        this.leaderboardElement.innerHTML = fallbackHTML;
+        
+        // Style Void Network specially in the fallback
+        const usernameElements = this.leaderboardElement.querySelectorAll('.leaderboard-username');
+        usernameElements.forEach(el => {
+            if (el.textContent === 'Void Network' || el.textContent === 'VoidNetworkOnTop') {
+                el.style.color = '#1DA1F2';
+                el.style.textShadow = '0 0 5px rgba(29, 161, 242, 0.3)';
+                el.style.fontWeight = 'bold';
+                
+                // Add verification badge if it doesn't exist
+                if (!el.querySelector('.verified-badge')) {
+                    const badge = document.createElement('span');
+                    badge.className = 'verified-badge';
+                    badge.textContent = '✓';
+                    badge.style.marginLeft = '4px';
+                    badge.style.color = '#1DA1F2';
+                    el.appendChild(badge);
+                }
+            }
+        });
+        
+        // Add success styling to show this loaded properly
+        this.leaderboardElement.querySelectorAll('.leaderboard-item').forEach(item => {
+            item.classList.add('leaderboard-updated');
+            setTimeout(() => {
+                item.classList.remove('leaderboard-updated');
+            }, 1000);
+        });
+    }
+}
+
+// Stop leaderboard updates
+stopLeaderboardUpdates() {
+    if (this.unsubscribe) {
+        console.log("Stopping leaderboard updates");
+        this.unsubscribe();
+        this.unsubscribe = null;
+    }
+    
+    // Clear any pending timeouts
+    if (this.loadTimeout) {
+        clearTimeout(this.loadTimeout);
+    }
+    
+    if (this.retryTimeout) {
+        clearTimeout(this.retryTimeout);
+    }
+}
+
+// Update leaderboard UI with fresh data - IMPROVED to always show exactly 20 users
+updateLeaderboardUI(querySnapshot) {
+    if (!this.leaderboardElement) {
+        console.error("Leaderboard element not found");
+        return;
+    }
+    
+    // Always clear the leaderboard completely first
+    this.leaderboardElement.innerHTML = '';
+    
+    if (querySnapshot.empty) {
+        this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+        return;
+    }
+    
+    console.log("Updating leaderboard with new data");
+    
+    // Filter out any deleted documents and banned users before processing
+    const validDocs = [];
+    querySnapshot.forEach((doc) => {
+        if (doc.exists()) {
+            const userData = doc.data();
+            // Skip banned users
+            if (!userData.banned) {
+                validDocs.push(doc);
+            } else {
+                console.log(`Skipping banned user: ${userData.username}`);
+            }
+        } else {
+            console.log("Skipping deleted document in leaderboard");
+        }
+    });
+    
+    // If all documents were filtered out, show empty state
+    if (validDocs.length === 0) {
+        this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+        return;
+    }
+    
+    // Only take the first 20 valid users for display
+    const topUsers = validDocs.slice(0, 20);
+    
+    // If we don't have 20 users yet, we need to show a loading indicator for the rest
+    const userCount = topUsers.length;
+    
+    // Create leaderboard items from valid documents
+    topUsers.forEach((doc, index) => {
+        const userData = doc.data();
+        const leaderboardItem = document.createElement('div');
+        leaderboardItem.className = 'leaderboard-item';
+        leaderboardItem.dataset.userId = doc.id; // Store user ID for reference
+        
+        // Add animation class for new/updated items
+        leaderboardItem.classList.add('leaderboard-updated');
+        
+        // Create structure with username container for proper text truncation
+        leaderboardItem.innerHTML = `
+            <span class="leaderboard-rank">#${index + 1}</span>
+            <div class="leaderboard-username-container">
+                <span class="leaderboard-username">${userData.username || 'Unknown'}</span>
+            </div>
+            <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+        `;
+        
+        this.leaderboardElement.appendChild(leaderboardItem);
+        
+        // Remove animation class after animation is complete
+        setTimeout(() => {
+            leaderboardItem.classList.remove('leaderboard-updated');
+        }, 1000);
+    });
+    
+    // If we have fewer than 20 users, add placeholder rows to reach 20
+    if (userCount < 20) {
+        for (let i = userCount; i < 20; i++) {
+            const placeholderItem = document.createElement('div');
+            placeholderItem.className = 'leaderboard-item';
+            
+            placeholderItem.innerHTML = `
+                <span class="leaderboard-rank">#${i + 1}</span>
+                <div class="leaderboard-username-container">
+                    <span class="leaderboard-username">...</span>
+                </div>
+                <span class="leaderboard-balance">--</span>
+            `;
+            
+            this.leaderboardElement.appendChild(placeholderItem);
         }
     }
     
-    // Update leaderboard UI with fresh data - IMPROVED to always show exactly 20 users
-    updateLeaderboardUI(querySnapshot) {
-        if (!this.leaderboardElement) {
-            console.error("Leaderboard element not found");
-            return;
-        }
+    console.log(`Leaderboard updated with ${topUsers.length} players`);
+    
+    // Find and highlight Void Network
+    findAndHighlightVoidNetwork();
+    
+    // If we don't have a full 20 non-banned users, try to fetch more
+    if (userCount < 20 && validDocs.length === topUsers.length) {
+        console.log("Not enough players for a full leaderboard, fetching more");
+        this.fetchMoreUsers(userCount);
+    }
+}
+
+// New method to fetch more users if we don't have 20 yet
+async fetchMoreUsers(currentCount) {
+    try {
+        // Only proceed if we already have some users but fewer than 20
+        if (currentCount <= 0 || currentCount >= 20) return;
         
-        // Always clear the leaderboard completely first
-        this.leaderboardElement.innerHTML = '';
+        // Get the last user's balance as the starting point
+        const lastRank = this.leaderboardElement.querySelectorAll('.leaderboard-item')[currentCount - 1];
+        if (!lastRank) return;
         
-        if (querySnapshot.empty) {
-            this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
-            return;
-        }
+        // Get ID from data attribute
+        const lastUserId = lastRank.dataset.userId;
+        if (!lastUserId) return;
         
-        console.log("Updating leaderboard with new data");
+        // Get the user document to find their balance
+        const userDoc = await getDoc(doc(db, 'users', lastUserId));
+        if (!userDoc.exists()) return;
         
-        // Filter out any deleted documents and banned users before processing
+        const userData = userDoc.data();
+        const lastBalance = userData.accountBalance;
+        
+        // Query for more users with lower balance
+        const usersRef = collection(db, 'users');
+        const q = query(
+            usersRef, 
+            orderBy('accountBalance', 'desc'),
+            where('accountBalance', '<', lastBalance),
+            limit(40) // Get more to account for potential banned users
+        );
+        
+        const querySnapshot = await getDocs(q);
+        
+        // Filter out banned users
         const validDocs = [];
         querySnapshot.forEach((doc) => {
             if (doc.exists()) {
                 const userData = doc.data();
-                // Skip banned users
                 if (!userData.banned) {
                     validDocs.push(doc);
-                } else {
-                    console.log(`Skipping banned user: ${userData.username}`);
                 }
-            } else {
-                console.log("Skipping deleted document in leaderboard");
             }
         });
         
-        // If all documents were filtered out, show empty state
-        if (validDocs.length === 0) {
-            this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
-            return;
-        }
+        // Calculate how many more users we need
+        const neededCount = 20 - currentCount;
+        const additionalUsers = validDocs.slice(0, neededCount);
         
-        // Only take the first 20 valid users for display
-        const topUsers = validDocs.slice(0, 20);
+        // Remove placeholder rows
+        const placeholders = this.leaderboardElement.querySelectorAll('.leaderboard-item:nth-child(n+' + (currentCount + 1) + ')');
+        placeholders.forEach(placeholder => {
+            placeholder.remove();
+        });
         
-        // If we don't have 20 users yet, we need to show a loading indicator for the rest
-        const userCount = topUsers.length;
-        
-        // Create leaderboard items from valid documents
-        topUsers.forEach((doc, index) => {
+        // Add the new users
+        additionalUsers.forEach((doc, index) => {
             const userData = doc.data();
             const leaderboardItem = document.createElement('div');
             leaderboardItem.className = 'leaderboard-item';
-            leaderboardItem.dataset.userId = doc.id; // Store user ID for reference
+            leaderboardItem.dataset.userId = doc.id;
             
-            // Add animation class for new/updated items
+            // Add animation class
             leaderboardItem.classList.add('leaderboard-updated');
             
-            // Create structure with username container for proper text truncation
             leaderboardItem.innerHTML = `
-                <span class="leaderboard-rank">#${index + 1}</span>
+                <span class="leaderboard-rank">#${currentCount + index + 1}</span>
                 <div class="leaderboard-username-container">
                     <span class="leaderboard-username">${userData.username || 'Unknown'}</span>
                 </div>
@@ -2408,15 +2539,16 @@ const remainingRetries = this.maxRetries - this.retryCount + 1;
             
             this.leaderboardElement.appendChild(leaderboardItem);
             
-            // Remove animation class after animation is complete
+            // Remove animation class after a delay
             setTimeout(() => {
                 leaderboardItem.classList.remove('leaderboard-updated');
             }, 1000);
         });
         
-        // If we have fewer than 20 users, add placeholder rows to reach 20
-        if (userCount < 20) {
-            for (let i = userCount; i < 20; i++) {
+        // If we still don't have 20 users, add placeholders for the rest
+        const updatedCount = currentCount + additionalUsers.length;
+        if (updatedCount < 20) {
+            for (let i = updatedCount; i < 20; i++) {
                 const placeholderItem = document.createElement('div');
                 placeholderItem.className = 'leaderboard-item';
                 
@@ -2432,120 +2564,10 @@ const remainingRetries = this.maxRetries - this.retryCount + 1;
             }
         }
         
-        console.log(`Leaderboard updated with ${topUsers.length} players`);
-        
-        // Find and highlight Void Network
-        findAndHighlightVoidNetwork();
-        
-        // If we don't have a full 20 non-banned users, try to fetch more
-        if (userCount < 20 && validDocs.length === topUsers.length) {
-            console.log("Not enough players for a full leaderboard, fetching more");
-            this.fetchMoreUsers(userCount);
-        }
+    } catch (error) {
+        console.error("Error fetching additional users:", error);
     }
-    
-    // New method to fetch more users if we don't have 20 yet
-    async fetchMoreUsers(currentCount) {
-        try {
-            // Only proceed if we already have some users but fewer than 20
-            if (currentCount <= 0 || currentCount >= 20) return;
-            
-            // Get the last user's balance as the starting point
-            const lastRank = this.leaderboardElement.querySelectorAll('.leaderboard-item')[currentCount - 1];
-            if (!lastRank) return;
-            
-            // Get ID from data attribute
-            const lastUserId = lastRank.dataset.userId;
-            if (!lastUserId) return;
-            
-            // Get the user document to find their balance
-            const userDoc = await getDoc(doc(db, 'users', lastUserId));
-            if (!userDoc.exists()) return;
-            
-            const userData = userDoc.data();
-            const lastBalance = userData.accountBalance;
-            
-            // Query for more users with lower balance
-            const usersRef = collection(db, 'users');
-            const q = query(
-                usersRef, 
-                orderBy('accountBalance', 'desc'),
-                where('accountBalance', '<', lastBalance),
-                limit(40) // Get more to account for potential banned users
-            );
-            
-            const querySnapshot = await getDocs(q);
-            
-            // Filter out banned users
-            const validDocs = [];
-            querySnapshot.forEach((doc) => {
-                if (doc.exists()) {
-                    const userData = doc.data();
-                    if (!userData.banned) {
-                        validDocs.push(doc);
-                    }
-                }
-            });
-            
-            // Calculate how many more users we need
-            const neededCount = 20 - currentCount;
-            const additionalUsers = validDocs.slice(0, neededCount);
-            
-            // Remove placeholder rows
-            const placeholders = this.leaderboardElement.querySelectorAll('.leaderboard-item:nth-child(n+' + (currentCount + 1) + ')');
-            placeholders.forEach(placeholder => {
-                placeholder.remove();
-            });
-            
-            // Add the new users
-            additionalUsers.forEach((doc, index) => {
-                const userData = doc.data();
-                const leaderboardItem = document.createElement('div');
-                leaderboardItem.className = 'leaderboard-item';
-                leaderboardItem.dataset.userId = doc.id;
-                
-                // Add animation class
-                leaderboardItem.classList.add('leaderboard-updated');
-                
-                leaderboardItem.innerHTML = `
-                    <span class="leaderboard-rank">#${currentCount + index + 1}</span>
-                    <div class="leaderboard-username-container">
-                        <span class="leaderboard-username">${userData.username || 'Unknown'}</span>
-                    </div>
-                    <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
-                `;
-                
-                this.leaderboardElement.appendChild(leaderboardItem);
-                
-                // Remove animation class after a delay
-                setTimeout(() => {
-                    leaderboardItem.classList.remove('leaderboard-updated');
-                }, 1000);
-            });
-            
-            // If we still don't have 20 users, add placeholders for the rest
-            const updatedCount = currentCount + additionalUsers.length;
-            if (updatedCount < 20) {
-                for (let i = updatedCount; i < 20; i++) {
-                    const placeholderItem = document.createElement('div');
-                    placeholderItem.className = 'leaderboard-item';
-                    
-                    placeholderItem.innerHTML = `
-                        <span class="leaderboard-rank">#${i + 1}</span>
-                        <div class="leaderboard-username-container">
-                            <span class="leaderboard-username">...</span>
-                        </div>
-                        <span class="leaderboard-balance">--</span>
-                    `;
-                    
-                    this.leaderboardElement.appendChild(placeholderItem);
-                }
-            }
-            
-        } catch (error) {
-            console.error("Error fetching additional users:", error);
-        }
-    }
+}
 }
 
 // Initialize Accounting System
