@@ -667,19 +667,24 @@
 
        .chamber {
            position: absolute;
-           width: 16px;
-           height: 16px;
+           width: 15px;
+           height: 15px;
            background: #111;
            border-radius: 50%;
            box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.8);
        }
 
-       .chamber:nth-child(1) { top: 15px; left: 32px; }
-       .chamber:nth-child(2) { top: 32px; left: 60px; }
-       .chamber:nth-child(3) { top: 60px; left: 48px; }
-       .chamber:nth-child(4) { top: 60px; left: 16px; }
-       .chamber:nth-child(5) { top: 32px; left: 4px; }
-       .chamber:nth-child(6) { top: 6px; left: 32px; }
+       /* 10 chambers positioned in a circle */
+       .chamber:nth-child(1) { top: 9px; left: 32px; }   /* 0° */
+       .chamber:nth-child(2) { top: 17px; left: 52px; }  /* 36° */
+       .chamber:nth-child(3) { top: 32px; left: 62px; }  /* 72° */
+       .chamber:nth-child(4) { top: 50px; left: 60px; }  /* 108° */
+       .chamber:nth-child(5) { top: 63px; left: 43px; }  /* 144° */
+       .chamber:nth-child(6) { top: 63px; left: 22px; }  /* 180° */
+       .chamber:nth-child(7) { top: 50px; left: 6px; }   /* 216° */
+       .chamber:nth-child(8) { top: 32px; left: 2px; }   /* 252° */
+       .chamber:nth-child(9) { top: 17px; left: 13px; }  /* 288° */
+       .chamber:nth-child(10) { top: 9px; left: 32px; }  /* 324° */
 
        .chamber.loaded {
            background: #b22222;
@@ -1197,6 +1202,10 @@
                        <div class="chamber" id="chamber4"></div>
                        <div class="chamber" id="chamber5"></div>
                        <div class="chamber" id="chamber6"></div>
+                       <div class="chamber" id="chamber7"></div>
+                       <div class="chamber" id="chamber8"></div>
+                       <div class="chamber" id="chamber9"></div>
+                       <div class="chamber" id="chamber10"></div>
                    </div>
                    <div class="muzzle-flash" id="onlineFlash"></div>
                </div>
@@ -1387,7 +1396,8 @@
                loseAmount: -500,      // Loss amount (solo mode)
                opponentDudCost: -50,  // Cost when shooting opponent and it's a dud
                opponentKillReward: 500,// Reward for shooting opponent and they die
-               bulletChanceIncrease: 0.02 // Very small chance of bullet jumping forward
+               bulletChanceIncrease: 0.02, // Very small chance of bullet jumping forward
+               totalChambers: 10      // Total number of chambers in the cylinder (online mode)
            };
            
            // Game state variables
@@ -1870,7 +1880,8 @@
                            currentTurn: null,
                            bulletChamber: null,
                            currentChamber: null,
-                           roundNumber: null
+                           roundNumber: null,
+                           totalChambers: config.totalChambers
                        },
                        createdAt: serverTimestamp()
                    });
@@ -1921,7 +1932,7 @@
                    const flash = document.getElementById('onlineFlash');
                    if (flash) flash.classList.remove('active');
                    
-                   for (let i = 1; i <= 6; i++) {
+                   for (let i = 1; i <= config.totalChambers; i++) {
                        const chamber = document.getElementById(`chamber${i}`);
                        if (chamber) chamber.classList.remove('loaded');
                    }
@@ -2157,6 +2168,7 @@
                    startGameBtn.disabled = true;
                    
                    // Generate random bullet chamber with enhanced randomness
+                   // Bullet can't be in first (0) or last (9) chamber
                    const bulletChamber = getRandomBulletChamber();
                    
                    // Create the game state
@@ -2165,7 +2177,8 @@
                        currentTurn: currentUser.uid, // Host goes first
                        bulletChamber: bulletChamber,
                        currentChamber: 0,
-                       roundNumber: 1
+                       roundNumber: 1,
+                       totalChambers: config.totalChambers
                    };
                    
                    // Reset all game elements 
@@ -2193,14 +2206,14 @@
                }
            }
            
-           // Generate a more random bullet chamber position
+           // Generate a random bullet chamber position between 1 and 8 (not first or last)
            function getRandomBulletChamber() {
                // Use Crypto API for more secure random generation
                const array = new Uint8Array(1);
                window.crypto.getRandomValues(array);
                
-               // Get a value between 0-5 for the 6 chambers
-               return array[0] % 6;
+               // Get a value between 1 and 8 (not in 0 or 9)
+               return 1 + (array[0] % 8);
            }
            
            // Show the online game UI
@@ -2239,7 +2252,7 @@
                
                // Update score display with current chamber
                if (onlineScoreDisplay) {
-                   onlineScoreDisplay.textContent = `Chamber ${gameState.roundNumber} of 6`;
+                   onlineScoreDisplay.textContent = `Chamber ${gameState.roundNumber} of ${gameState.totalChambers}`;
                }
                
                // Show the appropriate message based on who is viewing
@@ -2257,10 +2270,10 @@
                    }
                }
                
-               // Rotate cylinder to match current chamber
+               // Rotate cylinder to match current chamber - each chamber is 36 degrees (360 / 10)
                const cylinder = document.getElementById('cylinder');
                if (cylinder) {
-                   cylinder.style.transform = `rotate(${gameState.currentChamber * 60}deg)`;
+                   cylinder.style.transform = `rotate(${gameState.currentChamber * 36}deg)`;
                }
            }
            
@@ -2363,17 +2376,17 @@
                            }
                        });
                        
-// Process coins (will be done when showing game end)
+                       // Process coins (will be done when showing game end)
                        
                    } else {
                        // Empty chamber - continue game
                        // Move to next chamber and switch turns
-                       const nextChamber = (gameState.currentChamber + 1) % 6;
+                       const nextChamber = (gameState.currentChamber + 1) % gameState.totalChambers;
                        const nextRound = gameState.roundNumber + 1;
                        const nextTurn = onlineRole === 'host' ? lobbyData.joinerId : lobbyData.hostId;
                        
                        // Check if we've gone through all chambers
-                       if (nextRound > 6) {
+                       if (nextRound > gameState.totalChambers) {
                            // Game ends in a draw (all chambers empty)
                            await updateDoc(lobbyRef, {
                                gameState: {
@@ -2410,7 +2423,7 @@
                        revolverContainer.style.animation = '';
                    }, 1000);
                    
-               } catch (error) {
+} catch (error) {
                    console.error("Error processing shot:", error);
                    // Re-enable buttons on error
                    onlineShootSelfBtn.disabled = false;
@@ -2506,7 +2519,8 @@
                        bulletChamber: bulletChamber,
                        currentChamber: 0,
                        roundNumber: 1,
-                       lastShotResult: null
+                       lastShotResult: null,
+                       totalChambers: config.totalChambers
                    };
                    
                    // Reset all game elements
