@@ -554,9 +554,55 @@
            transition: color 0.3s ease;
        }
 
-       .back-link:hover {
+       .cash-out-btn {
+           padding: 0.75rem 2rem;
+           font-size: 1.2rem;
+           background: linear-gradient(135deg, #2e7d32, #1b5e20);
            color: #fff;
-           text-decoration: underline;
+           border: 1px solid rgba(255, 255, 255, 0.3);
+           border-radius: 30px;
+           cursor: pointer;
+           box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+           transition: all 0.3s ease;
+           text-transform: uppercase;
+           letter-spacing: 2px;
+           font-weight: bold;
+           margin-top: 20px;
+           animation: pulse-green 2s infinite;
+       }
+       
+       .cash-out-btn:hover {
+           background: linear-gradient(135deg, #388e3c, #2e7d32);
+           transform: translateY(-2px);
+           box-shadow: 0 0 20px rgba(76, 175, 80, 0.8);
+       }
+       
+       .continue-btn {
+           padding: 0.75rem 2rem;
+           font-size: 1.2rem;
+           background: linear-gradient(135deg, #c62828, #b71c1c);
+           color: #fff;
+           border: 1px solid rgba(255, 255, 255, 0.3);
+           border-radius: 30px;
+           cursor: pointer;
+           box-shadow: 0 0 10px rgba(198, 40, 40, 0.5);
+           transition: all 0.3s ease;
+           text-transform: uppercase;
+           letter-spacing: 2px;
+           font-weight: bold;
+           margin-top: 20px;
+       }
+       
+       .continue-btn:hover {
+           background: linear-gradient(135deg, #d32f2f, #c62828);
+           transform: translateY(-2px);
+           box-shadow: 0 0 20px rgba(198, 40, 40, 0.8);
+       }
+       
+       @keyframes pulse-green {
+           0% { box-shadow: 0 0 5px rgba(76, 175, 80, 0.5); }
+           50% { box-shadow: 0 0 20px rgba(76, 175, 80, 0.8); }
+           100% { box-shadow: 0 0 5px rgba(76, 175, 80, 0.5); }
        }
 
        /* Mobile Responsive Styles */
@@ -727,6 +773,11 @@
                <div class="odds-display" id="oddsDisplay">Chamber 1 of 6</div>
                <div class="bet-display" id="betDisplay">Survive this round: +200 coins</div>
                
+               <div id="cashOutContainer" style="display: none; text-align: center; margin-top: 20px;">
+                   <button id="cashOutBtn" class="cash-out-btn">Cash Out</button>
+                   <button id="continueBtn" class="continue-btn">Continue</button>
+               </div>
+               
                <div class="shooting-options" id="shootingOptions" style="display: none;">
                    <button id="shootSelfBtn" class="shoot-btn self">Shoot Yourself</button>
                    <button id="shootOpponentBtn" class="shoot-btn opponent">Shoot Opponent</button>
@@ -822,6 +873,9 @@
            const shootingOptions = document.getElementById('shootingOptions');
            const shootSelfBtn = document.getElementById('shootSelfBtn');
            const shootOpponentBtn = document.getElementById('shootOpponentBtn');
+           const cashOutContainer = document.getElementById('cashOutContainer');
+           const cashOutBtn = document.getElementById('cashOutBtn');
+           const continueBtn = document.getElementById('continueBtn');
            
            // Game configuration
            const config = {
@@ -830,8 +884,9 @@
                rewardMultiplier: 2, // Multiplier for each survived round
                maxRounds: 5,        // Maximum number of rounds
                loseAmount: -500,    // Loss amount if you get the bullet
-               opponentLoseAmount: -300, // When opponent gets the bullet
-               opponentSurviveReward: 150 // Reward when opponent survives a round
+               opponentDudCost: -50, // Cost when shooting opponent and it's a dud
+               opponentKillReward: 500, // Reward for shooting opponent and they die
+               bulletChanceIncrease: 0.05 // Increase difficulty slightly
            };
            
            // Game state variables
@@ -843,6 +898,7 @@
            let gameMode = 'solo';    // solo or vs
            let currentTurn = 'player'; // player or opponent
            let modeSelected = false; // Has the player selected a game mode
+           let accumulatedWinnings = 0; // Track accumulated winnings for cash out
            
            // Authentication State Listener
            onAuthStateChanged(auth, async (user) => {
@@ -1247,21 +1303,25 @@
            function initializeGame() {
                // Reset game state
                currentChamber = 0;
-               bulletChamber = Math.floor(Math.random() * 6); // Random chamber for bullet
+               // Make the bullet slightly more likely with each round
+               bulletChamber = Math.floor(Math.random() * 6);
                roundNumber = 1;
                gameSpinning = false;
                _gameActive = true;
                _gameComplete = false;
                isProcessingMove = false;
                currentTurn = 'player';
+               accumulatedWinnings = 0;
                
                // Configure UI based on game mode
                if (gameMode === 'vs') {
                    opponentDisplay.style.display = 'flex';
                    shootingOptions.style.display = 'flex';
+                   cashOutContainer.style.display = 'none';
                } else {
                    opponentDisplay.style.display = 'none';
                    shootingOptions.style.display = 'none';
+                   cashOutContainer.style.display = 'none';
                    revolverContainer.style.cursor = 'pointer';
                }
                
@@ -1317,20 +1377,21 @@
            
            // Update odds display
            function updateOddsDisplay() {
-               // Calculate winning odds
-               const remainingChambers = 6 - roundNumber + 1;
-               const winChance = ((remainingChambers - 1) / remainingChambers * 100).toFixed(1);
+               // Don't show exact percentages anymore, just chamber number
+               oddsDisplay.textContent = `Chamber ${roundNumber} of 6`;
                
                // Calculate current round reward
                const roundReward = config.baseWinReward * Math.pow(config.rewardMultiplier, roundNumber - 1);
                
-               oddsDisplay.textContent = `Chamber ${roundNumber} of 6 (${winChance}% chance to survive)`;
-               
                if (gameMode === 'solo') {
-                   betDisplay.textContent = `Survive this round: +${roundReward} coins`;
+                   if (accumulatedWinnings > 0) {
+                       betDisplay.textContent = `Current winnings: ${accumulatedWinnings} coins | Next reward: +${roundReward} coins`;
+                   } else {
+                       betDisplay.textContent = `Survive this round: +${roundReward} coins`;
+                   }
                } else {
                    if (currentTurn === 'player') {
-                       betDisplay.textContent = `Shoot self: +${roundReward} if you survive | Shoot opponent: +${config.opponentSurviveReward} if opponent survives`;
+                       betDisplay.textContent = `Shoot self: Reward if you survive | Shoot opponent: -50 coins if dud, +500 if kill`;
                    } else {
                        betDisplay.textContent = `Opponent is deciding...`;
                    }
@@ -1346,6 +1407,12 @@
                // Trigger pull animation
                revolverContainer.style.animation = 'shake 0.3s forwards';
                
+               // Add slight randomness to the bullet position to make it less predictable
+               if (Math.random() < config.bulletChanceIncrease && currentChamber !== bulletChamber) {
+                   // Small chance the bullet magically "jumps" forward
+                   bulletChamber = currentChamber;
+               }
+               
                // Determine if the current chamber has the bullet
                if (currentChamber === bulletChamber) {
                    // Shot fired - you lose
@@ -1360,7 +1427,7 @@
                            // Show the bullet
                            document.getElementById(`chamber${currentChamber + 1}`).classList.add('loaded');
                            
-                           // Apply loss amount
+                           // Apply loss amount - they lose their accumulated winnings plus penalty
                            await updateCoins(config.loseAmount, 'game_loss');
                            
                            // Update UI
@@ -1382,48 +1449,38 @@
                } else {
                    // Click - empty chamber
                    setTimeout(async () => {
-                       // Apply win amount for this round
+                       // Calculate reward for this round but don't award yet
                        const roundReward = config.baseWinReward * Math.pow(config.rewardMultiplier, roundNumber - 1);
-                       await updateCoins(roundReward, 'game_win');
+                       
+                       // Add to accumulated winnings
+                       accumulatedWinnings += roundReward;
                        
                        // Update UI for this round
                        statusDisplay.textContent = "Click! You survived this round.";
-                       scoreDisplay.innerHTML = `You won: <span class="win-amount">+${roundReward}</span>`;
+                       scoreDisplay.innerHTML = `Potential winnings: <span class="win-amount">+${accumulatedWinnings}</span>`;
                        
                        // Check if this was the final round
                        if (roundNumber >= config.maxRounds) {
-                           // Player survived all rounds
-                           _gameActive = false;
-                           _gameComplete = true;
-                           
-                           // Show game result overlay
-                           gameResult.textContent = "SURVIVED!";
-                           gameResult.className = 'game-result win';
-                           
-                           // Show end game controls
-                           showGameEndMode();
+                           // Force cash out at max rounds
+                           await cashOut();
                        } else {
-                           // Move to next chamber
-                           currentChamber = (currentChamber + 1) % 6;
-                           roundNumber++;
+                           // Show cash out option
+                           cashOutContainer.style.display = 'block';
                            
                            // Update odds display
                            updateOddsDisplay();
                            
-                           // Show continue option
-                           setTimeout(() => {
-                               statusDisplay.textContent = "Proceeding to next chamber...";
-                               
-                               // Spin for the next round
-                               setTimeout(() => {
-                                   spinCylinder();
-                                   isProcessingMove = false;
-                               }, 1000);
-                           }, 1500);
+                           // Move to next chamber
+                           currentChamber = (currentChamber + 1) % 6;
+                           roundNumber++;
+                           
+                           // Temporarily disable revolver clicks
+                           revolverContainer.style.pointerEvents = 'none';
+                           
+                           // Reset animation
+                           revolverContainer.style.animation = '';
+                           isProcessingMove = false;
                        }
-                       
-                       // Reset animation
-                       revolverContainer.style.animation = '';
                    }, 500);
                }
            }
@@ -1436,6 +1493,12 @@
                
                // Trigger pull animation
                revolverContainer.style.animation = 'shake 0.3s forwards';
+               
+               // Add slight randomness to the bullet position to make it less predictable
+               if (Math.random() < config.bulletChanceIncrease && currentChamber !== bulletChamber) {
+                   // Small chance the bullet magically "jumps" forward
+                   bulletChamber = currentChamber;
+               }
                
                // Determine if the current chamber has the bullet
                const shotFired = currentChamber === bulletChamber;
@@ -1474,11 +1537,11 @@
                                _gameComplete = true;
                                
                                // Apply win amount
-                               await updateCoins(config.opponentLoseAmount, 'game_win');
+                               await updateCoins(config.opponentKillReward, 'game_win');
                                
                                // Update UI
                                statusDisplay.textContent = "BANG! You shot your opponent!";
-                               scoreDisplay.innerHTML = `You won: <span class="win-amount">+${Math.abs(config.opponentLoseAmount)}</span>`;
+                               scoreDisplay.innerHTML = `You won: <span class="win-amount">+${config.opponentKillReward}</span>`;
                                
                                // Show game result overlay
                                gameResult.textContent = "OPPONENT DOWN!";
@@ -1493,11 +1556,11 @@
                                _gameComplete = true;
                                
                                // Apply win amount
-                               await updateCoins(config.opponentLoseAmount, 'game_win');
+                               await updateCoins(config.opponentKillReward, 'game_win');
                                
                                // Update UI
                                statusDisplay.textContent = "BANG! Your opponent shot themselves!";
-                               scoreDisplay.innerHTML = `You won: <span class="win-amount">+${Math.abs(config.opponentLoseAmount)}</span>`;
+                               scoreDisplay.innerHTML = `You won: <span class="win-amount">+${config.opponentKillReward}</span>`;
                                
                                // Show game result overlay
                                gameResult.textContent = "OPPONENT DOWN!";
@@ -1539,22 +1602,19 @@
                        roundNumber++;
                        
                        if (target === 'self' && currentTurn === 'player') {
-                           // Player survived shooting self - big reward
-                           const roundReward = config.baseWinReward * Math.pow(config.rewardMultiplier, roundNumber - 2); // -2 because we already incremented roundNumber
-                           await updateCoins(roundReward, 'game_win');
-                           
+                           // Player survived shooting self - big reward calculated at end
                            statusDisplay.textContent = "Click! You survived shooting yourself.";
-                           scoreDisplay.innerHTML = `You won: <span class="win-amount">+${roundReward}</span>`;
+                           scoreDisplay.textContent = '';
                            
                            // Switch turns
                            currentTurn = 'opponent';
                        } 
                        else if (target === 'opponent' && currentTurn === 'player') {
-                           // Player shot opponent and opponent survived - small reward
-                           await updateCoins(config.opponentSurviveReward, 'game_win');
+                           // Player shot opponent and opponent survived - charge the player
+                           await updateCoins(config.opponentDudCost, 'game_loss');
                            
                            statusDisplay.textContent = "Click! Your opponent survived.";
-                           scoreDisplay.innerHTML = `You won: <span class="win-amount">+${config.opponentSurviveReward}</span>`;
+                           scoreDisplay.innerHTML = `You lost: <span class="lose-amount">${Math.abs(config.opponentDudCost)}</span>`;
                            
                            // Switch turns
                            currentTurn = 'opponent';
@@ -1652,6 +1712,50 @@
                processShot('opponent');
            }
            
+           // Cash out (collect accumulated winnings)
+           async function cashOut() {
+               if (!_gameActive || gameSpinning || isProcessingMove) return;
+               
+               isProcessingMove = true;
+               
+               // Apply accumulated winnings
+               await updateCoins(accumulatedWinnings, 'game_win');
+               
+               // Update UI
+               statusDisplay.textContent = "You cashed out!";
+               scoreDisplay.innerHTML = `You won: <span class="win-amount">+${accumulatedWinnings}</span>`;
+               
+               // Show game result overlay
+               gameResult.textContent = "CASHED OUT!";
+               gameResult.className = 'game-result win';
+               
+               // End the game
+               _gameActive = false;
+               _gameComplete = true;
+               
+               // Show end game controls
+               showGameEndMode();
+               
+               // Hide cash out container
+               cashOutContainer.style.display = 'none';
+               
+               isProcessingMove = false;
+           }
+           
+           // Continue playing
+           function continuePlay() {
+               if (!_gameActive || gameSpinning || isProcessingMove) return;
+               
+               // Hide cash out container
+               cashOutContainer.style.display = 'none';
+               
+               // Re-enable revolver clicks
+               revolverContainer.style.pointerEvents = 'auto';
+               
+               // Spin for the next round
+               spinCylinder();
+           }
+           
            // Start a new game
            async function startNewGame() {
                // Verify balance first
@@ -1678,6 +1782,7 @@
                // Clear game state
                _gameActive = false;
                _gameComplete = false;
+               accumulatedWinnings = 0;
                
                // Return to menu
                showMenuMode();
@@ -1752,6 +1857,10 @@
            // Shooting options
            shootSelfBtn.addEventListener('click', shootSelf);
            shootOpponentBtn.addEventListener('click', shootOpponent);
+           
+           // Cash out options
+           cashOutBtn.addEventListener('click', cashOut);
+           continueBtn.addEventListener('click', continuePlay);
            
            // Solo mode gun click
            revolverContainer.addEventListener('click', pullTrigger);
