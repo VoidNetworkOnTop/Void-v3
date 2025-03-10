@@ -1217,11 +1217,17 @@
            <div class="score-display" id="onlineScoreDisplay"></div>
            
            <div class="player-controls-wrapper">
+               <div class="player-display">
+                   <div class="player-avatar">👤</div>
+                   <div class="player-name">
+                       Player <span class="turn-indicator" id="playerTurnIndicator" style="display: none;">YOUR TURN</span>
+                   </div>
+               </div>
+               
                <div class="shooting-options" id="onlineShootingOptions" style="display: none;">
                    <button id="onlineShootSelfBtn" class="drop-btn">Shoot Self</button>
                    <button id="onlineShootOpponentBtn" class="drop-btn">Shoot Opponent</button>
                </div>
-               <div class="turn-indicator" id="playerTurnIndicator" style="display: none; margin-top: 10px;">YOUR TURN</div>
            </div>
        </div>
        
@@ -1248,13 +1254,6 @@
                    <button id="quitGameBtn" class="drop-btn danger">Quit Game</button>
                </div>
            </div>
-       </div>
-       
-       <!-- Death Screen -->
-       <div id="deathScreen" class="death-screen">
-           <div class="death-message">YOU DIED</div>
-           <div class="death-reason" id="deathReason">You were shot by your opponent</div>
-           <button id="continueBtn" class="continue-btn">Continue</button>
        </div>
        
        <!-- Generic Game End Controls -->
@@ -1958,18 +1957,16 @@
                        if (lobbyData.gameState && lobbyData.gameState.status === 'playing') {
                            console.log("Joiner detected game start/restart, showing game UI");
                            
-                           // Always reset everything first for a clean slate
-                           resetGameCompletely();
-                           
-                           // Always hide both end screen and death screen
-                           document.getElementById('deathScreen').classList.remove('active');
+                           // Always show game UI when game state is 'playing' - this fixes the "Play Again" problem
                            onlineGameEndSection.style.display = 'none';
+                           showOnlineGame(lobbyData.gameState);
                            
-                           // Show game UI with fresh state
-                           onlineGameSection.style.display = 'flex';
-                           
-                           // Update game UI with current state
-                           updateOnlineGameState(lobbyData.gameState);
+                           // Reset flash and loaded chambers
+                           document.getElementById('onlineFlash').classList.remove('active');
+                           for (let i = 1; i <= 6; i++) {
+                               document.getElementById(`chamber${i}`).classList.remove('loaded');
+                           }
+                           document.getElementById('shotResult').innerHTML = '';
                        }
                    } else if (lobbyData.joinerId === null && currentLobbyId) {
                        // We were kicked - clean up and go back to menu
@@ -1979,23 +1976,9 @@
                    }
                }
                
-               // For both players, update game state 
+               // For both players, update game state if already in game
                if (lobbyData.gameState) {
                    if (lobbyData.gameState.status === 'playing') {
-                       // For playing state, always make sure we're in the game UI
-                       if (onlineGameSection.style.display !== 'flex') {
-                           // Reset everything for a clean slate
-                           resetGameCompletely();
-                           
-                           // Hide end screens
-                           document.getElementById('deathScreen').classList.remove('active');
-                           onlineGameEndSection.style.display = 'none';
-                           
-                           // Show game UI
-                           onlineGameSection.style.display = 'flex';
-                       }
-                       
-                       // Now update the game state
                        updateOnlineGameState(lobbyData.gameState);
                    } else if (lobbyData.gameState.status === 'game_over') {
                        showOnlineGameEnd(lobbyData.gameState);
@@ -2270,7 +2253,7 @@
                    const targetName = onlineRole === 'host' ? 'Opponent' : 'Host';
                    
                    // Generate messages for both players
-                   let shooterMessage, targetMessage, deathReason;
+                   let shooterMessage, targetMessage;
                    
                    if (shotFired) {
                        // Show muzzle flash
@@ -2279,15 +2262,13 @@
                        // Show the bullet
                        document.getElementById(`chamber${gameState.currentChamber + 1}`).classList.add('loaded');
                        
-                       // Shot fired messages and death reasons
+                       // Shot fired messages
                        if (target === 'self') {
                            shooterMessage = `<span style="color: #f44336; font-weight: bold;">BANG! You shot yourself!</span>`;
                            targetMessage = `<span style="color: #4caf50; font-weight: bold;">BANG! ${shooterName} shot themself!</span>`;
-                           deathReason = "You pulled the trigger on yourself and found the bullet";
                        } else {
                            shooterMessage = `<span style="color: #4caf50; font-weight: bold;">BANG! You shot the ${targetName}!</span>`;
                            targetMessage = `<span style="color: #f44336; font-weight: bold;">BANG! ${shooterName} shot you!</span>`;
-                           deathReason = `${shooterName} pulled the trigger and the gun fired at you`;
                        }
                    } else {
                        // Click sound messages
@@ -2330,8 +2311,7 @@
                                finalTarget: target,
                                finalTurn: currentUser.uid,
                                shooterMessage: shooterMessage, // Save shooter-specific message
-                               targetMessage: targetMessage,   // Save target-specific message
-                               deathReason: deathReason        // Save death reason for death screen
+                               targetMessage: targetMessage    // Save target-specific message
                            }
                        });
                        
@@ -2394,47 +2374,6 @@
            // Show game end UI for online mode
            async function showOnlineGameEnd(gameState) {
                onlineGameSection.style.display = 'none';
-               
-               // Show death screen if player lost and was shot
-               if (gameState.loser === currentUser.uid && gameState.shotFired) {
-                   // Set death reason
-                   const deathReasonEl = document.getElementById('deathReason');
-                   if (gameState.deathReason) {
-                       deathReasonEl.textContent = gameState.deathReason;
-                   } else {
-                       deathReasonEl.textContent = "You were shot in the game of Russian Roulette";
-                   }
-                   
-                   // Show death screen
-                   const deathScreen = document.getElementById('deathScreen');
-                   deathScreen.classList.add('active');
-                   
-                   // Set up continue button
-                   document.getElementById('continueBtn').onclick = () => {
-                       deathScreen.classList.remove('active');
-                       onlineGameEndSection.style.display = 'flex';
-                   };
-                   
-                   // Also process transaction for losing
-                   const amountChange = config.loseAmount;
-                   await updateCoins(amountChange, 'game_loss');
-                   
-                   // Prepare end game screen to show after death screen
-                   finalScoreDisplay.innerHTML = `Loss: <span class="lose-amount">${amountChange} coins</span>`;
-                   endGameStatus.innerHTML = `<span style="color: #f44336; font-weight: bold;">Player Lost!</span>`;
-                   
-                   if (onlineRole === 'host') {
-                       hostEndControls.style.display = 'flex';
-                       joinerEndControls.style.display = 'none';
-                   } else {
-                       hostEndControls.style.display = 'none';
-                       joinerEndControls.style.display = 'flex';
-                   }
-                   
-                   return; // Exit early, the rest will happen after continue button is clicked
-               }
-               
-               // If not showing death screen, show game end screen immediately
                onlineGameEndSection.style.display = 'flex';
                
                // Display the appropriate final message based on player role
@@ -2473,11 +2412,13 @@
                        
                        // Process transaction for winning
                        await updateCoins(amountChange, 'game_win');
-                   } else if (gameState.loser === currentUser.uid) {
+                   } else {
                        // I lost (either I shot myself or opponent shot me)
-                       // Transaction already processed in death screen case
                        amountChange = config.loseAmount;
                        resultMessage = `Loss: <span class="lose-amount">${amountChange} coins</span>`;
+                       
+                       // Process transaction for losing
+                       await updateCoins(amountChange, 'game_loss');
                    }
                } else {
                    // Draw (all chambers empty)
@@ -2501,46 +2442,35 @@
                    playAgainBtn.textContent = "Starting new game...";
                    playAgainBtn.disabled = true;
                    
-                   // Generate new game state with improved randomness
-                   const bulletChamber = generateBulletChamber();
+                   // Generate new game state
+                   const bulletChamber = Math.floor(Math.random() * 6);
                    
-                   // Create the game state with a clean slate - no references to previous game
+                   // Create the game state
                    const newGameState = {
                        status: 'playing',
                        currentTurn: currentUser.uid, // Host goes first again
                        bulletChamber: bulletChamber,
                        currentChamber: 0,
-                       roundNumber: 1
-                       // No lastShotResult, no shooterMessage, no targetMessage - completely fresh
+                       roundNumber: 1,
+                       lastShotResult: null
                    };
-                   
-                   // Clear the death screen if it was showing
-                   document.getElementById('deathScreen').classList.remove('active');
                    
                    // Force UI transition for host
                    // This ensures the host sees the game immediately
                    onlineGameEndSection.style.display = 'none';
                    onlineGameSection.style.display = 'flex';
-                   
-                   // Reset ALL UI elements to fresh state
                    document.getElementById('shotResult').innerHTML = '';
                    document.getElementById('onlineFlash').classList.remove('active');
-                   document.getElementById('cylinder').style.transform = 'rotate(0deg)';
                    
                    // Clear any loaded chambers
                    for (let i = 1; i <= 6; i++) {
                        document.getElementById(`chamber${i}`).classList.remove('loaded');
                    }
                    
-                   // Reset game status
-                   gameStatus.textContent = "Your turn - choose who to shoot";
-                   onlineScoreDisplay.textContent = "Chamber 1 of 6";
-                   playerTurnIndicator.style.display = 'inline-block';
-                   opponentTurnIndicator.style.display = 'none';
-                   onlineShootingOptions.style.display = 'flex';
+                   // Update UI state for host
+                   updateOnlineGameState(newGameState);
                    
-                   // Now update Firebase (which will notify the joiner) - this must happen BEFORE updating UI state
-                   // to ensure the joiner gets a completely fresh game state
+                   // Now update Firebase (which will notify the joiner)
                    await updateDoc(doc(db, 'roulette_lobbies', currentLobbyId), {
                        gameState: newGameState
                    });
