@@ -1103,7 +1103,7 @@
                        <div class="player-row">
                            <div class="player-info">
                                <div class="player-avatar">👤</div>
-                               <div class="player-name">You <span class="host-badge">HOST</span></div>
+                               <div class="player-name">Host <span class="host-badge">HOST</span></div>
                            </div>
                        </div>
                        
@@ -1169,7 +1169,7 @@
                        <div class="player-row">
                            <div class="player-info">
                                <div class="player-avatar">👤</div>
-                               <div class="player-name">You</div>
+                               <div class="player-name">Player</div>
                            </div>
                        </div>
                    </div>
@@ -1220,7 +1220,7 @@
                <div class="player-display">
                    <div class="player-avatar">👤</div>
                    <div class="player-name">
-                       You <span class="turn-indicator" id="playerTurnIndicator" style="display: none;">YOUR TURN</span>
+                       Player <span class="turn-indicator" id="playerTurnIndicator" style="display: none;">YOUR TURN</span>
                    </div>
                </div>
                
@@ -1953,11 +1953,20 @@
                        opponentId = lobbyData.hostId;
                        opponentName = lobbyData.hostName || "Host";
                        
-                       // Check if game has started
-                       if (lobbyData.gameState && lobbyData.gameState.status === 'playing' && 
-                           onlineGameSection.style.display !== 'flex') {
-                           console.log("Joiner detected game start, showing game UI");
+                       // Check if game has started or restarted
+                       if (lobbyData.gameState && lobbyData.gameState.status === 'playing') {
+                           console.log("Joiner detected game start/restart, showing game UI");
+                           
+                           // Always show game UI when game state is 'playing' - this fixes the "Play Again" problem
+                           onlineGameEndSection.style.display = 'none';
                            showOnlineGame(lobbyData.gameState);
+                           
+                           // Reset flash and loaded chambers
+                           document.getElementById('onlineFlash').classList.remove('active');
+                           for (let i = 1; i <= 6; i++) {
+                               document.getElementById(`chamber${i}`).classList.remove('loaded');
+                           }
+                           document.getElementById('shotResult').innerHTML = '';
                        }
                    } else if (lobbyData.joinerId === null && currentLobbyId) {
                        // We were kicked - clean up and go back to menu
@@ -1968,7 +1977,7 @@
                }
                
                // For both players, update game state if already in game
-               if (lobbyData.gameState && onlineGameSection.style.display === 'flex') {
+               if (lobbyData.gameState) {
                    if (lobbyData.gameState.status === 'playing') {
                        updateOnlineGameState(lobbyData.gameState);
                    } else if (lobbyData.gameState.status === 'game_over') {
@@ -2370,10 +2379,10 @@
                // Display the appropriate final message based on player role
                if (gameState.winner === currentUser.uid) {
                    // This player is the winner
-                   endGameStatus.innerHTML = `<span style="color: #4caf50; font-weight: bold;">You Won!</span>`;
+                   endGameStatus.innerHTML = `<span style="color: #4caf50; font-weight: bold;">Player Won!</span>`;
                } else if (gameState.loser === currentUser.uid) {
                    // This player is the loser
-                   endGameStatus.innerHTML = `<span style="color: #f44336; font-weight: bold;">You Lost!</span>`;
+                   endGameStatus.innerHTML = `<span style="color: #f44336; font-weight: bold;">Player Lost!</span>`;
                } else if (gameState.winner === 'draw') {
                    // Game ended in a draw
                    endGameStatus.innerHTML = `<span style="color: #ff9800; font-weight: bold;">Game Drawn!</span>`;
@@ -2399,14 +2408,14 @@
                    if (iWon) {
                        // I won (either I shot opponent or they shot themself)
                        amountChange = config.opponentKillReward;
-                       resultMessage = `You won: <span class="win-amount">+${amountChange} coins</span>`;
+                       resultMessage = `Win: <span class="win-amount">+${amountChange} coins</span>`;
                        
                        // Process transaction for winning
                        await updateCoins(amountChange, 'game_win');
                    } else {
                        // I lost (either I shot myself or opponent shot me)
                        amountChange = config.loseAmount;
-                       resultMessage = `You lost: <span class="lose-amount">${amountChange} coins</span>`;
+                       resultMessage = `Loss: <span class="lose-amount">${amountChange} coins</span>`;
                        
                        // Process transaction for losing
                        await updateCoins(amountChange, 'game_loss');
