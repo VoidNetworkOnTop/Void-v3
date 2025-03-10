@@ -1923,7 +1923,7 @@ class VoidLeaderboard {
         }
     }
     
-// IMPROVED: Secure leaderboard UI update with ban filtering
+// IMPROVED: Secure leaderboard UI update with ban filtering and always showing 20 entries
 updateLeaderboardUI(querySnapshot) {
     if (!this.leaderboardElement) {
         console.error("Leaderboard element not found");
@@ -1946,7 +1946,7 @@ updateLeaderboardUI(querySnapshot) {
         if (doc.exists()) {
             const userData = doc.data();
             
-            // Skip banned users - THIS IS THE IMPORTANT PART THAT WAS MISSING
+            // Skip banned users
             if (userData.banned !== true) {
                 validUsers.push({
                     username: userData.username || 'Unknown',
@@ -1958,8 +1958,11 @@ updateLeaderboardUI(querySnapshot) {
         }
     });
     
-    // Display top users
-    validUsers.forEach((userData, index) => {
+    // Display valid users (up to 20)
+    const displayCount = Math.min(validUsers.length, 20);
+    
+    for (let i = 0; i < displayCount; i++) {
+        const userData = validUsers[i];
         const leaderboardItem = document.createElement('div');
         leaderboardItem.className = 'leaderboard-item';
         
@@ -1968,7 +1971,7 @@ updateLeaderboardUI(querySnapshot) {
         
         // Create structure with username container for proper text truncation
         leaderboardItem.innerHTML = `
-            <span class="leaderboard-rank">#${index + 1}</span>
+            <span class="leaderboard-rank">#${i + 1}</span>
             <div class="leaderboard-username-container">
                 <span class="leaderboard-username">${userData.username}</span>
             </div>
@@ -1981,12 +1984,124 @@ updateLeaderboardUI(querySnapshot) {
         setTimeout(() => {
             leaderboardItem.classList.remove('leaderboard-updated');
         }, 1000);
-    });
+    }
     
-    console.log(`Leaderboard updated with ${validUsers.length} players`);
+    // Add placeholders to ensure we always show 20 entries
+    for (let i = displayCount; i < 20; i++) {
+        const placeholderItem = document.createElement('div');
+        placeholderItem.className = 'leaderboard-item';
+        
+        placeholderItem.innerHTML = `
+            <span class="leaderboard-rank">#${i + 1}</span>
+            <div class="leaderboard-username-container">
+                <span class="leaderboard-username">...</span>
+            </div>
+            <span class="leaderboard-balance">--</span>
+        `;
+        
+        this.leaderboardElement.appendChild(placeholderItem);
+    }
+    
+    console.log(`Leaderboard updated with ${displayCount} players and ${20 - displayCount} placeholders`);
     
     // Find and highlight VoidNetworkOnTop
     this.highlightSpecialUsers();
+    
+    // If we don't have 20 valid users, try to fetch more
+    if (validUsers.length < 20 && querySnapshot.size >= 20) {
+        this.fetchMoreUsers(validUsers.length);
+    }
+}
+
+// Add new method to fetch more users when we don't have enough for the leaderboard
+async fetchMoreUsers(currentCount) {
+    try {
+        // Only proceed if we have some data but not enough
+        if (currentCount <= 0 || currentCount >= 20) return;
+        
+        console.log(`Only have ${currentCount} valid users, fetching more...`);
+        
+        // Get the last visible user's balance
+        const lastVisible = this.leaderboardElement.querySelector(`.leaderboard-item:nth-child(${currentCount}) .leaderboard-balance`);
+        if (!lastVisible) return;
+        
+        // Convert balance text back to number (remove commas)
+        const lastBalanceText = lastVisible.textContent;
+        const lastBalance = parseInt(lastBalanceText.replace(/,/g, ''));
+        
+        if (isNaN(lastBalance)) return;
+        
+        // Query for more users with lower balance
+        const usersRef = collection(this.db, 'users');
+        const moreUsers = query(
+            usersRef,
+            orderBy('accountBalance', 'desc'),
+            where('accountBalance', '<', lastBalance),
+            limit(40) // Get more to account for potential banned users
+        );
+        
+        const moreSnapshot = await getDocs(moreUsers);
+        
+        if (moreSnapshot.empty) return;
+        
+        // Filter valid non-banned users
+        const additionalUsers = [];
+        moreSnapshot.forEach(doc => {
+            if (doc.exists()) {
+                const userData = doc.data();
+                if (userData.banned !== true) {
+                    additionalUsers.push({
+                        username: userData.username || 'Unknown',
+                        accountBalance: userData.accountBalance || 0
+                    });
+                }
+            }
+        });
+        
+        // Calculate how many more we need
+        const needed = 20 - currentCount;
+        const toAdd = Math.min(needed, additionalUsers.length);
+        
+        if (toAdd <= 0) return;
+        
+        console.log(`Adding ${toAdd} more users to complete the leaderboard`);
+        
+        // Replace placeholders with real users
+        for (let i = 0; i < toAdd; i++) {
+            const userData = additionalUsers[i];
+            const rank = currentCount + i + 1;
+            
+            // Find the placeholder to replace
+            const placeholder = this.leaderboardElement.querySelector(`.leaderboard-item:nth-child(${rank})`);
+            if (placeholder) {
+                // Create the real user entry
+                const userItem = document.createElement('div');
+                userItem.className = 'leaderboard-item leaderboard-updated';
+                
+                userItem.innerHTML = `
+                    <span class="leaderboard-rank">#${rank}</span>
+                    <div class="leaderboard-username-container">
+                        <span class="leaderboard-username">${userData.username}</span>
+                    </div>
+                    <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+                `;
+                
+                // Replace the placeholder
+                placeholder.parentNode.replaceChild(userItem, placeholder);
+                
+                // Remove animation class after delay
+                setTimeout(() => {
+                    userItem.classList.remove('leaderboard-updated');
+                }, 1000);
+            }
+        }
+        
+        // Highlight any special users in the new entries
+        this.highlightSpecialUsers();
+        
+    } catch (error) {
+        console.error("Error fetching more users:", error);
+    }
 }
     
     // Specifically highlight special usernames
