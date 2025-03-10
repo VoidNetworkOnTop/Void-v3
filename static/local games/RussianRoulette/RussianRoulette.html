@@ -1606,6 +1606,12 @@
                        joinerRow.style.display = 'none';
                        startGameBtn.disabled = true;
                    }
+                   
+                   // Check if game state updated (for ongoing games)
+                   if (lobbyData.gameState && lobbyData.gameState.status === 'playing' && 
+                       onlineGameSection.style.display === 'none') {
+                       showOnlineGame(lobbyData.gameState);
+                   }
                } else if (onlineRole === 'joiner') {
                    // Joiner is getting an update
                    if (lobbyData.joinerId === currentUser.uid) {
@@ -1616,7 +1622,8 @@
                        opponentName = lobbyData.hostName || "Host";
                        
                        // Check if game has started
-                       if (lobbyData.gameState.status === 'playing') {
+                       if (lobbyData.gameState.status === 'playing' && 
+                           onlineGameSection.style.display === 'none') {
                            // Transition to game UI
                            showOnlineGame(lobbyData.gameState);
                        }
@@ -1629,9 +1636,10 @@
                }
                
                // Handle game state updates for both host and joiner
-               if (lobbyData.gameState.status === 'playing') {
+               if (lobbyData.gameState && lobbyData.gameState.status === 'playing' && 
+                   onlineGameSection.style.display === 'flex') {
                    updateOnlineGameState(lobbyData.gameState);
-               } else if (lobbyData.gameState.status === 'game_over') {
+               } else if (lobbyData.gameState && lobbyData.gameState.status === 'game_over') {
                    showOnlineGameEnd(lobbyData.gameState);
                }
            }
@@ -1778,18 +1786,22 @@
                    // Generate random bullet chamber
                    const bulletChamber = Math.floor(Math.random() * 6);
                    
+                   // Create the game state
+                   const gameState = {
+                       status: 'playing',
+                       currentTurn: currentUser.uid, // Host goes first
+                       bulletChamber: bulletChamber,
+                       currentChamber: 0,
+                       roundNumber: 1
+                   };
+                   
                    // Update the lobby with game state
                    await updateDoc(doc(db, 'roulette_lobbies', currentLobbyId), {
-                       gameState: {
-                           status: 'playing',
-                           currentTurn: currentUser.uid, // Host goes first
-                           bulletChamber: bulletChamber,
-                           currentChamber: 0,
-                           roundNumber: 1
-                       }
+                       gameState: gameState
                    });
                    
-                   // Show game UI - will be triggered via listener
+                   // Immediately show game UI for host (don't wait for listener)
+                   showOnlineGame(gameState);
                    
                } catch (error) {
                    console.error("Error starting game:", error);
