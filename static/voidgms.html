@@ -1923,67 +1923,71 @@ class VoidLeaderboard {
         }
     }
     
-    // IMPROVED: Secure leaderboard UI update - Shows only usernames and balances
-    updateLeaderboardUI(querySnapshot) {
-        if (!this.leaderboardElement) {
-            console.error("Leaderboard element not found");
-            return;
-        }
-        
-        // Always clear the leaderboard completely first
-        this.leaderboardElement.innerHTML = '';
-        
-        if (querySnapshot.empty) {
-            this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
-            return;
-        }
-        
-        console.log("Updating leaderboard with new data");
-        
-        // Create array of valid users to display
-        const validUsers = [];
-        querySnapshot.forEach((doc) => {
-            if (doc.exists()) {
-                const userData = doc.data();
-                
-                // Only include necessary public data
+// IMPROVED: Secure leaderboard UI update with ban filtering
+updateLeaderboardUI(querySnapshot) {
+    if (!this.leaderboardElement) {
+        console.error("Leaderboard element not found");
+        return;
+    }
+    
+    // Always clear the leaderboard completely first
+    this.leaderboardElement.innerHTML = '';
+    
+    if (querySnapshot.empty) {
+        this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+        return;
+    }
+    
+    console.log("Updating leaderboard with new data");
+    
+    // Create array of valid users to display - FILTER OUT BANNED USERS
+    const validUsers = [];
+    querySnapshot.forEach((doc) => {
+        if (doc.exists()) {
+            const userData = doc.data();
+            
+            // Skip banned users - THIS IS THE IMPORTANT PART THAT WAS MISSING
+            if (userData.banned !== true) {
                 validUsers.push({
                     username: userData.username || 'Unknown',
                     accountBalance: userData.accountBalance || 0
                 });
+            } else {
+                console.log(`Skipping banned user: ${userData.username || 'Unknown'}`);
             }
-        });
+        }
+    });
+    
+    // Display top users
+    validUsers.forEach((userData, index) => {
+        const leaderboardItem = document.createElement('div');
+        leaderboardItem.className = 'leaderboard-item';
         
-        // Display top users
-        validUsers.forEach((userData, index) => {
-            const leaderboardItem = document.createElement('div');
-            leaderboardItem.className = 'leaderboard-item';
-            
-            // Add animation class for new/updated items
-            leaderboardItem.classList.add('leaderboard-updated');
-            
-            // Create structure with username container for proper text truncation
-            leaderboardItem.innerHTML = `
-                <span class="leaderboard-rank">#${index + 1}</span>
-                <div class="leaderboard-username-container">
-                    <span class="leaderboard-username">${userData.username}</span>
-                </div>
-                <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
-            `;
-            
-            this.leaderboardElement.appendChild(leaderboardItem);
-            
-            // Remove animation class after animation is complete
-            setTimeout(() => {
-                leaderboardItem.classList.remove('leaderboard-updated');
-            }, 1000);
-        });
+        // Add animation class for new/updated items
+        leaderboardItem.classList.add('leaderboard-updated');
         
-        console.log(`Leaderboard updated with ${validUsers.length} players`);
+        // Create structure with username container for proper text truncation
+        leaderboardItem.innerHTML = `
+            <span class="leaderboard-rank">#${index + 1}</span>
+            <div class="leaderboard-username-container">
+                <span class="leaderboard-username">${userData.username}</span>
+            </div>
+            <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+        `;
         
-        // Find and highlight VoidNetworkOnTop
-        this.highlightSpecialUsers();
-    }
+        this.leaderboardElement.appendChild(leaderboardItem);
+        
+        // Remove animation class after animation is complete
+        setTimeout(() => {
+            leaderboardItem.classList.remove('leaderboard-updated');
+        }, 1000);
+    });
+    
+    console.log(`Leaderboard updated with ${validUsers.length} players`);
+    
+    // Find and highlight VoidNetworkOnTop
+    this.highlightSpecialUsers();
+}
     
     // Specifically highlight special usernames
     highlightSpecialUsers() {
