@@ -151,6 +151,8 @@
            box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
            position: relative;
            overflow: hidden;
+           user-select: none; /* Prevent text selection */
+           touch-action: manipulation; /* Improve touch behavior */
        }
 
        .cell:hover:not(.marked) {
@@ -569,6 +571,7 @@
            let gameState = ['', '', '', '', '', '', '', '', ''];
            let difficultyLevel = ''; // No default difficulty, must be selected
            let difficultySelected = false;
+           let isProcessingMove = false; // Lock to prevent multiple rapid clicks
            
            // Winning combinations
            const winningConditions = [
@@ -945,7 +948,14 @@
                    const cell = document.createElement('div');
                    cell.classList.add('cell');
                    cell.dataset.index = i;
-                   cell.addEventListener('click', () => handleCellClick(i));
+                   
+                   // Using a closure to maintain the correct index
+                   cell.addEventListener('click', (function(index) {
+                       return function() {
+                           handleCellClick(index);
+                       };
+                   })(i));
+                   
                    gameBoard.appendChild(cell);
                }
                
@@ -954,6 +964,7 @@
                currentPlayer = 'x';
                _gameActive = true;
                _gameComplete = false;
+               isProcessingMove = false;
                
                // Update UI
                updateStatusMessage();
@@ -968,10 +979,13 @@
            
            // Handle cell click
            function handleCellClick(index) {
-               // Do nothing if game is not active or cell is already marked
-               if (!_gameActive || gameState[index] !== '') {
+               // Do nothing if game is not active, cell is already marked, or a move is being processed
+               if (!_gameActive || gameState[index] !== '' || isProcessingMove || currentPlayer !== 'x') {
                    return;
                }
+               
+               // Set processing lock to prevent multiple rapid clicks
+               isProcessingMove = true;
                
                // Mark the cell with the current player's symbol
                gameState[index] = currentPlayer;
@@ -983,6 +997,7 @@
                    _gameComplete = true;
                    // Player wins
                    endGame(true);
+                   isProcessingMove = false;
                    return;
                }
                
@@ -991,6 +1006,7 @@
                    _gameComplete = true;
                    // Game is a draw
                    endGame(null);
+                   isProcessingMove = false;
                    return;
                }
                
@@ -998,12 +1014,31 @@
                currentPlayer = 'o';
                updateStatusMessage();
                
+               // Disable all cells visually during AI's turn
+               document.querySelectorAll('.cell').forEach(cell => {
+                   if (!cell.classList.contains('marked')) {
+                       cell.style.pointerEvents = 'none';
+                       cell.style.opacity = '0.7';
+                   }
+               });
+               
                // AI makes a move after a short delay
                setTimeout(() => {
                    if (_gameActive) {
                        makeAIMove();
+                       
+                       // Re-enable cells
+                       document.querySelectorAll('.cell').forEach(cell => {
+                           if (!cell.classList.contains('marked')) {
+                               cell.style.pointerEvents = 'auto';
+                               cell.style.opacity = '1';
+                           }
+                       });
+                       
+                       // Release the processing lock
+                       isProcessingMove = false;
                    }
-               }, 500);
+               }, 600); // Longer delay for better UX
            }
            
            // Make AI move based on difficulty
@@ -1268,11 +1303,14 @@
                currentPlayer = 'x';
                _gameActive = false;
                _gameComplete = false;
+               isProcessingMove = false;
                
                // Clear the board
                const cells = document.querySelectorAll('.cell');
                cells.forEach(cell => {
                    cell.classList.remove('x', 'o', 'marked');
+                   cell.style.pointerEvents = 'auto';
+                   cell.style.opacity = '1';
                });
                
                // Update UI
