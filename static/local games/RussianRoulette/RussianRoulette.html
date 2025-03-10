@@ -1412,6 +1412,7 @@
            let opponentId = '';          // Opponent's user ID
            let opponentName = '';        // Opponent's display name
            let isMyTurn = false;         // Is it the current player's turn
+           let gameStarted = false;      // Flag to track if game is currently active
            
            // Authentication State Listener
            onAuthStateChanged(auth, async (user) => {
@@ -1811,6 +1812,19 @@
                onlinePlayerOption.classList.remove('selected');
                document.getElementById('startBtnContainer').style.display = 'none';
                
+               // Reset any game state
+               gameStarted = false;
+               
+               // Reset button states
+               if (playAgainBtn) {
+                   playAgainBtn.textContent = "Play Again";
+                   playAgainBtn.disabled = false;
+               }
+               
+               if (startGameBtn) {
+                   startGameBtn.textContent = "Start Game";
+               }
+               
                // Clear any active lobby connections
                cleanupOnlineConnections();
            }
@@ -1825,6 +1839,9 @@
                onlineGameSection.style.display = 'none';
                onlineGameEndSection.style.display = 'none';
                gameEndControls.style.display = 'none';
+               
+               // Reset game state
+               gameStarted = false;
            }
            
            // Online Mode Functions
@@ -1846,15 +1863,19 @@
                joinGameSection.style.display = 'none';
                joinedLobbySection.style.display = 'none';
                
+               // Reset game state
+               gameStarted = false;
+               
+               // Reset start button
+               startGameBtn.textContent = "Start Game";
+               startGameBtn.disabled = true;
+               
                // Generate and display a code
                currentLobbyCode = generateLobbyCode();
                lobbyCodeDisplay.textContent = currentLobbyCode;
                
                // Initially hide joiner row until someone joins
                joinerRow.style.display = 'none';
-               
-               // Disable start button until someone joins
-               startGameBtn.disabled = true;
                
                // Create the lobby in Firestore
                createLobby();
@@ -1954,6 +1975,8 @@
                    // Reset death screen - add null check
                    const deathScreen = document.getElementById('deathScreen');
                    if (deathScreen) deathScreen.style.display = 'none';
+                   
+                   console.log("Game elements reset successfully");
                } catch (error) {
                    console.error("Error in resetGameElements:", error);
                }
@@ -1974,6 +1997,7 @@
                    } else {
                        joinerRow.style.display = 'none';
                        startGameBtn.disabled = true;
+                       startGameBtn.textContent = "Start Game";
                    }
                    
                    // The host should transition based on gameState, but only if not already in game
@@ -1999,6 +2023,7 @@
                            
                            // Show game section
                            onlineGameSection.style.display = 'flex';
+                           gameStarted = true;
                            
                            // Use a timeout to ensure DOM is fully updated before manipulating elements
                            setTimeout(() => {
@@ -2139,6 +2164,7 @@
                    // Update UI
                    joinerRow.style.display = 'none';
                    startGameBtn.disabled = true;
+                   startGameBtn.textContent = "Start Game";
                    
                } catch (error) {
                    console.error("Error kicking player:", error);
@@ -2160,12 +2186,15 @@
            
            // Start game as host
            async function startOnlineGame() {
-               if (!currentLobbyId || onlineRole !== 'host') return;
+               if (!currentLobbyId || onlineRole !== 'host' || gameStarted) return;
                
                try {
                    // Show a temporary "Starting game..." message
                    startGameBtn.textContent = "Starting game...";
                    startGameBtn.disabled = true;
+                   
+                   // Set game started flag
+                   gameStarted = true;
                    
                    // Generate random bullet chamber with enhanced randomness
                    // Bullet can't be in first (0) or last (9) chamber
@@ -2203,6 +2232,7 @@
                    // Restore UI on error
                    startGameBtn.textContent = "Start Game";
                    startGameBtn.disabled = false;
+                   gameStarted = false;
                }
            }
            
@@ -2376,7 +2406,8 @@
                            }
                        });
                        
-                       // Process coins (will be done when showing game end)
+                       // Game is over, reset game started flag
+                       gameStarted = false;
                        
                    } else {
                        // Empty chamber - continue game
@@ -2385,7 +2416,7 @@
                        const nextRound = gameState.roundNumber + 1;
                        const nextTurn = onlineRole === 'host' ? lobbyData.joinerId : lobbyData.hostId;
                        
-                       // Check if we've gone through all chambers
+// Check if we've gone through all chambers
                        if (nextRound > gameState.totalChambers) {
                            // Game ends in a draw (all chambers empty)
                            await updateDoc(lobbyRef, {
@@ -2401,6 +2432,9 @@
                                    targetMessage: `<span style="color: #ff9800; font-weight: bold;">All chambers empty! Game ended in a draw.</span>`
                                }
                            });
+                           
+                           // Game is over, reset flag
+                           gameStarted = false;
                        } else {
                            // Continue game with next turn
                            await updateDoc(lobbyRef, {
@@ -2423,7 +2457,7 @@
                        revolverContainer.style.animation = '';
                    }, 1000);
                    
-} catch (error) {
+               } catch (error) {
                    console.error("Error processing shot:", error);
                    // Re-enable buttons on error
                    onlineShootSelfBtn.disabled = false;
@@ -2436,6 +2470,9 @@
            async function showOnlineGameEnd(gameState) {
                onlineGameSection.style.display = 'none';
                onlineGameEndSection.style.display = 'flex';
+               
+               // Reset game started flag
+               gameStarted = false;
                
                // Display the appropriate final message based on player role
                if (gameState.winner === currentUser.uid) {
@@ -2459,6 +2496,10 @@
                if (onlineRole === 'host') {
                    hostEndControls.style.display = 'flex';
                    joinerEndControls.style.display = 'none';
+                   
+                   // Reset play again button state
+                   playAgainBtn.textContent = "Play Again";
+                   playAgainBtn.disabled = false;
                } else {
                    hostEndControls.style.display = 'none';
                    joinerEndControls.style.display = 'flex';
@@ -2502,12 +2543,18 @@
            
            // Play again (host only)
            async function playAgainOnline() {
-               if (!currentLobbyId || onlineRole !== 'host') return;
+               if (!currentLobbyId || onlineRole !== 'host' || gameStarted) {
+                   console.log("Cannot start new game - invalid state");
+                   return;
+               }
                
                try {
                    // Show loading state
                    playAgainBtn.textContent = "Starting new game...";
                    playAgainBtn.disabled = true;
+                   
+                   // Set game started flag
+                   gameStarted = true;
                    
                    // Generate new game state with enhanced randomness
                    const bulletChamber = getRandomBulletChamber();
@@ -2547,6 +2594,7 @@
                    // Restore button on error
                    playAgainBtn.textContent = "Play Again";
                    playAgainBtn.disabled = false;
+                   gameStarted = false;
                }
            }
            
@@ -2604,6 +2652,18 @@
                onlineRole = '';
                opponentId = '';
                opponentName = '';
+               gameStarted = false;
+               
+               // Reset button states
+               if (playAgainBtn) {
+                   playAgainBtn.textContent = "Play Again";
+                   playAgainBtn.disabled = false;
+               }
+               
+               if (startGameBtn) {
+                   startGameBtn.textContent = "Start Game";
+                   startGameBtn.disabled = true;
+               }
            }
            
            // Cancel hosting
