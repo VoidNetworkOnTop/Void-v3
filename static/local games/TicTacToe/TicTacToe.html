@@ -557,7 +557,9 @@
            // Game configuration
            const config = {
                playCost: 100,    // Cost to play a game
-               winReward: 300,   // Reward for winning
+               winRewardEasy: 150,   // Reward for winning on easy
+               winRewardHard: 200,   // Reward for winning on hard
+               winRewardExtreme: 1000,   // Reward for winning on extreme
                loseAmount: -100, // Loss amount
                tieAmount: 0      // Tie amount (no change)
            };
@@ -586,7 +588,14 @@
                    // No user is signed in
                    currentUser = null;
                    console.log("No user signed in");
-                   showLoginPrompt();
+                   
+                   // Check if Firebase is still initializing
+                   setTimeout(() => {
+                       // Only show login prompt if we still don't have a user after a delay
+                       if (!currentUser && _coinBalance <= 0) {
+                           showLoginPrompt();
+                       }
+                   }, 2000); // Give Firebase some time to authenticate
                }
            });
 
@@ -811,6 +820,13 @@
 
            // Show Login Prompt
            function showLoginPrompt() {
+               // Check if we already have coins - if so, the user is likely already authenticated
+               // This handles cases where Firebase auth is slow to report but data is accessible
+               if (_coinBalance > 0 || currentUser) {
+                   console.log("User appears to be authenticated, skipping login prompt");
+                   return;
+               }
+               
                // Create a modal overlay
                const overlay = document.createElement('div');
                overlay.style.position = 'fixed';
@@ -868,8 +884,8 @@
                document.getElementById('cancelBtn').addEventListener('click', () => {
                    document.body.removeChild(overlay);
                    // Disable game interactions
-                   playButton.disabled = true;
-                   playButton.innerHTML = 'Login to Play';
+                   startButton.disabled = true;
+                   startButton.innerHTML = 'Login to Play';
                });
            }
            
@@ -1172,10 +1188,24 @@
                
                // Apply coin rewards
                if (playerWon === true) {
-                   // Player won
-                   await updateCoins(config.winReward, 'game_win');
+                   // Player won - reward based on difficulty
+                   let winReward;
+                   switch (difficultyLevel) {
+                       case 'extreme':
+                           winReward = config.winRewardExtreme;
+                           break;
+                       case 'hard':
+                           winReward = config.winRewardHard;
+                           break;
+                       case 'easy':
+                       default:
+                           winReward = config.winRewardEasy;
+                           break;
+                   }
+                   
+                   await updateCoins(winReward, 'game_win');
                    statusDisplay.textContent = "You won!";
-                   scoreDisplay.innerHTML = `You earned: <span class="win-amount">+${config.winReward}</span>`;
+                   scoreDisplay.innerHTML = `You earned: <span class="win-amount">+${winReward}</span>`;
                } else if (playerWon === false) {
                    // AI won
                    await updateCoins(config.loseAmount, 'game_loss');
@@ -1271,6 +1301,23 @@
                
                // Show start button once difficulty is selected
                startBtnContainer.style.display = 'block';
+               
+               // Update start button text to show reward
+               let rewardAmount;
+               switch(level) {
+                   case 'extreme':
+                       rewardAmount = config.winRewardExtreme;
+                       break;
+                   case 'hard':
+                       rewardAmount = config.winRewardHard;
+                       break;
+                   case 'easy':
+                   default:
+                       rewardAmount = config.winRewardEasy;
+                       break;
+               }
+               
+               startButton.textContent = `Start Game (Win ${rewardAmount} coins)`;
            }
            
            // Switch between menu and game modes
