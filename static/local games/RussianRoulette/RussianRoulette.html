@@ -131,6 +131,16 @@
            flex-shrink: 0;
        }
 
+       #onlineScoreDisplay {
+           text-align: center;
+           margin-top: 30px; /* Increased to move it down below the gun */
+           font-size: 1.2rem;
+           min-height: 1.5rem;
+           padding: 10px;
+           background: rgba(0, 0, 0, 0.3);
+           border-radius: 8px;
+       }
+
        .win-amount {
            font-weight: bold;
            font-size: 1.4rem;
@@ -547,8 +557,8 @@
        .gun-scene {
            position: relative;
            width: 400px;
-           height: 250px;
-           margin: 20px auto;
+           height: 200px; /* Reduced height to allow more space below */
+           margin: 20px auto 10px auto;
            perspective: 600px;
        }
 
@@ -768,14 +778,6 @@
            border-radius: 10px;
            width: 100%;
            max-width: 500px;
-       }
-
-       .gun-scene {
-           position: relative;
-           width: 400px;
-           height: 180px;
-           margin: 5px auto;
-           perspective: 600px;
        }
 
        /* Player controls section */
@@ -1912,6 +1914,40 @@
                });
            }
            
+           // Reset all game elements to ensure a clean start for a new game
+           function resetGameElements() {
+               try {
+                   // Reset revolver elements - add null checks
+                   const flash = document.getElementById('onlineFlash');
+                   if (flash) flash.classList.remove('active');
+                   
+                   for (let i = 1; i <= 6; i++) {
+                       const chamber = document.getElementById(`chamber${i}`);
+                       if (chamber) chamber.classList.remove('loaded');
+                   }
+                   
+                   // Reset message displays - add null checks
+                   const shotResult = document.getElementById('shotResult');
+                   if (shotResult) shotResult.innerHTML = '';
+                   
+                   const gameStatus = document.getElementById('gameStatus');
+                   if (gameStatus) gameStatus.textContent = 'Game Starting...';
+                   
+                   // Reset turn indicators - add null checks
+                   const opponentTurn = document.getElementById('opponentTurnIndicator');
+                   if (opponentTurn) opponentTurn.style.display = 'none';
+                   
+                   const playerTurn = document.getElementById('playerTurnIndicator');
+                   if (playerTurn) playerTurn.style.display = 'none';
+                   
+                   // Reset death screen - add null check
+                   const deathScreen = document.getElementById('deathScreen');
+                   if (deathScreen) deathScreen.style.display = 'none';
+               } catch (error) {
+                   console.error("Error in resetGameElements:", error);
+               }
+           }
+           
            // Handle changes to the lobby data
            function handleLobbyUpdate(lobbyData) {
                console.log("Lobby update received:", lobbyData);
@@ -1944,13 +1980,20 @@
                        if (lobbyData.gameState && lobbyData.gameState.status === 'playing') {
                            console.log("Joiner detected game start/restart, showing game UI");
                            
-                           // Always show game UI when game state is 'playing' - this fixes the "Play Again" problem
+                           // Make sure to hide other sections first before showing game UI
+                           joinedLobbySection.style.display = 'none';
+                           onlineOptions.style.display = 'none';
+                           hostLobbySection.style.display = 'none';
                            onlineGameEndSection.style.display = 'none';
                            
-                           // Reset all game elements to ensure a clean start
-                           resetGameElements();
+                           // Show game section
+                           onlineGameSection.style.display = 'flex';
                            
-                           showOnlineGame(lobbyData.gameState);
+                           // Use a timeout to ensure DOM is fully updated before manipulating elements
+                           setTimeout(() => {
+                               resetGameElements();
+                               showOnlineGame(lobbyData.gameState);
+                           }, 100);
                        }
                    } else if (lobbyData.joinerId === null && currentLobbyId) {
                        // We were kicked - clean up and go back to menu
@@ -1962,32 +2005,12 @@
                
                // For both players, update game state if already in game
                if (lobbyData.gameState) {
-                   if (lobbyData.gameState.status === 'playing') {
+                   if (lobbyData.gameState.status === 'playing' && onlineGameSection.style.display === 'flex') {
                        updateOnlineGameState(lobbyData.gameState);
                    } else if (lobbyData.gameState.status === 'game_over') {
                        showOnlineGameEnd(lobbyData.gameState);
                    }
                }
-           }
-           
-           // Reset all game elements to ensure a clean start for a new game
-           function resetGameElements() {
-               // Reset revolver elements
-               document.getElementById('onlineFlash').classList.remove('active');
-               for (let i = 1; i <= 6; i++) {
-                   document.getElementById(`chamber${i}`).classList.remove('loaded');
-               }
-               
-               // Reset message displays
-               document.getElementById('shotResult').innerHTML = '';
-               document.getElementById('gameStatus').textContent = 'Game Starting...';
-               
-               // Reset turn indicators
-               document.getElementById('opponentTurnIndicator').style.display = 'none';
-               document.getElementById('playerTurnIndicator').style.display = 'none';
-               
-               // Reset death screen
-               document.getElementById('deathScreen').style.display = 'none';
            }
            
            // Show join game UI
@@ -2201,25 +2224,29 @@
                isMyTurn = gameState.currentTurn === currentUser.uid;
                
                // Update turn indicators
-               playerTurnIndicator.style.display = isMyTurn ? 'inline-block' : 'none';
-               opponentTurnIndicator.style.display = !isMyTurn ? 'inline-block' : 'none';
+               if (playerTurnIndicator) playerTurnIndicator.style.display = isMyTurn ? 'inline-block' : 'none';
+               if (opponentTurnIndicator) opponentTurnIndicator.style.display = !isMyTurn ? 'inline-block' : 'none';
                
                // Show/hide shooting options
-               onlineShootingOptions.style.display = isMyTurn ? 'flex' : 'none';
+               if (onlineShootingOptions) onlineShootingOptions.style.display = isMyTurn ? 'flex' : 'none';
                
                // Update status text
-               gameStatus.textContent = isMyTurn ? 
-                   "Your turn - choose who to shoot" : 
-                   "Waiting for opponent's move...";
+               if (gameStatus) {
+                   gameStatus.textContent = isMyTurn ? 
+                       "Your turn - choose who to shoot" : 
+                       "Waiting for opponent's move...";
+               }
                
                // Update score display with current chamber
-               onlineScoreDisplay.textContent = `Chamber ${gameState.roundNumber} of 6`;
+               if (onlineScoreDisplay) {
+                   onlineScoreDisplay.textContent = `Chamber ${gameState.roundNumber} of 6`;
+               }
                
                // Show the appropriate message based on who is viewing
                const shotResult = document.getElementById('shotResult');
                
                // Check if there's a previous shot result
-               if (gameState.shooterMessage && gameState.targetMessage) {
+               if (shotResult && gameState.shooterMessage && gameState.targetMessage) {
                    // Display different messages based on whether this player was the shooter or target
                    if (isMyTurn) {
                        // I'm the current player, so I was NOT the shooter last round
@@ -2231,7 +2258,10 @@
                }
                
                // Rotate cylinder to match current chamber
-               document.getElementById('cylinder').style.transform = `rotate(${gameState.currentChamber * 60}deg)`;
+               const cylinder = document.getElementById('cylinder');
+               if (cylinder) {
+                   cylinder.style.transform = `rotate(${gameState.currentChamber * 60}deg)`;
+               }
            }
            
            // Process shooting someone in online game
@@ -2261,13 +2291,14 @@
                    // Check if bullet was in this chamber
                    const shotFired = gameState.currentChamber === gameState.bulletChamber;
                    
-// Update shot result message for the shooter
+                   // Update shot result message for the shooter
                    const shotResult = document.getElementById('shotResult');
                    const shooterName = onlineRole === 'host' ? 'Host' : 'Player';
                    const targetName = target === 'self' ? 'yourself' : (onlineRole === 'host' ? 'Opponent' : 'Host');
                    
                    // Generate messages for both players
                    let shooterMessage, targetMessage;
+                   let deathMessage;
                    
                    if (shotFired) {
                        // Show muzzle flash
@@ -2280,9 +2311,11 @@
                        if (target === 'self') {
                            shooterMessage = `<span style="color: #f44336; font-weight: bold;">BANG! You shot yourself!</span>`;
                            targetMessage = `<span style="color: #4caf50; font-weight: bold;">BANG! ${shooterName} shot themself!</span>`;
+                           deathMessage = "You died by your own hand!";
                        } else {
                            shooterMessage = `<span style="color: #4caf50; font-weight: bold;">BANG! You shot the ${targetName}!</span>`;
                            targetMessage = `<span style="color: #f44336; font-weight: bold;">BANG! ${shooterName} shot you!</span>`;
+                           deathMessage = `You were shot by the ${shooterName}!`;
                        }
                    } else {
                        // Click sound messages
@@ -2303,18 +2336,15 @@
                        // Someone got shot!
                        let winnerUserId;
                        let loserUserId;
-                       let deathMessage;
                        
                        if (target === 'self') {
                            // You shot yourself
                            loserUserId = currentUser.uid;
                            winnerUserId = onlineRole === 'host' ? lobbyData.joinerId : lobbyData.hostId;
-                           deathMessage = "You died by your own hand!";
                        } else {
                            // You shot opponent
                            winnerUserId = currentUser.uid;
                            loserUserId = onlineRole === 'host' ? lobbyData.joinerId : lobbyData.hostId;
-                           deathMessage = `You were shot by the ${shooterName}!`;
                        }
                        
                        // Update lobby with game over state
@@ -2333,7 +2363,7 @@
                            }
                        });
                        
-                       // Process coins (will be done when showing game end)
+// Process coins (will be done when showing game end)
                        
                    } else {
                        // Empty chamber - continue game
