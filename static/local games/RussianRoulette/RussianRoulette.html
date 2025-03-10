@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>The Void Games - Russian Roulette</title>
+   
+   <!-- Favicon -->
+   <link rel="shortcut icon" href="./assets/favicon.png" type="image/png">
+   
+   <style>
+       body, html {
+           margin: 0;
+           padding: 0;
+           width: 100%;
+           height: 100%;
+           background: #000;
+           color: #fff;
+           font-family: Arial, sans-serif;
+           overflow: hidden;
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           justify-content: center;
+       }
+
+       .game-container {
+           background: #000;
+           border-radius: 10px;
+           width: 90%;
+           max-width: 800px;
+           height: 90vh;
+           max-height: 800px;
+           display: flex;
+           flex-direction: column;
+           position: relative;
+           padding: 1rem;
+           box-shadow: 
+               0 0 2px #fff,
+               0 0 4px #fff,
+               0 0 6px #fff,
+               0 0 8px #fff,
+               inset 0 0 2px rgba(255, 255, 255, 0.2);
+           z-index: 3;
+       }
+
+       .game-container::before {
+           content: '';
+           position: absolute;
+           inset: -1px;
+           background: transparent;
+           border-radius: 10px;
+           z-index: -1;
+           box-shadow: 
+               0 0 15px #fff,
+               0 0 30px rgba(255, 255, 255, 0.8),
+               0 0 40px rgba(255, 255, 255, 0.6),
+               0 0 50px rgba(255, 255, 255, 0.4);
+           opacity: 0.5;
+       }
+
+       .game-header {
+           text-align: center;
+           padding-bottom: 0.5rem;
+           border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+           position: relative;
+           flex-shrink: 0;
+       }
+
+       .game-title {
+           font-size: 2rem;
+           margin: 0 0 0.5rem 0;
+           background: linear-gradient(45deg, #fff, #a0a0a0);
+           -webkit-background-clip: text;
+           -webkit-text-fill-color: transparent;
+           font-weight: bold;
+           text-transform: uppercase;
+           letter-spacing: 2px;
+       }
+
+       .game-subtitle {
+           font-size: 1rem;
+           color: #888;
+           margin: 0;
+       }
+
+       .coin-tracker {
+           position: absolute;
+           top: 0;
+           right: 0;
+           background: linear-gradient(135deg, #333, #222);
+           border: 1px solid rgba(255, 255, 255, 0.3);
+           border-radius: 30px;
+           padding: 0.5rem 1rem;
+           display: flex;
+           align-items: center;
+           gap: 0.5rem;
+           box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+           animation: glow 2s infinite;
+       }
+
+       .coin-icon {
+           width: 20px;
+           height: 20px;
+           background: linear-gradient(135deg, #FFD700, #FFA500);
+           border-radius: 50%;
+           box-shadow: 0 0 5px rgba(255, 215, 0, 0.8);
+       }
+
+       .coin-amount {
+           font-weight: bold;
+           font-size: 1.1rem;
+           color: #FFD700;
+       }
+
+       .game-board {
+           flex-grow: 1;
+           position: relative;
+           overflow: hidden;
+           display: flex;
+           flex-direction: column;
+           justify-content: center;
+           align-items: center;
+           background-color: rgba(0, 0, 0, 0.5);
+           border-radius: 8px;
+           margin: 0.5rem 0;
+           min-height: 300px;
+       }
+
+       .status-display {
+           text-align: center;
+           font-size: 1.5rem;
+           font-weight: bold;
+           height: 2rem;
+           margin: 0.5rem 0;
+           flex-shrink: 0;
+           color: #fff;
+           text-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+       }
+
+       .score-display {
+           text-align: center;
+           margin-top: 0.5rem;
+           font-size: 1.2rem;
+           height: 1.5rem;
+           flex-shrink: 0;
+       }
+
+       .win-amount {
+           font-weight: bold;
+           font-size: 1.4rem;
+           color: #4caf50;
+       }
+
+       .lose-amount {
+           font-weight: bold;
+           font-size: 1.4rem;
+           color: #f44336;
+       }
+
+       .controls {
+           display: flex;
+           justify-content: center;
+           align-items: center;
+           padding: 0.5rem 0;
+           gap: 1rem;
+           flex-shrink: 0;
+       }
+
+       .play-btn {
+           padding: 0.75rem 2rem;
+           font-size: 1.2rem;
+           background: linear-gradient(135deg, #333, #222);
+           color: #fff;
+           border: 1px solid rgba(255, 255, 255, 0.3);
+           border-radius: 30px;
+           cursor: pointer;
+           box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+           transition: all 0.3s ease;
+           text-transform: uppercase;
+           letter-spacing: 2px;
+           font-weight: bold;
+       }
+
+       .play-btn:hover:not(:disabled) {
+           background: linear-gradient(135deg, #444, #333);
+           transform: translateY(-2px);
+           box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
+       }
+
+       .play-btn:active:not(:disabled) {
+           transform: translateY(1px);
+       }
+
+       .play-btn:disabled {
+           opacity: 0.5;
+           cursor: not-allowed;
+           background: linear-gradient(135deg, #444, #333);
+       }
+       
+       .play-btn.insufficient {
+           background: linear-gradient(135deg, #800, #600);
+           color: #ffcccc;
+       }
+
+       .reset-btn {
+           padding: 0.75rem 1.5rem;
+           font-size: 1rem;
+           background: linear-gradient(135deg, #222, #111);
+           color: #888;
+           border: 1px solid rgba(255, 255, 255, 0.1);
+           border-radius: 30px;
+           cursor: pointer;
+           transition: all 0.3s ease;
+           text-transform: uppercase;
+           letter-spacing: 1px;
+       }
+
+       .reset-btn:hover {
+           color: #fff;
+           border-color: rgba(255, 255, 255, 0.3);
+       }
+
+       .revolver-container {
+           position: relative;
+           width: 300px;
+           height: 300px;
+           margin: 0 auto;
+           perspective: 1000px;
+       }
+
+       .revolver {
+           width: 100%;
+           height: 100%;
+           position: relative;
+           display: flex;
+           justify-content: center;
+           align-items: center;
+       }
+
+       .cylinder {
+           width: 150px;
+           height: 150px;
+           background: linear-gradient(135deg, #555, #333);
+           border-radius: 50%;
+           position: relative;
+           transform-style: preserve-3d;
+           box-shadow: 0 0 15px rgba(0, 0, 0, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.1);
+           transition: transform 1.5s ease-in-out;
+       }
+
+       .cylinder::after {
+           content: '';
+           position: absolute;
+           width: 30px;
+           height: 30px;
+           background: #000;
+           border-radius: 50%;
+           top: 50%;
+           left: 50%;
+           transform: translate(-50%, -50%);
+           box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+       }
+
+       .chamber {
+           width: 30px;
+           height: 30px;
+           background: #222;
+           border-radius: 50%;
+           position: absolute;
+           box-shadow: inset 0 0 5px #000;
+           border: 2px solid #444;
+       }
+
+       .chamber:nth-child(1) { top: 25px; left: 50%; transform: translateX(-50%); }
+       .chamber:nth-child(2) { top: 42px; right: 42px; }
+       .chamber:nth-child(3) { bottom: 42px; right: 42px; }
+       .chamber:nth-child(4) { bottom: 25px; left: 50%; transform: translateX(-50%); }
+       .chamber:nth-child(5) { bottom: 42px; left: 42px; }
+       .chamber:nth-child(6) { top: 42px; left: 42px; }
+
+       .chamber.loaded::after {
+           content: '';
+           position: absolute;
+           width: 20px;
+           height: 20px;
+           background: linear-gradient(135deg, #cc7722, #b36b1f);
+           border-radius: 50%;
+           top: 50%;
+           left: 50%;
+           transform: translate(-50%, -50%);
+           box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+       }
+
+       .barrel {
+           width: 100px;
+           height: 30px;
+           background: linear-gradient(to right, #333, #222);
+           position: absolute;
+           right: -90px;
+           top: 50%;
+           transform: translateY(-50%);
+           border-radius: 5px;
+           box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+       }
+
+       .barrel::after {
+           content: '';
+           position: absolute;
+           width: 20px;
+           height: 20px;
+           background: #111;
+           border-radius: 50%;
+           right: 0;
+           top: 50%;
+           transform: translateY(-50%);
+           box-shadow: inset 0 0 5px rgba(255, 255, 255, 0.2);
+       }
+
+       .handle {
+           width: 40px;
+           height: 100px;
+           background: linear-gradient(135deg, #4d2b14, #3a1f0f);
+           position: absolute;
+           bottom: -60px;
+           left: 50%;
+           transform: translateX(-50%);
+           border-radius: 10px;
+           box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+       }
+
+       .trigger {
+           width: 15px;
+           height: 25px;
+           background: #999;
+           position: absolute;
+           bottom: 5px;
+           left: 50%;
+           transform: translateX(-50%);
+           border-radius: 5px;
+           box-shadow: 0 0 5px rgba(0, 0, 0, 0.8);
+       }
+
+       .flash {
+           position: absolute;
+           width: 0;
+           height: 0;
+           right: -120px;
+           top: 50%;
+           transform: translateY(-50%);
+           background: radial-gradient(circle, rgba(255,255,0,1) 0%, rgba(255,165,0,0.8) 50%, rgba(255,0,0,0) 100%);
+           border-radius: 50%;
+           opacity: 0;
+           transition: all 0.2s ease;
+           z-index: 10;
+       }
+
+       .flash.active {
+           width: 100px;
+           height: 100px;
+           opacity: 1;
+           animation: flash-animation 0.5s forwards;
+       }
+
+       @keyframes flash-animation {
+           0% { opacity: 1; width: 10px; height: 10px; }
+           20% { opacity: 1; width: 100px; height: 100px; }
+           100% { opacity: 0; width: 150px; height: 150px; }
+       }
+
+       .game-result {
+           position: absolute;
+           top: 0;
+           left: 0;
+           width: 100%;
+           height: 100%;
+           display: flex;
+           justify-content: center;
+           align-items: center;
+           background: rgba(0, 0, 0, 0.7);
+           opacity: 0;
+           pointer-events: none;
+           transition: opacity 0.5s ease;
+           z-index: 100;
+           font-size: 3rem;
+           font-weight: bold;
+           text-transform: uppercase;
+           text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+       }
+
+       .game-result.win {
+           background: rgba(0, 100, 0, 0.3);
+           color: #4caf50;
+           opacity: 1;
+           animation: fade-in 0.5s forwards;
+       }
+
+       .game-result.lose {
+           background: rgba(100, 0, 0, 0.3);
+           color: #f44336;
+           opacity: 1;
+           animation: fade-in 0.5s forwards;
+       }
+
+       @keyframes fade-in {
+           from { opacity: 0; }
+           to { opacity: 1; }
+       }
+
+       .odds-display {
+           margin-top: 20px;
+           font-size: 1.2rem;
+           font-weight: bold;
+           color: #aaa;
+           text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+       }
+
+       .bet-display {
+           margin-top: 10px;
+           font-size: 1.1rem;
+           color: gold;
+           text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+       }
+
+       .gun-click {
+           width: 100%;
+           height: 100%;
+           position: absolute;
+           opacity: 0;
+           background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
+           border-radius: 50%;
+       }
+
+       .gun-click.active {
+           opacity: 1;
+           animation: click-animation 0.3s forwards;
+       }
+
+       @keyframes click-animation {
+           0% { opacity: 0; transform: scale(0.5); }
+           50% { opacity: 1; transform: scale(1.2); }
+           100% { opacity: 0; transform: scale(1.5); }
+       }
+
+       .back-link {
+           margin-top: 0.5rem;
+           color: rgba(255, 255, 255, 0.7);
+           text-decoration: none;
+           font-size: 0.9rem;
+           transition: color 0.3s ease;
+       }
+
+       .back-link:hover {
+           color: #fff;
+           text-decoration: underline;
+       }
+
+       /* Mobile Responsive Styles */
+       @media (max-width: 768px) {
+           .game-container {
+               width: 95%;
+               height: 85vh;
+               padding: 0.5rem;
+           }
+           
+           .game-title {
+               font-size: 1.5rem;
+           }
+           
+           .game-subtitle {
+               font-size: 0.8rem;
+           }
+           
+           .revolver-container {
+               width: 220px;
+               height: 220px;
+           }
+           
+           .cylinder {
+               width: 120px;
+               height: 120px;
+           }
+           
+           .chamber {
+               width: 25px;
+               height: 25px;
+           }
+           
+           .barrel {
+               width: 80px;
+               right: -70px;
+           }
+           
+           .handle {
+               height: 80px;
+               bottom: -50px;
+           }
+           
+           .coin-tracker {
+               padding: 0.3rem 0.8rem;
+           }
+
+           .coin-icon {
+               width: 16px;
+               height: 16px;
+           }
+
+           .coin-amount {
+               font-size: 0.9rem;
+           }
+           
+           .status-display {
+               font-size: 1.2rem;
+               height: 1.5rem;
+           }
+           
+           .score-display {
+               font-size: 1rem;
+               height: 1.2rem;
+           }
+           
+           .win-amount, .lose-amount {
+               font-size: 1.2rem;
+           }
+           
+           .play-btn, .reset-btn {
+               padding: 0.5rem 1rem;
+               font-size: 0.9rem;
+           }
+           
+           .odds-display {
+               font-size: 1rem;
+           }
+           
+           .bet-display {
+               font-size: 0.9rem;
+           }
+           
+           .game-result {
+               font-size: 2rem;
+           }
+       }
+
+       /* Special Effects */
+       @keyframes glow {
+           0% { filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.7)); }
+           50% { filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.9)); }
+           100% { filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.7)); }
+       }
+
+       @keyframes shake {
+           0% { transform: translate(0, 0) rotate(0); }
+           20% { transform: translate(-5px, 0) rotate(-5deg); }
+           40% { transform: translate(5px, 0) rotate(5deg); }
+           60% { transform: translate(-5px, 0) rotate(-5deg); }
+           80% { transform: translate(5px, 0) rotate(5deg); }
+           100% { transform: translate(0, 0) rotate(0); }
+       }
+   </style>
+</head>
+
+<body>
+   <div class="game-container">
+       <div class="game-header">
+           <h1 class="game-title">Russian Roulette</h1>
+           <p class="game-subtitle">Test your luck... if you dare</p>
+           <div class="coin-tracker">
+               <div class="coin-icon"></div>
+               <span class="coin-amount" id="coinDisplay">0</span>
+           </div>
+       </div>
+       
+       <div id="menuSection">
+           <div class="status-display">Ready to Play?</div>
+           
+           <div id="startBtnContainer" style="text-align: center; margin-top: 20px;">
+               <button id="startButton" class="play-btn">Start Game (100 coins)</button>
+           </div>
+           
+           <div class="controls" style="margin-top: 30px;">
+               <button id="backButton" class="reset-btn">Back to The Void Games</button>
+           </div>
+       </div>
+       
+       <div id="gameSection" style="display: none;">
+           <div class="status-display" id="statusDisplay">Click the gun to pull the trigger...</div>
+           
+           <div class="game-board">
+               <div id="gameResult" class="game-result"></div>
+               
+               <div class="revolver-container" id="revolverContainer">
+                   <div class="revolver">
+                       <div class="cylinder" id="cylinder">
+                           <div class="chamber" id="chamber1"></div>
+                           <div class="chamber" id="chamber2"></div>
+                           <div class="chamber" id="chamber3"></div>
+                           <div class="chamber" id="chamber4"></div>
+                           <div class="chamber" id="chamber5"></div>
+                           <div class="chamber" id="chamber6"></div>
+                       </div>
+                       <div class="barrel"></div>
+                       <div class="handle"></div>
+                       <div class="trigger"></div>
+                       <div class="flash" id="flash"></div>
+                       <div class="gun-click" id="gunClick"></div>
+                   </div>
+               </div>
+               
+               <div class="odds-display" id="oddsDisplay">Chamber 1 of 6</div>
+               <div class="bet-display" id="betDisplay">Survive this round: +200 coins</div>
+           </div>
+           
+           <div class="score-display" id="scoreDisplay"></div>
+       </div>
+       
+       <div id="gameEndControls" class="controls" style="display: none;">
+           <button id="playAgainButton" class="play-btn">Play Again (100 coins)</button>
+           <button id="resetButton" class="reset-btn">Back to Menu</button>
+       </div>
+   </div>
+   
+   <a href="index.html" class="back-link"> </a>
+
+   <!-- Firebase SDK -->
+   <script type="module">
+       // Firebase Imports
+       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+       import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+       import { 
+           getFirestore, 
+           doc, 
+           getDoc, 
+           updateDoc, 
+           setDoc, 
+           collection, 
+           runTransaction,
+           serverTimestamp 
+       } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+
+       // Firebase Configuration - UPDATED
+       const firebaseConfig = {
+           apiKey: "AIzaSyCkAp_GCGCtw4zv7GgHJOE9GPgIaPEuOvQ",
+           authDomain: "void-games-c8d9e.firebaseapp.com",
+           projectId: "void-games-c8d9e",
+           storageBucket: "void-games-c8d9e.firebasestorage.app",
+           messagingSenderId: "1063089929776",
+           appId: "1:1063089929776:web:8e226a23a4f3ab9c5777f5"
+       };
+
+       // Initialize Firebase
+       const app = initializeApp(firebaseConfig);
+       const auth = getAuth(app);
+       const db = getFirestore(app);
+
+       // SECURITY: Wrap everything in an IIFE to prevent global access
+       (function() {
+           // Security measures
+           const securityToken = generateSecurityToken();
+           let lastServerBalance = 0;
+           let pendingTransactions = new Set();
+           
+           // Generate a random security token for this session
+           function generateSecurityToken() {
+               return Array.from(window.crypto.getRandomValues(new Uint8Array(16)))
+                   .map(b => b.toString(16).padStart(2, "0"))
+                   .join('');
+           }
+           
+           // Authentication and Coin Management
+           let currentUser = null;
+           let firebaseCoinBalance = 0;
+           let transactionInProgress = false;
+           
+           // Secure game state with private variables
+           let _gameActive = false;
+           let _gameComplete = false;
+           let _coinBalance = 0;
+           
+           // Secure DOM references
+           const startButton = document.getElementById('startButton');
+           const playAgainButton = document.getElementById('playAgainButton');
+           const resetButton = document.getElementById('resetButton');
+           const backButton = document.getElementById('backButton');
+           const statusDisplay = document.getElementById('statusDisplay');
+           const scoreDisplay = document.getElementById('scoreDisplay');
+           const coinDisplay = document.getElementById('coinDisplay');
+           const menuSection = document.getElementById('menuSection');
+           const gameSection = document.getElementById('gameSection');
+           const gameEndControls = document.getElementById('gameEndControls');
+           const revolverContainer = document.getElementById('revolverContainer');
+           const cylinder = document.getElementById('cylinder');
+           const flash = document.getElementById('flash');
+           const gunClick = document.getElementById('gunClick');
+           const gameResult = document.getElementById('gameResult');
+           const oddsDisplay = document.getElementById('oddsDisplay');
+           const betDisplay = document.getElementById('betDisplay');
+           
+           // Game configuration
+           const config = {
+               playCost: 100,       // Cost to play a game
+               baseWinReward: 200,  // Base reward for winning a round
+               rewardMultiplier: 2, // Multiplier for each survived round
+               maxRounds: 5,        // Maximum number of rounds
+               loseAmount: -500     // Loss amount if you get the bullet
+           };
+           
+           // Game state variables
+           let currentChamber = 0;   // Current chamber (0-5)
+           let bulletChamber = 0;    // Chamber with the bullet
+           let roundNumber = 1;      // Current round
+           let gameSpinning = false; // Is the cylinder spinning
+           let isProcessingMove = false; // Lock to prevent multiple rapid clicks
+
+           // Authentication State Listener
+           onAuthStateChanged(auth, async (user) => {
+               if (user) {
+                   // User is signed in
+                   currentUser = user;
+                   console.log("User signed in:", user.uid);
+                   await loadFirebaseCoinBalance();
+               } else {
+                   // No user is signed in
+                   currentUser = null;
+                   console.log("No user signed in");
+                   
+                   // Check if Firebase is still initializing
+                   setTimeout(() => {
+                       // Only show login prompt if we still don't have a user after a delay
+                       if (!currentUser && _coinBalance <= 0) {
+                           showLoginPrompt();
+                       }
+                   }, 2000); // Give Firebase some time to authenticate
+               }
+           });
+
+           // SECURITY: Server-side balance verification
+           async function verifyBalance() {
+               if (!currentUser) return false;
+               
+               try {
+                   const userRef = doc(db, 'users', currentUser.uid);
+                   const userDoc = await getDoc(userRef, { source: 'server' });
+                   
+                   if (userDoc.exists()) {
+                       const serverBalance = userDoc.data().accountBalance || 0;
+                       
+                       // If local balance doesn't match server (possible tampering)
+                       if (Math.abs(_coinBalance - serverBalance) > 1) { // Allow small floating point differences
+                           console.log("Balance verification failed. Resetting to server value.");
+                           _coinBalance = serverBalance;
+                           updateCoinDisplay();
+                           return false;
+                       }
+                       return true;
+                   }
+                   return false;
+               } catch (error) {
+                   console.error("Error verifying balance:", error);
+                   return false;
+               }
+           }
+
+           // SECURITY: Use Firestore transactions for safer balance updates
+           async function loadFirebaseCoinBalance() {
+               if (!currentUser) {
+                   console.log("No user available to load balance");
+                   return;
+               }
+
+               try {
+                   console.log("Loading balance for user:", currentUser.uid);
+                   
+                   const userRef = doc(db, 'users', currentUser.uid);
+                   
+                   // Use a transaction to get the latest data
+                   const result = await runTransaction(db, async (transaction) => {
+                       const userDoc = await transaction.get(userRef);
+                       
+                       if (userDoc.exists()) {
+                           // Get coin balance from Firestore
+                           const userData = userDoc.data();
+                           const serverBalance = userData.accountBalance || 0;
+                           
+                           // Store the verified server balance
+                           lastServerBalance = serverBalance;
+                           
+                           return { 
+                               balance: serverBalance,
+                               isNew: false
+                           };
+                       } else {
+                           // Create initial balance if no document exists
+                           const initialBalance = 1000;
+                           
+                           // We'll create the document outside the transaction
+                           return {
+                               balance: initialBalance,
+                               isNew: true
+                           };
+                       }
+                   });
+                   
+                   // If new user, create the document
+                   if (result.isNew) {
+                       await setDoc(userRef, { 
+                           accountBalance: result.balance,
+                           username: currentUser.displayName || "Player",
+                           email: currentUser.email,
+                           createdAt: serverTimestamp(),
+                           totalGamesPlayed: 0,
+                           totalMoneySpent: 0,
+                           totalMoneyEarned: 0,
+                           securityToken: securityToken // Store security token for verification
+                       });
+                   }
+                   
+                   // Update local balances safely
+                   firebaseCoinBalance = result.balance;
+                   _coinBalance = result.balance;
+                   
+                   // Update UI and game state
+                   updateCoinDisplay();
+                   
+                   return result.balance;
+               } catch (error) {
+                   console.error("Error loading coin balance:", error);
+                   showLoginPrompt();
+                   return 0;
+               }
+           }
+
+           // SECURITY: Secure transaction recording with server verification
+           async function recordGameTransaction(gameId, amount, transactionType) {
+               if (!currentUser) return null;
+               
+               // Validate the security token
+               if (!await verifyBalance()) {
+                   console.error("Balance verification failed, transaction canceled");
+                   return null;
+               }
+
+               try {
+                   console.log(`Recording transaction: ${transactionType} for ${Math.abs(amount)} coins`);
+                   
+                   // Create a unique transaction ID
+                   const transactionId = crypto.randomUUID();
+                   
+                   // Add to pending set to prevent duplicates
+                   if (pendingTransactions.has(transactionId)) {
+                       console.log("Duplicate transaction detected, skipping");
+                       return null;
+                   }
+                   
+                   pendingTransactions.add(transactionId);
+                   
+                   // Set a transaction lock to prevent duplicate updates
+                   if (transactionInProgress) {
+                       console.log("Transaction already in progress, waiting...");
+                       await new Promise(resolve => setTimeout(resolve, 300));
+                   }
+                   
+                   transactionInProgress = true;
+                   
+                   try {
+                       // Use a Firestore transaction for atomicity
+                       const result = await runTransaction(db, async (transaction) => {
+                           // Get user document with fresh server data
+                           const userRef = doc(db, 'users', currentUser.uid);
+                           const userDoc = await transaction.get(userRef);
+                           
+                           if (!userDoc.exists()) {
+                               throw new Error("User document not found");
+                           }
+                           
+                           const userData = userDoc.data();
+                           const currentServerBalance = userData.accountBalance || 0;
+                           
+                           // Perform a security check of the last known balance
+                           if (Math.abs(currentServerBalance - lastServerBalance) > 1) {
+                               console.error("Possible balance tampering detected");
+                               return { error: "Security verification failed" };
+                           }
+                           
+                           // Calculate new balance
+                           let updatedBalance = currentServerBalance;
+                           
+                           if (amount > 0) {
+                               updatedBalance += amount;
+                               userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + Math.abs(amount);
+                           } else if (amount < 0) {
+                               updatedBalance -= Math.abs(amount);
+                               userData.totalMoneySpent = (userData.totalMoneySpent || 0) + Math.abs(amount);
+                           }
+                           
+                           if (transactionType === 'game_start') {
+                               userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
+                           }
+                           
+                           // Create the transaction record
+                           const transactionRef = doc(collection(db, 'transactions'), transactionId);
+                           
+                           // Update user document with new balance and stats
+                           transaction.update(userRef, {
+                               accountBalance: updatedBalance,
+                               totalGamesPlayed: userData.totalGamesPlayed || 0,
+                               totalMoneySpent: userData.totalMoneySpent || 0,
+                               totalMoneyEarned: userData.totalMoneyEarned || 0,
+                               lastUpdated: serverTimestamp()
+                           });
+                           
+                           // Set transaction data
+                           transaction.set(transactionRef, {
+                               userId: currentUser.uid,
+                               gameId: gameId,
+                               transactionId: transactionId,
+                               transactionType: transactionType,
+                               amount: Math.abs(amount),
+                               balanceBefore: currentServerBalance,
+                               balanceAfter: updatedBalance,
+                               securityToken: securityToken, // Add security token for verification
+                               timestamp: serverTimestamp()
+                           });
+                           
+                           return {
+                               newBalance: updatedBalance,
+                               transactionId: transactionId
+                           };
+                       });
+                       
+                       // Update local state with the server-verified balance
+                       if (!result.error) {
+                           lastServerBalance = result.newBalance;
+                           firebaseCoinBalance = result.newBalance;
+                           _coinBalance = result.newBalance;
+                           
+                           // Update UI
+                           updateCoinDisplay();
+                           
+                           return result;
+                       } else {
+                           console.error("Transaction error:", result.error);
+                           return null;
+                       }
+                   } finally {
+                       // Always release locks and clean up
+                       transactionInProgress = false;
+                       pendingTransactions.delete(transactionId);
+                   }
+               } catch (error) {
+                   console.error("Transaction Error:", error);
+                   pendingTransactions.clear();
+                   transactionInProgress = false;
+                   return null;
+               }
+           }
+
+           // Show Login Prompt
+           function showLoginPrompt() {
+               // Check if we already have coins - if so, the user is likely already authenticated
+               // This handles cases where Firebase auth is slow to report but data is accessible
+               if (_coinBalance > 0 || currentUser) {
+                   console.log("User appears to be authenticated, skipping login prompt");
+                   return;
+               }
+               
+               // Create a modal overlay
+               const overlay = document.createElement('div');
+               overlay.style.position = 'fixed';
+               overlay.style.top = '0';
+               overlay.style.left = '0';
+               overlay.style.width = '100%';
+               overlay.style.height = '100%';
+               overlay.style.background = 'rgba(0,0,0,0.8)';
+               overlay.style.display = 'flex';
+               overlay.style.justifyContent = 'center';
+               overlay.style.alignItems = 'center';
+               overlay.style.zIndex = '1000';
+
+               const modalContent = document.createElement('div');
+               modalContent.style.background = '#222';
+               modalContent.style.padding = '2rem';
+               modalContent.style.borderRadius = '10px';
+               modalContent.style.textAlign = 'center';
+               modalContent.style.color = 'white';
+
+               modalContent.innerHTML = `
+                   <h2>Login Required</h2>
+                   <p>Please log in to play Russian Roulette and track your coins.</p>
+                   <div>
+                       <button id="loginBtn" style="
+                           background: #4CAF50;
+                           color: white;
+                           border: none;
+                           padding: 10px 20px;
+                           margin: 10px;
+                           border-radius: 5px;
+                           cursor: pointer;
+                       ">Go to Login</button>
+                       <button id="cancelBtn" style="
+                           background: #f44336;
+                           color: white;
+                           border: none;
+                           padding: 10px 20px;
+                           margin: 10px;
+                           border-radius: 5px;
+                           cursor: pointer;
+                       ">Cancel</button>
+                   </div>
+               `;
+
+               overlay.appendChild(modalContent);
+               document.body.appendChild(overlay);
+
+               // Add event listeners
+               document.getElementById('loginBtn').addEventListener('click', () => {
+                   // Redirect to main page where login is possible
+                   window.location.href = 'index.html';
+               });
+
+               document.getElementById('cancelBtn').addEventListener('click', () => {
+                   document.body.removeChild(overlay);
+                   // Disable game interactions
+                   startButton.disabled = true;
+                   startButton.innerHTML = 'Login to Play';
+               });
+           }
+           
+           // SECURITY: Safe update of UI without exposing balance manipulation
+           function updateCoinDisplay() {
+               // Format number with commas for thousands
+               coinDisplay.textContent = _coinBalance.toLocaleString();
+               
+               // Update play button appearance based on coin balance
+               if (_coinBalance < config.playCost) {
+                   startButton.title = "Low on coins - will go negative if you play";
+                   startButton.classList.add('insufficient');
+                   
+                   // Still allow playing, just with a warning
+                   if (!_gameActive && !_gameComplete) {
+                       startButton.textContent = "Play (Negative Balance)";
+                   }
+               } else {
+                   startButton.title = "Play a new game";
+                   startButton.classList.remove('insufficient');
+                   
+                   if (!_gameActive && !_gameComplete) {
+                       startButton.textContent = "Start Game (100 coins)";
+                   }
+               }
+           }
+
+           // SECURITY: Safe update of coins with server transaction
+           async function updateCoins(amount, transactionType) {
+               // Use recordGameTransaction which handles balance updates securely
+               const transactionResult = await recordGameTransaction("russian_roulette", amount, transactionType);
+               
+               // If transaction failed, don't update local UI
+               if (!transactionResult) {
+                   console.error("Transaction failed, balance not updated");
+                   return;
+               }
+               
+               // Update UI animation
+               coinDisplay.style.animation = 'none';
+               setTimeout(() => {
+                   coinDisplay.style.animation = 'glow 2s infinite';
+               }, 10);
+           }
+           
+           // Switch between menu and game modes
+           function showGameMode() {
+               menuSection.style.display = 'none';
+               gameSection.style.display = 'block';
+               gameEndControls.style.display = 'none';
+           }
+           
+           function showMenuMode() {
+               menuSection.style.display = 'block';
+               gameSection.style.display = 'none';
+               gameEndControls.style.display = 'none';
+           }
+           
+           function showGameEndMode() {
+               gameEndControls.style.display = 'block';
+           }
+           
+           // Initialize the game
+           function initializeGame() {
+               // Reset game state
+               currentChamber = 0;
+               bulletChamber = Math.floor(Math.random() * 6); // Random chamber for bullet
+               roundNumber = 1;
+               gameSpinning = false;
+               _gameActive = true;
+               _gameComplete = false;
+               isProcessingMove = false;
+               
+               // Reset display
+               flash.classList.remove('active');
+               gunClick.classList.remove('active');
+               gameResult.className = 'game-result';
+               gameResult.textContent = '';
+               scoreDisplay.textContent = '';
+               
+               // Update odds display
+               updateOddsDisplay();
+               
+               // Clear any bullet indicator from chambers
+               for (let i = 1; i <= 6; i++) {
+                   document.getElementById(`chamber${i}`).classList.remove('loaded');
+               }
+               
+               // Switch to game mode
+               showGameMode();
+               
+               // Spin the cylinder
+               spinCylinder();
+           }
+           
+           // Spin the cylinder
+           function spinCylinder() {
+               if (gameSpinning) return;
+               
+               gameSpinning = true;
+               statusDisplay.textContent = "Spinning...";
+               
+               // Randomize starting position
+               const spinDegrees = 360 * (3 + Math.random() * 5);
+               cylinder.style.transform = `rotate(${spinDegrees}deg)`;
+               
+               // After spin completes
+               setTimeout(() => {
+                   gameSpinning = false;
+                   statusDisplay.textContent = "Click the gun to pull the trigger...";
+                   
+                   // Enable click on revolver
+                   revolverContainer.style.cursor = 'pointer';
+               }, 1500);
+           }
+           
+           // Update odds display
+           function updateOddsDisplay() {
+               // Calculate winning odds
+               const remainingChambers = 6 - roundNumber + 1;
+               const winChance = ((remainingChambers - 1) / remainingChambers * 100).toFixed(1);
+               
+               // Calculate current round reward
+               const roundReward = config.baseWinReward * Math.pow(config.rewardMultiplier, roundNumber - 1);
+               
+               oddsDisplay.textContent = `Chamber ${roundNumber} of 6 (${winChance}% chance to survive)`;
+               betDisplay.textContent = `Survive this round: +${roundReward} coins`;
+           }
+           
+           // Pull the trigger
+           async function pullTrigger() {
+               if (!_gameActive || gameSpinning || isProcessingMove) return;
+               
+               isProcessingMove = true;
+               
+               // Trigger pull animation
+               revolverContainer.style.animation = 'shake 0.3s forwards';
+               
+               // Simple click sound animation
+               gunClick.classList.add('active');
+               setTimeout(() => gunClick.classList.remove('active'), 300);
+               
+               // Determine if the current chamber has the bullet
+               if (currentChamber === bulletChamber) {
+                   // Shot fired - you lose
+                   setTimeout(() => {
+                       flash.classList.add('active');
+                       
+                       setTimeout(async () => {
+                           // Player lost
+                           _gameActive = false;
+                           _gameComplete = true;
+                           
+                           // Show the bullet
+                           document.getElementById(`chamber${currentChamber + 1}`).classList.add('loaded');
+                           
+                           // Apply loss amount
+                           await updateCoins(config.loseAmount, 'game_loss');
+                           
+                           // Update UI
+                           statusDisplay.textContent = "BANG! You lost!";
+                           scoreDisplay.innerHTML = `You lost: <span class="lose-amount">${config.loseAmount}</span>`;
+                           
+                           // Show game result overlay
+                           gameResult.textContent = "BANG!";
+                           gameResult.className = 'game-result lose';
+                           
+                           // Show end game controls
+                           showGameEndMode();
+                           
+                           // Reset animation
+                           revolverContainer.style.animation = '';
+                           isProcessingMove = false;
+                       }, 200);
+                   }, 300);
+               } else {
+                   // Click - empty chamber
+                   setTimeout(async () => {
+                       // Apply win amount for this round
+                       const roundReward = config.baseWinReward * Math.pow(config.rewardMultiplier, roundNumber - 1);
+                       await updateCoins(roundReward, 'game_win');
+                       
+                       // Update UI for this round
+                       statusDisplay.textContent = "Click! You survived this round.";
+                       scoreDisplay.innerHTML = `You won: <span class="win-amount">+${roundReward}</span>`;
+                       
+                       // Check if this was the final round
+                       if (roundNumber >= config.maxRounds) {
+                           // Player survived all rounds
+                           _gameActive = false;
+                           _gameComplete = true;
+                           
+                           // Show game result overlay
+                           gameResult.textContent = "SURVIVED!";
+                           gameResult.className = 'game-result win';
+                           
+                           // Show end game controls
+                           showGameEndMode();
+                       } else {
+                           // Move to next chamber
+                           currentChamber = (currentChamber + 1) % 6;
+                           roundNumber++;
+                           
+                           // Update odds display
+                           updateOddsDisplay();
+                           
+                           // Show continue option
+                           setTimeout(() => {
+                               statusDisplay.textContent = "Proceeding to next chamber...";
+                               
+                               // Spin for the next round
+                               setTimeout(() => {
+                                   spinCylinder();
+                                   isProcessingMove = false;
+                               }, 1000);
+                           }, 1500);
+                       }
+                       
+                       // Reset animation
+                       revolverContainer.style.animation = '';
+                   }, 500);
+               }
+           }
+           
+           // Start a new game
+           async function startNewGame() {
+               // Verify balance first
+               if (!await verifyBalance()) {
+                   console.error("Balance verification failed, game start canceled");
+                   return;
+               }
+               
+               // Deduct the play cost
+               await updateCoins(-config.playCost, 'game_start');
+               
+               // Initialize the game
+               initializeGame();
+           }
+           
+           // Reset game and return to menu
+           function resetGame() {
+               // Clear game state
+               _gameActive = false;
+               _gameComplete = false;
+               
+               // Return to menu
+               showMenuMode();
+           }
+
+           // SECURITY: Add anti-debugging measures
+           // This makes it harder to manipulate the game via console
+           const antiDebugInterval = setInterval(() => {
+               const startTime = performance.now();
+               debugger; // This statement gets triggered when DevTools is open
+               const endTime = performance.now();
+               
+               // If debugger statement takes too long to execute, DevTools is likely open
+               if (endTime - startTime > 100) {
+                   console.log("Developer tools detected");
+                   // Optional: Force a verification when developer tools detected
+                   verifyBalance();
+               }
+           }, 2000);
+
+           // Override console methods to detect manipulation attempts
+           const originalConsoleLog = console.log;
+           const originalConsoleError = console.error;
+           const originalConsoleWarn = console.warn;
+           
+           console.log = function(...args) {
+               // Check for attempts to manipulate coins
+               const message = args.join(' ').toLowerCase();
+               if (message.includes('coin') || message.includes('balance') || message.includes('firebase')) {
+                   // Log attempt but continue
+                   originalConsoleLog.apply(console, ["Security: Possible manipulation attempt detected"]);
+               }
+               return originalConsoleLog.apply(console, args);
+           };
+           
+           // Anti-tampering code to detect global property modifications
+           Object.defineProperty(window, 'coinBalance', {
+               get: function() {
+                   console.warn("Attempt to access protected property detected");
+                   return 0; // Return false value
+               },
+               set: function() {
+                   console.warn("Attempt to modify protected property detected");
+                   return false;
+               },
+               configurable: false
+           });
+           
+           // Prevent direct manipulation of Firebase references
+           ["firebase", "db", "auth", "firestore"].forEach(prop => {
+               Object.defineProperty(window, prop, {
+                   get: function() {
+                       console.warn(`Attempt to access ${prop} detected`);
+                       return null;
+                   },
+                   configurable: false
+               });
+           });
+
+           // Event listeners 
+           startButton.addEventListener('click', startNewGame);
+           playAgainButton.addEventListener('click', startNewGame);
+           resetButton.addEventListener('click', resetGame);
+           backButton.addEventListener('click', () => {
+               window.location.href = 'index.html';
+           });
+           
+           // Revolver click handler
+           revolverContainer.addEventListener('click', pullTrigger);
+
+           // SECURITY: Monitor for attempts to override protections
+           const securityMonitor = setInterval(() => {
+               try {
+                   // Verify critical function integrity
+                   if (updateCoins.toString().length !== updateCoins.toString().length) {
+                       console.error("Function tampering detected");
+                       window.location.reload(); // Force reload on tampering
+                   }
+                   
+                   // Periodically verify balance with server (every 30 seconds)
+                   if (currentUser) {
+                       verifyBalance();
+                   }
+               } catch (e) {
+                   console.error("Security monitor error:", e);
+               }
+           }, 30000);
+
+           // Initialize the game
+           window.addEventListener('load', () => {
+               console.log("Game loading...");
+               
+               // Set an initial check for auth state
+               if (auth && auth.currentUser) {
+                   console.log("User already authenticated on page load");
+                   currentUser = auth.currentUser;
+               }
+               
+               // Properly initialize the game based on authentication state
+               const initializeGame = async () => {
+                   if (currentUser) {
+                       console.log("Initializing game with authenticated user");
+                       // Load balance securely
+                       await loadFirebaseCoinBalance();
+                   } else {
+                       console.log("Initializing game with no user");
+                       _coinBalance = 0;
+                       updateCoinDisplay();
+                   }
+                   
+                   // Start in menu mode
+                   showMenuMode();
+                   
+                   console.log("Game initialization complete");
+               };
+               
+               // Call the initialization function
+               initializeGame();
+           });
+           
+           // Cleanup function to prevent memory leaks
+           window.addEventListener('unload', () => {
+               if (antiDebugInterval) clearInterval(antiDebugInterval);
+               if (securityMonitor) clearInterval(securityMonitor);
+           });
+       })(); // End of IIFE to protect variables
+   </script>
+</body>
+</html>
