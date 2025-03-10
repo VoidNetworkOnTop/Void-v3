@@ -1112,17 +1112,20 @@
        }
 
        // Record Game Transaction with enhanced security and retry mechanism
-       async function recordGameTransaction(gameId, amount, isWin) {
+       // FIXED: Added skipLocalUpdate parameter to prevent double deduction
+       async function recordGameTransaction(gameId, amount, isWin, skipLocalUpdate = false) {
            if (!currentUser || offlineMode) {
-               // Update local balance in offline mode
-               const currentBalance = secureGameState.getBalance();
-               const newBalance = isWin ? currentBalance + amount : currentBalance - amount;
-               secureGameState.updateBalance(newBalance);
-               secureGameState.updateDisplay();
+               // Update local balance in offline mode, but only if not skipped
+               if (!skipLocalUpdate) {
+                   const currentBalance = secureGameState.getBalance();
+                   const newBalance = isWin ? currentBalance + amount : currentBalance - amount;
+                   secureGameState.updateBalance(newBalance);
+                   secureGameState.updateDisplay();
+               }
                
                return {
                    transactionId: "offline-" + Date.now(),
-                   newBalance: newBalance
+                   newBalance: secureGameState.getBalance()
                };
            }
 
@@ -1132,12 +1135,14 @@
            });
            
            try {
-               // First update local balance for fast UI response
-               const currentBalance = secureGameState.getBalance();
-               const newBalance = isWin ? currentBalance + amount : currentBalance - amount;
-               window.gameState.balance = newBalance;
-               secureGameState.updateBalance(newBalance);
-               secureGameState.updateDisplay();
+               // First update local balance for fast UI response, but only if not skipped
+               if (!skipLocalUpdate) {
+                   const currentBalance = secureGameState.getBalance();
+                   const newBalance = isWin ? currentBalance + amount : currentBalance - amount;
+                   window.gameState.balance = newBalance;
+                   secureGameState.updateBalance(newBalance);
+                   secureGameState.updateDisplay();
+               }
                
                // Then update Firebase in background
                Promise.race([
@@ -1151,22 +1156,24 @@
                // Return success immediately for better UX
                return {
                    transactionId: "tx-" + Date.now(),
-                   newBalance: newBalance
+                   newBalance: secureGameState.getBalance()
                };
            } catch (error) {
                console.warn("Error in transaction, switching to offline mode:", error);
                enableOfflineMode();
                
-               // Update local balance as fallback
-               const currentBalance = secureGameState.getBalance();
-               const newBalance = isWin ? currentBalance + amount : currentBalance - amount;
-               window.gameState.balance = newBalance;
-               secureGameState.updateBalance(newBalance);
-               secureGameState.updateDisplay();
+               // Update local balance as fallback, but only if not skipped
+               if (!skipLocalUpdate) {
+                   const currentBalance = secureGameState.getBalance();
+                   const newBalance = isWin ? currentBalance + amount : currentBalance - amount;
+                   window.gameState.balance = newBalance;
+                   secureGameState.updateBalance(newBalance);
+                   secureGameState.updateDisplay();
+               }
                
                return {
                    transactionId: "offline-" + Date.now(),
-                   newBalance: newBalance
+                   newBalance: secureGameState.getBalance()
                };
            }
        }
@@ -1249,6 +1256,7 @@
            let _processingQueue = false;
            
            // Improved transaction queue processing
+           // FIXED: Now passes skipLocalUpdate=true to recordGameTransaction
            async function _processTransactionQueue() {
                if (_processingQueue || _transactionQueue.length === 0) return;
                
@@ -1283,7 +1291,8 @@
                            // Only do a single server update with latest value
                            const finalTransaction = transactions[transactions.length - 1];
                            if (finalTransaction) {
-                               await recordGameTransaction('blackjack_game', finalTransaction.amount, finalTransaction.isWin);
+                               // Pass true for skipLocalUpdate to prevent double deduction
+                               await recordGameTransaction('blackjack_game', finalTransaction.amount, finalTransaction.isWin, true);
                            }
                        } catch (err) {
                            console.warn("Background transaction update failed:", err);
@@ -2660,7 +2669,7 @@
                         return;
                     }
                     
-                    // Check if we're in initialization mode
+// Check if we're in initialization mode
                     if (initializationMode) {
                         action.call(this, event);
                     } else {
