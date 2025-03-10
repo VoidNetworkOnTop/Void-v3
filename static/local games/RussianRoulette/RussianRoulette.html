@@ -1594,6 +1594,8 @@
            
            // Handle changes to the lobby data
            function handleLobbyUpdate(lobbyData) {
+               console.log("Lobby update received:", lobbyData);
+               
                if (onlineRole === 'host') {
                    // Host is seeing a joiner update
                    if (lobbyData.joinerId) {
@@ -1607,11 +1609,8 @@
                        startGameBtn.disabled = true;
                    }
                    
-                   // Check if game state updated (for ongoing games)
-                   if (lobbyData.gameState && lobbyData.gameState.status === 'playing' && 
-                       onlineGameSection.style.display === 'none') {
-                       showOnlineGame(lobbyData.gameState);
-                   }
+                   // The host should transition based on gameState, but only if not already in game
+                   // We'll let the direct UI change in startOnlineGame handle initial transition
                } else if (onlineRole === 'joiner') {
                    // Joiner is getting an update
                    if (lobbyData.joinerId === currentUser.uid) {
@@ -1622,9 +1621,9 @@
                        opponentName = lobbyData.hostName || "Host";
                        
                        // Check if game has started
-                       if (lobbyData.gameState.status === 'playing' && 
-                           onlineGameSection.style.display === 'none') {
-                           // Transition to game UI
+                       if (lobbyData.gameState && lobbyData.gameState.status === 'playing' && 
+                           onlineGameSection.style.display !== 'flex') {
+                           console.log("Joiner detected game start, showing game UI");
                            showOnlineGame(lobbyData.gameState);
                        }
                    } else if (lobbyData.joinerId === null && currentLobbyId) {
@@ -1635,12 +1634,13 @@
                    }
                }
                
-               // Handle game state updates for both host and joiner
-               if (lobbyData.gameState && lobbyData.gameState.status === 'playing' && 
-                   onlineGameSection.style.display === 'flex') {
-                   updateOnlineGameState(lobbyData.gameState);
-               } else if (lobbyData.gameState && lobbyData.gameState.status === 'game_over') {
-                   showOnlineGameEnd(lobbyData.gameState);
+               // For both players, update game state if already in game
+               if (lobbyData.gameState && onlineGameSection.style.display === 'flex') {
+                   if (lobbyData.gameState.status === 'playing') {
+                       updateOnlineGameState(lobbyData.gameState);
+                   } else if (lobbyData.gameState.status === 'game_over') {
+                       showOnlineGameEnd(lobbyData.gameState);
+                   }
                }
            }
            
@@ -1783,11 +1783,15 @@
                if (!currentLobbyId || onlineRole !== 'host') return;
                
                try {
+                   // Show a temporary "Starting game..." message
+                   startGameBtn.textContent = "Starting game...";
+                   startGameBtn.disabled = true;
+                   
                    // Generate random bullet chamber
                    const bulletChamber = Math.floor(Math.random() * 6);
                    
                    // Create the game state
-                   const gameState = {
+                   const newGameState = {
                        status: 'playing',
                        currentTurn: currentUser.uid, // Host goes first
                        bulletChamber: bulletChamber,
@@ -1795,16 +1799,25 @@
                        roundNumber: 1
                    };
                    
-                   // Update the lobby with game state
-                   await updateDoc(doc(db, 'roulette_lobbies', currentLobbyId), {
-                       gameState: gameState
-                   });
+                   // Force UI transition before Firebase update
+                   // This ensures the host sees the game immediately
+                   hostLobbySection.style.display = 'none';
+                   onlineGameSection.style.display = 'flex';
+                   opponentDisplayName.textContent = joinerName.textContent || "Opponent";
+                   updateOnlineGameState(newGameState);
                    
-                   // Immediately show game UI for host (don't wait for listener)
-                   showOnlineGame(gameState);
+                   console.log("Host starting game - UI should now show game screen");
+                   
+                   // Now update Firebase (which will notify the joiner)
+                   await updateDoc(doc(db, 'roulette_lobbies', currentLobbyId), {
+                       gameState: newGameState
+                   });
                    
                } catch (error) {
                    console.error("Error starting game:", error);
+                   // Restore UI on error
+                   startGameBtn.textContent = "Start Game";
+                   startGameBtn.disabled = false;
                }
            }
            
