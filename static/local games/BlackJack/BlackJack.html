@@ -2473,82 +2473,139 @@
         gameStateHash = hashGameState();
     }
 
-    // Initialize game
-    function initGame() {
-        // Check if user is logged in before allowing game to start
-        if (!window.voidGameUser && !window.guestMode) {
-            console.log("User not logged in, showing login screen");
-            let loginScreen = document.getElementById('login-required-screen');
-            let startScreen = document.getElementById('start-screen');
+    // Fixed Start Button handler code
+    function setupStartButtonHandler() {
+        console.log("Setting up start button handler");
+        const startBtn = document.getElementById('start-btn');
+        
+        if (startBtn) {
+            // Remove any existing event listeners to avoid duplicates
+            startBtn.replaceWith(startBtn.cloneNode(true));
             
+            // Get the fresh reference after replacement
+            const freshStartBtn = document.getElementById('start-btn');
+            
+            // Add event listener with direct function instead of using secureAction wrapper
+            freshStartBtn.addEventListener('click', function() {
+                console.log("Start button clicked");
+                
+                // Show immediate feedback
+                this.disabled = true;
+                this.innerHTML = 'Starting... <div class="loading-spinner"></div>';
+                
+                // Initialize game with a short delay to allow UI update
+                setTimeout(function() {
+                    try {
+                        // Enable guest mode automatically if not logged in
+                        if (!window.voidGameUser && !window.guestMode) {
+                            console.log("Enabling guest mode for start");
+                            window.enableGuestMode();
+                        }
+                        
+                        // Initialize game
+                        initGame();
+                        freshStartBtn.innerHTML = 'Start Game';
+                        freshStartBtn.disabled = false;
+                    } catch (error) {
+                        console.error("Error starting game:", error);
+                        freshStartBtn.innerHTML = 'Start Game';
+                        freshStartBtn.disabled = false;
+                        alert("Error starting game. Please try again.");
+                    }
+                }, 100);
+            });
+            
+            console.log("Start button handler attached");
+        } else {
+            console.error("Start button not found");
+        }
+    }
+
+    // Update your initGame function
+    function initGame() {
+        try {
+            console.log("Initializing game");
+            
+            // If guestMode is enabled, skip login check
+            if (!window.voidGameUser && !window.guestMode) {
+                console.log("User not logged in, showing login screen");
+                let loginScreen = document.getElementById('login-required-screen');
+                let startScreen = document.getElementById('start-screen');
+                
+                if (startScreen) {
+                    startScreen.classList.remove('visible');
+                }
+                if (loginScreen) {
+                    loginScreen.classList.add('visible');
+                }
+                return;
+            }
+        
+            // Set initialization mode to avoid false tampering detection
+            initializationMode = true;
+            
+            // Reset game state
+            gameActive = true;
+            currentBet = 0;
+            playerCards = [];
+            dealerCards = [];
+            isDealerTurn = false;
+            gameResult = null;
+            canDouble = false;
+            actionCounter = 0;
+            lastGameAction = 'init';
+            
+            // Create and shuffle the deck
+            createDeck();
+            
+            // Update UI
+            if (betAmount) {
+                betAmount.textContent = '0';
+            }
+            
+            // Hide start screen
             if (startScreen) {
                 startScreen.classList.remove('visible');
             }
-            if (loginScreen) {
-                loginScreen.classList.add('visible');
+            
+            // Show blackjack container
+            if (blackjackContainer) {
+                blackjackContainer.style.display = 'flex';
             }
-            return;
+            
+            // Show bet controls, hide action controls
+            if (betControls) {
+                betControls.style.display = 'block';
+            }
+            if (actionControls) {
+                actionControls.style.display = 'none';
+            }
+            
+            // Disable deal button until a valid bet is placed
+            if (dealBtn) {
+                dealBtn.disabled = true;
+            }
+            
+            // Update game status
+            updateGameStatus("Place your bet to start");
+            
+            // Start game loop for background effects
+            window.cancelAnimationFrame(animationFrame);
+            gameLoop();
+            
+            // Set initial game state hash
+            gameStateHash = hashGameState();
+            
+            // Turn off initialization mode after setup
+            setTimeout(() => {
+                initializationMode = false;
+            }, 500);
+            
+            console.log("Game initialized successfully");
+        } catch (error) {
+            console.error("Error in initGame:", error);
+            alert("Failed to initialize game. Please refresh the page and try again.");
         }
-    
-        // Set initialization mode to avoid false tampering detection
-        initializationMode = true;
-        
-        // Reset game state
-        gameActive = true;
-        currentBet = 0;
-        playerCards = [];
-        dealerCards = [];
-        isDealerTurn = false;
-        gameResult = null;
-        canDouble = false;
-        actionCounter = 0;
-        lastGameAction = 'init';
-        
-        // Create and shuffle the deck
-        createDeck();
-        
-        // Update UI
-        if (betAmount) {
-            betAmount.textContent = '0';
-        }
-        
-        // Hide start screen
-        if (startScreen) {
-            startScreen.classList.remove('visible');
-        }
-        
-        // Show blackjack container
-        if (blackjackContainer) {
-            blackjackContainer.style.display = 'flex';
-        }
-        
-        // Show bet controls, hide action controls
-        if (betControls) {
-            betControls.style.display = 'block';
-        }
-        if (actionControls) {
-            actionControls.style.display = 'none';
-        }
-        
-        // Disable deal button until a valid bet is placed
-        if (dealBtn) {
-            dealBtn.disabled = true;
-        }
-        
-        // Update game status
-        updateGameStatus("Place your bet to start");
-        
-        // Start game loop for background effects
-        window.cancelAnimationFrame(animationFrame);
-        gameLoop();
-        
-        // Set initial game state hash
-        gameStateHash = hashGameState();
-        
-        // Turn off initialization mode after setup
-        setTimeout(() => {
-            initializationMode = false;
-        }, 500);
     }
 
     // Reset the game
@@ -2624,7 +2681,7 @@
             // Make stars twinkle
             const alpha = 0.3 + 0.7 * Math.sin(Date.now() * 0.001 + i);
             
-            ctx.globalAlpha = alpha;
+ctx.globalAlpha = alpha;
             ctx.beginPath();
             ctx.arc(x, y, size, 0, Math.PI * 2);
             ctx.fill();
@@ -2633,362 +2690,376 @@
         ctx.globalAlpha = 1.0;
     }
 
-// Game loop
-function gameLoop() {
-    // Draw background
-    drawStars();
-    
-    // Continue game loop
-    animationFrame = requestAnimationFrame(gameLoop);
-}
+    // Game loop
+    function gameLoop() {
+        // Draw background
+        drawStars();
+        
+        // Continue game loop
+        animationFrame = requestAnimationFrame(gameLoop);
+    }
 
-// Setup event listeners with security checks
-function setupEventListeners() {
-    // Add a security check for all game actions
-    const secureAction = (action) => {
-        return function(event) {
-            try {
-                // Check if user is logged in for game actions
-                if (!window.voidGameUser && !window.guestMode && this.id !== 'login-btn' && 
-                    this.id !== 'back-btn' && this.id !== 'play-offline-btn' && 
-                    this.id !== 'offline-continue-btn' && this.id !== 'retry-connection-btn') {
-                    console.log("User not logged in, showing login screen");
-                    let loginScreen = document.getElementById('login-required-screen');
-                    let startScreen = document.getElementById('start-screen');
+    // Setup event listeners with security checks
+    function setupEventListeners() {
+        // Add a security check for all game actions
+        const secureAction = (action) => {
+            return function(event) {
+                try {
+                    // Check if user is logged in for game actions
+                    if (!window.voidGameUser && !window.guestMode && this.id !== 'login-btn' && 
+                        this.id !== 'back-btn' && this.id !== 'play-offline-btn' && 
+                        this.id !== 'offline-continue-btn' && this.id !== 'retry-connection-btn') {
+                        console.log("User not logged in, showing login screen");
+                        let loginScreen = document.getElementById('login-required-screen');
+                        let startScreen = document.getElementById('start-screen');
+                        
+                        if (startScreen) {
+                            startScreen.classList.remove('visible');
+                        }
+                        if (loginScreen) {
+                            loginScreen.classList.add('visible');
+                        }
+                        return;
+                    }
                     
-                    if (startScreen) {
-                        startScreen.classList.remove('visible');
+                    // Betting actions get special treatment
+                    if (this && this.classList && this.classList.contains('bet-btn')) {
+                        // Always allow bet buttons to work without validation
+                        action.call(this, event);
+                        return;
                     }
-                    if (loginScreen) {
-                        loginScreen.classList.add('visible');
-                    }
-                    return;
-                }
-                
-                // Betting actions get special treatment
-                if (this && this.classList && this.classList.contains('bet-btn')) {
-                    // Always allow bet buttons to work without validation
-                    action.call(this, event);
-                    return;
-                }
-                
-                // Check if we're in initialization mode
-                if (initializationMode) {
-                    action.call(this, event);
-                } else {
-                    // Verify game hasn't been tampered with
-                    if (validateGameState()) {
+                    
+                    // Check if we're in initialization mode
+                    if (initializationMode) {
                         action.call(this, event);
                     } else {
-                        console.error("Game state validation failed");
-                        // Prevent infinite reset loops by setting initialization mode
-                        initializationMode = true;
-                        resetGame();
-                        setTimeout(() => {
-                            initializationMode = false;
-                        }, 500); // Reduced timeout
+                        // Verify game hasn't been tampered with
+                        if (validateGameState()) {
+                            action.call(this, event);
+                        } else {
+                            console.error("Game state validation failed");
+                            // Prevent infinite reset loops by setting initialization mode
+                            initializationMode = true;
+                            resetGame();
+                            setTimeout(() => {
+                                initializationMode = false;
+                            }, 500); // Reduced timeout
+                        }
                     }
+                } catch (error) {
+                    console.error("Error in game action:", error);
+                    // Safe recovery
+                    initializationMode = true;
+                    resetGame();
+                    setTimeout(() => {
+                        initializationMode = false;
+                    }, 500); // Reduced timeout
                 }
-            } catch (error) {
-                console.error("Error in game action:", error);
-                // Safe recovery
-                initializationMode = true;
-                resetGame();
-                setTimeout(() => {
-                    initializationMode = false;
-                }, 500); // Reduced timeout
-            }
+            };
         };
-    };
 
-    // Setup event listeners
-    // Start button
-    if (startBtn) {
-        startBtn.addEventListener('click', secureAction(function() {
-            initGame();
-        }));
-    }
-    
-    // Play again button
-    if (playAgainBtn) {
-        playAgainBtn.addEventListener('click', secureAction(function() {
-            // First clear the game board before resetting
-            // Clear cards from view
-            if (playerCardsContainer) {
-                playerCardsContainer.innerHTML = '';
-            }
-            if (dealerCardsContainer) {
-                dealerCardsContainer.innerHTML = '';
-            }
-            
-            // Clear card data arrays
-            playerCards = [];
-            dealerCards = [];
-            
-            // Hide the result screen
-            if (resultScreen) {
-                resultScreen.classList.remove('visible');
-            }
-            
-            // Then reset the game
-            resetGame();
-        }));
-    }
-    
-    // Back button
-    if (backBtn) {
-        backBtn.addEventListener('click', function() {
-            window.location.href = '/voidgms.html';
-        });
-    }
-    
-    // Bet buttons
-    const betButtons = document.querySelectorAll('.bet-btn');
-    betButtons.forEach(button => {
-        button.addEventListener('click', secureAction(function() {
-            const betValue = this.getAttribute('data-amount');
-            
-            if (betValue === 'clear') {
-                placeBet('clear');
-            } else if (betValue === 'max') {
-                placeBet('max');
-            } else {
-                placeBet(parseInt(betValue));
-            }
-        }));
-    });
-    
-    // Deal button
-    if (dealBtn) {
-        dealBtn.addEventListener('click', secureAction(function() {
-            // Check if already dealing to prevent double-clicks
-            if (this.disabled) return;
-            
-            // Add loading indicator
-            this.innerHTML = 'Dealing... <div class="loading-spinner"></div>';
-            this.disabled = true;
-            
-            // Start the deal process
-            startDeal();
-        }));
-    }
-    
-    // Action buttons
-    if (hitBtn) {
-        hitBtn.addEventListener('click', secureAction(playerHit));
-    }
-    
-    if (standBtn) {
-        standBtn.addEventListener('click', secureAction(playerStand));
-    }
-    
-    if (doubleBtn) {
-        doubleBtn.addEventListener('click', secureAction(playerDoubleDown));
-    }
-    
-    // Add resize event listener
-    window.addEventListener('resize', function() {
-        initCanvas();
-        if (gameActive) {
-            drawStars();
+        // Setup event listeners
+        // Start button
+        if (startBtn) {
+            startBtn.addEventListener('click', secureAction(function() {
+                initGame();
+            }));
         }
-    });
-}
-
-// Check if user is logged in
-function checkLoginStatus() {
-    let loginScreen = document.getElementById('login-required-screen');
-    let startScreen = document.getElementById('start-screen');
-    let loginBtn = document.getElementById('login-btn');
-    
-    if (loginBtn) {
-        loginBtn.addEventListener('click', function() {
-            window.location.href = '/voidgms.html'; // Redirect to login page
-        });
-    }
-    
-    // Add offline button handlers
-    const playOfflineBtn = document.getElementById('play-offline-btn');
-    if (playOfflineBtn) {
-        playOfflineBtn.addEventListener('click', function() {
-            window.enableGuestMode();
-        });
-    }
-    
-    setTimeout(() => {
-        // Check after a short delay to ensure Firebase auth has initialized
-        if (!window.voidGameUser && !window.guestMode) {
-            console.log("No user logged in, showing login screen");
-            if (startScreen) {
-                startScreen.classList.remove('visible');
-            }
-            if (loginScreen) {
-                loginScreen.classList.add('visible');
-            }
-        } else {
-            console.log("User is logged in, game can start");
-            if (loginScreen) {
-                loginScreen.classList.remove('visible');
-            }
-        }
-    }, 500); // Reduced timeout
-}
-
-// Handle page visibility changes to prevent cheating via tab switching
-document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'hidden') {
-        lastGameAction = 'pageHidden';
-        actionCounter++;
-    } else {
-        lastGameAction = 'pageVisible';
-        actionCounter++;
-        // Re-validate when the page becomes visible again
-        validateGameState();
-    }
-});
-
-// Check connection status periodically
-function checkConnectionStatus() {
-    if (!navigator.onLine && !window.guestMode) {
-        console.log("Connection lost - switching to offline mode");
         
-        // Show connection issue screen if not already in guest mode
-        const connectionIssueScreen = document.getElementById('connection-issue-screen');
-        if (connectionIssueScreen && !connectionIssueScreen.classList.contains('visible')) {
-            connectionIssueScreen.classList.add('visible');
+        // Play again button
+        if (playAgainBtn) {
+            playAgainBtn.addEventListener('click', secureAction(function() {
+                // First clear the game board before resetting
+                // Clear cards from view
+                if (playerCardsContainer) {
+                    playerCardsContainer.innerHTML = '';
+                }
+                if (dealerCardsContainer) {
+                    dealerCardsContainer.innerHTML = '';
+                }
+                
+                // Clear card data arrays
+                playerCards = [];
+                dealerCards = [];
+                
+                // Hide the result screen
+                if (resultScreen) {
+                    resultScreen.classList.remove('visible');
+                }
+                
+                // Then reset the game
+                resetGame();
+            }));
+        }
+        
+        // Back button
+        if (backBtn) {
+            backBtn.addEventListener('click', function() {
+                window.location.href = '/voidgms.html';
+            });
+        }
+        
+        // Bet buttons
+        const betButtons = document.querySelectorAll('.bet-btn');
+        betButtons.forEach(button => {
+            button.addEventListener('click', secureAction(function() {
+                const betValue = this.getAttribute('data-amount');
+                
+                if (betValue === 'clear') {
+                    placeBet('clear');
+                } else if (betValue === 'max') {
+                    placeBet('max');
+                } else {
+                    placeBet(parseInt(betValue));
+                }
+            }));
+        });
+        
+        // Deal button
+        if (dealBtn) {
+            dealBtn.addEventListener('click', secureAction(function() {
+                // Check if already dealing to prevent double-clicks
+                if (this.disabled) return;
+                
+                // Add loading indicator
+                this.innerHTML = 'Dealing... <div class="loading-spinner"></div>';
+                this.disabled = true;
+                
+                // Start the deal process
+                startDeal();
+            }));
+        }
+        
+        // Action buttons
+        if (hitBtn) {
+            hitBtn.addEventListener('click', secureAction(playerHit));
+        }
+        
+        if (standBtn) {
+            standBtn.addEventListener('click', secureAction(playerStand));
+        }
+        
+        if (doubleBtn) {
+            doubleBtn.addEventListener('click', secureAction(playerDoubleDown));
+        }
+        
+        // Add resize event listener
+        window.addEventListener('resize', function() {
+            initCanvas();
+            if (gameActive) {
+                drawStars();
+            }
+        });
+    }
+
+    // Check if user is logged in
+    function checkLoginStatus() {
+        let loginScreen = document.getElementById('login-required-screen');
+        let startScreen = document.getElementById('start-screen');
+        let loginBtn = document.getElementById('login-btn');
+        
+        if (loginBtn) {
+            loginBtn.addEventListener('click', function() {
+                window.location.href = '/voidgms.html'; // Redirect to login page
+            });
+        }
+        
+        // Add offline button handlers
+        const playOfflineBtn = document.getElementById('play-offline-btn');
+        if (playOfflineBtn) {
+            playOfflineBtn.addEventListener('click', function() {
+                window.enableGuestMode();
+            });
+        }
+        
+        setTimeout(() => {
+            // Check after a short delay to ensure Firebase auth has initialized
+            if (!window.voidGameUser && !window.guestMode) {
+                console.log("No user logged in, showing login screen");
+                if (startScreen) {
+                    startScreen.classList.remove('visible');
+                }
+                if (loginScreen) {
+                    loginScreen.classList.add('visible');
+                }
+            } else {
+                console.log("User is logged in, game can start");
+                if (loginScreen) {
+                    loginScreen.classList.remove('visible');
+                }
+            }
+            
+            // Make sure start screen is visible in guest mode
+            if (window.guestMode) {
+                if (startScreen && !startScreen.classList.contains('visible')) {
+                    startScreen.classList.add('visible');
+                }
+                if (loginScreen) {
+                    loginScreen.classList.remove('visible');
+                }
+            }
+        }, 500); // Reduced timeout
+    }
+
+    // Handle page visibility changes to prevent cheating via tab switching
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'hidden') {
+            lastGameAction = 'pageHidden';
+            actionCounter++;
+        } else {
+            lastGameAction = 'pageVisible';
+            actionCounter++;
+            // Re-validate when the page becomes visible again
+            validateGameState();
+        }
+    });
+
+    // Check connection status periodically
+    function checkConnectionStatus() {
+        if (!navigator.onLine && !window.guestMode) {
+            console.log("Connection lost - switching to offline mode");
+            
+            // Show connection issue screen if not already in guest mode
+            const connectionIssueScreen = document.getElementById('connection-issue-screen');
+            if (connectionIssueScreen && !connectionIssueScreen.classList.contains('visible')) {
+                connectionIssueScreen.classList.add('visible');
+            }
         }
     }
-}
 
-// Set up periodic connection checking
-setInterval(checkConnectionStatus, 30000); // Check every 30 seconds
+    // Set up periodic connection checking
+    setInterval(checkConnectionStatus, 30000); // Check every 30 seconds
 
-// Initialize the game after DOM is fully loaded
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize DOM elements
-    initDomElements();
-    
-    // Initialize canvas
-    initCanvas();
-    
-    // Setup event listeners
-    setupEventListeners();
-    
-    // Check user login status
-    checkLoginStatus();
-    
-    // Initialize with default coin balance and check Firebase
-    setTimeout(() => {
-        // Delayed initialization to ensure firebase is fully loaded
-        try {
-            if (window.gameInterface && window.gameInterface.refreshBalance) {
-                window.gameInterface.refreshBalance().then(() => {
-                    window.gameInterface.updateDisplay();
-                }).catch(err => {
-                    console.error("Error refreshing balance:", err);
-                    // Ensure a fallback value is displayed
+    // Initialize the game after DOM is fully loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize DOM elements
+        initDomElements();
+        
+        // Setup start button specifically
+        setupStartButtonHandler();
+        
+        // Initialize canvas
+        initCanvas();
+        
+        // Setup event listeners
+        setupEventListeners();
+        
+        // Check user login status
+        checkLoginStatus();
+        
+        // Initialize with default coin balance and check Firebase
+        setTimeout(() => {
+            // Delayed initialization to ensure firebase is fully loaded
+            try {
+                if (window.gameInterface && window.gameInterface.refreshBalance) {
+                    window.gameInterface.refreshBalance().then(() => {
+                        window.gameInterface.updateDisplay();
+                    }).catch(err => {
+                        console.error("Error refreshing balance:", err);
+                        // Ensure a fallback value is displayed
+                        const coinDisplay = document.getElementById('coinDisplay');
+                        if (coinDisplay && coinDisplay.textContent === "0") {
+                            coinDisplay.textContent = "1000";
+                        }
+                    });
+                } else {
+                    // Direct fallback if interface isn't ready
                     const coinDisplay = document.getElementById('coinDisplay');
                     if (coinDisplay && coinDisplay.textContent === "0") {
                         coinDisplay.textContent = "1000";
                     }
-                });
-            } else {
-                // Direct fallback if interface isn't ready
-                const coinDisplay = document.getElementById('coinDisplay');
-                if (coinDisplay && coinDisplay.textContent === "0") {
-                    coinDisplay.textContent = "1000";
                 }
+            } catch (err) {
+                console.error("Error in balance initialization:", err);
             }
-        } catch (err) {
-            console.error("Error in balance initialization:", err);
-        }
-    }, 300); // Reduced timeout
-    
-    // Make doubly sure the result screen is initially hidden
-    const resultScreen = document.getElementById('result-screen');
-    if (resultScreen) {
-        resultScreen.classList.remove('visible');
-    }
-    
-    // Set initial game state hash
-    validateGameState();
-});
-
-// Security measures to prevent access to game internals
-(function() {
-    // Override common console methods used for cheating
-    const originalSetInterval = window.setInterval;
-    const originalSetTimeout = window.setTimeout;
-    const originalEval = window.eval;
-    
-    // Override eval to prevent potential injection attacks
-    window.eval = function(code) {
-        if (typeof code === 'string') {
-            // Detect attempts to manipulate coins/balance
-            const suspiciousPatterns = [
-                'coin', 'balance', 'firebase', 'update', 
-                'gameInterface', 'secureGameState', 'transaction'
-            ];
-            
-            const lowerCode = code.toLowerCase();
-            const isSuspicious = suspiciousPatterns.some(pattern => 
-                lowerCode.includes(pattern.toLowerCase())
-            );
-            
-            if (isSuspicious) {
-                console.warn("Suspicious eval() detected and blocked");
-                return null;
-            }
+        }, 300); // Reduced timeout
+        
+        // Make doubly sure the result screen is initially hidden
+        const resultScreen = document.getElementById('result-screen');
+        if (resultScreen) {
+            resultScreen.classList.remove('visible');
         }
         
-        return originalEval.apply(window, arguments);
-    };
-    
-    // Override setTimeout and setInterval to prevent timing attacks
-    const monitorTimers = (originalFn) => {
-        return function(handler, timeout, ...args) {
-            if (typeof handler === 'string') {
-                // Check for suspicious code in string handlers
-                const lowerHandler = handler.toLowerCase();
-                if (lowerHandler.includes('coin') || 
-                    lowerHandler.includes('balance') || 
-                    lowerHandler.includes('firebase')) {
-                    console.warn("Suspicious timer code detected and blocked");
+        // Set initial game state hash
+        validateGameState();
+    });
+
+    // Security measures to prevent access to game internals
+    (function() {
+        // Override common console methods used for cheating
+        const originalSetInterval = window.setInterval;
+        const originalSetTimeout = window.setTimeout;
+        const originalEval = window.eval;
+        
+        // Override eval to prevent potential injection attacks
+        window.eval = function(code) {
+            if (typeof code === 'string') {
+                // Detect attempts to manipulate coins/balance
+                const suspiciousPatterns = [
+                    'coin', 'balance', 'firebase', 'update', 
+                    'gameInterface', 'secureGameState', 'transaction'
+                ];
+                
+                const lowerCode = code.toLowerCase();
+                const isSuspicious = suspiciousPatterns.some(pattern => 
+                    lowerCode.includes(pattern.toLowerCase())
+                );
+                
+                if (isSuspicious) {
+                    console.warn("Suspicious eval() detected and blocked");
                     return null;
                 }
-            } else if (typeof handler === 'function') {
-                // Wrap function handlers to detect suspicious patterns
-                const wrappedHandler = function() {
-                    try {
-                        return handler.apply(this, arguments);
-                    } catch (e) {
-                        console.error("Timer function error:", e);
-                        return null;
-                    }
-                };
-                return originalFn.call(window, wrappedHandler, timeout, ...args);
             }
             
-            return originalFn.apply(window, arguments);
+            return originalEval.apply(window, arguments);
         };
-    };
-    
-    // Apply timer monitoring
-    window.setTimeout = monitorTimers(originalSetTimeout);
-    window.setInterval = monitorTimers(originalSetInterval);
-    
-    // Protect gameInterface from modification, but don't freeze prototypes
-    // as that can cause conflicts with browser functions
-    
-    // Only lock down window.gameInterface properties instead of freezing the whole object
-    if (window.gameInterface) {
-        Object.defineProperties(window.gameInterface, {
-            getBalance: { writable: false, configurable: false },
-            processTransaction: { writable: false, configurable: false },
-            updateDisplay: { writable: false, configurable: false },
-            refreshBalance: { writable: false, configurable: false }
-        });
-    }
+        
+        // Override setTimeout and setInterval to prevent timing attacks
+        const monitorTimers = (originalFn) => {
+            return function(handler, timeout, ...args) {
+                if (typeof handler === 'string') {
+                    // Check for suspicious code in string handlers
+                    const lowerHandler = handler.toLowerCase();
+                    if (lowerHandler.includes('coin') || 
+                        lowerHandler.includes('balance') || 
+                        lowerHandler.includes('firebase')) {
+                        console.warn("Suspicious timer code detected and blocked");
+                        return null;
+                    }
+                } else if (typeof handler === 'function') {
+                    // Wrap function handlers to detect suspicious patterns
+                    const wrappedHandler = function() {
+                        try {
+                            return handler.apply(this, arguments);
+                        } catch (e) {
+                            console.error("Timer function error:", e);
+                            return null;
+                        }
+                    };
+                    return originalFn.call(window, wrappedHandler, timeout, ...args);
+                }
+                
+                return originalFn.apply(window, arguments);
+            };
+        };
+        
+        // Apply timer monitoring
+        window.setTimeout = monitorTimers(originalSetTimeout);
+        window.setInterval = monitorTimers(originalSetInterval);
+        
+        // Protect gameInterface from modification, but don't freeze prototypes
+        // as that can cause conflicts with browser functions
+        
+        // Only lock down window.gameInterface properties instead of freezing the whole object
+        if (window.gameInterface) {
+            Object.defineProperties(window.gameInterface, {
+                getBalance: { writable: false, configurable: false },
+                processTransaction: { writable: false, configurable: false },
+                updateDisplay: { writable: false, configurable: false },
+                refreshBalance: { writable: false, configurable: false }
+            });
+        }
+    })();
 })();
    </script>
 </body>
