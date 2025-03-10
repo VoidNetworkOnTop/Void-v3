@@ -721,7 +721,7 @@
            <p class="game-subtitle">Beat the dealer to 21</p>
            <div class="coin-tracker">
                <div class="coin-icon"></div>
-               <span class="coin-amount" id="coinDisplay">0</span>
+               <span class="coin-amount" id="coinDisplay">1000</span>
            </div>
        </div>
 
@@ -858,6 +858,12 @@
        let offlineMode = false;
        let offlineBalance = 1000;
        
+       // Create a global game state for better access
+       window.gameState = {
+           balance: 1000,
+           offlineMode: false
+       };
+       
        // Add timeout to detect Firebase issues
        setTimeout(() => {
            if (!window.voidGameUser && !offlineMode) {
@@ -872,6 +878,7 @@
            
            console.log("Enabling offline mode");
            offlineMode = true;
+           window.gameState.offlineMode = true;
            
            // Create a fake user for offline mode
            window.voidGameUser = {
@@ -882,8 +889,9 @@
            };
            
            // Use local balance
-           _secureGameState.updateBalance(offlineBalance);
-           _secureGameState.updateDisplay();
+           window.gameState.balance = offlineBalance;
+           secureGameState.updateBalance(offlineBalance);
+           secureGameState.updateDisplay();
            
            // Remove any login screen if visible
            const loginScreen = document.getElementById('login-required-screen');
@@ -995,8 +1003,9 @@
                    console.log("No user signed in, using default balance");
                    
                    // Use the secure accessor function instead of direct window.coinBalance
-                   _secureGameState.updateBalance(1000);
-                   _secureGameState.updateDisplay();
+                   window.gameState.balance = 1000;
+                   secureGameState.updateBalance(1000);
+                   secureGameState.updateDisplay();
                }
            });
        } else {
@@ -1010,8 +1019,9 @@
        async function loadFirebaseCoinBalance() {
            if (!currentUser || offlineMode) {
                console.log("No user available or offline mode, using default balance");
-               _secureGameState.updateBalance(offlineBalance);
-               _secureGameState.updateDisplay();
+               window.gameState.balance = offlineBalance;
+               secureGameState.updateBalance(offlineBalance);
+               secureGameState.updateDisplay();
                return offlineBalance;
            }
 
@@ -1019,8 +1029,8 @@
                console.log("Loading balance for user:", currentUser.uid);
 
                // Use local balance while waiting for server
-               _secureGameState.updateBalance(offlineBalance);
-               _secureGameState.updateDisplay();
+               secureGameState.updateBalance(offlineBalance);
+               secureGameState.updateDisplay();
                
                if (!db) {
                    console.error("Firestore not available");
@@ -1052,10 +1062,11 @@
                    console.log("Loaded balance from Firebase:", firebaseCoinBalance);
 
                    // Update local game state through secure function
-                   _secureGameState.updateBalance(firebaseCoinBalance);
-                   _secureGameState.updateDisplay();
+                   window.gameState.balance = firebaseCoinBalance;
+                   secureGameState.updateBalance(firebaseCoinBalance);
+                   secureGameState.updateDisplay();
 
-                   console.log("Updated local balance:", _secureGameState.getBalance());
+                   console.log("Updated local balance:", secureGameState.getBalance());
                    return firebaseCoinBalance;
                } else {
                    console.log("User document doesn't exist, creating new one");
@@ -1079,8 +1090,9 @@
                    firebaseCoinBalance = initialBalance;
                    lastServerBalance = initialBalance;
                    
-                   _secureGameState.updateBalance(initialBalance);
-                   _secureGameState.updateDisplay();
+                   window.gameState.balance = initialBalance;
+                   secureGameState.updateBalance(initialBalance);
+                   secureGameState.updateDisplay();
                    return initialBalance;
                }
            } catch (error) {
@@ -1091,8 +1103,9 @@
                
                // Fallback to default value
                const defaultBalance = 1000;
-               _secureGameState.updateBalance(defaultBalance);
-               _secureGameState.updateDisplay();
+               window.gameState.balance = defaultBalance;
+               secureGameState.updateBalance(defaultBalance);
+               secureGameState.updateDisplay();
                return defaultBalance;
            }
        }
@@ -1101,10 +1114,10 @@
        async function recordGameTransaction(gameId, amount, isWin) {
            if (!currentUser || offlineMode) {
                // Update local balance in offline mode
-               const currentBalance = _secureGameState.getBalance();
+               const currentBalance = secureGameState.getBalance();
                const newBalance = isWin ? currentBalance + amount : currentBalance - amount;
-               _secureGameState.updateBalance(newBalance);
-               _secureGameState.updateDisplay();
+               secureGameState.updateBalance(newBalance);
+               secureGameState.updateDisplay();
                
                return {
                    transactionId: "offline-" + Date.now(),
@@ -1118,20 +1131,37 @@
            });
            
            try {
-               // Race between transaction and timeout
-               return await Promise.race([
+               // First update local balance for fast UI response
+               const currentBalance = secureGameState.getBalance();
+               const newBalance = isWin ? currentBalance + amount : currentBalance - amount;
+               window.gameState.balance = newBalance;
+               secureGameState.updateBalance(newBalance);
+               secureGameState.updateDisplay();
+               
+               // Then update Firebase in background
+               Promise.race([
                    _recordTransactionWithFirebase(gameId, amount, isWin),
                    timeoutPromise
-               ]);
+               ]).catch(error => {
+                   console.warn("Firebase transaction failed, staying in local mode:", error);
+                   // We already updated the local balance, so just continue
+               });
+               
+               // Return success immediately for better UX
+               return {
+                   transactionId: "tx-" + Date.now(),
+                   newBalance: newBalance
+               };
            } catch (error) {
-               console.warn("Firebase transaction timed out, switching to offline mode:", error);
+               console.warn("Error in transaction, switching to offline mode:", error);
                enableOfflineMode();
                
                // Update local balance as fallback
-               const currentBalance = _secureGameState.getBalance();
+               const currentBalance = secureGameState.getBalance();
                const newBalance = isWin ? currentBalance + amount : currentBalance - amount;
-               _secureGameState.updateBalance(newBalance);
-               _secureGameState.updateDisplay();
+               window.gameState.balance = newBalance;
+               secureGameState.updateBalance(newBalance);
+               secureGameState.updateDisplay();
                
                return {
                    transactionId: "offline-" + Date.now(),
@@ -1147,95 +1177,73 @@
            // First validate the transaction
            const transactionType = isWin ? 'win' : 'bet';
            
-           // Add retry mechanism for resilience
-           let retryCount = 0;
-           const maxRetries = 2; // Reduced from 3 to 2
-           
-           while (retryCount < maxRetries) {
-               try {
-                   if (!validateTransaction(amount, transactionType, _secureGameState.getBalance())) {
-                       console.error("Transaction validation failed");
-                       await new Promise(resolve => setTimeout(resolve, 100)); // Reduced from 500ms
-                       retryCount++;
-                       continue;
-                   }
-                   
-                   // Get current server balance before making changes
-                   const userRef = doc(db, 'users', currentUser.uid);
-                   const userDoc = await getDoc(userRef);
-                   
-                   if (!userDoc.exists()) {
-                       console.error("User document not found");
-                       return null;
-                   }
-                   
-                   const userData = userDoc.data();
-                   const currentServerBalance = userData.accountBalance || 0;
-                   
-                   // Pre-calculate new balance to ensure consistency
-                   let newBalance = currentServerBalance;
-                   if (isWin) {
-                       newBalance += amount;
-                       userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + amount;
-                   } else {
-                       // Ensure we don't go negative
-                       if (currentServerBalance < amount) {
-                           console.error("Insufficient funds");
-                           return null;
-                       }
-                       newBalance -= amount;
-                       userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
-                       userData.totalMoneySpent = (userData.totalMoneySpent || 0) + amount;
-                   }
-                   
-                   // Use a simpler transaction process - just update balance
-                   try {
-                       // Update user document with new balance
-                       await updateDoc(userRef, {
-                           accountBalance: newBalance,
-                           totalGamesPlayed: userData.totalGamesPlayed || 0,
-                           totalMoneySpent: userData.totalMoneySpent || 0,
-                           totalMoneyEarned: userData.totalMoneyEarned || 0,
-                           lastUpdated: serverTimestamp()
-                       });
-                       
-                       // Update our local tracking
-                       lastServerBalance = newBalance;
-                       _secureGameState.updateBalance(newBalance);
-                       _secureGameState.updateDisplay();
-                       
-                       return {
-                           transactionId: "tx-" + Date.now(),
-                           newBalance: newBalance
-                       };
-                   } catch (updateError) {
-                       console.error("Error updating balance:", updateError);
-                       throw updateError;
-                   }
-               } catch (error) {
-                   console.error(`Transaction Attempt ${retryCount + 1} Error:`, error);
-                   retryCount++;
-                   
-                   if (retryCount >= maxRetries) {
-                       console.error("All transaction attempts failed");
-                       return null;
-                   }
-                   
-                   // Wait before retry with shorter backoff
-                   await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, retryCount)));
+           try {
+               if (!validateTransaction(amount, transactionType, secureGameState.getBalance())) {
+                   console.error("Transaction validation failed");
+                   return null;
                }
+               
+               // Get current server balance before making changes
+               const userRef = doc(db, 'users', currentUser.uid);
+               const userDoc = await getDoc(userRef);
+               
+               if (!userDoc.exists()) {
+                   console.error("User document not found");
+                   return null;
+               }
+               
+               const userData = userDoc.data();
+               const currentServerBalance = userData.accountBalance || 0;
+               
+               // Pre-calculate new balance to ensure consistency
+               let newBalance = currentServerBalance;
+               if (isWin) {
+                   newBalance += amount;
+                   userData.totalMoneyEarned = (userData.totalMoneyEarned || 0) + amount;
+               } else {
+                   // Ensure we don't go negative
+                   if (currentServerBalance < amount) {
+                       console.error("Insufficient funds");
+                       return null;
+                   }
+                   newBalance -= amount;
+                   userData.totalGamesPlayed = (userData.totalGamesPlayed || 0) + 1;
+                   userData.totalMoneySpent = (userData.totalMoneySpent || 0) + amount;
+               }
+               
+               // Use a simpler transaction process - just update balance
+               try {
+                   // Update user document with new balance
+                   await updateDoc(userRef, {
+                       accountBalance: newBalance,
+                       totalGamesPlayed: userData.totalGamesPlayed || 0,
+                       totalMoneySpent: userData.totalMoneySpent || 0,
+                       totalMoneyEarned: userData.totalMoneyEarned || 0,
+                       lastUpdated: serverTimestamp()
+                   });
+                   
+                   // Update our local tracking
+                   lastServerBalance = newBalance;
+                   
+                   return {
+                       transactionId: "tx-" + Date.now(),
+                       newBalance: newBalance
+                   };
+               } catch (updateError) {
+                   console.error("Error updating balance:", updateError);
+                   throw updateError;
+               }
+           } catch (error) {
+               console.error("Transaction error:", error);
+               return null;
            }
-           
-           return null;
        }
 
        // Create a secure encapsulated game state manager (using IIFE pattern)
        // Create this early to ensure it's available throughout the app lifecycle
-       const _secureGameState = (function() {
+       const secureGameState = (function() {
            // Private variables that can't be accessed directly from console
-           let _balance = 1000; // Default starting balance to avoid showing 0
            let _coinDisplay = null;
-           let _transactionLock = false;
            let _transactionQueue = [];
            let _processingQueue = false;
            
@@ -1252,7 +1260,7 @@
                    // Fast path for local updates - no need to wait for server
                    transactions.forEach(transaction => {
                        const { amount, isWin } = transaction;
-                       let newBalance = _balance;
+                       let newBalance = window.gameState.balance;
                        
                        // Apply transaction to local state immediately
                        if (isWin) {
@@ -1261,7 +1269,7 @@
                            newBalance -= amount;
                        }
                        
-                       _balance = newBalance;
+                       window.gameState.balance = newBalance;
                        transaction.resolve(true); // Resolve promise immediately
                    });
                    
@@ -1297,7 +1305,7 @@
            function _initDisplay() {
                _coinDisplay = document.getElementById('coinDisplay');
                if (_coinDisplay) {
-                   _coinDisplay.textContent = _balance.toLocaleString();
+                   _coinDisplay.textContent = window.gameState.balance.toLocaleString();
                }
            }
            
@@ -1305,7 +1313,7 @@
            function _updateDisplay() {
                if (!_coinDisplay) _initDisplay();
                if (_coinDisplay) {
-                   _coinDisplay.textContent = _balance.toLocaleString();
+                   _coinDisplay.textContent = window.gameState.balance.toLocaleString();
                }
            }
            
@@ -1317,14 +1325,14 @@
            // Return only the methods we want to expose
            return {
                getBalance: function() {
-                   return _balance;
+                   return window.gameState.balance;
                },
                updateBalance: function(newBalance) {
                    if (typeof newBalance !== 'number' || isNaN(newBalance)) {
                        console.error("Invalid balance update attempted");
                        return false;
                    }
-                   _balance = newBalance;
+                   window.gameState.balance = newBalance;
                    _updateDisplay(); // Update display immediately
                    return true;
                },
@@ -1346,38 +1354,33 @@
            };
        })();
 
+       // Make secureGameState available to the game script
+       window.secureGameState = secureGameState;
+
        // Create and expose methods only through secure wrapper functions
        // Define this early to ensure availability
        window.gameInterface = {
            getBalance: function() {
-               return _secureGameState.getBalance();
+               return secureGameState.getBalance();
            },
            processTransaction: async function(amount, isWin) {
-               return await _secureGameState.applyTransaction(amount, isWin);
+               return await secureGameState.applyTransaction(amount, isWin);
            },
            updateDisplay: function() {
-               _secureGameState.updateDisplay();
+               secureGameState.updateDisplay();
            },
            refreshBalance: async function() {
                return await loadFirebaseCoinBalance();
            }
        };
 
-       // Only lock down window.gameInterface properties instead of freezing the whole object
-       if (window.gameInterface) {
-           Object.defineProperties(window.gameInterface, {
-               getBalance: { writable: false, configurable: false },
-               processTransaction: { writable: false, configurable: false },
-               updateDisplay: { writable: false, configurable: false },
-               refreshBalance: { writable: false, configurable: false }
-           });
-       }
+       // Protect objects from modification
+       Object.freeze(window.gameInterface);
+       Object.freeze(window.secureGameState);
    </script>
 
    <script>
 // IMPROVED BLACKJACK GAME IMPLEMENTATION
-// All game logic is encapsulated in an IIFE to prevent direct access from console
-
 (function() {
     // Game Configuration
     const GAME_CONFIG = {
@@ -1385,10 +1388,7 @@
         minBet: 5,            // Minimum bet amount (changed from 10 to 5)
         maxBet: 1000000,      // Very high maximum bet (will be limited by player balance)
         blackjackPayout: 1.5, // Blackjack pays 3:2
-        hiddenEntryFee: 0,    // Removed entry fee which could cause delays
         dealerStandValue: 17, // Dealer stands on all 17s
-        offlineMode: false,   // Will be set to true if Firebase has issues
-        offlineBalance: 1000, // Default offline balance
     };
 
     // Game state
@@ -1437,18 +1437,9 @@
     let resultTitle;
     let resultMessage;
 
-    // Enable offline mode if Firebase has issues
-    function enableOfflineMode() {
-        if (!GAME_CONFIG.offlineMode) {
-            console.log("Enabling offline mode due to Firebase issues");
-            GAME_CONFIG.offlineMode = true;
-            
-            // Update UI to show offline mode
-            const gameStatus = document.getElementById('game-status');
-            if (gameStatus) {
-                gameStatus.textContent = "Playing in offline mode";
-            }
-        }
+    // Check for offlineMode
+    function isOfflineMode() {
+        return window.gameState && window.gameState.offlineMode === true;
     }
 
     // Security function - Generate a hash for game state validation
@@ -1540,7 +1531,7 @@
         resultTitle = document.getElementById('result-title');
         resultMessage = document.getElementById('result-message');
         
-        // Ensure balance display is up to date - with error handling
+        // Ensure balance display is up to date
         try {
             if (window.gameInterface && typeof window.gameInterface.updateDisplay === 'function') {
                 window.gameInterface.updateDisplay();
@@ -1571,7 +1562,7 @@
         }
     }
 
-    // Update coin balance - Using the secure gameInterface with simplified approach
+    // Update coin balance - Using window.gameInterface for better access
     async function updateCoins(amount, isWin = true) {
         try {
             // No need for delay, process immediately
@@ -1599,41 +1590,9 @@
             
             // Use fast path - update UI immediately, process in background
             try {
-                // First update the display immediately for better UX
-                const currentBalance = window.gameInterface.getBalance();
-                const newBalance = isWin ? currentBalance + amount : currentBalance - amount;
-                
-                // Update local balance for immediate feedback
-                if (!isWin) {
-                    // For bets, decrease BEFORE Firebase to prevent double betting
-                    _secureGameState.updateBalance(currentBalance - amount);
-                    _secureGameState.updateDisplay();
-                }
-                
-                // Process transaction in background with fast timeout
-                const transactionPromise = window.gameInterface.processTransaction(amount, isWin);
-                const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error("Transaction timeout")), 1000);
-                });
-                
-                // Use Promise.race to prevent hanging
-                Promise.race([transactionPromise, timeoutPromise])
-                    .catch(err => {
-                        console.warn("Background transaction timed out:", err);
-                        // Still update balance locally for good UX
-                        if (isWin) {
-                            _secureGameState.updateBalance(currentBalance + amount);
-                            _secureGameState.updateDisplay();
-                        }
-                    });
-                
-                // If it's a win, update UI immediately while transaction processes in background
-                if (isWin) {
-                    _secureGameState.updateBalance(currentBalance + amount);
-                    _secureGameState.updateDisplay();
-                }
-                
-                return true; // Return success immediately for better UX
+                // Process transaction - this will update UI and handle firebase in background 
+                const success = await window.gameInterface.processTransaction(amount, isWin);
+                return success;
             } catch (err) {
                 console.error("Transaction error:", err);
                 return false;
@@ -1773,7 +1732,7 @@
                 aces--;
             }
             
-return total;
+            return total;
         } catch (error) {
             console.error("Error calculating hand value:", error);
             // Return a safe fallback value
@@ -2291,7 +2250,6 @@ return total;
                 case 'blackjack':
                     // Blackjack pays 3:2
                     winAmount = Math.floor(currentBet * GAME_CONFIG.blackjackPayout);
-                    // Update balance optimistically for better UX
                     await updateCoins(currentBet + winAmount, true);
                     showResult("Blackjack!", `You hit 21 with two cards!<br>You won: <span class="win-amount">${winAmount}</span> coins!`, 'win');
                     break;
@@ -2452,23 +2410,20 @@ return total;
 
         try {
             // Process bet with timeout protection
-            const deductPromise = updateCoins(currentBet, false);
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error("Bet timeout")), 1000);
-            });
+            const success = await updateCoins(currentBet, false);
             
-            // Wait for either completion or timeout
-            await Promise.race([deductPromise, timeoutPromise])
-                .catch(err => {
-                    console.warn("Bet processing taking too long, continuing with game:", err);
-                    // Continue anyway - the transaction will process in background
-                });
+            if (!success) {
+                console.error("Failed to process bet");
+                dealInProgress = false;
+                clearLoadingStatus("Error placing bet. Try again.");
+                return;
+            }
             
-            // Always update UI immediately
+            // Update the display immediately
+            window.gameInterface.updateDisplay();
             clearLoadingStatus("Dealing cards");
             
             // Deal cards immediately without waiting for Firebase
-            // Deal initial cards can still show loading if needed
             await dealInitialCards();
         } catch (error) {
             console.error("Error during deal start:", error);
@@ -2487,7 +2442,7 @@ return total;
     // Initialize game
     function initGame() {
         // Check if user is logged in before allowing game to start
-        if (!window.voidGameUser && !GAME_CONFIG.offlineMode) {
+        if (!window.voidGameUser && !isOfflineMode()) {
             console.log("User not logged in, showing login screen");
             let loginScreen = document.getElementById('login-required-screen');
             let startScreen = document.getElementById('start-screen');
@@ -2502,8 +2457,7 @@ return total;
             // Auto-enable offline mode after a delay
             setTimeout(() => {
                 if (!window.voidGameUser) {
-                    enableOfflineMode();
-                    // Hide login screen
+                    if (window.gameState) window.gameState.offlineMode = true;
                     if (loginScreen) {
                         loginScreen.classList.remove('visible');
                     }
@@ -2562,7 +2516,7 @@ return total;
         }
         
         // Update game status
-        if (GAME_CONFIG.offlineMode) {
+        if (isOfflineMode()) {
             updateGameStatus("Playing in offline mode - Place your bet");
         } else {
             updateGameStatus("Place your bet to start");
@@ -2682,7 +2636,7 @@ return total;
             return function(event) {
                 try {
                     // Check if user is logged in for game actions
-                    if (!window.voidGameUser && !GAME_CONFIG.offlineMode && 
+                    if (!window.voidGameUser && !isOfflineMode() && 
                         this.id !== 'login-btn' && this.id !== 'back-btn') {
                         console.log("User not logged in, showing login screen");
                         let loginScreen = document.getElementById('login-required-screen');
@@ -2764,7 +2718,7 @@ return total;
                 
                 // Then reset the game
                 resetGame();
-            }));
+}));
         }
         
         // Back button
@@ -2833,16 +2787,16 @@ return total;
         
         // Start a timeout for automatic offline mode
         const autoOfflineTimeout = setTimeout(() => {
-            if (!window.voidGameUser && !GAME_CONFIG.offlineMode) {
+            if (!window.voidGameUser && !isOfflineMode()) {
                 console.log("Login timeout reached, enabling offline mode");
-                enableOfflineMode();
+                if (window.gameState) window.gameState.offlineMode = true;
                 initGame(); // Start game in offline mode
             }
         }, 3000); // Auto-enable offline mode after 3 seconds
         
         setTimeout(() => {
             // Check after a short delay to ensure Firebase auth has initialized
-            if (!window.voidGameUser && !GAME_CONFIG.offlineMode) {
+            if (!window.voidGameUser && !isOfflineMode()) {
                 console.log("No user logged in, showing login screen");
                 if (startScreen) {
                     startScreen.classList.remove('visible');
@@ -2874,31 +2828,6 @@ return total;
         
         // Check user login status
         checkLoginStatus();
-        
-        // Initialize with default coin balance and check Firebase
-        setTimeout(() => {
-            // Delayed initialization to ensure firebase is fully loaded
-            try {
-                if (window.gameInterface && window.gameInterface.refreshBalance) {
-                    window.gameInterface.refreshBalance().then(() => {
-                        window.gameInterface.updateDisplay();
-                    }).catch(err => {
-                        console.error("Error refreshing balance:", err);
-                        // Switch to offline mode on errors
-                        enableOfflineMode();
-                    });
-                } else {
-                    // Direct fallback if interface isn't ready
-                    const coinDisplay = document.getElementById('coinDisplay');
-                    if (coinDisplay && coinDisplay.textContent === "0") {
-                        coinDisplay.textContent = "1000";
-                    }
-                }
-            } catch (err) {
-                console.error("Error in balance initialization:", err);
-                enableOfflineMode();
-            }
-        }, 300); // Shorter delay for faster loading
         
         // Make doubly sure the result screen is initially hidden
         const resultScreen = document.getElementById('result-screen');
