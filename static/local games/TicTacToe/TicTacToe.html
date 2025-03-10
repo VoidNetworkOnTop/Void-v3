@@ -442,26 +442,39 @@
            </div>
        </div>
        
-       <div class="difficulty-option">
-           <button id="easyBtn" class="difficulty-btn active">Easy</button>
-           <button id="mediumBtn" class="difficulty-btn">Medium</button>
-           <button id="hardBtn" class="difficulty-btn">Hard</button>
-       </div>
-       
-       <div class="status-display" id="statusDisplay">Play against AI</div>
-       
-       <div class="game-board">
-           <div class="tic-tac-toe-board" id="gameBoard">
-               <!-- Cells will be created by JavaScript -->
+       <div id="menuSection">
+           <div class="status-display">Select Difficulty</div>
+           
+           <div class="difficulty-option">
+               <button id="easyBtn" class="difficulty-btn">Easy</button>
+               <button id="hardBtn" class="difficulty-btn">Hard</button>
+               <button id="extremeBtn" class="difficulty-btn">Extreme</button>
+           </div>
+           
+           <div id="startBtnContainer" style="text-align: center; margin-top: 20px; display: none;">
+               <button id="startButton" class="play-btn">Start Game (100 coins)</button>
+           </div>
+           
+           <div class="controls" style="margin-top: 30px;">
+               <button id="backButton" class="reset-btn">Back to The Void Games</button>
            </div>
        </div>
        
-       <div class="score-display" id="scoreDisplay"></div>
+       <div id="gameSection" style="display: none;">
+           <div class="status-display" id="statusDisplay">Play against AI</div>
+           
+           <div class="game-board">
+               <div class="tic-tac-toe-board" id="gameBoard">
+                   <!-- Cells will be created by JavaScript -->
+               </div>
+           </div>
+           
+           <div class="score-display" id="scoreDisplay"></div>
+       </div>
        
-       <div class="controls">
-           <button id="playButton" class="play-btn">Play (100 coins)</button>
-           <button id="resetButton" class="reset-btn">Reset</button>
-           <button id="backButton" class="reset-btn">Back to The Void Games</button>
+       <div id="gameEndControls" class="controls" style="display: none;">
+           <button id="playAgainButton" class="play-btn">Play Again (100 coins)</button>
+           <button id="resetButton" class="reset-btn">Back to Menu</button>
        </div>
    </div>
    
@@ -523,16 +536,23 @@
            let _coinBalance = 0;
            
            // Secure DOM references
-           const playButton = document.getElementById('playButton');
+           const startButton = document.getElementById('startButton');
+           const playAgainButton = document.getElementById('playAgainButton');
            const resetButton = document.getElementById('resetButton');
            const backButton = document.getElementById('backButton');
            const statusDisplay = document.getElementById('statusDisplay');
            const scoreDisplay = document.getElementById('scoreDisplay');
            const coinDisplay = document.getElementById('coinDisplay');
            const gameBoard = document.getElementById('gameBoard');
+           const menuSection = document.getElementById('menuSection');
+           const gameSection = document.getElementById('gameSection');
+           const gameEndControls = document.getElementById('gameEndControls');
+           const startBtnContainer = document.getElementById('startBtnContainer');
+           
+           // Difficulty buttons
            const easyBtn = document.getElementById('easyBtn');
-           const mediumBtn = document.getElementById('mediumBtn');
            const hardBtn = document.getElementById('hardBtn');
+           const extremeBtn = document.getElementById('extremeBtn');
            
            // Game configuration
            const config = {
@@ -545,7 +565,8 @@
            // Game state variables
            let currentPlayer = 'x';
            let gameState = ['', '', '', '', '', '', '', '', ''];
-           let difficultyLevel = 'easy'; // Default difficulty
+           let difficultyLevel = ''; // No default difficulty, must be selected
+           let difficultySelected = false;
            
            // Winning combinations
            const winningConditions = [
@@ -974,12 +995,13 @@
                let move;
                
                switch (difficultyLevel) {
-                   case 'hard':
+                   case 'extreme':
+                       // Always makes the best move
                        move = getBestMove();
                        break;
-                   case 'medium':
-                       // 70% chance of making the best move, 30% chance of random move
-                       move = Math.random() < 0.7 ? getBestMove() : getRandomMove();
+                   case 'hard':
+                       // 90% chance of making the best move, 10% chance of random move
+                       move = Math.random() < 0.9 ? getBestMove() : getRandomMove();
                        break;
                    case 'easy':
                    default:
@@ -1166,9 +1188,8 @@
                    scoreDisplay.innerHTML = `<span class="tie-amount">Tie: ${config.tieAmount}</span>`;
                }
                
-               // Re-enable play button
-               playButton.disabled = false;
-               playButton.textContent = "Play Again (100 coins)";
+               // Show end game controls
+               showGameEndMode();
            }
            
            // Update status message
@@ -1190,8 +1211,17 @@
                    return;
                }
                
+               // Make sure difficulty is selected
+               if (!difficultySelected) {
+                   alert("Please select a difficulty level first");
+                   return;
+               }
+               
                // Deduct the play cost
                await updateCoins(-config.playCost, 'game_play');
+               
+               // Switch to game mode
+               showGameMode();
                
                // Initialize the board
                initializeBoard();
@@ -1199,12 +1229,9 @@
                // Enable game
                _gameActive = true;
                _gameComplete = false;
-               
-               // Disable play button during game
-               playButton.disabled = true;
            }
            
-           // Reset game without starting a new one
+           // Reset game and return to menu
            function resetGame() {
                // Reset game state
                gameState = ['', '', '', '', '', '', '', '', ''];
@@ -1221,24 +1248,53 @@
                // Update UI
                statusDisplay.textContent = "Play against AI";
                scoreDisplay.textContent = '';
-               playButton.disabled = false;
-               playButton.textContent = "Play (100 coins)";
                
                // Remove any win line
                const existingLine = document.querySelector('.win-line');
                if (existingLine) {
                    existingLine.remove();
                }
+               
+               // Return to menu
+               showMenuMode();
            }
            
            // Set difficulty level
            function setDifficulty(level) {
                difficultyLevel = level;
+               difficultySelected = true;
                
                // Update UI
                easyBtn.classList.toggle('active', level === 'easy');
-               mediumBtn.classList.toggle('active', level === 'medium');
                hardBtn.classList.toggle('active', level === 'hard');
+               extremeBtn.classList.toggle('active', level === 'extreme');
+               
+               // Show start button once difficulty is selected
+               startBtnContainer.style.display = 'block';
+           }
+           
+           // Switch between menu and game modes
+           function showGameMode() {
+               menuSection.style.display = 'none';
+               gameSection.style.display = 'block';
+               gameEndControls.style.display = 'none';
+           }
+           
+           function showMenuMode() {
+               menuSection.style.display = 'block';
+               gameSection.style.display = 'none';
+               gameEndControls.style.display = 'none';
+               
+               // Reset difficulty
+               easyBtn.classList.remove('active');
+               hardBtn.classList.remove('active');
+               extremeBtn.classList.remove('active');
+               difficultySelected = false;
+               startBtnContainer.style.display = 'none';
+           }
+           
+           function showGameEndMode() {
+               gameEndControls.style.display = 'block';
            }
 
            // SECURITY: Add anti-debugging measures
@@ -1296,7 +1352,8 @@
            });
 
            // Event listeners 
-           playButton.addEventListener('click', startNewGame);
+           startButton.addEventListener('click', startNewGame);
+           playAgainButton.addEventListener('click', startNewGame);
            resetButton.addEventListener('click', resetGame);
            backButton.addEventListener('click', () => {
                window.location.href = 'index.html';
@@ -1304,8 +1361,8 @@
            
            // Difficulty buttons
            easyBtn.addEventListener('click', () => setDifficulty('easy'));
-           mediumBtn.addEventListener('click', () => setDifficulty('medium'));
            hardBtn.addEventListener('click', () => setDifficulty('hard'));
+           extremeBtn.addEventListener('click', () => setDifficulty('extreme'));
 
            // SECURITY: Monitor for attempts to override protections
            const securityMonitor = setInterval(() => {
@@ -1357,8 +1414,8 @@
                        updateCoinDisplay();
                    }
                    
-                   // Setup initial board
-                   resetGame();
+                   // Start in menu mode
+                   showMenuMode();
                    
                    console.log("Game initialization complete");
                };
