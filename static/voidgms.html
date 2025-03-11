@@ -968,8 +968,8 @@
                     </div>
                 </div>
                 
-                <!-- Ocean Theme Item (Moved from Coming Soon) -->
-                <div class="shop-item" data-item-id="ocean_theme" data-price="50000000">
+                <!-- Ocean Theme Item (Changed price to 100,000) -->
+                <div class="shop-item" data-item-id="ocean_theme" data-price="100000">
                     <div class="shop-item-image">
                         <img src="https://lh7-us.googleusercontent.com/MuXH0obscoC0WCNtdSARDM6vyBAIJVdT9llkWccrKb2uRe9vyMv6pUkdQEp6-c_HPlhVIHg9_E-CMxuA2qIPdU-licIfOe6FS11T54BKlQnj67Jdk2ZR-K6jvQMLhi5g2AirY9lw43q14bg2Ayu7jXBiw1wFuw" alt="Ocean Theme">
                     </div>
@@ -977,7 +977,7 @@
                         <h3 class="shop-item-title">Ocean Theme</h3>
                         <p class="shop-item-description">Dive into an underwater adventure with this stunning ocean theme. Experience the beauty and tranquility of the sea.</p>
                         <div class="shop-item-price">
-                            <span class="price-amount">50,000,000 coins</span>
+                            <span class="price-amount">100,000 coins</span>
                             <button class="buy-button" data-item-id="ocean_theme">Buy</button>
                         </div>
                     </div>
@@ -1466,7 +1466,7 @@
             });
         }
 
-        // IMPROVED: Secure Purchase System using purchase requests
+        // FIXED: Secure Purchase System that actually deducts coins
         async function purchaseItem(itemId, price) {
             if (!auth.currentUser) {
                 showNotification('Please log in to make purchases', 'error');
@@ -1474,45 +1474,57 @@
             }
             
             try {
-                // Get current user details to check balance
-                const userDetails = await voidAccounting.getUserAccountDetails(auth.currentUser.uid);
+                const userId = auth.currentUser.uid;
                 
-                if (userDetails.accountBalance < price) {
+                // Get current user details to check balance
+                const userRef = doc(db, 'users', userId);
+                const userDoc = await getDoc(userRef);
+                
+                if (!userDoc.exists()) {
+                    throw new Error("User not found");
+                }
+                
+                const userData = userDoc.data();
+                
+                if (userData.accountBalance < price) {
                     showNotification('Not enough coins to make this purchase', 'error');
                     return;
                 }
                 
-                // Create a purchase request that will be processed by a secure backend
-                const purchaseRequestRef = collection(db, 'purchase_requests');
-                await addDoc(purchaseRequestRef, {
-                    userId: auth.currentUser.uid,
-                    itemId: itemId,
-                    price: price,
-                    purchaseDate: new Date(),
-                    status: 'pending'
+                // Calculate new balance
+                const newBalance = userData.accountBalance - price;
+                
+                // Update user account balance (ACTUALLY DEDUCT COINS)
+                await updateDoc(userRef, {
+                    accountBalance: newBalance
                 });
                 
-                // Create a record in user_purchases (this would normally be done by a secure backend)
-                // For demo purposes this is done client-side - in production, move this to server
-                await addDoc(collection(db, 'user_purchases', auth.currentUser.uid, 'items'), {
+                // Update leaderboard entry (for display purposes)
+                const leaderboardRef = doc(db, 'leaderboard', userId);
+                await updateDoc(leaderboardRef, {
+                    accountBalance: newBalance
+                });
+                
+                // Create a record in user_purchases
+                await addDoc(collection(db, 'user_purchases', userId, 'items'), {
                     itemId: itemId,
                     price: price,
                     purchaseDate: new Date(),
                     itemName: getItemNameById(itemId)
                 });
                 
-                // Record transaction request (would be processed by backend)
-                await addDoc(collection(db, 'transaction_requests'), {
-                    userId: auth.currentUser.uid,
-                    transactionType: 'withdrawal',
+                // Log transaction for records
+                await addDoc(collection(db, 'transactions'), {
+                    userId: userId,
+                    transactionType: 'purchase',
                     amount: price,
-                    gameId: 'shop_purchase',
                     itemId: itemId,
-                    requestDate: new Date(),
-                    status: 'pending'
+                    timestamp: new Date(),
+                    prevBalance: userData.accountBalance,
+                    newBalance: newBalance
                 });
                 
-                // Update UI to show item as owned
+                // Update UI to show item as owned and update balance displays
                 const button = document.querySelector(`.buy-button[data-item-id="${itemId}"]`);
                 if (button) {
                     button.textContent = "Equip";
@@ -1525,8 +1537,15 @@
                     }
                 }
                 
+                // Update balance displays
+                document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
+                document.getElementById('balance-display').textContent = newBalance.toLocaleString();
+                
+                // Update button states based on new balance
+                updateShopButtonsState(newBalance, {...await themeManager.checkPurchasedItems(userId), [itemId]: true});
+                
                 // Show success notification
-                showNotification(`Purchase request submitted for ${getItemNameById(itemId)}!`, 'success');
+                showNotification(`Successfully purchased ${getItemNameById(itemId)} for ${price.toLocaleString()} coins!`, 'success');
                 
                 // Auto-equip the theme after purchase
                 await equipItem(itemId);
@@ -1778,11 +1797,10 @@ class VoidNetworkAccounting {
         }
     }
 
-    // IMPROVED: Secure Game Transaction Recording
-    // This creates a transaction request rather than directly modifying the balance
+    // Improved and more secure game transaction recording
     async recordGameTransaction(gameId, userId, transactionType, amount) {
         try {
-            console.log(`Recording transaction request: ${transactionType} for ${amount} coins in ${gameId}`);
+            console.log(`Recording game transaction: ${transactionType} for ${amount} coins in ${gameId}`);
             
             // Security check: Only allow user to create transactions for themselves
             if (this.auth.currentUser && userId !== this.auth.currentUser.uid) {
@@ -1790,18 +1808,7 @@ class VoidNetworkAccounting {
                 throw new Error('Unauthorized access');
             }
             
-            // Create transaction request record - to be processed by secure backend
-            const transactionRequestRef = collection(this.db, 'transaction_requests');
-            const docRef = await addDoc(transactionRequestRef, {
-                userId: userId,
-                gameId: gameId,
-                transactionType: transactionType,
-                amount: amount,
-                timestamp: new Date(),
-                status: 'pending'
-            });
-
-            // Get the user's current balance for display
+            // Get the user's current data
             const userRef = doc(this.db, 'users', userId);
             const userDoc = await getDoc(userRef);
             
@@ -1810,16 +1817,62 @@ class VoidNetworkAccounting {
             }
             
             const userData = userDoc.data();
-            const currentBalance = userData.accountBalance || 0;
+            let currentBalance = userData.accountBalance || 0;
             
-            // Return the current balance without modifying it
-            // A secure backend would process the actual transaction
-            return {
-                requestId: docRef.id,
-                currentBalance: currentBalance
-            };
+            // Create transaction record
+            const transactionRef = collection(this.db, 'transactions');
+            
+            // Only update balance for certain transaction types
+            if (transactionType === 'win' || transactionType === 'loss') {
+                // Calculate new balance
+                const newBalance = transactionType === 'win' 
+                    ? currentBalance + amount
+                    : Math.max(0, currentBalance - amount); // Prevent negative balance
+                
+                // Update user account in Firestore
+                await updateDoc(userRef, {
+                    accountBalance: newBalance,
+                    totalGamesPlayed: (userData.totalGamesPlayed || 0) + 1
+                });
+                
+                // Update leaderboard entry (for display purposes)
+                const leaderboardRef = doc(this.db, 'leaderboard', userId);
+                await updateDoc(leaderboardRef, {
+                    accountBalance: newBalance
+                });
+                
+                // Record the transaction with before/after balances
+                await addDoc(transactionRef, {
+                    userId: userId,
+                    gameId: gameId,
+                    transactionType: transactionType,
+                    amount: amount,
+                    timestamp: new Date(),
+                    prevBalance: currentBalance,
+                    newBalance: newBalance
+                });
+                
+                return {
+                    success: true,
+                    prevBalance: currentBalance,
+                    newBalance: newBalance
+                };
+            } else {
+                // Just record the game play without changing balance
+                await addDoc(transactionRef, {
+                    userId: userId,
+                    gameId: gameId,
+                    transactionType: transactionType,
+                    timestamp: new Date()
+                });
+                
+                return {
+                    success: true,
+                    currentBalance: currentBalance
+                };
+            }
         } catch (error) {
-            console.error("Transaction Request Error:", error);
+            console.error("Transaction Error:", error);
             throw error;
         }
     }
@@ -2271,95 +2324,148 @@ async function updateUIForLoggedInUser(user) {
     
     try {
         // Fetch fresh user details
-        const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
-        document.getElementById('username-display').textContent = userDetails.username;
-        document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
-        console.log("Updated UI with username:", userDetails.username);
+const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
+document.getElementById('username-display').textContent = userDetails.username;
+document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
+console.log("Updated UI with username:", userDetails.username);
         
-        // Load user's theme if they have one equipped
-        await themeManager.loadUserTheme(user.uid);
-    } catch (error) {
-        console.error("Error updating UI:", error);
-        alert('Could not load user details. Please try again.');
-    }
+// Load user's theme if they have one equipped
+await themeManager.loadUserTheme(user.uid);
+} catch (error) {
+console.error("Error updating UI:", error);
+alert('Could not load user details. Please try again.');
+}
 }
 
 function updateUIForLoggedOutUser() {
-    document.getElementById('login-form').style.display = 'block';
-    document.getElementById('register-form').style.display = 'block';
-    document.getElementById('user-profile').style.display = 'none';
+document.getElementById('login-form').style.display = 'block';
+document.getElementById('register-form').style.display = 'block';
+document.getElementById('user-profile').style.display = 'none';
 }
 
 // Listen for authentication state changes
 onAuthStateChanged(auth, async (user) => {
-    if (user) {
-        console.log("Auth state changed: User is signed in", user.uid);
-        await updateUIForLoggedInUser(user);
-    } else {
-        console.log("Auth state changed: User is signed out");
-        updateUIForLoggedOutUser();
-        
-        // Make sure theme is unequipped when logged out
-        themeManager.unequipTheme();
-    }
+if (user) {
+    console.log("Auth state changed: User is signed in", user.uid);
+    await updateUIForLoggedInUser(user);
+} else {
+    console.log("Auth state changed: User is signed out");
+    updateUIForLoggedOutUser();
+    
+    // Make sure theme is unequipped when logged out
+    themeManager.unequipTheme();
+}
 });
 
 // Game loading logic
 const defaultApps = [
-    {
-        title: "Ball Dropper",
-        imgSrc: "https://lh7-us.googleusercontent.com/CUj18dKaBkXv0WI59qpP2-Ub1J0KHyKXwgnhPBdmzDzwhQNvIkwPsrVLJCiSsS0iNOaF8-nAamakuiFLoRzYIGyOr-LOFJg9hD5IA9cIvjh5ZIHmBhT-hel39crAOTgz88P8jX2WApcC5PDnLbabDK_QC1vyFw",
-        link: "/local games/Plinko/plinko.html"
-    },
-    {
-        title: "MineFeild",
-        imgSrc: "https://lh7-us.googleusercontent.com/WAjTfpxFqdXwMOlzyChcCi40sg6-ukZN5u24gdmWyi9_Yca5-V8vBR6zrgOoADGwKKJM7e7cKEkq9i_chkYesJvN_VVnvKAfUOPIllTxR2mbOK-HiR0vlIgH_2_bY2Oqzh2ndVieVycQoGDMXuZC-8gpE85Ypg",
-        link: "/local games/CrossyRoad/crossy.html"
-    },
-    {
-        title: "Memory Squares",
-        imgSrc: "https://lh7-us.googleusercontent.com/USI3iEwtHyyyN6fdMllkREQg8h8N7xsXxw94Wb0umSNOzvXTgMtBtxMBXwgyVOHirbrZCVGU1JDeyVaW94xuTS-4vEvT1iZzriw3We_RIYDPW63aWxDEj8xZ_d7Nc3vi6LfrEr20QOOMvnWL8JD5XgbbC-PjKA",
-        link: "/local games/memory-square/mem.html"
-    },
-    {
-        title: "VoidSnake",
-        imgSrc: "https://lh7-us.googleusercontent.com/zPbDytQWYmY90BK7jPcdb8QQ8QNz4LWyhwUq1zNWiD64NNGC_8L21T_QDOl9z8R9QRvJtkFRvM9f83ODmjJJYgG6sZwi71SPiTUwASMOaofbb7wIOKEQJ-Wq1VSGVlCg3RmSdC7B4d-SGOfs_hRdmKjtxHbGOQ",
-        link: "/local games/Void Snake/Voidsnake.html"
-    },
-    {
-        title: "Heads Or Tails?",
-        imgSrc: "https://lh7-us.googleusercontent.com/jpunH9P0O_of8oU2ZilkliydM46qFTQxD__XgzIKv3OU7zZi77arrF9F2hGe-wgyzO5-57VJvN1zocVFN8549jIDkN2rKc9xEjcywhhJCldCaJkZnMgyEHtwJPuUsZZSu4DsK-L2b2eQGepfKwhgn4p7tgzrqA",
-        link: "/local games/CoinFlip/coinflip.html"
-    },
-    {
-        title: "Chicken Run",
-        imgSrc: "https://lh7-us.googleusercontent.com/JugrfbksXzV3Mwwp32MOX-DHGD1EQJmZIaB_RYn9VBvoihT7-bClXPzyfYJC4mGXsYsdTMWJh-Xxe8L9wpHrGntuc0Shzu9tqKCTSug-jM2SiW1BIBcok9Fxlz0JvZEqaKVMbSWK1dlWmw8caafDFRErSox7YA",
-        link: "/local games/ChickenRun/chickenrun.html"
-    },
-    {
-        title: "Black Jack",
-        imgSrc: "https://lh7-us.googleusercontent.com/OZqPInsN8s8qb43B5XLKVNm6uHmFM_GBSMVdBcr4Y8fYr-dX_jSqsu7keD7RoMafKFhUprNXkYYwpvmTwsNNkvmzR23M3XL1ykIp-8EpICFqttainlnXyRuobeBcEp4YE8fxhdDdBxgufc8EhjzItiMSAI821w",
-        link: "/local games/BlackJack/BlackJack.html"
-    },
-    {
-        title: "Tic Tac Toe",
-        imgSrc: "https://lh7-us.googleusercontent.com/9kSWLTVDFONfAKr5ypIjt5LvF36mUlapDOEMJdwX0jkF-wvLUAPvd6Pg42ws-2Fdq2dRvOtO3WRMOtkJiS7atfoqugRCHgAsxqni6PVbRlIoM-uqCAOWjVp-wCnFWxuHDWAPEGuwjNkiBYSXhTljpVMf4A_h2Q",
-        link: "/local games/TicTacToe/TicTacToe.html"
-    },
+{
+    title: "Ball Dropper",
+    imgSrc: "https://lh7-us.googleusercontent.com/CUj18dKaBkXv0WI59qpP2-Ub1J0KHyKXwgnhPBdmzDzwhQNvIkwPsrVLJCiSsS0iNOaF8-nAamakuiFLoRzYIGyOr-LOFJg9hD5IA9cIvjh5ZIHmBhT-hel39crAOTgz88P8jX2WApcC5PDnLbabDK_QC1vyFw",
+    link: "/local games/Plinko/plinko.html"
+},
+{
+    title: "MineFeild",
+    imgSrc: "https://lh7-us.googleusercontent.com/WAjTfpxFqdXwMOlzyChcCi40sg6-ukZN5u24gdmWyi9_Yca5-V8vBR6zrgOoADGwKKJM7e7cKEkq9i_chkYesJvN_VVnvKAfUOPIllTxR2mbOK-HiR0vlIgH_2_bY2Oqzh2ndVieVycQoGDMXuZC-8gpE85Ypg",
+    link: "/local games/CrossyRoad/crossy.html"
+},
+{
+    title: "Memory Squares",
+    imgSrc: "https://lh7-us.googleusercontent.com/USI3iEwtHyyyN6fdMllkREQg8h8N7xsXxw94Wb0umSNOzvXTgMtBtxMBXwgyVOHirbrZCVGU1JDeyVaW94xuTS-4vEvT1iZzriw3We_RIYDPW63aWxDEj8xZ_d7Nc3vi6LfrEr20QOOMvnWL8JD5XgbbC-PjKA",
+    link: "/local games/memory-square/mem.html"
+},
+{
+    title: "VoidSnake",
+    imgSrc: "https://lh7-us.googleusercontent.com/zPbDytQWYmY90BK7jPcdb8QQ8QNz4LWyhwUq1zNWiD64NNGC_8L21T_QDOl9z8R9QRvJtkFRvM9f83ODmjJJYgG6sZwi71SPiTUwASMOaofbb7wIOKEQJ-Wq1VSGVlCg3RmSdC7B4d-SGOfs_hRdmKjtxHbGOQ",
+    link: "/local games/Void Snake/Voidsnake.html"
+},
+{
+    title: "Heads Or Tails?",
+    imgSrc: "https://lh7-us.googleusercontent.com/jpunH9P0O_of8oU2ZilkliydM46qFTQxD__XgzIKv3OU7zZi77arrF9F2hGe-wgyzO5-57VJvN1zocVFN8549jIDkN2rKc9xEjcywhhJCldCaJkZnMgyEHtwJPuUsZZSu4DsK-L2b2eQGepfKwhgn4p7tgzrqA",
+    link: "/local games/CoinFlip/coinflip.html"
+},
+{
+    title: "Chicken Run",
+    imgSrc: "https://lh7-us.googleusercontent.com/JugrfbksXzV3Mwwp32MOX-DHGD1EQJmZIaB_RYn9VBvoihT7-bClXPzyfYJC4mGXsYsdTMWJh-Xxe8L9wpHrGntuc0Shzu9tqKCTSug-jM2SiW1BIBcok9Fxlz0JvZEqaKVMbSWK1dlWmw8caafDFRErSox7YA",
+    link: "/local games/ChickenRun/chickenrun.html"
+},
+{
+    title: "Black Jack",
+    imgSrc: "https://lh7-us.googleusercontent.com/OZqPInsN8s8qb43B5XLKVNm6uHmFM_GBSMVdBcr4Y8fYr-dX_jSqsu7keD7RoMafKFhUprNXkYYwpvmTwsNNkvmzR23M3XL1ykIp-8EpICFqttainlnXyRuobeBcEp4YE8fxhdDdBxgufc8EhjzItiMSAI821w",
+    link: "/local games/BlackJack/BlackJack.html"
+},
+{
+    title: "Tic Tac Toe",
+    imgSrc: "https://lh7-us.googleusercontent.com/9kSWLTVDFONfAKr5ypIjt5LvF36mUlapDOEMJdwX0jkF-wvLUAPvd6Pg42ws-2Fdq2dRvOtO3WRMOtkJiS7atfoqugRCHgAsxqni6PVbRlIoM-uqCAOWjVp-wCnFWxuHDWAPEGuwjNkiBYSXhTljpVMf4A_h2Q",
+    link: "/local games/TicTacToe/TicTacToe.html"
+},
 ];
 
 function renderAppsList() {
-    const gamesList = document.getElementById("gamesList");
+const gamesList = document.getElementById("gamesList");
+
+if (!gamesList) {
+    console.error("Games list element not found");
+    return;
+}
+
+gamesList.innerHTML = '';
+console.log("Rendering games list");
+
+defaultApps.forEach(app => {
+    const appElement = document.createElement("div");
+    appElement.className = "game-item";
     
-    if (!gamesList) {
-        console.error("Games list element not found");
-        return;
-    }
-    
-    gamesList.innerHTML = '';
-    console.log("Rendering games list");
-    
-    defaultApps.forEach(app => {
+    appElement.innerHTML = `
+        <div class="game-icon">
+            <img src="${app.imgSrc}" alt="${app.title} icon">
+        </div>
+        <h3 class="game-title">${app.title}</h3>
+    `;
+
+    appElement.onclick = () => {
+        // Check if user is logged in before navigating to game
+        const currentUser = voidAccounting.getCurrentUser();
+        if (currentUser) {
+            console.log("Navigating to game:", app.title);
+            
+            // Record the game play attempt
+            voidAccounting.recordGameTransaction(
+                app.title.toLowerCase().replace(/\s+/g, '_'), 
+                currentUser.uid,
+                'game_play',
+                0 // Just tracking the visit, not charging coins here
+            ).then(() => {
+                // Navigate to the game after transaction is recorded
+                window.location.href = app.link;
+            }).catch(error => {
+                console.error("Error recording game visit:", error);
+                // Still navigate even if tracking fails
+                window.location.href = app.link;
+            });
+        } else {
+            alert('Please login to play games');
+            authContainer.style.display = 'block';
+            setTimeout(() => {
+                authContainer.classList.add('visible');
+            }, 10);
+        }
+    };
+
+    gamesList.appendChild(appElement);
+});
+}
+
+document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
+const gamesList = document.getElementById("gamesList");
+const searchTerm = this.value.toLowerCase();
+
+if (!gamesList) return;
+
+gamesList.innerHTML = '';
+
+defaultApps.forEach(app => {
+    if (app.title.toLowerCase().includes(searchTerm)) {
         const appElement = document.createElement("div");
         appElement.className = "game-item";
         
@@ -2374,8 +2480,6 @@ function renderAppsList() {
             // Check if user is logged in before navigating to game
             const currentUser = voidAccounting.getCurrentUser();
             if (currentUser) {
-                console.log("Navigating to game:", app.title);
-                
                 // Record the game play attempt
                 voidAccounting.recordGameTransaction(
                     app.title.toLowerCase().replace(/\s+/g, '_'), 
@@ -2400,59 +2504,8 @@ function renderAppsList() {
         };
 
         gamesList.appendChild(appElement);
-    });
-}
-
-document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
-    const gamesList = document.getElementById("gamesList");
-    const searchTerm = this.value.toLowerCase();
-    
-    if (!gamesList) return;
-    
-    gamesList.innerHTML = '';
-    
-    defaultApps.forEach(app => {
-        if (app.title.toLowerCase().includes(searchTerm)) {
-            const appElement = document.createElement("div");
-            appElement.className = "game-item";
-            
-            appElement.innerHTML = `
-                <div class="game-icon">
-                    <img src="${app.imgSrc}" alt="${app.title} icon">
-                </div>
-                <h3 class="game-title">${app.title}</h3>
-            `;
-
-            appElement.onclick = () => {
-                // Check if user is logged in before navigating to game
-                const currentUser = voidAccounting.getCurrentUser();
-                if (currentUser) {
-                    // Record the game play attempt
-                    voidAccounting.recordGameTransaction(
-                        app.title.toLowerCase().replace(/\s+/g, '_'), 
-                        currentUser.uid,
-                        'game_play',
-                        0 // Just tracking the visit, not charging coins here
-                    ).then(() => {
-                        // Navigate to the game after transaction is recorded
-                        window.location.href = app.link;
-                    }).catch(error => {
-                        console.error("Error recording game visit:", error);
-                        // Still navigate even if tracking fails
-                        window.location.href = app.link;
-                    });
-                } else {
-                    alert('Please login to play games');
-                    authContainer.style.display = 'block';
-                    setTimeout(() => {
-                        authContainer.classList.add('visible');
-                    }, 10);
-                }
-            };
-
-            gamesList.appendChild(appElement);
-        }
-    });
+    }
+});
 });
 
 // Add periodic refresh to ensure leaderboard stays updated
@@ -2460,27 +2513,27 @@ setInterval(refreshLeaderboard, 30000); // Refresh every 30 seconds
 
 // Load apps and start leaderboard on page load
 window.addEventListener('load', async () => {
-    try {
-        console.log("Page loaded, initializing app");
-        renderAppsList();
-        
-        // Start leaderboard updates
-        voidLeaderboard.startLeaderboardUpdates();
-        
-        // Check if user is already logged in
-        const user = auth.currentUser;
-        if (user) {
-            console.log("User already logged in:", user.uid);
-            await updateUIForLoggedInUser(user);
-        }
-    } catch (err) {
-        console.error('Error during initialization:', err);
+try {
+    console.log("Page loaded, initializing app");
+    renderAppsList();
+    
+    // Start leaderboard updates
+    voidLeaderboard.startLeaderboardUpdates();
+    
+    // Check if user is already logged in
+    const user = auth.currentUser;
+    if (user) {
+        console.log("User already logged in:", user.uid);
+        await updateUIForLoggedInUser(user);
     }
+} catch (err) {
+    console.error('Error during initialization:', err);
+}
 });
 
 // Stop leaderboard updates when user leaves the page
 window.addEventListener('beforeunload', () => {
-    voidLeaderboard.stopLeaderboardUpdates();
+voidLeaderboard.stopLeaderboardUpdates();
 });
     </script>
 </body>
