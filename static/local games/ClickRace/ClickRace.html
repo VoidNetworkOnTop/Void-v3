@@ -617,6 +617,7 @@
            position: relative;
            flex: 1;
            min-height: 0;
+           padding: 20px;
        }
 
        .click-pad-container {
@@ -698,6 +699,7 @@
            color: #fff;
        }
 
+       /* Fixed: Centered countdown overlay that fills the game board */
        .countdown-overlay {
            position: absolute;
            top: 0;
@@ -708,11 +710,25 @@
            display: flex;
            align-items: center;
            justify-content: center;
-           font-size: 3rem;
+           font-size: 5rem;
            font-weight: bold;
            color: #fff;
            z-index: 10;
            animation: pulseStronger 1s infinite;
+       }
+
+       /* Fixed: Center the countdown display properly */
+       #countdownDisplay {
+           position: absolute;
+           top: 50%;
+           left: 50%;
+           transform: translate(-50%, -50%);
+           font-size: 5rem;
+           z-index: 100;
+           width: auto;
+           height: auto;
+           margin: 0;
+           text-align: center;
        }
 
        @keyframes pulseStronger {
@@ -872,6 +888,11 @@
            .click-pad .click-text {
                font-size: 1.2rem;
            }
+           
+           /* Fix countdown display on mobile */
+           #countdownDisplay {
+               font-size: 4rem;
+           }
        }
 
        /* Special Effects */
@@ -1008,7 +1029,8 @@
        <div id="onlineGameSection" style="display: none; flex-grow: 1;">
            <div class="status-display" id="onlineGameStatus">Get ready to click!</div>
            
-           <div id="countdownDisplay" class="status-display" style="font-size: 2rem; display: none;">5</div>
+           <!-- Fixed: Make the countdown display position absolute and centered -->
+           <div id="countdownDisplay" style="display: none;">5</div>
            
            <div class="game-board">
                <div class="click-race-container" id="clickRaceContainer">
@@ -1079,6 +1101,9 @@
            runTransaction,
            serverTimestamp 
        } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+       
+       // Import the onDisconnect functionality from the database
+       import { getDatabase, ref, onDisconnect, set } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-database.js";
 
        // Firebase Configuration
        const firebaseConfig = {
@@ -1087,13 +1112,15 @@
            projectId: "void-games-c8d9e",
            storageBucket: "void-games-c8d9e.firebasestorage.app",
            messagingSenderId: "1063089929776",
-           appId: "1:1063089929776:web:8e226a23a4f3ab9c5777f5"
+           appId: "1:1063089929776:web:8e226a23a4f3ab9c5777f5",
+           databaseURL: "https://void-games-c8d9e-default-rtdb.firebaseio.com" // Added for Realtime Database
        };
 
        // Initialize Firebase
        const app = initializeApp(firebaseConfig);
        const auth = getAuth(app);
        const db = getFirestore(app);
+       const rtdb = getDatabase(app);
 
        // SECURITY: Wrap everything in an IIFE to prevent global access
        (function() {
@@ -1200,6 +1227,7 @@
            let myPlayerIndex = -1;       // Player's index in the players array
            let winnerId = null;          // ID of the winner (if any)
            let canClick = false;         // Can the player click their pad
+           let disconnectRef = null;     // Reference to onDisconnect handler
            
            // Authentication State Listener
            onAuthStateChanged(auth, async (user) => {
@@ -1665,6 +1693,9 @@
                    
                    console.log("Lobby created with ID:", currentLobbyId);
                    
+                   // Set up on disconnect handler for the host
+                   setupHostDisconnectHandler();
+                   
                    // Set up periodic activity update for this lobby
                    const activityInterval = setInterval(async () => {
                        if (currentLobbyId && onlineRole === 'host') {
@@ -1684,6 +1715,47 @@
                    
                } catch (error) {
                    console.error("Error creating lobby:", error);
+               }
+           }
+           
+           // Set up the onDisconnect handler for the host
+           function setupHostDisconnectHandler() {
+               if (!currentUser || !currentLobbyId || onlineRole !== 'host') return;
+               
+               try {
+                   // Create a reference in the realtime database for tracking host disconnection
+                   const hostConnRef = ref(rtdb, `clickrace_host_connections/${currentLobbyId}`);
+                   
+                   // Set current connection status
+                   set(hostConnRef, {
+                       hostId: currentUser.uid,
+                       connected: true,
+                       timestamp: Date.now()
+                   });
+                   
+                   // Setup what happens on disconnect
+                   disconnectRef = onDisconnect(hostConnRef);
+                   
+                   // When host disconnects, mark as disconnected
+                   disconnectRef.set({
+                       hostId: currentUser.uid,
+                       connected: false,
+                       timestamp: Date.now()
+                   }).then(() => {
+                       console.log("Disconnect handler set for host");
+                       
+                       // Also set up a function to delete the lobby document when host disconnects
+                       const cleanupRef = ref(rtdb, `clickrace_host_cleanup/${currentLobbyId}`);
+                       const cleanupDisconnectRef = onDisconnect(cleanupRef);
+                       
+                       // This value will trigger our cloud function to delete the Firestore lobby
+                       cleanupDisconnectRef.set({
+                           lobbyId: currentLobbyId,
+                           timestamp: Date.now()
+                       });
+                   });
+               } catch (error) {
+                   console.error("Error setting up disconnect handler:", error);
                }
            }
 
@@ -2238,7 +2310,10 @@
 
            // Create click pads for all players
            function createClickPads() {
+               // Clear the container first
                clickRaceContainer.innerHTML = "";
+               
+               console.log("Creating click pads for players:", lobbyPlayers);
                
                // Create a pad for each player
                lobbyPlayers.forEach((player, index) => {
@@ -2294,6 +2369,8 @@
                    
                    clickRaceContainer.appendChild(padContainer);
                });
+               
+               console.log("Click pads created successfully!");
            }
 
            // Enable click pad for current player
@@ -2456,284 +2533,332 @@
                    return;
                }
                
-               // Get winner info
-               const winner = lobbyData.players.find(p => p.id === lobbyData.gameState.winnerId);
-               const isWinner = currentUser.uid === lobbyData.gameState.winnerId;
-               
-               // Display the appropriate final message
-               if (isWinner) {
-                   endGameStatus.innerHTML = `<span style="color: #4caf50; font-weight: bold;">You Won!</span>`;
-               } else if (winner) {
-                   endGameStatus.innerHTML = `<span style="color: #f44336; font-weight: bold;">${winner.name} Won!</span>`;
-               } else {
-                   endGameStatus.innerHTML = `<span style="color: #ff9800; font-weight: bold;">Game Over!</span>`;
-               }
-               
-               // Different UI for host and joiner
-               if (onlineRole === 'host') {
-                   hostEndControls.style.display = 'flex';
-                   joinerEndControls.style.display = 'none';
-                   
-                   // Reset play again button state
-                   playAgainBtn.textContent = "Play Again";
-                   playAgainBtn.disabled = false;
-               } else {
-                   hostEndControls.style.display = 'none';
-                   joinerEndControls.style.display = 'flex';
-               }
-               
-               // Process result and show appropriate message
-               let resultMessage = '';
-               let amountChange = 0;
-               
-               if (isWinner) {
-                   // Player won
-                   amountChange = config.winReward;
-                   resultMessage = `Win: <span class="win-amount">+${amountChange} coins</span>`;
-                   
-                   // Process transaction for winning
-                   await updateCoins(amountChange, 'game_win');
-               } else {
-                   // Player lost
-                   amountChange = config.loseAmount;
-                   resultMessage = `Loss: <span class="lose-amount">${amountChange} coins</span>`;
-                   
-                   // Process transaction for losing
-                   await updateCoins(amountChange, 'game_loss');
-               }
-               
-               // Update UI
-               finalScoreDisplay.innerHTML = resultMessage;
-           }
+// Get winner info
+const winner = lobbyData.players.find(p => p.id === lobbyData.gameState.winnerId);
+const isWinner = currentUser.uid === lobbyData.gameState.winnerId;
 
-           // Play again (host only)
-           async function playAgainOnline() {
-               if (!currentLobbyId || onlineRole !== 'host' || isGameStarted) {
-                   console.log("Cannot start new game - invalid state");
-                   return;
-               }
-               
-               try {
-                   // Show loading state
-                   playAgainBtn.textContent = "Starting new game...";
-                   playAgainBtn.disabled = true;
-                   
-                   // Reset game state
-                   isGameStarted = true;
-                   isCountingDown = false;
-                   clickCounter = 0;
-                   winnerId = null;
-                   canClick = false;
-                   
-                   // Reset player click counts
-                   const updatedPlayers = lobbyPlayers.map(player => ({
-                       ...player,
-                       clickCount: 0
-                   }));
-                   
-                   // Get current lobby data
-                   const lobbyRef = doc(db, 'clickrace_lobbies', currentLobbyId);
-                   
-                   // Update the lobby with reset game state
-                   await updateDoc(lobbyRef, {
-                       status: 'playing',
-                       players: updatedPlayers,
-                       gameState: {
-                           isStarted: true,
-                           isCountingDown: true,
-                           winnerId: null
-                       }
-                   });
-                   
-               } catch (error) {
-                   console.error("Error restarting game:", error);
-                   
-                   // Restore button on error
-                   playAgainBtn.textContent = "Play Again";
-                   playAgainBtn.disabled = false;
-                   isGameStarted = false;
-               }
-           }
+// Display the appropriate final message
+if (isWinner) {
+    endGameStatus.innerHTML = `<span style="color: #4caf50; font-weight: bold;">You Won!</span>`;
+} else if (winner) {
+    endGameStatus.innerHTML = `<span style="color: #f44336; font-weight: bold;">${winner.name} Won!</span>`;
+} else {
+    endGameStatus.innerHTML = `<span style="color: #ff9800; font-weight: bold;">Game Over!</span>`;
+}
 
-           // End game as host - delete the lobby
-           async function endOnlineGame() {
-               if (!currentLobbyId || onlineRole !== 'host') return;
-               
-               try {
-                   // Mark that we're ending the game normally
-                   playerLeftOnline = true;
-                   
-                   // Delete the lobby
-                   await deleteDoc(doc(db, 'clickrace_lobbies', currentLobbyId));
-                   
-                   // Clean up and return to menu
-                   cleanupOnlineConnections();
-                   showMenuMode();
-                   
-               } catch (error) {
-                   console.error("Error ending game:", error);
-               }
-           }
+// Different UI for host and joiner
+if (onlineRole === 'host') {
+    hostEndControls.style.display = 'flex';
+    joinerEndControls.style.display = 'none';
+    
+    // Reset play again button state
+    playAgainBtn.textContent = "Play Again";
+    playAgainBtn.disabled = false;
+} else {
+    hostEndControls.style.display = 'none';
+    joinerEndControls.style.display = 'flex';
+}
 
-           // Quit game as joiner
-           async function quitOnlineGame() {
-               if (!currentLobbyId || onlineRole !== 'joiner') return;
-               
-               try {
-                   await leaveLobby();
-                   
-                   // Clean up and return to menu
-                   cleanupOnlineConnections();
-                   showMenuMode();
-                   
-               } catch (error) {
-                   console.error("Error quitting game:", error);
-                   
-                   // Clean up and return to menu even if error
-                   cleanupOnlineConnections();
-                   showMenuMode();
-               }
-           }
+// Process result and show appropriate message
+let resultMessage = '';
+let amountChange = 0;
 
-           // Cancel hosting
-           async function cancelHosting() {
-               if (!currentLobbyId || onlineRole !== 'host') return;
-               
-               try {
-// Delete the lobby
-               await deleteDoc(doc(db, 'clickrace_lobbies', currentLobbyId));
-               
-               // Clean up and return to online options
-               cleanupOnlineConnections();
-               showOnlineMode();
-               
-           } catch (error) {
-               console.error("Error canceling hosting:", error);
-               
-               // Clean up anyway
-               cleanupOnlineConnections();
-               showOnlineMode();
-           }
-       }
+if (isWinner) {
+    // Player won
+    amountChange = config.winReward;
+    resultMessage = `Win: <span class="win-amount">+${amountChange} coins</span>`;
+    
+    // Process transaction for winning
+    await updateCoins(amountChange, 'game_win');
+} else {
+    // Player lost
+    amountChange = config.loseAmount;
+    resultMessage = `Loss: <span class="lose-amount">${amountChange} coins</span>`;
+    
+    // Process transaction for losing
+    await updateCoins(amountChange, 'game_loss');
+}
 
-       // Clean up online connections
-       function cleanupOnlineConnections() {
-           // Unsubscribe from listener
-           if (lobbySnapshot) {
-               lobbySnapshot();
-               lobbySnapshot = null;
-           }
-           
-           // Clear state
-           currentLobbyId = '';
-           onlineRole = '';
-           lobbyPlayers = [];
-           isGameStarted = false;
-           isCountingDown = false;
-           clickCounter = 0;
-           winnerId = null;
-           myPlayerIndex = -1;
-           canClick = false;
-           
-           // Reset button states
-           if (playAgainBtn) {
-               playAgainBtn.textContent = "Play Again";
-               playAgainBtn.disabled = false;
-           }
-           
-           if (startGameBtn) {
-               startGameBtn.textContent = "Start Game";
-               startGameBtn.disabled = true;
-           }
-       }
+// Update UI
+finalScoreDisplay.innerHTML = resultMessage;
+}
 
-       // Show result popup
-       function showResultPopup(isWin, amount, message, callback) {
-           // Set popup content
-           if (isWin) {
-               resultTitle.textContent = "YOU WON!";
-               resultTitle.className = "result-title win-title";
-               resultAmount.innerHTML = `<span class="win-amount">+${amount} coins</span>`;
-           } else {
-               resultTitle.textContent = "YOU LOST";
-               resultTitle.className = "result-title lose-title";
-               resultAmount.innerHTML = `<span class="lose-amount">${amount} coins</span>`;
-           }
-           
-           resultMessage.textContent = message;
-           
-           // Show popup
-           resultPopup.style.display = 'block';
-           
-           // Set continue button action
-           continueBtn.onclick = () => {
-               resultPopup.style.display = 'none';
-               if (callback) callback();
-           };
-       }
+// Play again (host only)
+async function playAgainOnline() {
+if (!currentLobbyId || onlineRole !== 'host' || isGameStarted) {
+    console.log("Cannot start new game - invalid state");
+    return;
+}
 
-       // Event listeners - Main Menu
-       onlinePlayerOption.addEventListener('click', showOnlineMode);
-       backButton.addEventListener('click', () => {
-           window.location.href = '/learning.html';
-       });
+try {
+    // Show loading state
+    playAgainBtn.textContent = "Starting new game...";
+    playAgainBtn.disabled = true;
+    
+    // Reset game state
+    isGameStarted = true;
+    isCountingDown = false;
+    clickCounter = 0;
+    winnerId = null;
+    canClick = false;
+    
+    // Reset player click counts
+    const updatedPlayers = lobbyPlayers.map(player => ({
+        ...player,
+        clickCount: 0
+    }));
+    
+    // Get current lobby data
+    const lobbyRef = doc(db, 'clickrace_lobbies', currentLobbyId);
+    
+    // Update the lobby with reset game state
+    await updateDoc(lobbyRef, {
+        status: 'playing',
+        players: updatedPlayers,
+        gameState: {
+            isStarted: true,
+            isCountingDown: true,
+            winnerId: null
+        }
+    });
+    
+} catch (error) {
+    console.error("Error restarting game:", error);
+    
+    // Restore button on error
+    playAgainBtn.textContent = "Play Again";
+    playAgainBtn.disabled = false;
+    isGameStarted = false;
+}
+}
 
-       // Online mode buttons
-       backToMenuBtn.addEventListener('click', showMenuMode);
-       hostGameBtn.addEventListener('click', showHostLobby);
-       joinGameBtn.addEventListener('click', showJoinGame);
+// End game as host - delete the lobby
+async function endOnlineGame() {
+if (!currentLobbyId || onlineRole !== 'host') return;
 
-       // Host lobby buttons
-       cancelHostBtn.addEventListener('click', cancelHosting);
-       startGameBtn.addEventListener('click', startOnlineGame);
+try {
+    // Mark that we're ending the game normally
+    playerLeftOnline = true;
+    
+    // Delete the lobby
+    await deleteDoc(doc(db, 'clickrace_lobbies', currentLobbyId));
+    
+    // Clean up and return to menu
+    cleanupOnlineConnections();
+    showMenuMode();
+    
+} catch (error) {
+    console.error("Error ending game:", error);
+}
+}
 
-       // Join game buttons
-       refreshLobbiesBtn.addEventListener('click', loadLobbies);
-       cancelJoinBtn.addEventListener('click', showOnlineMode);
-       leaveLobbyBtn.addEventListener('click', leaveLobby);
+// Quit game as joiner
+async function quitOnlineGame() {
+if (!currentLobbyId || onlineRole !== 'joiner') return;
 
-       // Game end buttons
-       playAgainBtn.addEventListener('click', playAgainOnline);
-       endGameBtn.addEventListener('click', endOnlineGame);
-       quitGameBtn.addEventListener('click', quitOnlineGame);
+try {
+    await leaveLobby();
+    
+    // Clean up and return to menu
+    cleanupOnlineConnections();
+    showMenuMode();
+    
+} catch (error) {
+    console.error("Error quitting game:", error);
+    
+    // Clean up and return to menu even if error
+    cleanupOnlineConnections();
+    showMenuMode();
+}
+}
 
-       // Result popup continue button
-       continueBtn.addEventListener('click', () => {
-           resultPopup.style.display = 'none';
-       });
+// Cancel hosting
+async function cancelHosting() {
+if (!currentLobbyId || onlineRole !== 'host') return;
 
-       // Initialize the game
-       window.addEventListener('load', () => {
-           console.log("Game loading...");
-           
-           // Set an initial check for auth state
-           if (auth && auth.currentUser) {
-               console.log("User already authenticated on page load");
-               currentUser = auth.currentUser;
-           }
-           
-           // Properly initialize the game based on authentication state
-           const initializeGame = async () => {
-               if (currentUser) {
-                   console.log("Initializing game with authenticated user");
-                   // Load balance securely
-                   await loadFirebaseCoinBalance();
-               } else {
-                   console.log("Initializing game with no user");
-                   _coinBalance = 0;
-                   updateCoinDisplay();
-               }
-               
-               // Start in menu mode
-               showMenuMode();
-               
-               console.log("Game initialization complete");
-           };
-           
-           // Call the initialization function
-           initializeGame();
-       });
-   })(); // End of IIFE
-   </script>
+try {
+    // Delete the lobby
+    await deleteDoc(doc(db, 'clickrace_lobbies', currentLobbyId));
+    
+    // Clean up and return to online options
+    cleanupOnlineConnections();
+    showOnlineMode();
+    
+} catch (error) {
+    console.error("Error canceling hosting:", error);
+    
+    // Clean up anyway
+    cleanupOnlineConnections();
+    showOnlineMode();
+}
+}
+
+// Clean up online connections
+function cleanupOnlineConnections() {
+// Unsubscribe from listener
+if (lobbySnapshot) {
+    lobbySnapshot();
+    lobbySnapshot = null;
+}
+
+// Cancel disconnect handler if it exists
+if (disconnectRef) {
+    disconnectRef.cancel();
+    disconnectRef = null;
+}
+
+// Clear state
+currentLobbyId = '';
+onlineRole = '';
+lobbyPlayers = [];
+isGameStarted = false;
+isCountingDown = false;
+clickCounter = 0;
+winnerId = null;
+myPlayerIndex = -1;
+canClick = false;
+
+// Reset button states
+if (playAgainBtn) {
+    playAgainBtn.textContent = "Play Again";
+    playAgainBtn.disabled = false;
+}
+
+if (startGameBtn) {
+    startGameBtn.textContent = "Start Game";
+    startGameBtn.disabled = true;
+}
+}
+
+// Show result popup
+function showResultPopup(isWin, amount, message, callback) {
+// Set popup content
+if (isWin) {
+    resultTitle.textContent = "YOU WON!";
+    resultTitle.className = "result-title win-title";
+    resultAmount.innerHTML = `<span class="win-amount">+${amount} coins</span>`;
+} else {
+    resultTitle.textContent = "YOU LOST";
+    resultTitle.className = "result-title lose-title";
+    resultAmount.innerHTML = `<span class="lose-amount">${amount} coins</span>`;
+}
+
+resultMessage.textContent = message;
+
+// Show popup
+resultPopup.style.display = 'block';
+
+// Set continue button action
+continueBtn.onclick = () => {
+    resultPopup.style.display = 'none';
+    if (callback) callback();
+};
+}
+
+// Event listeners - Main Menu
+onlinePlayerOption.addEventListener('click', showOnlineMode);
+backButton.addEventListener('click', () => {
+    window.location.href = '/learning.html';
+});
+
+// Online mode buttons
+backToMenuBtn.addEventListener('click', showMenuMode);
+hostGameBtn.addEventListener('click', showHostLobby);
+joinGameBtn.addEventListener('click', showJoinGame);
+
+// Host lobby buttons
+cancelHostBtn.addEventListener('click', cancelHosting);
+startGameBtn.addEventListener('click', startOnlineGame);
+
+// Join game buttons
+refreshLobbiesBtn.addEventListener('click', loadLobbies);
+cancelJoinBtn.addEventListener('click', showOnlineMode);
+leaveLobbyBtn.addEventListener('click', leaveLobby);
+
+// Game end buttons
+playAgainBtn.addEventListener('click', playAgainOnline);
+endGameBtn.addEventListener('click', endOnlineGame);
+quitGameBtn.addEventListener('click', quitOnlineGame);
+
+// Result popup continue button
+continueBtn.addEventListener('click', () => {
+    resultPopup.style.display = 'none';
+});
+
+// Handle page visibility changes (detect browser tab switching)
+document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+        // User switched tabs or minimized browser - nothing to do
+    } else if (document.visibilityState === 'visible') {
+        // User came back - if host, check if lobby still exists
+        if (currentUser && currentLobbyId && onlineRole === 'host') {
+            // Check if lobby still exists after returning to tab
+            const checkLobby = async () => {
+                try {
+                    const lobbyRef = doc(db, 'clickrace_lobbies', currentLobbyId);
+                    const lobbyDoc = await getDoc(lobbyRef);
+                    
+                    if (!lobbyDoc.exists()) {
+                        // Lobby was deleted while away
+                        alert("Your lobby was deleted. Returning to menu.");
+                        cleanupOnlineConnections();
+                        showMenuMode();
+                    }
+                } catch (error) {
+                    console.error("Error checking lobby on visibility change:", error);
+                }
+            };
+            checkLobby();
+        }
+    }
+});
+
+// Handle beforeunload event to clean up lobbies when host refreshes
+window.addEventListener('beforeunload', function(e) {
+    // If user is host, delete the lobby
+    if (currentUser && currentLobbyId && onlineRole === 'host') {
+        // Create a synchronous request to delete the lobby
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `/api/delete-lobby?id=${currentLobbyId}`, false);
+        xhr.send();
+        
+        // No need to show a confirmation dialog
+        delete e['returnValue'];
+    }
+});
+
+// Initialize the game
+window.addEventListener('load', () => {
+    console.log("Game loading...");
+    
+    // Set an initial check for auth state
+    if (auth && auth.currentUser) {
+        console.log("User already authenticated on page load");
+        currentUser = auth.currentUser;
+    }
+    
+    // Properly initialize the game based on authentication state
+    const initializeGame = async () => {
+        if (currentUser) {
+            console.log("Initializing game with authenticated user");
+            // Load balance securely
+            await loadFirebaseCoinBalance();
+        } else {
+            console.log("Initializing game with no user");
+            _coinBalance = 0;
+            updateCoinDisplay();
+        }
+        
+        // Start in menu mode
+        showMenuMode();
+        
+        console.log("Game initialization complete");
+    };
+    
+    // Call the initialization function
+    initializeGame();
+});
+})(); // End of IIFE
+</script>
 </body>
 </html>
