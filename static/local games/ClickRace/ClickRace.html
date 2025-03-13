@@ -1597,13 +1597,24 @@
                }
                
                try {
+                   // Get user profile to ensure we have the latest display name
+                   let userName = currentUser.displayName || "Host";
+                   try {
+                       const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+                       if (userDoc.exists() && userDoc.data().username) {
+                           userName = userDoc.data().username;
+                       }
+                   } catch (profileError) {
+                       console.log("Could not fetch profile, using display name", profileError);
+                   }
+                   
                    // Initial lobby data
                    const lobbyData = {
                        hostId: currentUser.uid,
-                       hostName: currentUser.displayName || "Host",
+                       hostName: userName,
                        players: [{
                            id: currentUser.uid,
-                           name: currentUser.displayName || "Host",
+                           name: userName,
                            isHost: true,
                            clickCount: 0
                        }],
@@ -1613,7 +1624,8 @@
                            isCountingDown: false,
                            winnerId: null
                        },
-                       createdAt: serverTimestamp()
+                       createdAt: serverTimestamp(),
+                       lastActive: serverTimestamp()
                    };
                    
                    // Create a new lobby document
@@ -1627,6 +1639,24 @@
                    setupLobbyListener();
                    
                    console.log("Lobby created with ID:", currentLobbyId);
+                   
+                   // Set up periodic activity update for this lobby
+                   const activityInterval = setInterval(async () => {
+                       if (currentLobbyId && onlineRole === 'host') {
+                           try {
+                               await updateDoc(doc(db, 'clickrace_lobbies', currentLobbyId), {
+                                   lastActive: serverTimestamp()
+                               });
+                           } catch (error) {
+                               // Lobby might have been deleted, clear interval
+                               clearInterval(activityInterval);
+                           }
+                       } else {
+                           // No longer hosting, clear interval
+                           clearInterval(activityInterval);
+                       }
+                   }, 60000); // Update every minute
+                   
                } catch (error) {
                    console.error("Error creating lobby:", error);
                }
@@ -1821,18 +1851,36 @@
                    // Clear status and display lobbies
                    lobbiesStatus.textContent = "";
                    
+                   const currentTime = Date.now();
+                   let availableLobbiesCount = 0;
+                   
                    querySnapshot.forEach(doc => {
                        const lobbyData = doc.data();
                        const players = lobbyData.players || [];
                        
-                       // Don't show full lobbies
+                       // Skip full lobbies
                        if (players.length >= config.maxPlayers) return;
+                       
+                       // Skip inactive lobbies (older than 30 minutes)
+                       const createdAt = lobbyData.createdAt?.toMillis?.() || 0;
+                       if (createdAt > 0 && (currentTime - createdAt) > 30 * 60 * 1000) {
+                           // Cleanup inactive lobbies
+                           if (players.length <= 1) {
+                               deleteDoc(doc.ref).catch(err => console.log("Error cleaning up inactive lobby:", err));
+                           }
+                           return;
+                       }
+                       
+                       // Check if lobby is empty (except host)
+                       if (players.length <= 0) return;
+                       
+                       availableLobbiesCount++;
                        
                        const lobbyItem = document.createElement('div');
                        lobbyItem.className = 'lobby-item';
                        lobbyItem.innerHTML = `
                            <div class="lobby-info">
-                               <div class="lobby-host">${lobbyData.hostName || "Host"}'s Lobby</div>
+                               <div class="lobby-host">${lobbyData.hostName}'s Lobby</div>
                                <div class="lobby-players">${players.length}/${config.maxPlayers} players</div>
                            </div>
                            <button class="join-btn" data-lobby-id="${doc.id}">Join</button>
@@ -1846,7 +1894,7 @@
                    });
                    
                    // If no lobbies were added to the list
-                   if (lobbiesList.children.length === 0) {
+                   if (availableLobbiesCount === 0) {
                        lobbiesStatus.textContent = "No open lobbies available";
                    }
                } catch (error) {
@@ -1887,28 +1935,72 @@
                        return;
                    }
                    
-                   // Add player to the lobby
-                   const updatedPlayers = [...players, {
-                       id: currentUser.uid,
-                       name: currentUser.displayName || "Player",
-                       isHost: false,
-                       clickCount: 0
-                   }];
+                   // Check if user is already in this lobby
+                   if (players.some(p => p.id === currentUser.uid)) {
+                       // User is rejoining - skip adding them again
+                       currentLobbyId = lobbyId;
+                       onlineRole = 'joiner';
+                       myPlayerIndex = players.findIndex(p => p.id === currentUser.uid);
+                       setupLobbyListener();
+                       showJoinedLobby();
+                       return;
+                   }
                    
-                   // Update the lobby
-                   await updateDoc(lobbyRef, {
-                       players: updatedPlayers
-                   });
-                   
-                   // Set current lobby
-                   currentLobbyId = lobbyId;
-                   onlineRole = 'joiner';
-                   myPlayerIndex = updatedPlayers.length - 1;
-                   
-                   // Setup listener and show joined UI
-                   setupLobbyListener();
-                   showJoinedLobby();
-                   
+                   // Add player to the lobby in a transaction to avoid race conditions
+                   try {
+                       await runTransaction(db, async (transaction) => {
+                           // Get fresh lobby data
+                           const freshLobbyDoc = await transaction.get(lobbyRef);
+                           
+                           if (!freshLobbyDoc.exists()) {
+                               throw new Error("Lobby no longer exists");
+                           }
+                           
+                           const freshLobbyData = freshLobbyDoc.data();
+                           const currentPlayers = freshLobbyData.players || [];
+                           
+                           // Recheck if lobby is full
+                           if (currentPlayers.length >= config.maxPlayers) {
+                               throw new Error("This lobby is full");
+                           }
+                           
+                           // Recheck if game already started
+                           if (freshLobbyData.gameState && freshLobbyData.gameState.isStarted) {
+                               throw new Error("This game has already started");
+                           }
+                           
+                           // Add player to the lobby
+                           const updatedPlayers = [...currentPlayers, {
+                               id: currentUser.uid,
+                               name: currentUser.displayName || "Player",
+                               isHost: false,
+                               clickCount: 0
+                           }];
+                           
+                           // Update the lobby
+                           transaction.update(lobbyRef, {
+                               players: updatedPlayers
+                           });
+                           
+                           return updatedPlayers;
+                       });
+                       
+                       // Transaction successful, set current lobby
+                       currentLobbyId = lobbyId;
+                       onlineRole = 'joiner';
+                       
+                       // Update myPlayerIndex based on fresh data
+                       const updatedLobbyDoc = await getDoc(lobbyRef);
+                       const updatedPlayers = updatedLobbyDoc.data().players || [];
+                       myPlayerIndex = updatedPlayers.findIndex(p => p.id === currentUser.uid);
+                       
+                       // Setup listener and show joined UI
+                       setupLobbyListener();
+                       showJoinedLobby();
+                   } catch (transactionError) {
+                       console.error("Transaction error:", transactionError);
+                       alert(transactionError.message || "Error joining lobby");
+                   }
                } catch (error) {
                    console.error("Error joining lobby:", error);
                    alert("Error joining lobby");
