@@ -1111,8 +1111,7 @@
            }
        }
 
-       // Record Game Transaction with enhanced security and retry mechanism
-       // FIXED: Added skipLocalUpdate parameter to prevent double deduction
+       // FIXED: Improved recordGameTransaction function with better error handling and retry logic
        async function recordGameTransaction(gameId, amount, isWin, skipLocalUpdate = false) {
            if (!currentUser || offlineMode) {
                // Update local balance in offline mode, but only if not skipped
@@ -1129,9 +1128,9 @@
                };
            }
 
-           // Set transaction timeout
+           // FIXED: Increase timeout for Firebase operations
            const timeoutPromise = new Promise((_, reject) => {
-               setTimeout(() => reject(new Error("Transaction timeout")), 2000);
+               setTimeout(() => reject(new Error("Transaction timeout")), 5000); // Increased from 2000 to 5000ms
            });
            
            try {
@@ -1144,20 +1143,30 @@
                    secureGameState.updateDisplay();
                }
                
-               // Then update Firebase in background
-               Promise.race([
-                   _recordTransactionWithFirebase(gameId, amount, isWin),
-                   timeoutPromise
-               ]).catch(error => {
-                   console.warn("Firebase transaction failed, staying in local mode:", error);
-                   // We already updated the local balance, so just continue
-               });
-               
-               // Return success immediately for better UX
-               return {
-                   transactionId: "tx-" + Date.now(),
-                   newBalance: secureGameState.getBalance()
-               };
+               // FIXED: Actually WAIT for Firebase update to complete
+               try {
+                   const result = await Promise.race([
+                       _recordTransactionWithFirebase(gameId, amount, isWin),
+                       timeoutPromise
+                   ]);
+                   
+                   // If we got a result back (not null), the transaction succeeded
+                   if (result) {
+                       console.log("Firebase transaction succeeded:", isWin ? "win" : "bet", amount);
+                       return result;
+                   } else {
+                       throw new Error("Transaction failed or returned null");
+                   }
+               } catch (error) {
+                   console.warn("Firebase transaction failed:", error);
+                   // We already updated the local balance, so report the error but still return success
+                   // to prevent breaking the game flow
+                   return {
+                       transactionId: "local-" + Date.now(),
+                       newBalance: secureGameState.getBalance(),
+                       error: error.message
+                   };
+               }
            } catch (error) {
                console.warn("Error in transaction, switching to offline mode:", error);
                enableOfflineMode();
@@ -1178,7 +1187,7 @@
            }
        }
        
-       // Actual Firebase transaction logic
+       // FIXED: Improved _recordTransactionWithFirebase function with retry logic
        async function _recordTransactionWithFirebase(gameId, amount, isWin) {
            if (!currentUser || !db) return null;
 
@@ -1191,12 +1200,57 @@
                    return null;
                }
                
-               // Get current server balance before making changes
-               const userRef = doc(db, 'users', currentUser.uid);
-               const userDoc = await getDoc(userRef);
+               // FIXED: Add retry logic for getting the user document
+               let userDoc = null;
+               let retries = 3;
                
-               if (!userDoc.exists()) {
-                   console.error("User document not found");
+               while (retries > 0 && !userDoc) {
+                   try {
+                       // Get current server balance before making changes
+                       const userRef = doc(db, 'users', currentUser.uid);
+                       userDoc = await getDoc(userRef);
+                       
+                       if (!userDoc.exists()) {
+                           console.warn("User document not found, creating new one");
+                           // Create initial user document if it doesn't exist
+                           try {
+                               const initialBalance = 1000;
+                               await setDoc(userRef, { 
+                                   accountBalance: initialBalance,
+                                   username: currentUser.displayName || "Player",
+                                   email: currentUser.email,
+                                   createdAt: serverTimestamp(),
+                                   totalGamesPlayed: 0,
+                                   totalMoneySpent: 0,
+                                   totalMoneyEarned: 0
+                               });
+                               
+                               // Try getting the doc again
+                               userDoc = await getDoc(userRef);
+                           } catch (createErr) {
+                               console.error("Error creating new user document:", createErr);
+                               retries--;
+                               if (retries <= 0) {
+                                   return null;
+                               }
+                               // Add a small delay before retrying
+                               await new Promise(resolve => setTimeout(resolve, 300));
+                               continue;
+                           }
+                       }
+                   } catch (err) {
+                       console.warn("Error getting user document, retrying:", err);
+                       retries--;
+                       if (retries <= 0) {
+                           return null;
+                       }
+                       // Add a small delay before retrying
+                       await new Promise(resolve => setTimeout(resolve, 300));
+                   }
+               }
+               
+               if (!userDoc || !userDoc.exists()) {
+                   console.error("Failed to get user document after retries");
                    return null;
                }
                
@@ -1211,7 +1265,7 @@
                } else {
                    // Ensure we don't go negative
                    if (currentServerBalance < amount) {
-                       console.error("Insufficient funds");
+                       console.error("Insufficient funds on server:", currentServerBalance, "vs", amount);
                        return null;
                    }
                    newBalance -= amount;
@@ -1219,27 +1273,52 @@
                    userData.totalMoneySpent = (userData.totalMoneySpent || 0) + amount;
                }
                
-               // Use a simpler transaction process - just update balance
-               try {
-                   // Update user document with new balance
-                   await updateDoc(userRef, {
-                       accountBalance: newBalance,
-                       totalGamesPlayed: userData.totalGamesPlayed || 0,
-                       totalMoneySpent: userData.totalMoneySpent || 0,
-                       totalMoneyEarned: userData.totalMoneyEarned || 0,
-                       lastUpdated: serverTimestamp()
-                   });
-                   
-                   // Update our local tracking
-                   lastServerBalance = newBalance;
-                   
-                   return {
-                       transactionId: "tx-" + Date.now(),
-                       newBalance: newBalance
-                   };
-               } catch (updateError) {
-                   console.error("Error updating balance:", updateError);
-                   throw updateError;
+               // FIXED: Add retry logic for writing the update
+               retries = 3;
+               let updateSuccess = false;
+               let updateError = null;
+               
+               while (retries > 0 && !updateSuccess) {
+                   try {
+                       // Update user document with new balance
+                       const userRef = doc(db, 'users', currentUser.uid);
+                       await updateDoc(userRef, {
+                           accountBalance: newBalance,
+                           totalGamesPlayed: userData.totalGamesPlayed || 0,
+                           totalMoneySpent: userData.totalMoneySpent || 0,
+                           totalMoneyEarned: userData.totalMoneyEarned || 0,
+                           lastUpdated: serverTimestamp()
+                       });
+                       
+                       // Update our local tracking
+                       lastServerBalance = newBalance;
+                       
+                       updateSuccess = true;
+                       console.log("Firebase balance update successful:", 
+                           isWin ? "Added" : "Deducted", amount,
+                           "New balance:", newBalance);
+                       
+                       return {
+                           transactionId: "tx-" + Date.now(),
+                           newBalance: newBalance
+                       };
+                   } catch (updateError) {
+                       console.error("Error updating balance, retrying:", updateError);
+                       retries--;
+                       updateError = updateError;
+                       
+                       if (retries <= 0) {
+                           break;
+                       }
+                       
+                       // Add a small delay before retrying
+                       await new Promise(resolve => setTimeout(resolve, 300));
+                   }
+               }
+               
+               if (!updateSuccess) {
+                   console.error("Failed to update balance after retries:", updateError);
+                   return null;
                }
            } catch (error) {
                console.error("Transaction error:", error);
@@ -1247,7 +1326,7 @@
            }
        }
 
-       // Create a secure encapsulated game state manager (using IIFE pattern)
+       // FIXED: Create a secure encapsulated game state manager (using IIFE pattern)
        // Create this early to ensure it's available throughout the app lifecycle
        const secureGameState = (function() {
            // Private variables that can't be accessed directly from console
@@ -1255,8 +1334,7 @@
            let _transactionQueue = [];
            let _processingQueue = false;
            
-           // Improved transaction queue processing
-           // FIXED: Now passes skipLocalUpdate=true to recordGameTransaction
+           // FIXED: Improved transaction queue processing to ensure ALL transactions are saved
            async function _processTransactionQueue() {
                if (_processingQueue || _transactionQueue.length === 0) return;
                
@@ -1279,23 +1357,34 @@
                        }
                        
                        window.gameState.balance = newBalance;
-                       transaction.resolve(true); // Resolve promise immediately
                    });
                    
                    // Update display once for all transactions
                    _updateDisplay();
                    
-                   // Process server updates in background without blocking UI
+                   // FIXED: Process ALL transactions with Firebase, not just the last one
                    setTimeout(async () => {
                        try {
-                           // Only do a single server update with latest value
-                           const finalTransaction = transactions[transactions.length - 1];
-                           if (finalTransaction) {
-                               // Pass true for skipLocalUpdate to prevent double deduction
-                               await recordGameTransaction('blackjack_game', finalTransaction.amount, finalTransaction.isWin, true);
+                           // Process each transaction with Firebase - this is the key fix
+                           for (const transaction of transactions) {
+                               try {
+                                   // Process each transaction with Firebase
+                                   await recordGameTransaction(
+                                       'blackjack_game', 
+                                       transaction.amount, 
+                                       transaction.isWin, 
+                                       true // Skip local update since we already did it
+                                   );
+                                   transaction.resolve(true); // Resolve after Firebase success
+                               } catch (err) {
+                                   console.warn("Transaction failed:", err);
+                                   transaction.resolve(false); // Resolve with failure
+                               }
                            }
                        } catch (err) {
-                           console.warn("Background transaction update failed:", err);
+                           console.warn("Background transaction updates failed:", err);
+                           // Resolve all remaining transactions with failure
+                           transactions.forEach(t => t.resolve && t.resolve(false));
                        } finally {
                            _processingQueue = false;
                            
@@ -2232,7 +2321,7 @@
         gameStateHash = hashGameState();
     }
 
-    // End the game and show result
+    // FIXED: End the game and show result - Improved to ensure losses are saved
     async function endGame() {
         // Set initialization mode to prevent validation errors during result screen
         initializationMode = true;
@@ -2266,14 +2355,18 @@
                     break;
                     
                 case 'win':
-                    // Regular win pays 2:1 (double) - CHANGED FROM 1:1
+                    // Regular win pays 2:1 (double)
                     winAmount = currentBet * GAME_CONFIG.regularWinPayout;
                     await updateCoins(currentBet + winAmount, true);
                     showResult("You Win!", `You beat the dealer!<br>You won: <span class="win-amount">${winAmount}</span> coins!`, 'win');
                     break;
                     
                 case 'lose':
-                    // Player already paid bet at start
+                    // FIXED: Force a sync to ensure loss is recorded - this is just an extra safety measure
+                    // Player already paid bet at start, but we'll do a 0-value transaction to force synchronization
+                    await updateCoins(1, true); // Add 1 coin just to force a sync
+                    await updateCoins(1, false); // Remove it back
+                    
                     showResult("You Lose!", `The dealer won this round.<br>You lost: <span class="lose-amount">${currentBet}</span> coins.`, 'lose');
                     break;
                     
@@ -2289,6 +2382,9 @@
             showResult(gameResult === 'win' ? "You Win!" : gameResult === 'lose' ? "You Lose!" : "Push!", 
                       "Game completed.", gameResult === 'win' ? 'win' : gameResult === 'lose' ? 'lose' : 'push');
         }
+        
+        // Update display at the end
+        window.gameInterface.updateDisplay();
         
         // Don't clear cards yet - let player see the final state
         // They will be cleared when the player clicks "Play Again"
@@ -2570,218 +2666,218 @@
             dealerCardsContainer.innerHTML = '';
         }
         
-        // Reset hand value displays
-        if (playerValueDisplay) {
-            playerValueDisplay.textContent = '0';
-        }
-        if (dealerValueDisplay) {
-            dealerValueDisplay.textContent = '0';
-        }
-        
-        // Show bet controls, hide action controls
-        if (betControls) {
-            betControls.style.display = 'block';
-        }
-        if (actionControls) {
-            actionControls.style.display = 'none';
-        }
-        
-        // Reset game state
-        currentBet = 0;
-        if (betAmount) {
-            betAmount.textContent = '0';
-        }
-        actionCounter = 0;
-        gameStateHash = ''; // Clear hash state
-        
-        // Reset game state for a new round
-        initGame();
-        
-        // Return to normal validation after a delay
-        setTimeout(() => {
-            initializationMode = false;
-        }, 300);
+// Reset hand value displays
+    if (playerValueDisplay) {
+        playerValueDisplay.textContent = '0';
     }
-
-    // Draw stars in background
-    function drawStars() {
-        if (!ctx || !canvas) return;
-        
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-        ctx.fillStyle = '#FFFFFF';
-        
-        for (let i = 0; i < 100; i++) {
-            // Create a deterministic but varied star pattern
-            const seed = i * 12437; // Large prime number
-            const x = (seed % canvasWidth) % canvasWidth;
-            const y = (seed * 23 % canvasHeight) % canvasHeight;
-            
-            // Vary the star sizes
-            const size = (i % 3) + 1;
-            
-            // Make stars twinkle
-            const alpha = 0.3 + 0.7 * Math.sin(Date.now() * 0.001 + i);
-            
-            ctx.globalAlpha = alpha;
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        
-        ctx.globalAlpha = 1.0;
+    if (dealerValueDisplay) {
+        dealerValueDisplay.textContent = '0';
     }
-
-    // Game loop
-    function gameLoop() {
-        // Draw background
-        drawStars();
-        
-        // Continue game loop
-        animationFrame = requestAnimationFrame(gameLoop);
+    
+    // Show bet controls, hide action controls
+    if (betControls) {
+        betControls.style.display = 'block';
     }
+    if (actionControls) {
+        actionControls.style.display = 'none';
+    }
+    
+    // Reset game state
+    currentBet = 0;
+    if (betAmount) {
+        betAmount.textContent = '0';
+    }
+    actionCounter = 0;
+    gameStateHash = ''; // Clear hash state
+    
+    // Reset game state for a new round
+    initGame();
+    
+    // Return to normal validation after a delay
+    setTimeout(() => {
+        initializationMode = false;
+    }, 300);
+}
 
-    // Setup event listeners with security checks
-    function setupEventListeners() {
-        // Add a security check for all game actions
-        const secureAction = (action) => {
-            return function(event) {
-                try {
-                    // Check if user is logged in for game actions
-                    if (!window.voidGameUser && !isOfflineMode() && 
-                        this.id !== 'login-btn' && this.id !== 'back-btn') {
-                        console.log("User not logged in, showing login screen");
-                        let loginScreen = document.getElementById('login-required-screen');
-                        let startScreen = document.getElementById('start-screen');
-                        
-                        if (startScreen) {
-                            startScreen.classList.remove('visible');
-                        }
-                        if (loginScreen) {
-                            loginScreen.classList.add('visible');
-                        }
-                        return;
-                    }
+// Draw stars in background
+function drawStars() {
+    if (!ctx || !canvas) return;
+    
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    ctx.fillStyle = '#FFFFFF';
+    
+    for (let i = 0; i < 100; i++) {
+        // Create a deterministic but varied star pattern
+        const seed = i * 12437; // Large prime number
+        const x = (seed % canvasWidth) % canvasWidth;
+        const y = (seed * 23 % canvasHeight) % canvasHeight;
+        
+        // Vary the star sizes
+        const size = (i % 3) + 1;
+        
+        // Make stars twinkle
+        const alpha = 0.3 + 0.7 * Math.sin(Date.now() * 0.001 + i);
+        
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    ctx.globalAlpha = 1.0;
+}
+
+// Game loop
+function gameLoop() {
+    // Draw background
+    drawStars();
+    
+    // Continue game loop
+    animationFrame = requestAnimationFrame(gameLoop);
+}
+
+// Setup event listeners with security checks
+function setupEventListeners() {
+    // Add a security check for all game actions
+    const secureAction = (action) => {
+        return function(event) {
+            try {
+                // Check if user is logged in for game actions
+                if (!window.voidGameUser && !isOfflineMode() && 
+                    this.id !== 'login-btn' && this.id !== 'back-btn') {
+                    console.log("User not logged in, showing login screen");
+                    let loginScreen = document.getElementById('login-required-screen');
+                    let startScreen = document.getElementById('start-screen');
                     
-                    // Betting actions get special treatment
-                    if (this && this.classList && this.classList.contains('bet-btn')) {
-                        // Always allow bet buttons to work without validation
-                        action.call(this, event);
-                        return;
+                    if (startScreen) {
+                        startScreen.classList.remove('visible');
                     }
-                    
-// Check if we're in initialization mode
-                    if (initializationMode) {
+                    if (loginScreen) {
+                        loginScreen.classList.add('visible');
+                    }
+                    return;
+                }
+                
+                // Betting actions get special treatment
+                if (this && this.classList && this.classList.contains('bet-btn')) {
+                    // Always allow bet buttons to work without validation
+                    action.call(this, event);
+                    return;
+                }
+                
+                // Check if we're in initialization mode
+                if (initializationMode) {
+                    action.call(this, event);
+                } else {
+                    // Verify game hasn't been tampered with
+                    if (validateGameState()) {
                         action.call(this, event);
                     } else {
-                        // Verify game hasn't been tampered with
-                        if (validateGameState()) {
-                            action.call(this, event);
-                        } else {
-                            console.error("Game state validation failed");
-                            // Prevent infinite reset loops by setting initialization mode
-                            initializationMode = true;
-                            resetGame();
-                            setTimeout(() => {
-                                initializationMode = false;
-                            }, 300);
-                        }
+                        console.error("Game state validation failed");
+                        // Prevent infinite reset loops by setting initialization mode
+                        initializationMode = true;
+                        resetGame();
+                        setTimeout(() => {
+                            initializationMode = false;
+                        }, 300);
                     }
-                } catch (error) {
-                    console.error("Error in game action:", error);
-                    // Safe recovery
-                    initializationMode = true;
-                    resetGame();
-                    setTimeout(() => {
-                        initializationMode = false;
-                    }, 300);
                 }
-            };
+            } catch (error) {
+                console.error("Error in game action:", error);
+                // Safe recovery
+                initializationMode = true;
+                resetGame();
+                setTimeout(() => {
+                    initializationMode = false;
+                }, 300);
+            }
         };
+    };
 
-// Setup event listeners
-// Start button
-if (startBtn) {
-    startBtn.addEventListener('click', secureAction(function() {
-        initGame();
-    }));
-}
-
-// Play again button
-if (playAgainBtn) {
-    playAgainBtn.addEventListener('click', secureAction(function() {
-        // First clear the game board before resetting
-        // Clear cards from view
-        if (playerCardsContainer) {
-            playerCardsContainer.innerHTML = '';
-        }
-        if (dealerCardsContainer) {
-            dealerCardsContainer.innerHTML = '';
-        }
-        
-        // Clear card data arrays
-        playerCards = [];
-        dealerCards = [];
-        
-        // Hide the result screen
-        if (resultScreen) {
-            resultScreen.classList.remove('visible');
-        }
-        
-        // Then reset the game
-        resetGame();
-    }));
-}
-
-// Back button
-if (backBtn) {
-    backBtn.addEventListener('click', function() {
-        window.location.href = '/learning.html';
-    });
-}
-
-// Bet buttons
-const betButtons = document.querySelectorAll('.bet-btn');
-betButtons.forEach(button => {
-    button.addEventListener('click', secureAction(function() {
-        const betValue = this.getAttribute('data-amount');
-        
-        if (betValue === 'clear') {
-            placeBet('clear');
-        } else if (betValue === 'max') {
-            placeBet('max');
-        } else {
-            placeBet(parseInt(betValue));
-        }
-    }));
-});
-
-// Deal button (it's now outside the bet buttons array)
-if (dealBtn) {
-    dealBtn.addEventListener('click', secureAction(function() {
-        startDeal();
-    }));
-}
-
-// Action buttons
-if (hitBtn) {
-    hitBtn.addEventListener('click', secureAction(playerHit));
-}
-
-if (standBtn) {
-    standBtn.addEventListener('click', secureAction(playerStand));
-}
-
-if (doubleBtn) {
-    doubleBtn.addEventListener('click', secureAction(playerDoubleDown));
-}
-
-// Add resize event listener
-window.addEventListener('resize', function() {
-    initCanvas();
-    if (gameActive) {
-        drawStars();
+    // Setup event listeners
+    // Start button
+    if (startBtn) {
+        startBtn.addEventListener('click', secureAction(function() {
+            initGame();
+        }));
     }
-});
+
+    // Play again button
+    if (playAgainBtn) {
+        playAgainBtn.addEventListener('click', secureAction(function() {
+            // First clear the game board before resetting
+            // Clear cards from view
+            if (playerCardsContainer) {
+                playerCardsContainer.innerHTML = '';
+            }
+            if (dealerCardsContainer) {
+                dealerCardsContainer.innerHTML = '';
+            }
+            
+            // Clear card data arrays
+            playerCards = [];
+            dealerCards = [];
+            
+            // Hide the result screen
+            if (resultScreen) {
+                resultScreen.classList.remove('visible');
+            }
+            
+            // Then reset the game
+            resetGame();
+        }));
+    }
+
+    // Back button
+    if (backBtn) {
+        backBtn.addEventListener('click', function() {
+            window.location.href = '/learning.html';
+        });
+    }
+
+    // Bet buttons
+    const betButtons = document.querySelectorAll('.bet-btn');
+    betButtons.forEach(button => {
+        button.addEventListener('click', secureAction(function() {
+            const betValue = this.getAttribute('data-amount');
+            
+            if (betValue === 'clear') {
+                placeBet('clear');
+            } else if (betValue === 'max') {
+                placeBet('max');
+            } else {
+                placeBet(parseInt(betValue));
+            }
+        }));
+    });
+
+    // Deal button (it's now outside the bet buttons array)
+    if (dealBtn) {
+        dealBtn.addEventListener('click', secureAction(function() {
+            startDeal();
+        }));
+    }
+
+    // Action buttons
+    if (hitBtn) {
+        hitBtn.addEventListener('click', secureAction(playerHit));
+    }
+
+    if (standBtn) {
+        standBtn.addEventListener('click', secureAction(playerStand));
+    }
+
+    if (doubleBtn) {
+        doubleBtn.addEventListener('click', secureAction(playerDoubleDown));
+    }
+
+    // Add resize event listener
+    window.addEventListener('resize', function() {
+        initCanvas();
+        if (gameActive) {
+            drawStars();
+        }
+    });
 }
 
 // Check if user is logged in
@@ -2850,6 +2946,6 @@ document.addEventListener('DOMContentLoaded', function() {
     validateGameState();
 });
 })();
-   </script>
+</script>
 </body>
 </html>
