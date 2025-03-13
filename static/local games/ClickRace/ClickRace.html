@@ -735,6 +735,22 @@
            text-shadow: 0 0 20px rgba(255, 255, 255, 0.7);
        }
 
+       /* Debug message display */
+       #debugInfo {
+           position: fixed;
+           bottom: 10px;
+           left: 10px;
+           background: rgba(0, 0, 0, 0.8);
+           border: 1px solid #f00;
+           color: #fff;
+           padding: 5px;
+           font-size: 10px;
+           z-index: 9999;
+           max-width: 300px;
+           max-height: 200px;
+           overflow: auto;
+       }
+
        @keyframes pulseStronger {
            0% { opacity: 0.7; transform: scale(1); }
            50% { opacity: 1; transform: scale(1.2); }
@@ -924,6 +940,9 @@
                <span class="coin-amount" id="coinDisplay">0</span>
            </div>
        </div>
+       
+       <!-- Debug Info Display -->
+       <div id="debugInfo" style="display: none;"></div>
        
        <!-- Main Menu Section -->
        <div id="menuSection">
@@ -1128,6 +1147,25 @@
 
        // SECURITY: Wrap everything in an IIFE to prevent global access
        (function() {
+           // Debug logging function
+           const debugInfo = document.getElementById('debugInfo');
+           function log(message, obj = null) {
+               console.log(message, obj);
+               if (debugInfo) {
+                   const now = new Date().toLocaleTimeString();
+                   const msg = obj ? `${now}: ${message} ${JSON.stringify(obj)}` : `${now}: ${message}`;
+                   debugInfo.innerHTML += msg + '<br>';
+                   debugInfo.scrollTop = debugInfo.scrollHeight;
+               }
+           }
+           
+           // Enable debug mode with shift+D
+           document.addEventListener('keydown', function(e) {
+               if (e.shiftKey && e.key === 'D') {
+                   debugInfo.style.display = debugInfo.style.display === 'none' ? 'block' : 'none';
+               }
+           });
+           
            // Security measures
            const securityToken = generateSecurityToken();
            let lastServerBalance = 0;
@@ -1238,12 +1276,12 @@
                if (user) {
                    // User is signed in
                    currentUser = user;
-                   console.log("User signed in:", user.uid);
+                   log("User signed in:", user.uid);
                    await loadFirebaseCoinBalance();
                } else {
                    // No user is signed in
                    currentUser = null;
-                   console.log("No user signed in");
+                   log("No user signed in");
                    
                    // Check if Firebase is still initializing
                    setTimeout(() => {
@@ -1268,7 +1306,7 @@
                        
                        // If local balance doesn't match server (possible tampering)
                        if (Math.abs(_coinBalance - serverBalance) > 1) { // Allow small floating point differences
-                           console.log("Balance verification failed. Resetting to server value.");
+                           log("Balance verification failed. Resetting to server value.");
                            _coinBalance = serverBalance;
                            updateCoinDisplay();
                            return false;
@@ -1285,12 +1323,12 @@
            // SECURITY: Use Firestore transactions for safer balance updates
            async function loadFirebaseCoinBalance() {
                if (!currentUser) {
-                   console.log("No user available to load balance");
+                   log("No user available to load balance");
                    return;
                }
 
                try {
-                   console.log("Loading balance for user:", currentUser.uid);
+                   log("Loading balance for user:", currentUser.uid);
                    
                    const userRef = doc(db, 'users', currentUser.uid);
                    
@@ -1362,14 +1400,14 @@
                }
 
                try {
-                   console.log(`Recording transaction: ${transactionType} for ${Math.abs(amount)} coins`);
+                   log(`Recording transaction: ${transactionType} for ${Math.abs(amount)} coins`);
                    
                    // Create a unique transaction ID
                    const transactionId = crypto.randomUUID();
                    
                    // Add to pending set to prevent duplicates
                    if (pendingTransactions.has(transactionId)) {
-                       console.log("Duplicate transaction detected, skipping");
+                       log("Duplicate transaction detected, skipping");
                        return null;
                    }
                    
@@ -1377,7 +1415,7 @@
                    
                    // Set a transaction lock to prevent duplicate updates
                    if (transactionInProgress) {
-                       console.log("Transaction already in progress, waiting...");
+                       log("Transaction already in progress, waiting...");
                        await new Promise(resolve => setTimeout(resolve, 300));
                    }
                    
@@ -1479,7 +1517,7 @@
                // Check if we already have coins - if so, the user is likely already authenticated
                // This handles cases where Firebase auth is slow to report but data is accessible
                if (_coinBalance > 0 || currentUser) {
-                   console.log("User appears to be authenticated, skipping login prompt");
+                   log("User appears to be authenticated, skipping login prompt");
                    return;
                }
                
@@ -1647,7 +1685,7 @@
                        return userDoc.data().username || currentUser.displayName || "Player";
                    }
                } catch (err) {
-                   console.log("Error getting username:", err);
+                   log("Error getting username:", err);
                }
                
                // Fallback to display name
@@ -1695,7 +1733,7 @@
                    // Start listening for changes
                    setupLobbyListener();
                    
-                   console.log("Lobby created with ID:", currentLobbyId);
+                   log("Lobby created with ID:", currentLobbyId);
                    
                    // Set up on disconnect handler for the host
                    setupHostDisconnectHandler();
@@ -1746,7 +1784,7 @@
                        connected: false,
                        timestamp: Date.now()
                    }).then(() => {
-                       console.log("Disconnect handler set for host");
+                       log("Disconnect handler set for host");
                        
                        // Also set up a function to delete the lobby document when host disconnects
                        const cleanupRef = ref(rtdb, `clickrace_host_cleanup/${currentLobbyId}`);
@@ -1792,7 +1830,7 @@
 
            // Handle changes to the lobby data
            function handleLobbyUpdate(lobbyData) {
-               console.log("Lobby update received:", lobbyData);
+               log("Lobby update received:", lobbyData);
                
                // Store the players list
                lobbyPlayers = lobbyData.players || [];
@@ -1995,7 +2033,7 @@
                        if (lobbyData.hostId === currentUser.uid && players.length === 0) {
                            try {
                                await deleteDoc(doc.ref);
-                               console.log("Deleted my empty lobby:", doc.id);
+                               log("Deleted my empty lobby:", doc.id);
                            } catch (err) {
                                console.error("Error deleting my empty lobby:", err);
                            }
@@ -2233,6 +2271,7 @@
            // Start countdown
            function startCountdown() {
                isCountingDown = true;
+               log("Starting countdown");
                
                // Switch to game UI first
                showGameUI();
@@ -2247,6 +2286,8 @@
                // Disable click pads during countdown
                document.querySelectorAll('.click-pad').forEach(pad => {
                    pad.classList.add('disabled');
+                   pad.style.opacity = '0.5';
+                   pad.style.cursor = 'not-allowed';
                });
                
                // Start countdown
@@ -2260,8 +2301,11 @@
                        clearInterval(countdownInterval);
                        countdownDisplay.style.display = 'none';
                        
-                       // Enable clicking
+                       // IMPORTANT: Force reset these flags to ensure clicking works
+                       isCountingDown = false;
+                       isGameStarted = true;
                        canClick = true;
+                       log("Countdown finished, enabling clicks:", { isCountingDown, isGameStarted, canClick });
                        
                        // Enable click pads for current player
                        enableClickPad();
@@ -2331,7 +2375,7 @@
                // Clear the container first
                clickRaceContainer.innerHTML = "";
                
-               console.log("Creating click pads for players:", lobbyPlayers);
+               log("Creating click pads for players:", lobbyPlayers);
                
                // First check if we have players
                if (!lobbyPlayers || lobbyPlayers.length === 0) {
@@ -2453,12 +2497,27 @@
                    clickPad.appendChild(clickText);
                    
                    if (isCurrentPlayer) {
-                       // Add click event listener for current player
-                       clickPad.addEventListener('click', handlePadClick);
+                       // Add click event listener for current player with debug log
+                       log("Adding click event listener to pad for player:", player.id);
                        
-                       // Add an extra highlight for the user's pad
+                       // Try using direct onclick instead of addEventListener
+                       clickPad.onclick = function(event) {
+                           handlePadClick(event);
+                       };
+                       
+                       // Also add a visual indication that this pad is clickable
                        clickPad.style.border = '3px solid #4caf50';
                        clickPad.style.boxShadow = '0 0 20px rgba(76, 175, 80, 0.3)';
+                       
+                       // Add a debug indicator to show it's clickable
+                       const debugClickable = document.createElement('div');
+                       debugClickable.style.position = 'absolute';
+                       debugClickable.style.top = '5px';
+                       debugClickable.style.right = '5px';
+                       debugClickable.style.color = 'lime';
+                       debugClickable.style.fontSize = '10px';
+                       debugClickable.textContent = 'CLICKABLE';
+                       clickPad.appendChild(debugClickable);
                    }
                    
                    padContainer.appendChild(playerInfo);
@@ -2467,7 +2526,7 @@
                    clickRaceContainer.appendChild(padContainer);
                });
                
-               console.log("Click pads created successfully! Container now has:", clickRaceContainer.childNodes.length, "children");
+               log("Click pads created successfully! Container now has:", clickRaceContainer.childNodes.length, "children");
            }
 
            // Enable click pad for current player
@@ -2480,378 +2539,413 @@
                }
            }
 
-           // Handle click on player's pad
-           async function handlePadClick(event) {
-               if (!isGameStarted || isCountingDown || winnerId || !canClick) return;
-               
-               // Create ripple effect
-               const pad = event.currentTarget;
-               const rect = pad.getBoundingClientRect();
-               const x = event.clientX - rect.left;
-               const y = event.clientY - rect.top;
-               
-               const ripple = document.createElement('span');
-               ripple.className = 'click-ripple';
-               ripple.style.left = x + 'px';
-               ripple.style.top = y + 'px';
-               
-               pad.appendChild(ripple);
-               
-               // Remove ripple after animation
-               setTimeout(() => {
-                   ripple.remove();
-               }, 600);
-               
-               // Increment counter
-               clickCounter++;
-               
-               // Update local UI immediately for responsiveness
-               const countDisplay = document.querySelector(`.click-pad-container[data-player-id="${currentUser.uid}"] .player-click-count`);
-               if (countDisplay) {
-                   countDisplay.textContent = clickCounter.toString();
-               }
-               
-               // Update progress bar
-               const progressBar = document.querySelector(`.click-pad-container[data-player-id="${currentUser.uid}"] .progress-bar`);
-               if (progressBar) {
-                   const progress = (clickCounter / config.targetClicks) * 100;
-                   progressBar.style.width = `${progress}%`;
-               }
-               
-               // Update in Firebase
-               try {
-                   const lobbyRef = doc(db, 'clickrace_lobbies', currentLobbyId);
-                   const lobbyDoc = await getDoc(lobbyRef);
-                   
-                   if (!lobbyDoc.exists()) {
-                       console.error("Lobby not found");
-                       return;
-                   }
-                   
-                   const lobbyData = lobbyDoc.data();
-                   const players = lobbyData.players || [];
-                   
-                   // Find and update current player
-                   const playerIndex = players.findIndex(p => p.id === currentUser.uid);
-                   if (playerIndex === -1) return;
-                   
-                   players[playerIndex].clickCount = clickCounter;
-                   
-// Check for winner
-const hasWon = clickCounter >= config.targetClicks;
-
-if (hasWon) {
-    // Update with winner
-    await updateDoc(lobbyRef, {
-        players: players,
-        'gameState.winnerId': currentUser.uid
+// Handle click on player's pad
+function handlePadClick(event) {
+    log("Pad clicked!", { 
+        isGameStarted, 
+        isCountingDown, 
+        winnerId, 
+        canClick 
     });
     
-    // Process win locally to reduce delay
-    const myPad = document.querySelector(`.click-pad[data-player-id="${currentUser.uid}"]`);
-    if (myPad) {
-        myPad.classList.add('winner');
-        myPad.classList.add('disabled');
+    // Make this less restrictive - at least one of these conditions is blocking clicks
+    if (!isGameStarted) {
+        log("Game not started, ignoring click");
+        return;
     }
-} else {
-    // Just update click count
-    await updateDoc(lobbyRef, {
-        players: players
-    });
-}
-
-} catch (error) {
-    console.error("Error updating click count:", error);
-}
+    
+    if (isCountingDown) {
+        log("Still counting down, ignoring click");
+        return;
+    }
+    
+    if (winnerId) {
+        log("Game already has a winner, ignoring click");
+        return;
+    }
+    
+    if (!canClick) {
+        log("Clicking not enabled yet, ignoring click");
+        // Force enable clicking if the countdown is done but canClick wasn't set
+        if (!isCountingDown && isGameStarted && !winnerId) {
+            log("Forcing click to be enabled");
+            canClick = true;
+        } else {
+            return;
+        }
+    }
+    
+    // Create ripple effect
+    const pad = event.currentTarget;
+    const rect = pad.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    
+    log("Creating click ripple effect");
+    const ripple = document.createElement('span');
+    ripple.className = 'click-ripple';
+    ripple.style.left = x + 'px';
+    ripple.style.top = y + 'px';
+    
+    pad.appendChild(ripple);
+    
+    // Remove ripple after animation
+    setTimeout(() => {
+        ripple.remove();
+    }, 600);
+    
+    // Increment counter
+    clickCounter++;
+    log("Click counter incremented to:", clickCounter);
+    
+    // Update local UI immediately for responsiveness
+    const countDisplay = document.querySelector(`.click-pad-container[data-player-id="${currentUser.uid}"] .player-click-count`);
+    if (countDisplay) {
+        countDisplay.textContent = clickCounter.toString();
+    }
+    
+    // Update progress bar
+    const progressBar = document.querySelector(`.click-pad-container[data-player-id="${currentUser.uid}"] .progress-bar`);
+    if (progressBar) {
+        const progress = (clickCounter / config.targetClicks) * 100;
+        progressBar.style.width = `${progress}%`;
+    }
+    
+    // Update in Firebase
+    (async function() {
+        try {
+            const lobbyRef = doc(db, 'clickrace_lobbies', currentLobbyId);
+            const lobbyDoc = await getDoc(lobbyRef);
+            
+            if (!lobbyDoc.exists()) {
+                console.error("Lobby not found");
+                return;
+            }
+            
+            const lobbyData = lobbyDoc.data();
+            const players = lobbyData.players || [];
+            
+            // Find and update current player
+            const playerIndex = players.findIndex(p => p.id === currentUser.uid);
+            if (playerIndex === -1) return;
+            
+            players[playerIndex].clickCount = clickCounter;
+            
+            // Check for winner
+            const hasWon = clickCounter >= config.targetClicks;
+            
+            if (hasWon) {
+                // Update with winner
+                await updateDoc(lobbyRef, {
+                    players: players,
+                    'gameState.winnerId': currentUser.uid
+                });
+                
+                // Process win locally to reduce delay
+                const myPad = document.querySelector(`.click-pad[data-player-id="${currentUser.uid}"]`);
+                if (myPad) {
+                    myPad.classList.add('winner');
+                    myPad.classList.add('disabled');
+                }
+            } else {
+                // Just update click count
+                await updateDoc(lobbyRef, {
+                    players: players
+                });
+            }
+        } catch (error) {
+            console.error("Error updating click count:", error);
+        }
+    })();
 }
 
 // Update click counters for all players
 function updateClickCounters(lobbyData) {
-const players = lobbyData.players || [];
-
-players.forEach(player => {
-    // Update count display
-    const countDisplay = document.querySelector(`.click-pad-container[data-player-id="${player.id}"] .player-click-count`);
-    if (countDisplay) {
-        countDisplay.textContent = player.clickCount || 0;
-    }
+    const players = lobbyData.players || [];
     
-    // Update progress bar
-    const progressBar = document.querySelector(`.click-pad-container[data-player-id="${player.id}"] .progress-bar`);
-    if (progressBar) {
-        const progress = ((player.clickCount || 0) / config.targetClicks) * 100;
-        progressBar.style.width = `${progress}%`;
-    }
-    
-    // Highlight winner's pad
-    if (lobbyData.gameState && lobbyData.gameState.winnerId === player.id) {
-        const winnerPad = document.querySelector(`.click-pad[data-player-id="${player.id}"]`);
-        if (winnerPad) {
-            winnerPad.classList.add('winner');
+    players.forEach(player => {
+        // Update count display
+        const countDisplay = document.querySelector(`.click-pad-container[data-player-id="${player.id}"] .player-click-count`);
+        if (countDisplay) {
+            countDisplay.textContent = player.clickCount || 0;
         }
         
-        // Disable all pads
-        document.querySelectorAll('.click-pad').forEach(pad => {
-            pad.classList.add('disabled');
-        });
-    }
-});
+        // Update progress bar
+        const progressBar = document.querySelector(`.click-pad-container[data-player-id="${player.id}"] .progress-bar`);
+        if (progressBar) {
+            const progress = ((player.clickCount || 0) / config.targetClicks) * 100;
+            progressBar.style.width = `${progress}%`;
+        }
+        
+// Highlight winner's pad
+        if (lobbyData.gameState && lobbyData.gameState.winnerId === player.id) {
+            const winnerPad = document.querySelector(`.click-pad[data-player-id="${player.id}"]`);
+            if (winnerPad) {
+                winnerPad.classList.add('winner');
+            }
+            
+            // Disable all pads
+            document.querySelectorAll('.click-pad').forEach(pad => {
+                pad.classList.add('disabled');
+            });
+        }
+    });
 }
 
 // Show game end UI
 async function showGameEndUI(lobbyData) {
-onlineGameSection.style.display = 'none';
-onlineGameEndSection.style.display = 'flex';
-
-// Reset game started flag
-isGameStarted = false;
-canClick = false;
-
-// Skip processing fees if a player left the game
-if (playerLeftOnline) {
-    // Just show a generic message
-    endGameStatus.innerHTML = `<span style="color: #ff9800; font-weight: bold;">Game Ended</span>`;
-    finalScoreDisplay.innerHTML = `No coins charged - opponent left the game`;
+    onlineGameSection.style.display = 'none';
+    onlineGameEndSection.style.display = 'flex';
     
-    // Just show back to menu option
-    hostEndControls.style.display = 'none';
-    joinerEndControls.style.display = 'none';
+    // Reset game started flag
+    isGameStarted = false;
+    canClick = false;
     
-    // Show generic end controls
-    const backToMenuBtn = document.createElement('button');
-    backToMenuBtn.className = 'reset-btn';
-    backToMenuBtn.textContent = 'Back to Menu';
-    backToMenuBtn.onclick = () => showMenuMode();
+    // Skip processing fees if a player left the game
+    if (playerLeftOnline) {
+        // Just show a generic message
+        endGameStatus.innerHTML = `<span style="color: #ff9800; font-weight: bold;">Game Ended</span>`;
+        finalScoreDisplay.innerHTML = `No coins charged - opponent left the game`;
+        
+        // Just show back to menu option
+        hostEndControls.style.display = 'none';
+        joinerEndControls.style.display = 'none';
+        
+        // Show generic end controls
+        const backToMenuBtn = document.createElement('button');
+        backToMenuBtn.className = 'reset-btn';
+        backToMenuBtn.textContent = 'Back to Menu';
+        backToMenuBtn.onclick = () => showMenuMode();
+        
+        const controlsDiv = document.createElement('div');
+        controlsDiv.className = 'controls';
+        controlsDiv.style.marginTop = '20px';
+        controlsDiv.appendChild(backToMenuBtn);
+        
+        finalScoreDisplay.after(controlsDiv);
+        return;
+    }
     
-    const controlsDiv = document.createElement('div');
-    controlsDiv.className = 'controls';
-    controlsDiv.style.marginTop = '20px';
-    controlsDiv.appendChild(backToMenuBtn);
+    // Get winner info
+    const winner = lobbyData.players.find(p => p.id === lobbyData.gameState.winnerId);
+    const isWinner = currentUser.uid === lobbyData.gameState.winnerId;
     
-    finalScoreDisplay.after(controlsDiv);
-    return;
-}
-
-// Get winner info
-const winner = lobbyData.players.find(p => p.id === lobbyData.gameState.winnerId);
-const isWinner = currentUser.uid === lobbyData.gameState.winnerId;
-
-// Display the appropriate final message
-if (isWinner) {
-    endGameStatus.innerHTML = `<span style="color: #4caf50; font-weight: bold;">You Won!</span>`;
-} else if (winner) {
-    endGameStatus.innerHTML = `<span style="color: #f44336; font-weight: bold;">${winner.name} Won!</span>`;
-} else {
-    endGameStatus.innerHTML = `<span style="color: #ff9800; font-weight: bold;">Game Over!</span>`;
-}
-
-// Different UI for host and joiner
-if (onlineRole === 'host') {
-    hostEndControls.style.display = 'flex';
-    joinerEndControls.style.display = 'none';
+    // Display the appropriate final message
+    if (isWinner) {
+        endGameStatus.innerHTML = `<span style="color: #4caf50; font-weight: bold;">You Won!</span>`;
+    } else if (winner) {
+        endGameStatus.innerHTML = `<span style="color: #f44336; font-weight: bold;">${winner.name} Won!</span>`;
+    } else {
+        endGameStatus.innerHTML = `<span style="color: #ff9800; font-weight: bold;">Game Over!</span>`;
+    }
     
-    // Reset play again button state
-    playAgainBtn.textContent = "Play Again";
-    playAgainBtn.disabled = false;
-} else {
-    hostEndControls.style.display = 'none';
-    joinerEndControls.style.display = 'flex';
-}
-
-// Process result and show appropriate message
-let resultMessage = '';
-let amountChange = 0;
-
-if (isWinner) {
-    // Player won
-    amountChange = config.winReward;
-    resultMessage = `Win: <span class="win-amount">+${amountChange} coins</span>`;
+    // Different UI for host and joiner
+    if (onlineRole === 'host') {
+        hostEndControls.style.display = 'flex';
+        joinerEndControls.style.display = 'none';
+        
+        // Reset play again button state
+        playAgainBtn.textContent = "Play Again";
+        playAgainBtn.disabled = false;
+    } else {
+        hostEndControls.style.display = 'none';
+        joinerEndControls.style.display = 'flex';
+    }
     
-    // Process transaction for winning
-    await updateCoins(amountChange, 'game_win');
-} else {
-    // Player lost
-    amountChange = config.loseAmount;
-    resultMessage = `Loss: <span class="lose-amount">${amountChange} coins</span>`;
+    // Process result and show appropriate message
+    let resultMessage = '';
+    let amountChange = 0;
     
-    // Process transaction for losing
-    await updateCoins(amountChange, 'game_loss');
-}
-
-// Update UI
-finalScoreDisplay.innerHTML = resultMessage;
+    if (isWinner) {
+        // Player won
+        amountChange = config.winReward;
+        resultMessage = `Win: <span class="win-amount">+${amountChange} coins</span>`;
+        
+        // Process transaction for winning
+        await updateCoins(amountChange, 'game_win');
+    } else {
+        // Player lost
+        amountChange = config.loseAmount;
+        resultMessage = `Loss: <span class="lose-amount">${amountChange} coins</span>`;
+        
+        // Process transaction for losing
+        await updateCoins(amountChange, 'game_loss');
+    }
+    
+    // Update UI
+    finalScoreDisplay.innerHTML = resultMessage;
 }
 
 // Play again (host only)
 async function playAgainOnline() {
-if (!currentLobbyId || onlineRole !== 'host' || isGameStarted) {
-    console.log("Cannot start new game - invalid state");
-    return;
-}
-
-try {
-    // Show loading state
-    playAgainBtn.textContent = "Starting new game...";
-    playAgainBtn.disabled = true;
+    if (!currentLobbyId || onlineRole !== 'host' || isGameStarted) {
+        log("Cannot start new game - invalid state");
+        return;
+    }
     
-    // Reset game state
-    isGameStarted = true;
-    isCountingDown = false;
-    clickCounter = 0;
-    winnerId = null;
-    canClick = false;
-    
-    // Reset player click counts
-    const updatedPlayers = lobbyPlayers.map(player => ({
-        ...player,
-        clickCount: 0
-    }));
-    
-    // Get current lobby data
-    const lobbyRef = doc(db, 'clickrace_lobbies', currentLobbyId);
-    
-    // Update the lobby with reset game state
-    await updateDoc(lobbyRef, {
-        status: 'playing',
-        players: updatedPlayers,
-        gameState: {
-            isStarted: true,
-            isCountingDown: true,
-            winnerId: null
-        }
-    });
-    
-} catch (error) {
-    console.error("Error restarting game:", error);
-    
-    // Restore button on error
-    playAgainBtn.textContent = "Play Again";
-    playAgainBtn.disabled = false;
-    isGameStarted = false;
-}
+    try {
+        // Show loading state
+        playAgainBtn.textContent = "Starting new game...";
+        playAgainBtn.disabled = true;
+        
+        // Reset game state
+        isGameStarted = true;
+        isCountingDown = false;
+        clickCounter = 0;
+        winnerId = null;
+        canClick = false;
+        
+        // Reset player click counts
+        const updatedPlayers = lobbyPlayers.map(player => ({
+            ...player,
+            clickCount: 0
+        }));
+        
+        // Get current lobby data
+        const lobbyRef = doc(db, 'clickrace_lobbies', currentLobbyId);
+        
+        // Update the lobby with reset game state
+        await updateDoc(lobbyRef, {
+            status: 'playing',
+            players: updatedPlayers,
+            gameState: {
+                isStarted: true,
+                isCountingDown: true,
+                winnerId: null
+            }
+        });
+        
+    } catch (error) {
+        console.error("Error restarting game:", error);
+        
+        // Restore button on error
+        playAgainBtn.textContent = "Play Again";
+        playAgainBtn.disabled = false;
+        isGameStarted = false;
+    }
 }
 
 // End game as host - delete the lobby
 async function endOnlineGame() {
-if (!currentLobbyId || onlineRole !== 'host') return;
-
-try {
-    // Mark that we're ending the game normally
-    playerLeftOnline = true;
+    if (!currentLobbyId || onlineRole !== 'host') return;
     
-    // Delete the lobby
-    await deleteDoc(doc(db, 'clickrace_lobbies', currentLobbyId));
-    
-    // Clean up and return to menu
-    cleanupOnlineConnections();
-    showMenuMode();
-    
-} catch (error) {
-    console.error("Error ending game:", error);
-}
+    try {
+        // Mark that we're ending the game normally
+        playerLeftOnline = true;
+        
+        // Delete the lobby
+        await deleteDoc(doc(db, 'clickrace_lobbies', currentLobbyId));
+        
+        // Clean up and return to menu
+        cleanupOnlineConnections();
+        showMenuMode();
+        
+    } catch (error) {
+        console.error("Error ending game:", error);
+    }
 }
 
 // Quit game as joiner
 async function quitOnlineGame() {
-if (!currentLobbyId || onlineRole !== 'joiner') return;
-
-try {
-    await leaveLobby();
+    if (!currentLobbyId || onlineRole !== 'joiner') return;
     
-    // Clean up and return to menu
-    cleanupOnlineConnections();
-    showMenuMode();
-    
-} catch (error) {
-    console.error("Error quitting game:", error);
-    
-    // Clean up and return to menu even if error
-    cleanupOnlineConnections();
-    showMenuMode();
-}
+    try {
+        await leaveLobby();
+        
+        // Clean up and return to menu
+        cleanupOnlineConnections();
+        showMenuMode();
+        
+    } catch (error) {
+        console.error("Error quitting game:", error);
+        
+        // Clean up and return to menu even if error
+        cleanupOnlineConnections();
+        showMenuMode();
+    }
 }
 
 // Cancel hosting
 async function cancelHosting() {
-if (!currentLobbyId || onlineRole !== 'host') return;
-
-try {
-    // Delete the lobby
-    await deleteDoc(doc(db, 'clickrace_lobbies', currentLobbyId));
+    if (!currentLobbyId || onlineRole !== 'host') return;
     
-    // Clean up and return to online options
-    cleanupOnlineConnections();
-    showOnlineMode();
-    
-} catch (error) {
-    console.error("Error canceling hosting:", error);
-    
-    // Clean up anyway
-    cleanupOnlineConnections();
-    showOnlineMode();
-}
+    try {
+        // Delete the lobby
+        await deleteDoc(doc(db, 'clickrace_lobbies', currentLobbyId));
+        
+        // Clean up and return to online options
+        cleanupOnlineConnections();
+        showOnlineMode();
+        
+    } catch (error) {
+        console.error("Error canceling hosting:", error);
+        
+        // Clean up anyway
+        cleanupOnlineConnections();
+        showOnlineMode();
+    }
 }
 
 // Clean up online connections
 function cleanupOnlineConnections() {
-// Unsubscribe from listener
-if (lobbySnapshot) {
-    lobbySnapshot();
-    lobbySnapshot = null;
-}
-
-// Cancel disconnect handler if it exists
-if (disconnectRef) {
-    disconnectRef.cancel();
-    disconnectRef = null;
-}
-
-// Clear state
-currentLobbyId = '';
-onlineRole = '';
-lobbyPlayers = [];
-isGameStarted = false;
-isCountingDown = false;
-clickCounter = 0;
-winnerId = null;
-myPlayerIndex = -1;
-canClick = false;
-
-// Reset button states
-if (playAgainBtn) {
-    playAgainBtn.textContent = "Play Again";
-    playAgainBtn.disabled = false;
-}
-
-if (startGameBtn) {
-    startGameBtn.textContent = "Start Game";
-    startGameBtn.disabled = true;
-}
+    // Unsubscribe from listener
+    if (lobbySnapshot) {
+        lobbySnapshot();
+        lobbySnapshot = null;
+    }
+    
+    // Cancel disconnect handler if it exists
+    if (disconnectRef) {
+        disconnectRef.cancel();
+        disconnectRef = null;
+    }
+    
+    // Clear state
+    currentLobbyId = '';
+    onlineRole = '';
+    lobbyPlayers = [];
+    isGameStarted = false;
+    isCountingDown = false;
+    clickCounter = 0;
+    winnerId = null;
+    myPlayerIndex = -1;
+    canClick = false;
+    
+    // Reset button states
+    if (playAgainBtn) {
+        playAgainBtn.textContent = "Play Again";
+        playAgainBtn.disabled = false;
+    }
+    
+    if (startGameBtn) {
+        startGameBtn.textContent = "Start Game";
+        startGameBtn.disabled = true;
+    }
 }
 
 // Show result popup
 function showResultPopup(isWin, amount, message, callback) {
-// Set popup content
-if (isWin) {
-    resultTitle.textContent = "YOU WON!";
-    resultTitle.className = "result-title win-title";
-    resultAmount.innerHTML = `<span class="win-amount">+${amount} coins</span>`;
-} else {
-    resultTitle.textContent = "YOU LOST";
-    resultTitle.className = "result-title lose-title";
-    resultAmount.innerHTML = `<span class="lose-amount">${amount} coins</span>`;
-}
-
-resultMessage.textContent = message;
-
-// Show popup
-resultPopup.style.display = 'block';
-
-// Set continue button action
-continueBtn.onclick = () => {
-    resultPopup.style.display = 'none';
-    if (callback) callback();
-};
+    // Set popup content
+    if (isWin) {
+        resultTitle.textContent = "YOU WON!";
+        resultTitle.className = "result-title win-title";
+        resultAmount.innerHTML = `<span class="win-amount">+${amount} coins</span>`;
+    } else {
+        resultTitle.textContent = "YOU LOST";
+        resultTitle.className = "result-title lose-title";
+        resultAmount.innerHTML = `<span class="lose-amount">${amount} coins</span>`;
+    }
+    
+    resultMessage.textContent = message;
+    
+    // Show popup
+    resultPopup.style.display = 'block';
+    
+    // Set continue button action
+    continueBtn.onclick = () => {
+        resultPopup.style.display = 'none';
+        if (callback) callback();
+    };
 }
 
 // Event listeners - Main Menu
@@ -2914,7 +3008,7 @@ document.addEventListener('visibilitychange', function() {
 
 // Handle beforeunload event to clean up lobbies when host refreshes
 window.addEventListener('beforeunload', function(e) {
-    // If user is host, delete the lobby
+    // If user is host, try to delete the lobby immediately
     if (currentUser && currentLobbyId && onlineRole === 'host') {
         try {
             // Try to delete the lobby synchronously
@@ -2929,22 +3023,22 @@ window.addEventListener('beforeunload', function(e) {
 
 // Initialize the game
 window.addEventListener('load', () => {
-    console.log("Game loading...");
+    log("Game loading...");
     
     // Set an initial check for auth state
     if (auth && auth.currentUser) {
-        console.log("User already authenticated on page load");
+        log("User already authenticated on page load");
         currentUser = auth.currentUser;
     }
     
     // Properly initialize the game based on authentication state
     const initializeGame = async () => {
         if (currentUser) {
-            console.log("Initializing game with authenticated user");
+            log("Initializing game with authenticated user");
             // Load balance securely
             await loadFirebaseCoinBalance();
         } else {
-            console.log("Initializing game with no user");
+            log("Initializing game with no user");
             _coinBalance = 0;
             updateCoinDisplay();
         }
@@ -2952,7 +3046,7 @@ window.addEventListener('load', () => {
         // Start in menu mode
         showMenuMode();
         
-        console.log("Game initialization complete");
+        log("Game initialization complete");
     };
     
     // Call the initialization function
