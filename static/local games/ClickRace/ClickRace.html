@@ -1854,28 +1854,42 @@
                    const currentTime = Date.now();
                    let availableLobbiesCount = 0;
                    
-                   querySnapshot.forEach(doc => {
+                   // Process each lobby
+                   for (const doc of querySnapshot.docs) {
                        const lobbyData = doc.data();
                        const players = lobbyData.players || [];
                        
                        // Skip full lobbies
-                       if (players.length >= config.maxPlayers) return;
+                       if (players.length >= config.maxPlayers) continue;
+                       
+                       // Delete empty lobbies (only host or no players)
+                       if (players.length <= 1) {
+                           try {
+                               // Delete lobbies with only the host
+                               await deleteDoc(doc.ref);
+                               console.log("Deleted empty lobby:", doc.id);
+                           } catch (err) {
+                               console.error("Error deleting empty lobby:", err);
+                           }
+                           continue;
+                       }
                        
                        // Skip inactive lobbies (older than 30 minutes)
                        const createdAt = lobbyData.createdAt?.toMillis?.() || 0;
                        if (createdAt > 0 && (currentTime - createdAt) > 30 * 60 * 1000) {
-                           // Cleanup inactive lobbies
-                           if (players.length <= 1) {
-                               deleteDoc(doc.ref).catch(err => console.log("Error cleaning up inactive lobby:", err));
+                           try {
+                               await deleteDoc(doc.ref);
+                               console.log("Deleted inactive lobby:", doc.id);
+                           } catch (err) {
+                               console.error("Error deleting inactive lobby:", err);
                            }
-                           return;
+                           continue;
                        }
                        
-                       // Check if lobby is empty (except host)
-                       if (players.length <= 0) return;
-                       
+                       // This is a valid lobby to show
                        availableLobbiesCount++;
                        
+                       // Create the lobby item
                        const lobbyItem = document.createElement('div');
                        lobbyItem.className = 'lobby-item';
                        lobbyItem.innerHTML = `
@@ -1891,7 +1905,7 @@
                        lobbyItem.querySelector('.join-btn').addEventListener('click', () => {
                            joinLobby(doc.id);
                        });
-                   });
+                   }
                    
                    // If no lobbies were added to the list
                    if (availableLobbiesCount === 0) {
@@ -1946,61 +1960,28 @@
                        return;
                    }
                    
-                   // Add player to the lobby in a transaction to avoid race conditions
-                   try {
-                       await runTransaction(db, async (transaction) => {
-                           // Get fresh lobby data
-                           const freshLobbyDoc = await transaction.get(lobbyRef);
-                           
-                           if (!freshLobbyDoc.exists()) {
-                               throw new Error("Lobby no longer exists");
-                           }
-                           
-                           const freshLobbyData = freshLobbyDoc.data();
-                           const currentPlayers = freshLobbyData.players || [];
-                           
-                           // Recheck if lobby is full
-                           if (currentPlayers.length >= config.maxPlayers) {
-                               throw new Error("This lobby is full");
-                           }
-                           
-                           // Recheck if game already started
-                           if (freshLobbyData.gameState && freshLobbyData.gameState.isStarted) {
-                               throw new Error("This game has already started");
-                           }
-                           
-                           // Add player to the lobby
-                           const updatedPlayers = [...currentPlayers, {
-                               id: currentUser.uid,
-                               name: currentUser.displayName || "Player",
-                               isHost: false,
-                               clickCount: 0
-                           }];
-                           
-                           // Update the lobby
-                           transaction.update(lobbyRef, {
-                               players: updatedPlayers
-                           });
-                           
-                           return updatedPlayers;
-                       });
-                       
-                       // Transaction successful, set current lobby
-                       currentLobbyId = lobbyId;
-                       onlineRole = 'joiner';
-                       
-                       // Update myPlayerIndex based on fresh data
-                       const updatedLobbyDoc = await getDoc(lobbyRef);
-                       const updatedPlayers = updatedLobbyDoc.data().players || [];
-                       myPlayerIndex = updatedPlayers.findIndex(p => p.id === currentUser.uid);
-                       
-                       // Setup listener and show joined UI
-                       setupLobbyListener();
-                       showJoinedLobby();
-                   } catch (transactionError) {
-                       console.error("Transaction error:", transactionError);
-                       alert(transactionError.message || "Error joining lobby");
-                   }
+                   // Add player to the lobby - SIMPLIFIED (no transaction)
+                   const updatedPlayers = [...players, {
+                       id: currentUser.uid,
+                       name: currentUser.displayName || "Player",
+                       isHost: false,
+                       clickCount: 0
+                   }];
+                   
+                   // Update the lobby directly (no transaction)
+                   await updateDoc(lobbyRef, {
+                       players: updatedPlayers
+                   });
+                   
+                   // Set current lobby
+                   currentLobbyId = lobbyId;
+                   onlineRole = 'joiner';
+                   myPlayerIndex = updatedPlayers.length - 1;
+                   
+                   // Setup listener and show joined UI
+                   setupLobbyListener();
+                   showJoinedLobby();
+                   
                } catch (error) {
                    console.error("Error joining lobby:", error);
                    alert("Error joining lobby");
