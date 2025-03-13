@@ -118,6 +118,7 @@
            position: relative;
            overflow: hidden;
            display: flex;
+           flex-direction: column;
            justify-content: center;
            align-items: center;
            background-color: rgba(0, 0, 0, 0.5);
@@ -131,10 +132,11 @@
            font-size: 1.5rem;
            font-weight: bold;
            height: 2rem;
-           margin: 0.5rem 0;
+           margin: 0.5rem 0 1rem 0;
            flex-shrink: 0;
            color: #fff;
            text-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+           width: 100%;
        }
 
        .score-display {
@@ -612,6 +614,9 @@
            gap: 20px;
            width: 100%;
            height: 100%;
+           position: relative;
+           flex: 1;
+           min-height: 0;
        }
 
        .click-pad-container {
@@ -1730,6 +1735,13 @@
                    }
                }
                
+               // Host check for single player during active game
+               if (onlineRole === 'host' && isGameStarted && lobbyPlayers.length <= 1) {
+                   alert("All players have left the game. Returning to menu.");
+                   endOnlineGame();
+                   return;
+               }
+               
                // Update UI based on role
                if (onlineRole === 'host') {
                    // Host is seeing players update
@@ -2588,140 +2600,140 @@
                if (!currentLobbyId || onlineRole !== 'host') return;
                
                try {
-                   // Delete the lobby
-                   await deleteDoc(doc(db, 'clickrace_lobbies', currentLobbyId));
-                   
-                   // Clean up and return to online options
-                   cleanupOnlineConnections();
-                   showOnlineMode();
-                   
-               } catch (error) {
-                   console.error("Error canceling hosting:", error);
-                   
-                   // Clean up anyway
-                   cleanupOnlineConnections();
-                   showOnlineMode();
-               }
+// Delete the lobby
+               await deleteDoc(doc(db, 'clickrace_lobbies', currentLobbyId));
+               
+               // Clean up and return to online options
+               cleanupOnlineConnections();
+               showOnlineMode();
+               
+           } catch (error) {
+               console.error("Error canceling hosting:", error);
+               
+               // Clean up anyway
+               cleanupOnlineConnections();
+               showOnlineMode();
            }
+       }
 
-           // Clean up online connections
-           function cleanupOnlineConnections() {
-               // Unsubscribe from listener
-               if (lobbySnapshot) {
-                   lobbySnapshot();
-                   lobbySnapshot = null;
-               }
-               
-               // Clear state
-               currentLobbyId = '';
-               onlineRole = '';
-               lobbyPlayers = [];
-               isGameStarted = false;
-               isCountingDown = false;
-               clickCounter = 0;
-               winnerId = null;
-               myPlayerIndex = -1;
-               canClick = false;
-               
-               // Reset button states
-               if (playAgainBtn) {
-                   playAgainBtn.textContent = "Play Again";
-                   playAgainBtn.disabled = false;
-               }
-               
-if (startGameBtn) {
-                   startGameBtn.textContent = "Start Game";
-                   startGameBtn.disabled = true;
-               }
+       // Clean up online connections
+       function cleanupOnlineConnections() {
+           // Unsubscribe from listener
+           if (lobbySnapshot) {
+               lobbySnapshot();
+               lobbySnapshot = null;
            }
-
-           // Show result popup
-           function showResultPopup(isWin, amount, message, callback) {
-               // Set popup content
-               if (isWin) {
-                   resultTitle.textContent = "YOU WON!";
-                   resultTitle.className = "result-title win-title";
-                   resultAmount.innerHTML = `<span class="win-amount">+${amount} coins</span>`;
-               } else {
-                   resultTitle.textContent = "YOU LOST";
-                   resultTitle.className = "result-title lose-title";
-                   resultAmount.innerHTML = `<span class="lose-amount">${amount} coins</span>`;
-               }
-               
-               resultMessage.textContent = message;
-               
-               // Show popup
-               resultPopup.style.display = 'block';
-               
-               // Set continue button action
-               continueBtn.onclick = () => {
-                   resultPopup.style.display = 'none';
-                   if (callback) callback();
-               };
+           
+           // Clear state
+           currentLobbyId = '';
+           onlineRole = '';
+           lobbyPlayers = [];
+           isGameStarted = false;
+           isCountingDown = false;
+           clickCounter = 0;
+           winnerId = null;
+           myPlayerIndex = -1;
+           canClick = false;
+           
+           // Reset button states
+           if (playAgainBtn) {
+               playAgainBtn.textContent = "Play Again";
+               playAgainBtn.disabled = false;
            }
+           
+           if (startGameBtn) {
+               startGameBtn.textContent = "Start Game";
+               startGameBtn.disabled = true;
+           }
+       }
 
-           // Event listeners - Main Menu
-           onlinePlayerOption.addEventListener('click', showOnlineMode);
-           backButton.addEventListener('click', () => {
-               window.location.href = '/learning.html';
-           });
-
-           // Online mode buttons
-           backToMenuBtn.addEventListener('click', showMenuMode);
-           hostGameBtn.addEventListener('click', showHostLobby);
-           joinGameBtn.addEventListener('click', showJoinGame);
-
-           // Host lobby buttons
-           cancelHostBtn.addEventListener('click', cancelHosting);
-           startGameBtn.addEventListener('click', startOnlineGame);
-
-           // Join game buttons
-           refreshLobbiesBtn.addEventListener('click', loadLobbies);
-           cancelJoinBtn.addEventListener('click', showOnlineMode);
-           leaveLobbyBtn.addEventListener('click', leaveLobby);
-
-           // Game end buttons
-           playAgainBtn.addEventListener('click', playAgainOnline);
-           endGameBtn.addEventListener('click', endOnlineGame);
-           quitGameBtn.addEventListener('click', quitOnlineGame);
-
-           // Result popup continue button
-           continueBtn.addEventListener('click', () => {
+       // Show result popup
+       function showResultPopup(isWin, amount, message, callback) {
+           // Set popup content
+           if (isWin) {
+               resultTitle.textContent = "YOU WON!";
+               resultTitle.className = "result-title win-title";
+               resultAmount.innerHTML = `<span class="win-amount">+${amount} coins</span>`;
+           } else {
+               resultTitle.textContent = "YOU LOST";
+               resultTitle.className = "result-title lose-title";
+               resultAmount.innerHTML = `<span class="lose-amount">${amount} coins</span>`;
+           }
+           
+           resultMessage.textContent = message;
+           
+           // Show popup
+           resultPopup.style.display = 'block';
+           
+           // Set continue button action
+           continueBtn.onclick = () => {
                resultPopup.style.display = 'none';
-           });
+               if (callback) callback();
+           };
+       }
 
-           // Initialize the game
-           window.addEventListener('load', () => {
-               console.log("Game loading...");
-               
-               // Set an initial check for auth state
-               if (auth && auth.currentUser) {
-                   console.log("User already authenticated on page load");
-                   currentUser = auth.currentUser;
+       // Event listeners - Main Menu
+       onlinePlayerOption.addEventListener('click', showOnlineMode);
+       backButton.addEventListener('click', () => {
+           window.location.href = '/learning.html';
+       });
+
+       // Online mode buttons
+       backToMenuBtn.addEventListener('click', showMenuMode);
+       hostGameBtn.addEventListener('click', showHostLobby);
+       joinGameBtn.addEventListener('click', showJoinGame);
+
+       // Host lobby buttons
+       cancelHostBtn.addEventListener('click', cancelHosting);
+       startGameBtn.addEventListener('click', startOnlineGame);
+
+       // Join game buttons
+       refreshLobbiesBtn.addEventListener('click', loadLobbies);
+       cancelJoinBtn.addEventListener('click', showOnlineMode);
+       leaveLobbyBtn.addEventListener('click', leaveLobby);
+
+       // Game end buttons
+       playAgainBtn.addEventListener('click', playAgainOnline);
+       endGameBtn.addEventListener('click', endOnlineGame);
+       quitGameBtn.addEventListener('click', quitOnlineGame);
+
+       // Result popup continue button
+       continueBtn.addEventListener('click', () => {
+           resultPopup.style.display = 'none';
+       });
+
+       // Initialize the game
+       window.addEventListener('load', () => {
+           console.log("Game loading...");
+           
+           // Set an initial check for auth state
+           if (auth && auth.currentUser) {
+               console.log("User already authenticated on page load");
+               currentUser = auth.currentUser;
+           }
+           
+           // Properly initialize the game based on authentication state
+           const initializeGame = async () => {
+               if (currentUser) {
+                   console.log("Initializing game with authenticated user");
+                   // Load balance securely
+                   await loadFirebaseCoinBalance();
+               } else {
+                   console.log("Initializing game with no user");
+                   _coinBalance = 0;
+                   updateCoinDisplay();
                }
                
-               // Properly initialize the game based on authentication state
-               const initializeGame = async () => {
-                   if (currentUser) {
-                       console.log("Initializing game with authenticated user");
-                       // Load balance securely
-                       await loadFirebaseCoinBalance();
-                   } else {
-                       console.log("Initializing game with no user");
-                       _coinBalance = 0;
-                       updateCoinDisplay();
-                   }
-                   
-                   // Start in menu mode
-                   showMenuMode();
-                   
-                   console.log("Game initialization complete");
-               };
+               // Start in menu mode
+               showMenuMode();
                
-               // Call the initialization function
-               initializeGame();
-           });
-       })(); // End of IIFE
+               console.log("Game initialization complete");
+           };
+           
+           // Call the initialization function
+           initializeGame();
+       });
+   })(); // End of IIFE
    </script>
 </body>
 </html>
