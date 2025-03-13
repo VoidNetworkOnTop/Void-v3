@@ -608,8 +608,10 @@
            display: flex;
            flex-wrap: wrap;
            justify-content: center;
+           align-items: center;
            gap: 20px;
            width: 100%;
+           height: 100%;
        }
 
        .click-pad-container {
@@ -1192,6 +1194,7 @@
            let playerLeftOnline = false; // Track if player is leaving online game
            let myPlayerIndex = -1;       // Player's index in the players array
            let winnerId = null;          // ID of the winner (if any)
+           let canClick = false;         // Can the player click their pad
            
            // Authentication State Listener
            onAuthStateChanged(auth, async (user) => {
@@ -1538,6 +1541,7 @@
                isCountingDown = false;
                clickCounter = 0;
                winnerId = null;
+               canClick = false;
                
                // Reset any buttons
                if (playAgainBtn) {
@@ -1565,6 +1569,7 @@
                isCountingDown = false;
                clickCounter = 0;
                winnerId = null;
+               canClick = false;
            }
 
            // Show host lobby UI
@@ -1579,14 +1584,37 @@
                isCountingDown = false;
                clickCounter = 0;
                winnerId = null;
+               canClick = false;
+               
+               // Get user's real username 
+               let userName = currentUser.displayName || "Host";
                
                // Update UI with host info
-               hostName.innerHTML = `${currentUser.displayName || "Host"} <span class="host-badge">HOST</span>`;
+               hostName.innerHTML = `${userName} <span class="host-badge">HOST</span>`;
                playerCount.textContent = "1";
                playersList.innerHTML = "";
                
                // Create the lobby in Firestore
                createLobby();
+           }
+
+           // Get user's real username from Firebase
+           async function getUserName(userId) {
+               try {
+                   // Try to get username from user document
+                   const userRef = doc(db, 'users', userId);
+                   const userDoc = await getDoc(userRef);
+                   
+                   if (userDoc.exists()) {
+                       // Return username from user document
+                       return userDoc.data().username || currentUser.displayName || "Player";
+                   }
+               } catch (err) {
+                   console.log("Error getting username:", err);
+               }
+               
+               // Fallback to display name
+               return currentUser.displayName || "Player";
            }
 
            // Create a new lobby in Firestore
@@ -1598,15 +1626,7 @@
                
                try {
                    // Get user profile to ensure we have the latest display name
-                   let userName = currentUser.displayName || "Host";
-                   try {
-                       const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-                       if (userDoc.exists() && userDoc.data().username) {
-                           userName = userDoc.data().username;
-                       }
-                   } catch (profileError) {
-                       console.log("Could not fetch profile, using display name", profileError);
-                   }
+                   let userName = await getUserName(currentUser.uid);
                    
                    // Initial lobby data
                    const lobbyData = {
@@ -1695,6 +1715,20 @@
                
                // Store the players list
                lobbyPlayers = lobbyData.players || [];
+               
+               // Check if host left the game (as a joiner)
+               if (onlineRole === 'joiner' && lobbyData.hostId !== currentUser.uid) {
+                   // Find the host player
+                   const hostPlayer = lobbyPlayers.find(p => p.isHost);
+                   
+                   // If no host player found, the host left
+                   if (!hostPlayer || hostPlayer.id !== lobbyData.hostId) {
+                       alert("The host has left the game.");
+                       cleanupOnlineConnections();
+                       showOnlineMode();
+                       return;
+                   }
+               }
                
                // Update UI based on role
                if (onlineRole === 'host') {
@@ -1954,10 +1988,13 @@
                        return;
                    }
                    
+                   // Get user's real username
+                   let userName = await getUserName(currentUser.uid);
+                   
                    // Add player to the lobby - SIMPLIFIED (no transaction)
                    const updatedPlayers = [...players, {
                        id: currentUser.uid,
-                       name: currentUser.displayName || "Player",
+                       name: userName,
                        isHost: false,
                        clickCount: 0
                    }];
@@ -2135,6 +2172,9 @@
                        clearInterval(countdownInterval);
                        countdownDisplay.style.display = 'none';
                        
+                       // Enable clicking
+                       canClick = true;
+                       
                        // Enable click pads for current player
                        enableClickPad();
                        
@@ -2254,7 +2294,7 @@
 
            // Handle click on player's pad
            async function handlePadClick(event) {
-               if (!isGameStarted || isCountingDown || winnerId) return;
+               if (!isGameStarted || isCountingDown || winnerId || !canClick) return;
                
                // Create ripple effect
                const pad = event.currentTarget;
@@ -2271,20 +2311,20 @@
                
                // Remove ripple after animation
                setTimeout(() => {
-                   pad.removeChild(ripple);
+                   ripple.remove();
                }, 600);
                
                // Increment counter
                clickCounter++;
                
                // Update local UI immediately for responsiveness
-               const countDisplay = document.querySelector(`.player-click-info [data-player-id="${currentUser.uid}"] .player-click-count`);
+               const countDisplay = document.querySelector(`.click-pad-container[data-player-id="${currentUser.uid}"] .player-click-count`);
                if (countDisplay) {
-                   countDisplay.textContent = clickCounter;
+                   countDisplay.textContent = clickCounter.toString();
                }
                
                // Update progress bar
-               const progressBar = document.querySelector(`.player-click-container[data-player-id="${currentUser.uid}"] .progress-bar`);
+               const progressBar = document.querySelector(`.click-pad-container[data-player-id="${currentUser.uid}"] .progress-bar`);
                if (progressBar) {
                    const progress = (clickCounter / config.targetClicks) * 100;
                    progressBar.style.width = `${progress}%`;
@@ -2377,6 +2417,7 @@
                
                // Reset game started flag
                isGameStarted = false;
+               canClick = false;
                
                // Skip processing fees if a player left the game
                if (playerLeftOnline) {
@@ -2470,6 +2511,7 @@
                    isCountingDown = false;
                    clickCounter = 0;
                    winnerId = null;
+                   canClick = false;
                    
                    // Reset player click counts
                    const updatedPlayers = lobbyPlayers.map(player => ({
@@ -2579,6 +2621,7 @@
                clickCounter = 0;
                winnerId = null;
                myPlayerIndex = -1;
+               canClick = false;
                
                // Reset button states
                if (playAgainBtn) {
@@ -2586,7 +2629,7 @@
                    playAgainBtn.disabled = false;
                }
                
-               if (startGameBtn) {
+if (startGameBtn) {
                    startGameBtn.textContent = "Start Game";
                    startGameBtn.disabled = true;
                }
