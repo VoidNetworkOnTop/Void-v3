@@ -1862,26 +1862,21 @@
                        // Skip full lobbies
                        if (players.length >= config.maxPlayers) continue;
                        
-                       // Delete empty lobbies (only host or no players)
-                       if (players.length <= 1) {
-                           try {
-                               // Delete lobbies with only the host
-                               await deleteDoc(doc.ref);
-                               console.log("Deleted empty lobby:", doc.id);
-                           } catch (err) {
-                               console.error("Error deleting empty lobby:", err);
-                           }
-                           continue;
-                       }
+                       // Skip lobbies with fewer than 2 players (host and at least one other player)
+                       // We no longer try to delete them - just don't display them
+                       if (players.length < 2) continue;
                        
                        // Skip inactive lobbies (older than 30 minutes)
                        const createdAt = lobbyData.createdAt?.toMillis?.() || 0;
-                       if (createdAt > 0 && (currentTime - createdAt) > 30 * 60 * 1000) {
+                       if (createdAt > 0 && (currentTime - createdAt) > 30 * 60 * 1000) continue;
+                       
+                       // Only delete lobbies if the current user is the host
+                       if (lobbyData.hostId === currentUser.uid && players.length <= 1) {
                            try {
                                await deleteDoc(doc.ref);
-                               console.log("Deleted inactive lobby:", doc.id);
+                               console.log("Deleted my empty lobby:", doc.id);
                            } catch (err) {
-                               console.error("Error deleting inactive lobby:", err);
+                               console.error("Error deleting my empty lobby:", err);
                            }
                            continue;
                        }
