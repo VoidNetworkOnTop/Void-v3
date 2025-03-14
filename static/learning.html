@@ -1318,190 +1318,208 @@
             }, 100);
         }
 
-        // Run ad block detection when page loads
-        window.addEventListener('load', detectAdBlock);
+// Run ad block detection when page loads
+window.addEventListener('load', detectAdBlock);
 
-        // Coin Reward System Implementation
-        const coinRewardSystem = {
-            adContainer: document.getElementById('coin-reward-container'),
-            progressBar: document.getElementById('ad-progress-bar'),
-            timerDisplay: document.getElementById('ad-timer'),
-            closeButton: document.getElementById('close-ad-button'),
-            rewardAmount: 1000, // Coins to award
-            watchDuration: 30, // Seconds user must watch
-            timer: null,
-            timeWatched: 0,
-            adVisible: false,
-            
-            initialize() {
-                // Set up close button
-                this.closeButton.addEventListener('click', () => {
-                    this.hideAd(false);
-                });
-                
-                // Show close button after 5 seconds
-                setTimeout(() => {
-                    if (this.adVisible) {
-                        this.closeButton.style.display = 'inline-block';
-                    }
-                }, 5000);
-            },
-            
-            showAd() {
-                // First check if user is logged in
-                if (!auth.currentUser) {
-                    showNotification('Please log in to earn coins', 'error');
-                    return;
-                }
-                
-                // Check for ad blockers
-                if (adBlockDetected) {
-                    showNotification('Please disable your ad blocker to earn coins', 'error');
-                    return;
-                }
-                
-                // Show ad container
-                this.adContainer.style.display = 'block';
-                this.adVisible = true;
-                this.timeWatched = 0;
-                
-                // Update progress bar
-                this.progressBar.style.width = '0%';
-                this.timerDisplay.textContent = this.watchDuration;
-                
-                // Initialize and show AdSense ad
-                try {
-                    if (adsbygoogle && adsbygoogle.push) {
-                        adsbygoogle.push({});
-                    }
-                } catch (e) {
-                    console.error('Error showing AdSense ad:', e);
-                    // Fall back to simulated ad if AdSense fails
-                    this.showSimulatedAd();
-                }
-                
-                // Start timer
-                this.timer = setInterval(() => {
-                    this.timeWatched++;
-                    
-                    // Update progress
-                    const progress = (this.timeWatched / this.watchDuration) * 100;
-                    this.progressBar.style.width = `${Math.min(progress, 100)}%`;
-                    this.timerDisplay.textContent = Math.max(0, this.watchDuration - this.timeWatched);
-                    
-                    // Check if done
-                    if (this.timeWatched >= this.watchDuration) {
-                        clearInterval(this.timer);
-                        this.completeAd();
-                    }
-                }, 1000);
-                
-                // Initialize
-                this.initialize();
-            },
-            
-            // Fallback to simulated ad when AdSense fails
-            showSimulatedAd() {
-                const adContainer = document.getElementById('adsense-ad-container');
-                adContainer.innerHTML = `
-                    <div style="width: 100%; height: 250px; background: #333; display: flex; justify-content: center; align-items: center; color: white; text-align: center; border-radius: 5px;">
-                        <div>
-                            <h3 style="margin-bottom: 10px;">Simulated Advertisement</h3>
-                            <p>Watch this space to earn coins!</p>
-                        </div>
-                    </div>
-                `;
-            },
-            
-            completeAd() {
-                // Reset timer
-                clearInterval(this.timer);
-                
-                // Hide ad
-                this.hideAd(true);
-                
-                // Award coins
-                this.rewardUser(this.rewardAmount);
-            },
-            
-            hideAd(completed) {
-                // Hide container
-                this.adContainer.style.display = 'none';
-                this.adVisible = false;
-                
-                // Clear timer
-                if (this.timer) {
-                    clearInterval(this.timer);
-                }
-                
-                // Reset close button
-                this.closeButton.style.display = 'none';
-                
-                // Show message
-                if (completed) {
-                    showNotification('Thanks for watching! Rewarding coins...', 'success');
-                } else {
-                    showNotification('Ad closed. No coins awarded.', 'error');
-                }
-            },
-            
-            // Award coins to the user
-            async rewardUser(amount) {
-                if (!auth.currentUser) {
-                    showNotification('You must be logged in to receive rewards', 'error');
-                    return;
-                }
-                
-                try {
-                    const userId = auth.currentUser.uid;
-                    
-                    // Get current user details
-                    const userRef = doc(db, 'users', userId);
-                    const userDoc = await getDoc(userRef);
-                    
-                    if (!userDoc.exists()) {
-                        throw new Error("User not found");
-                    }
-                    
-                    const userData = userDoc.data();
-                    const currentBalance = userData.accountBalance || 0;
-                    const newBalance = currentBalance + amount;
-                    
-                    // Update user account balance
-                    await updateDoc(userRef, {
-                        accountBalance: newBalance
-                    });
-                    
-                    // Update leaderboard entry
-                    const leaderboardRef = doc(db, 'leaderboard', userId);
-                    await updateDoc(leaderboardRef, {
-                        accountBalance: newBalance
-                    });
-                    
-                    // Log transaction
-                    await addDoc(collection(db, 'transactions'), {
-                        userId: userId,
-                        transactionType: 'ad_reward',
-                        amount: amount,
-                        timestamp: new Date(),
-                        prevBalance: currentBalance,
-                        newBalance: newBalance
-                    });
-                    
-                    // Update UI balance display
-                    document.getElementById('balance-display').textContent = newBalance.toLocaleString();
-                    document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
-                    
-                    // Show success notification
-                    showNotification(`You earned ${amount.toLocaleString()} coins!`, 'success');
-                    
-                    console.log(`User rewarded with ${amount} coins. New balance: ${newBalance}`);
-                } catch (error) {
-                    console.error('Error rewarding user:', error);
-                    showNotification('Failed to add rewards to your account', 'error');
-                }
+// Coin Reward System Implementation
+const coinRewardSystem = {
+    adContainer: document.getElementById('coin-reward-container'),
+    progressBar: document.getElementById('ad-progress-bar'),
+    timerDisplay: document.getElementById('ad-timer'),
+    closeButton: document.getElementById('close-ad-button'),
+    rewardAmount: 1000, // Coins to award
+    watchDuration: 30, // Seconds user must watch
+    timer: null,
+    timeWatched: 0,
+    adVisible: false,
+    
+    initialize() {
+        // Set up close button
+        this.closeButton.addEventListener('click', () => {
+            this.hideAd(false);
+        });
+        
+        // Show close button after 5 seconds
+        setTimeout(() => {
+            if (this.adVisible) {
+                this.closeButton.style.display = 'inline-block';
             }
-        };
+        }, 5000);
+    },
+    
+    showAd() {
+        // First check if user is logged in
+        if (!auth.currentUser) {
+            showNotification('Please log in to earn coins', 'error');
+            return;
+        }
+        
+        // Check for ad blockers
+        if (adBlockDetected) {
+            showNotification('Please disable your ad blocker to earn coins', 'error');
+            return;
+        }
+        
+        // Show ad container
+        this.adContainer.style.display = 'block';
+        this.adVisible = true;
+        this.timeWatched = 0;
+        
+        // Update progress bar
+        this.progressBar.style.width = '0%';
+        this.timerDisplay.textContent = this.watchDuration;
+        
+        // Clear previous ad content and recreate it
+        const adContainer = document.getElementById('adsense-ad-container');
+        adContainer.innerHTML = `
+            <div id="ad-slot-container"></div>
+        `;
+        
+        // Create new ad elements
+        const script1 = document.createElement('script');
+        script1.async = true;
+        script1.src = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4845994519357732";
+        script1.crossOrigin = "anonymous";
+        
+        const insElement = document.createElement('ins');
+        insElement.className = "adsbygoogle";
+        insElement.style.display = "block";
+        insElement.setAttribute("data-ad-client", "ca-pub-4845994519357732");
+        insElement.setAttribute("data-ad-slot", "1681318142");
+        insElement.setAttribute("data-ad-format", "auto");
+        insElement.setAttribute("data-full-width-responsive", "true");
+        
+        const script2 = document.createElement('script');
+        script2.textContent = "(adsbygoogle = window.adsbygoogle || []).push({});";
+        
+        // Append elements to container
+        const adSlotContainer = document.getElementById('ad-slot-container');
+        adSlotContainer.appendChild(script1);
+        adSlotContainer.appendChild(insElement);
+        adSlotContainer.appendChild(script2);
+        
+        // Start timer
+        this.timer = setInterval(() => {
+            this.timeWatched++;
+            
+            // Update progress
+            const progress = (this.timeWatched / this.watchDuration) * 100;
+            this.progressBar.style.width = `${Math.min(progress, 100)}%`;
+            this.timerDisplay.textContent = Math.max(0, this.watchDuration - this.timeWatched);
+            
+            // Check if done
+            if (this.timeWatched >= this.watchDuration) {
+                clearInterval(this.timer);
+                this.completeAd();
+            }
+        }, 1000);
+        
+        // Initialize
+        this.initialize();
+    },
+    
+    // Fallback to simulated ad when AdSense fails
+    showSimulatedAd() {
+        const adContainer = document.getElementById('adsense-ad-container');
+        adContainer.innerHTML = `
+            <div style="width: 100%; height: 250px; background: #333; display: flex; justify-content: center; align-items: center; color: white; text-align: center; border-radius: 5px;">
+                <div>
+                    <h3 style="margin-bottom: 10px;">Simulated Advertisement</h3>
+                    <p>Watch this space to earn coins!</p>
+                </div>
+            </div>
+        `;
+    },
+    
+    completeAd() {
+        // Reset timer
+        clearInterval(this.timer);
+        
+        // Hide ad
+        this.hideAd(true);
+        
+        // Award coins
+        this.rewardUser(this.rewardAmount);
+    },
+    
+    hideAd(completed) {
+        // Hide container
+        this.adContainer.style.display = 'none';
+        this.adVisible = false;
+        
+        // Clear timer
+        if (this.timer) {
+            clearInterval(this.timer);
+        }
+        
+        // Reset close button
+        this.closeButton.style.display = 'none';
+        
+        // Show message
+        if (completed) {
+            showNotification('Thanks for watching! Rewarding coins...', 'success');
+        } else {
+            showNotification('Ad closed. No coins awarded.', 'error');
+        }
+    },
+    
+    // Award coins to the user
+    async rewardUser(amount) {
+        if (!auth.currentUser) {
+            showNotification('You must be logged in to receive rewards', 'error');
+            return;
+        }
+        
+        try {
+            const userId = auth.currentUser.uid;
+            
+            // Get current user details
+            const userRef = doc(db, 'users', userId);
+            const userDoc = await getDoc(userRef);
+            
+            if (!userDoc.exists()) {
+                throw new Error("User not found");
+            }
+            
+            const userData = userDoc.data();
+            const currentBalance = userData.accountBalance || 0;
+            const newBalance = currentBalance + amount;
+            
+            // Update user account balance
+            await updateDoc(userRef, {
+                accountBalance: newBalance
+            });
+            
+            // Update leaderboard entry
+            const leaderboardRef = doc(db, 'leaderboard', userId);
+            await updateDoc(leaderboardRef, {
+                accountBalance: newBalance
+            });
+            
+            // Log transaction
+            await addDoc(collection(db, 'transactions'), {
+                userId: userId,
+                transactionType: 'ad_reward',
+                amount: amount,
+                timestamp: new Date(),
+                prevBalance: currentBalance,
+                newBalance: newBalance
+            });
+            
+            // Update UI balance display
+            document.getElementById('balance-display').textContent = newBalance.toLocaleString();
+            document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
+            
+            // Show success notification
+            showNotification(`You earned ${amount.toLocaleString()} coins!`, 'success');
+            
+            console.log(`User rewarded with ${amount} coins. New balance: ${newBalance}`);
+        } catch (error) {
+            console.error('Error rewarding user:', error);
+            showNotification('Failed to add rewards to your account', 'error');
+        }
+    }
+};
 
         // Theme manager to handle theme application with security improvements
         const themeManager = {
