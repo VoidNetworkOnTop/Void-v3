@@ -3289,6 +3289,179 @@ window.addEventListener('load', async () => {
     }
 });
 
+// Add this script to the end of your HTML file, just before the closing </body> tag
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Force fix for ad container visibility issues
+    const adContainer = document.getElementById('ad-container');
+    const coinIcon = document.getElementById('coin-icon');
+    const authContainer = document.getElementById('auth-container');
+
+    // Helper function to directly force show the ad container
+    function forceShowAdContainer() {
+        console.log("Force showing ad container");
+        
+        if (!adContainer) {
+            console.error("Ad container not found!");
+            return;
+        }
+        
+        // Reset all critical style properties
+        adContainer.style.display = 'block';
+        adContainer.style.opacity = '1';
+        adContainer.style.visibility = 'visible';
+        adContainer.style.zIndex = '10000'; // Very high z-index to ensure visibility
+        adContainer.classList.add('visible');
+        
+        // Make sure content is visible
+        const adContent = adContainer.querySelector('.ad-content');
+        if (adContent) {
+            adContent.style.display = 'block';
+            adContent.style.visibility = 'visible';
+        }
+        
+        // Force a reflow to ensure styles are applied
+        void adContainer.offsetWidth;
+        
+        console.log("Ad container styles:", {
+            display: adContainer.style.display,
+            opacity: adContainer.style.opacity,
+            visibility: adContainer.style.visibility,
+            zIndex: adContainer.style.zIndex,
+            classes: adContainer.className
+        });
+    }
+
+    // Fix for coin icon click
+    if (coinIcon) {
+        console.log("Setting up fixed coin icon click handler");
+        
+        // Remove any existing event listeners by cloning the element
+        const newCoinIcon = coinIcon.cloneNode(true);
+        coinIcon.parentNode.replaceChild(newCoinIcon, coinIcon);
+        
+        // Add our direct event handler
+        newCoinIcon.addEventListener('click', function(e) {
+            e.stopPropagation();
+            console.log("FIXED: Coin icon clicked!");
+            
+            // Check authentication
+            if (window.auth && window.auth.currentUser) {
+                console.log("User is logged in, forcing ad container display");
+                
+                // Close other containers
+                if (authContainer) {
+                    authContainer.style.display = 'none';
+                    authContainer.classList.remove('visible');
+                }
+                
+                const shopContainer = document.getElementById('shop-container');
+                if (shopContainer) {
+                    shopContainer.style.display = 'none';
+                    shopContainer.classList.remove('visible');
+                }
+                
+                // Force display the ad container
+                forceShowAdContainer();
+            } else {
+                console.log("User not logged in, showing auth container");
+                if (authContainer) {
+                    authContainer.style.display = 'block';
+                    authContainer.classList.add('visible');
+                    
+                    // Show notification if function exists
+                    if (typeof showNotification === 'function') {
+                        showNotification('Please log in to earn coins', 'error');
+                    }
+                }
+            }
+        });
+    }
+    
+    // Fix close button for ad container
+    const adCloseBtn = document.querySelector('.ad-close');
+    if (adCloseBtn) {
+        const newAdCloseBtn = adCloseBtn.cloneNode(true);
+        adCloseBtn.parentNode.replaceChild(newAdCloseBtn, adCloseBtn);
+        
+        newAdCloseBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            console.log("FIXED: Ad close button clicked");
+            
+            if (adContainer) {
+                adContainer.style.display = 'none';
+                adContainer.classList.remove('visible');
+            }
+        });
+    }
+    
+    // Add emergency button to manually show ad container
+    const emergencyButton = document.createElement('button');
+    emergencyButton.innerHTML = 'Show Ads (Emergency)';
+    emergencyButton.style.position = 'fixed';
+    emergencyButton.style.bottom = '10px';
+    emergencyButton.style.right = '10px';
+    emergencyButton.style.zIndex = '99999';
+    emergencyButton.style.background = '#ff0000';
+    emergencyButton.style.color = 'white';
+    emergencyButton.style.padding = '5px 10px';
+    emergencyButton.style.border = 'none';
+    emergencyButton.style.borderRadius = '5px';
+    emergencyButton.style.cursor = 'pointer';
+    emergencyButton.style.display = 'none'; // Hidden by default
+    
+    emergencyButton.addEventListener('click', function() {
+        forceShowAdContainer();
+    });
+    
+    document.body.appendChild(emergencyButton);
+    
+    // Expose emergency functions to the console
+    window.fixAdContainer = forceShowAdContainer;
+    window.toggleEmergencyButton = function() {
+        emergencyButton.style.display = emergencyButton.style.display === 'none' ? 'block' : 'none';
+    };
+    
+    // Check if ad container CSS is correct
+    const containerStyles = {
+        display: getComputedStyle(adContainer).display,
+        position: getComputedStyle(adContainer).position,
+        opacity: getComputedStyle(adContainer).opacity,
+        visibility: getComputedStyle(adContainer).visibility,
+        zIndex: getComputedStyle(adContainer).zIndex
+    };
+    
+    console.log("Ad container computed styles:", containerStyles);
+    
+    // Fix CSS if needed
+    if (containerStyles.position !== 'fixed' || 
+        parseFloat(containerStyles.zIndex) < 1000) {
+        
+        console.log("Fixing ad container CSS");
+        
+        // Apply critical styles directly
+        adContainer.style.position = 'fixed';
+        adContainer.style.top = '50%';
+        adContainer.style.left = '50%';
+        adContainer.style.transform = 'translate(-50%, -50%)';
+        adContainer.style.zIndex = '10000';
+        adContainer.style.background = 'rgba(0, 0, 0, 0.8)';
+        adContainer.style.padding = '0';
+        adContainer.style.width = '400px';
+        adContainer.style.maxWidth = '90%';
+        adContainer.style.borderRadius = '10px';
+        adContainer.style.boxShadow = 
+            '0 0 2px #FFD700, 0 0 4px #FFD700, 0 0 8px rgba(255, 215, 0, 0.5), inset 0 0 2px rgba(255, 215, 0, 0.2)';
+    }
+    
+    // Show emergency button if asked to
+    if (window.location.search.includes('emergency=true')) {
+        emergencyButton.style.display = 'block';
+    }
+    
+    console.log("Ad container fix script loaded");
+});
+
 // Stop leaderboard updates when user leaves the page
 window.addEventListener('beforeunload', () => {
     voidLeaderboard.stopLeaderboardUpdates();
