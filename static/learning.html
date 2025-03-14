@@ -1,7 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4845994519357732"
-     crossorigin="anonymous"></script>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -923,6 +921,62 @@
             border-left: 4px solid #f44336;
         }
 
+        /* AdBlock test element */
+        .adsbox {
+            width: 1px;
+            height: 1px;
+            position: absolute;
+            top: -10px;
+        }
+
+        /* Coin Reward Container Styles */
+        #coin-reward-container {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10000;
+            background: rgba(0,0,0,0.9);
+            padding: 20px;
+            border-radius: 10px;
+            width: 650px;
+            max-width: 90%;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+            border: 1px solid rgba(255, 215, 0, 0.2);
+        }
+
+        #ad-progress-container {
+            width: 100%;
+            height: 10px;
+            background: #333;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        #ad-progress-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            transition: width 0.5s ease;
+        }
+
+        #close-ad-button {
+            background: rgba(255,0,0,0.3);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: none;
+            margin-top: 15px;
+            transition: all 0.3s ease;
+        }
+
+        #close-ad-button:hover {
+            background: rgba(255,0,0,0.5);
+        }
+
         /* Responsive adjustments */
         @media (max-width: 1200px) {
             .leaderboard-container {
@@ -1125,6 +1179,36 @@
         </div>
     </div>
 
+    <!-- New Coin Reward Container -->
+    <div id="coin-reward-container">
+        <div style="text-align: center; margin-bottom: 15px;">
+            <h3 style="color: #FFD700; margin-bottom: 10px;">Watching Ad for Coins</h3>
+            <p style="color: white; margin-bottom: 15px;">Please watch for <span id="ad-timer">30</span> seconds to earn 1,000 coins</p>
+            <div id="ad-progress-container">
+                <div id="ad-progress-bar"></div>
+            </div>
+        </div>
+        
+        <!-- AdSense Ad Container -->
+        <div id="adsense-ad-container">
+            <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4845994519357732" crossorigin="anonymous"></script>
+            <!-- Void Coins -->
+            <ins class="adsbygoogle"
+                style="display:block"
+                data-ad-client="ca-pub-4845994519357732"
+                data-ad-slot="1681318142"
+                data-ad-format="auto"
+                data-full-width-responsive="true"></ins>
+            <script>
+                (adsbygoogle = window.adsbygoogle || []).push({});
+            </script>
+        </div>
+        
+        <div style="text-align: center; margin-top: 15px;">
+            <button id="close-ad-button">Close (No Reward)</button>
+        </div>
+    </div>
+
     <!-- New Ad Container -->
     <div id="ad-container" style="display: none;">
         <div class="ad-popup-header">
@@ -1139,6 +1223,9 @@
             <!-- Ad will be displayed here -->
         </div>
     </div>
+
+    <!-- Invisible element to detect adblockers -->
+    <div class="adsbox">&nbsp;</div>
 
     <!-- Leaderboard Container (positioned on left) -->
     <div class="leaderboard-container">
@@ -1192,11 +1279,6 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // Loot Labs/Link API Key
-        const LOOT_API_KEY = '21dc67363e394820d13bd629b6e443563d1b7b586fe39b8b49b158882b27547c';
-        let adReady = false;
-        let adCompleted = false;
-
         // Show notification function
         function showNotification(message, type = 'success') {
             const notification = document.createElement('div');
@@ -1213,149 +1295,162 @@
             }, 3000);
         }
 
-        // Ad Manager Implementation
-        const adManager = {
-            isLoading: false,
+        // Ad Block Detection
+        let adBlockDetected = false;
+
+        function detectAdBlock() {
+            // Create an invisible ad element to detect blockers
+            const testAd = document.createElement('div');
+            testAd.innerHTML = '&nbsp;';
+            testAd.className = 'adsbox';
+            document.body.appendChild(testAd);
             
-            // Initialize the Loot Labs/Link API
-            initializeLootApi() {
-                // Check if the script is already loaded
-                if (document.getElementById('loot-api-script')) {
-                    return Promise.resolve();
+            // Check if the test ad is hidden by an adblocker
+            setTimeout(() => {
+                if (testAd.offsetHeight === 0) {
+                    adBlockDetected = true;
+                    console.log("Ad blocker detected");
+                } else {
+                    adBlockDetected = false;
+                    console.log("No ad blocker detected");
                 }
-                
-                return new Promise((resolve, reject) => {
-                    const script = document.createElement('script');
-                    script.id = 'loot-api-script';
-                    script.src = 'https://sdk.lootlink.com/lootlink.js'; // Assumed URL - replace if needed
-                    script.async = true;
-                    
-                    script.onload = () => {
-                        console.log('Loot API script loaded');
-                        
-                        // Initialize the API with your key
-                        if (window.LootLink) {
-                            window.LootLink.init({
-                                apiKey: LOOT_API_KEY
-                            });
-                            resolve();
-                        } else {
-                            reject(new Error('Loot API failed to initialize'));
-                        }
-                    };
-                    
-                    script.onerror = () => {
-                        reject(new Error('Failed to load Loot API script'));
-                    };
-                    
-                    document.head.appendChild(script);
+                testAd.remove();
+            }, 100);
+        }
+
+        // Run ad block detection when page loads
+        window.addEventListener('load', detectAdBlock);
+
+        // Coin Reward System Implementation
+        const coinRewardSystem = {
+            adContainer: document.getElementById('coin-reward-container'),
+            progressBar: document.getElementById('ad-progress-bar'),
+            timerDisplay: document.getElementById('ad-timer'),
+            closeButton: document.getElementById('close-ad-button'),
+            rewardAmount: 1000, // Coins to award
+            watchDuration: 30, // Seconds user must watch
+            timer: null,
+            timeWatched: 0,
+            adVisible: false,
+            
+            initialize() {
+                // Set up close button
+                this.closeButton.addEventListener('click', () => {
+                    this.hideAd(false);
                 });
-            },
-            
-            // Load and prepare an ad
-            async loadAd() {
-                if (this.isLoading) return;
-                this.isLoading = true;
                 
-                try {
-                    // Initialize API if needed
-                    await this.initializeLootApi();
-                    
-                    // Prepare the ad
-                    if (window.LootLink && window.LootLink.prepareAd) {
-                        await window.LootLink.prepareAd({
-                            placement: 'reward_video',
-                            container: document.getElementById('ad-display-area')
-                        });
-                        
-                        adReady = true;
-                        console.log('Ad is ready to display');
-                    } else {
-                        throw new Error('Loot API methods not available');
+                // Show close button after 5 seconds
+                setTimeout(() => {
+                    if (this.adVisible) {
+                        this.closeButton.style.display = 'inline-block';
                     }
-                } catch (error) {
-                    console.error('Error loading ad:', error);
-                    showNotification('Failed to load ad. Please try again.', 'error');
-                } finally {
-                    this.isLoading = false;
-                }
+                }, 5000);
             },
             
-            // Display the loaded ad
-            async showAd() {
-                if (!adReady) {
-                    showNotification('Ad is not ready yet. Please wait.', 'error');
+            showAd() {
+                // First check if user is logged in
+                if (!auth.currentUser) {
+                    showNotification('Please log in to earn coins', 'error');
                     return;
                 }
                 
+                // Check for ad blockers
+                if (adBlockDetected) {
+                    showNotification('Please disable your ad blocker to earn coins', 'error');
+                    return;
+                }
+                
+                // Show ad container
+                this.adContainer.style.display = 'block';
+                this.adVisible = true;
+                this.timeWatched = 0;
+                
+                // Update progress bar
+                this.progressBar.style.width = '0%';
+                this.timerDisplay.textContent = this.watchDuration;
+                
+                // Initialize and show AdSense ad
                 try {
-                    // Display the ad container
-                    const adDisplayArea = document.getElementById('ad-display-area');
-                    adDisplayArea.style.display = 'block';
-                    document.querySelector('.ad-content').style.display = 'none';
-                    
-                    // Show the ad using the API
-                    if (window.LootLink && window.LootLink.showAd) {
-                        await window.LootLink.showAd({
-                            onStart: () => {
-                                console.log('Ad playback started');
-                            },
-                            onComplete: () => {
-                                console.log('Ad playback completed');
-                                adCompleted = true;
-                                this.rewardUser();
-                            },
-                            onError: (error) => {
-                                console.error('Ad playback error:', error);
-                                showNotification('Error playing ad. Please try again.', 'error');
-                                this.resetAdDisplay();
-                            },
-                            onClose: () => {
-                                console.log('Ad closed');
-                                this.resetAdDisplay();
-                                
-                                // If ad wasn't completed, don't reward
-                                if (!adCompleted) {
-                                    console.log('Ad was closed before completion - no reward');
-                                }
-                            }
-                        });
-                    } else {
-                        throw new Error('Loot API show method not available');
+                    if (adsbygoogle && adsbygoogle.push) {
+                        adsbygoogle.push({});
                     }
-                } catch (error) {
-                    console.error('Error showing ad:', error);
-                    showNotification('Failed to show ad. Please try again.', 'error');
-                    this.resetAdDisplay();
+                } catch (e) {
+                    console.error('Error showing AdSense ad:', e);
+                    // Fall back to simulated ad if AdSense fails
+                    this.showSimulatedAd();
+                }
+                
+                // Start timer
+                this.timer = setInterval(() => {
+                    this.timeWatched++;
+                    
+                    // Update progress
+                    const progress = (this.timeWatched / this.watchDuration) * 100;
+                    this.progressBar.style.width = `${Math.min(progress, 100)}%`;
+                    this.timerDisplay.textContent = Math.max(0, this.watchDuration - this.timeWatched);
+                    
+                    // Check if done
+                    if (this.timeWatched >= this.watchDuration) {
+                        clearInterval(this.timer);
+                        this.completeAd();
+                    }
+                }, 1000);
+                
+                // Initialize
+                this.initialize();
+            },
+            
+            // Fallback to simulated ad when AdSense fails
+            showSimulatedAd() {
+                const adContainer = document.getElementById('adsense-ad-container');
+                adContainer.innerHTML = `
+                    <div style="width: 100%; height: 250px; background: #333; display: flex; justify-content: center; align-items: center; color: white; text-align: center; border-radius: 5px;">
+                        <div>
+                            <h3 style="margin-bottom: 10px;">Simulated Advertisement</h3>
+                            <p>Watch this space to earn coins!</p>
+                        </div>
+                    </div>
+                `;
+            },
+            
+            completeAd() {
+                // Reset timer
+                clearInterval(this.timer);
+                
+                // Hide ad
+                this.hideAd(true);
+                
+                // Award coins
+                this.rewardUser(this.rewardAmount);
+            },
+            
+            hideAd(completed) {
+                // Hide container
+                this.adContainer.style.display = 'none';
+                this.adVisible = false;
+                
+                // Clear timer
+                if (this.timer) {
+                    clearInterval(this.timer);
+                }
+                
+                // Reset close button
+                this.closeButton.style.display = 'none';
+                
+                // Show message
+                if (completed) {
+                    showNotification('Thanks for watching! Rewarding coins...', 'success');
+                } else {
+                    showNotification('Ad closed. No coins awarded.', 'error');
                 }
             },
             
-            // Reset the ad display area
-            resetAdDisplay() {
-                const adDisplayArea = document.getElementById('ad-display-area');
-                adDisplayArea.style.display = 'none';
-                document.querySelector('.ad-content').style.display = 'block';
-                
-                adReady = false;
-                adCompleted = false;
-                
-                // Start loading a new ad for next time
-                setTimeout(() => this.loadAd(), 1000);
-            },
-            
-            // Reward the user after watching an ad
-            async rewardUser() {
+            // Award coins to the user
+            async rewardUser(amount) {
                 if (!auth.currentUser) {
                     showNotification('You must be logged in to receive rewards', 'error');
                     return;
                 }
-                
-                if (!adCompleted) {
-                    console.log('Ad not completed, no reward given');
-                    return;
-                }
-                
-                const rewardAmount = 1000; // 1000 coins reward
                 
                 try {
                     const userId = auth.currentUser.uid;
@@ -1370,7 +1465,7 @@
                     
                     const userData = userDoc.data();
                     const currentBalance = userData.accountBalance || 0;
-                    const newBalance = currentBalance + rewardAmount;
+                    const newBalance = currentBalance + amount;
                     
                     // Update user account balance
                     await updateDoc(userRef, {
@@ -1387,7 +1482,7 @@
                     await addDoc(collection(db, 'transactions'), {
                         userId: userId,
                         transactionType: 'ad_reward',
-                        amount: rewardAmount,
+                        amount: amount,
                         timestamp: new Date(),
                         prevBalance: currentBalance,
                         newBalance: newBalance
@@ -1398,13 +1493,9 @@
                     document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
                     
                     // Show success notification
-                    showNotification(`You earned ${rewardAmount.toLocaleString()} coins!`, 'success');
+                    showNotification(`You earned ${amount.toLocaleString()} coins!`, 'success');
                     
-                    console.log(`User rewarded with ${rewardAmount} coins. New balance: ${newBalance}`);
-                    
-                    // Reset ad state
-                    adCompleted = false;
-                    
+                    console.log(`User rewarded with ${amount} coins. New balance: ${newBalance}`);
                 } catch (error) {
                     console.error('Error rewarding user:', error);
                     showNotification('Failed to add rewards to your account', 'error');
@@ -1621,6 +1712,12 @@
                 adContainer.style.display = 'none';
                 adContainer.classList.remove('visible');
             }
+            
+            // Hide coin reward container
+            const coinRewardContainer = document.getElementById('coin-reward-container');
+            if (coinRewardContainer) {
+                coinRewardContainer.style.display = 'none';
+            }
         });
 
         // Coin Icon Toggle Functionality
@@ -1664,11 +1761,6 @@
                 setTimeout(() => {
                     adContainer.classList.add('visible');
                 }, 10);
-                
-                // Start loading an ad if not already loading
-                if (!adManager.isLoading && !adReady) {
-                    adManager.loadAd();
-                }
             }
         });
         
@@ -1683,34 +1775,15 @@
         });
         
         // Watch Ad button
-        document.getElementById('watch-ad-btn').addEventListener('click', async () => {
-            if (!auth.currentUser) {
-                showNotification('Please log in to watch ads', 'error');
-                return;
-            }
+        document.getElementById('watch-ad-btn').addEventListener('click', () => {
+            // Close the ad popup
+            adContainer.classList.remove('visible');
+            setTimeout(() => {
+                adContainer.style.display = 'none';
+            }, 300);
             
-            // Show loading state
-            document.getElementById('watch-ad-btn').textContent = 'Loading Ad...';
-            document.getElementById('watch-ad-btn').disabled = true;
-            
-            try {
-                // If ad isn't ready yet, try to load it
-                if (!adReady) {
-                    await adManager.loadAd();
-                }
-                
-                // Show the ad
-                await adManager.showAd();
-                
-                // Reset button
-                document.getElementById('watch-ad-btn').textContent = 'Watch Ad';
-                document.getElementById('watch-ad-btn').disabled = false;
-            } catch (error) {
-                console.error('Error showing ad:', error);
-                document.getElementById('watch-ad-btn').textContent = 'Try Again';
-                document.getElementById('watch-ad-btn').disabled = false;
-                showNotification('Failed to load ad. Please try again.', 'error');
-            }
+            // Show the actual ad with reward mechanism
+            coinRewardSystem.showAd();
         });
 
         // Profile Icon Toggle Functionality
@@ -2256,7 +2329,7 @@ class VoidNetworkAccounting {
         }
     }
 
-    // Improved and more secure game transaction recording
+// Improved and more secure game transaction recording
     async recordGameTransaction(gameId, userId, transactionType, amount) {
         try {
             console.log(`Recording game transaction: ${transactionType} for ${amount} coins in ${gameId}`);
@@ -2311,7 +2384,7 @@ class VoidNetworkAccounting {
                     newBalance: newBalance
                 });
                 
-return {
+                return {
                     success: true,
                     prevBalance: currentBalance,
                     newBalance: newBalance
@@ -2435,186 +2508,187 @@ class VoidLeaderboard {
         }
     }
     
-// IMPROVED: Secure leaderboard UI update with ban filtering and always showing 20 entries
-updateLeaderboardUI(querySnapshot) {
-    if (!this.leaderboardElement) {
-        console.error("Leaderboard element not found");
-        return;
-    }
-    
-    // Always clear the leaderboard completely first
-    this.leaderboardElement.innerHTML = '';
-    
-    if (querySnapshot.empty) {
-        this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
-        return;
-    }
-    
-    console.log("Updating leaderboard with new data");
-    
-    // Create array of valid users to display - FILTER OUT BANNED USERS
-    const validUsers = [];
-    querySnapshot.forEach((doc) => {
-        if (doc.exists()) { const userData = doc.data();
-            
-            // Skip banned users
-            if (userData.banned !== true) {
-                validUsers.push({
-                    username: userData.username || 'Unknown',
-                    accountBalance: userData.accountBalance || 0
-                });
-            } else {
-                console.log(`Skipping banned user: ${userData.username || 'Unknown'}`);
-            }
+    // IMPROVED: Secure leaderboard UI update with ban filtering and always showing 20 entries
+    updateLeaderboardUI(querySnapshot) {
+        if (!this.leaderboardElement) {
+            console.error("Leaderboard element not found");
+            return;
         }
-    });
-    
-    // Display valid users (up to 20)
-    const displayCount = Math.min(validUsers.length, 20);
-    
-    for (let i = 0; i < displayCount; i++) {
-        const userData = validUsers[i];
-        const leaderboardItem = document.createElement('div');
-        leaderboardItem.className = 'leaderboard-item';
         
-        // Add animation class for new/updated items
-        leaderboardItem.classList.add('leaderboard-updated');
+        // Always clear the leaderboard completely first
+        this.leaderboardElement.innerHTML = '';
         
-        // Create structure with username container for proper text truncation
-        leaderboardItem.innerHTML = `
-            <span class="leaderboard-rank">#${i + 1}</span>
-            <div class="leaderboard-username-container">
-                <span class="leaderboard-username">${userData.username}</span>
-            </div>
-            <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
-        `;
+        if (querySnapshot.empty) {
+            this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+            return;
+        }
         
-        this.leaderboardElement.appendChild(leaderboardItem);
+        console.log("Updating leaderboard with new data");
         
-        // Remove animation class after animation is complete
-        setTimeout(() => {
-            leaderboardItem.classList.remove('leaderboard-updated');
-        }, 1000);
-    }
-    
-    // Add placeholders to ensure we always show 20 entries
-    for (let i = displayCount; i < 20; i++) {
-        const placeholderItem = document.createElement('div');
-        placeholderItem.className = 'leaderboard-item';
-        
-        placeholderItem.innerHTML = `
-            <span class="leaderboard-rank">#${i + 1}</span>
-            <div class="leaderboard-username-container">
-                <span class="leaderboard-username">...</span>
-            </div>
-            <span class="leaderboard-balance">--</span>
-        `;
-        
-        this.leaderboardElement.appendChild(placeholderItem);
-    }
-    
-    console.log(`Leaderboard updated with ${displayCount} players and ${20 - displayCount} placeholders`);
-    
-    // Find and highlight VoidNetworkOnTop
-    this.highlightSpecialUsers();
-    
-    // If we don't have 20 valid users, try to fetch more
-    if (validUsers.length < 20 && querySnapshot.size >= 20) {
-        this.fetchMoreUsers(validUsers.length);
-    }
-}
-
-// Add new method to fetch more users when we don't have enough for the leaderboard
-async fetchMoreUsers(currentCount) {
-    try {
-        // Only proceed if we have some data but not enough
-        if (currentCount <= 0 || currentCount >= 20) return;
-        
-        console.log(`Only have ${currentCount} valid users, fetching more...`);
-        
-        // Get the last visible user's balance
-        const lastVisible = this.leaderboardElement.querySelector(`.leaderboard-item:nth-child(${currentCount}) .leaderboard-balance`);
-        if (!lastVisible) return;
-        
-        // Convert balance text back to number (remove commas)
-        const lastBalanceText = lastVisible.textContent;
-        const lastBalance = parseInt(lastBalanceText.replace(/,/g, ''));
-        
-        if (isNaN(lastBalance)) return;
-        
-        // Query for more users with lower balance
-        const usersRef = collection(this.db, 'users');
-        const moreUsers = query(
-            usersRef,
-            orderBy('accountBalance', 'desc'),
-            where('accountBalance', '<', lastBalance),
-            limit(40) // Get more to account for potential banned users
-        );
-        
-        const moreSnapshot = await getDocs(moreUsers);
-        
-        if (moreSnapshot.empty) return;
-        
-        // Filter valid non-banned users
-        const additionalUsers = [];
-        moreSnapshot.forEach(doc => {
+        // Create array of valid users to display - FILTER OUT BANNED USERS
+        const validUsers = [];
+        querySnapshot.forEach((doc) => {
             if (doc.exists()) {
                 const userData = doc.data();
+                
+                // Skip banned users
                 if (userData.banned !== true) {
-                    additionalUsers.push({
+                    validUsers.push({
                         username: userData.username || 'Unknown',
                         accountBalance: userData.accountBalance || 0
                     });
+                } else {
+                    console.log(`Skipping banned user: ${userData.username || 'Unknown'}`);
                 }
             }
         });
         
-        // Calculate how many more we need
-        const needed = 20 - currentCount;
-        const toAdd = Math.min(needed, additionalUsers.length);
+        // Display valid users (up to 20)
+        const displayCount = Math.min(validUsers.length, 20);
         
-        if (toAdd <= 0) return;
-        
-        console.log(`Adding ${toAdd} more users to complete the leaderboard`);
-        
-        // Replace placeholders with real users
-        for (let i = 0; i < toAdd; i++) {
-            const userData = additionalUsers[i];
-            const rank = currentCount + i + 1;
+        for (let i = 0; i < displayCount; i++) {
+            const userData = validUsers[i];
+            const leaderboardItem = document.createElement('div');
+            leaderboardItem.className = 'leaderboard-item';
             
-            // Find the placeholder to replace
-            const placeholder = this.leaderboardElement.querySelector(`.leaderboard-item:nth-child(${rank})`);
-            if (placeholder) {
-                // Create the real user entry
-                const userItem = document.createElement('div');
-                userItem.className = 'leaderboard-item leaderboard-updated';
-                
-                userItem.innerHTML = `
-                    <span class="leaderboard-rank">#${rank}</span>
-                    <div class="leaderboard-username-container">
-                        <span class="leaderboard-username">${userData.username}</span>
-                    </div>
-                    <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
-                `;
-                
-                // Replace the placeholder
-                placeholder.parentNode.replaceChild(userItem, placeholder);
-                
-                // Remove animation class after delay
-                setTimeout(() => {
-                    userItem.classList.remove('leaderboard-updated');
-                }, 1000);
-            }
+            // Add animation class for new/updated items
+            leaderboardItem.classList.add('leaderboard-updated');
+            
+            // Create structure with username container for proper text truncation
+            leaderboardItem.innerHTML = `
+                <span class="leaderboard-rank">#${i + 1}</span>
+                <div class="leaderboard-username-container">
+                    <span class="leaderboard-username">${userData.username}</span>
+                </div>
+                <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+            `;
+            
+            this.leaderboardElement.appendChild(leaderboardItem);
+            
+            // Remove animation class after animation is complete
+            setTimeout(() => {
+                leaderboardItem.classList.remove('leaderboard-updated');
+            }, 1000);
         }
         
-        // Highlight any special users in the new entries
+        // Add placeholders to ensure we always show 20 entries
+        for (let i = displayCount; i < 20; i++) {
+            const placeholderItem = document.createElement('div');
+            placeholderItem.className = 'leaderboard-item';
+            
+            placeholderItem.innerHTML = `
+                <span class="leaderboard-rank">#${i + 1}</span>
+                <div class="leaderboard-username-container">
+                    <span class="leaderboard-username">...</span>
+                </div>
+                <span class="leaderboard-balance">--</span>
+            `;
+            
+            this.leaderboardElement.appendChild(placeholderItem);
+        }
+        
+        console.log(`Leaderboard updated with ${displayCount} players and ${20 - displayCount} placeholders`);
+        
+        // Find and highlight VoidNetworkOnTop
         this.highlightSpecialUsers();
         
-    } catch (error) {
-        console.error("Error fetching more users:", error);
+        // If we don't have 20 valid users, try to fetch more
+        if (validUsers.length < 20 && querySnapshot.size >= 20) {
+            this.fetchMoreUsers(validUsers.length);
+        }
     }
-}
     
+    // Add new method to fetch more users when we don't have enough for the leaderboard
+    async fetchMoreUsers(currentCount) {
+        try {
+            // Only proceed if we have some data but not enough
+            if (currentCount <= 0 || currentCount >= 20) return;
+            
+            console.log(`Only have ${currentCount} valid users, fetching more...`);
+            
+            // Get the last visible user's balance
+            const lastVisible = this.leaderboardElement.querySelector(`.leaderboard-item:nth-child(${currentCount}) .leaderboard-balance`);
+            if (!lastVisible) return;
+            
+            // Convert balance text back to number (remove commas)
+            const lastBalanceText = lastVisible.textContent;
+            const lastBalance = parseInt(lastBalanceText.replace(/,/g, ''));
+            
+            if (isNaN(lastBalance)) return;
+            
+            // Query for more users with lower balance
+            const usersRef = collection(this.db, 'users');
+            const moreUsers = query(
+                usersRef,
+                orderBy('accountBalance', 'desc'),
+                where('accountBalance', '<', lastBalance),
+                limit(40) // Get more to account for potential banned users
+            );
+            
+            const moreSnapshot = await getDocs(moreUsers);
+            
+            if (moreSnapshot.empty) return;
+            
+            // Filter valid non-banned users
+            const additionalUsers = [];
+            moreSnapshot.forEach(doc => {
+                if (doc.exists()) {
+                    const userData = doc.data();
+                    if (userData.banned !== true) {
+                        additionalUsers.push({
+                            username: userData.username || 'Unknown',
+                            accountBalance: userData.accountBalance || 0
+                        });
+                    }
+                }
+            });
+            
+            // Calculate how many more we need
+            const needed = 20 - currentCount;
+            const toAdd = Math.min(needed, additionalUsers.length);
+            
+            if (toAdd <= 0) return;
+            
+            console.log(`Adding ${toAdd} more users to complete the leaderboard`);
+            
+            // Replace placeholders with real users
+            for (let i = 0; i < toAdd; i++) {
+                const userData = additionalUsers[i];
+                const rank = currentCount + i + 1;
+                
+                // Find the placeholder to replace
+                const placeholder = this.leaderboardElement.querySelector(`.leaderboard-item:nth-child(${rank})`);
+                if (placeholder) {
+                    // Create the real user entry
+                    const userItem = document.createElement('div');
+                    userItem.className = 'leaderboard-item leaderboard-updated';
+                    
+                    userItem.innerHTML = `
+                        <span class="leaderboard-rank">#${rank}</span>
+                        <div class="leaderboard-username-container">
+                            <span class="leaderboard-username">${userData.username}</span>
+                        </div>
+                        <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+                    `;
+                    
+                    // Replace the placeholder
+                    placeholder.parentNode.replaceChild(userItem, placeholder);
+                    
+                    // Remove animation class after delay
+                    setTimeout(() => {
+                        userItem.classList.remove('leaderboard-updated');
+                    }, 1000);
+                }
+            }
+            
+            // Highlight any special users in the new entries
+            this.highlightSpecialUsers();
+            
+        } catch (error) {
+            console.error("Error fetching more users:", error);
+        }
+    }
+        
     // Specifically highlight special usernames
     highlightSpecialUsers() {
         const usernameElements = this.leaderboardElement.querySelectorAll('.leaderboard-username');
@@ -2995,10 +3069,8 @@ window.addEventListener('load', async () => {
             await updateUIForLoggedInUser(user);
         }
         
-        // Start loading an ad in the background
-        if (adManager && !adReady) {
-            setTimeout(() => adManager.loadAd(), 2000);
-        }
+        // Run ad block detection
+        detectAdBlock();
     } catch (err) {
         console.error('Error during initialization:', err);
     }
