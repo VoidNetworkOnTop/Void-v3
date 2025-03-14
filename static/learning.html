@@ -1331,6 +1331,208 @@
             }, 3000);
         }
 
+        // Define all classes first before initializing any instances
+
+        // IMPROVED: Secure VoidNetworkAccounting Class
+        class VoidNetworkAccounting {
+            constructor() {
+                this.auth = auth;
+                this.db = db;
+                console.log("VoidNetworkAccounting initialized");
+            }
+
+            // User Registration - UPDATED with enhanced security
+            async registerUser(email, password, username) {
+                try {
+                    // Validate inputs
+                    if (!email || !password || !username) {
+                        throw new Error('Email, password, and username are required');
+                    }
+                    
+                    if (password.length < 6) {
+                        throw new Error('Password must be at least 6 characters');
+                    }
+                    
+                    console.log("Checking if username already exists:", username);
+                    
+                    // Check if username already exists
+                    const usersRef = collection(this.db, 'users');
+                    const q = query(usersRef, where('username', '==', username));
+                    const querySnapshot = await getDocs(q);
+                    
+                    if (!querySnapshot.empty) {
+                        throw new Error('Username already exists. Please choose a different username.');
+                    }
+                    
+                    console.log("Username is available, proceeding with registration");
+                    
+                    // Create user in Firebase Auth
+                    const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
+                    const user = userCredential.user;
+
+                    // Create user profile in Firestore
+                    await setDoc(doc(this.db, 'users', user.uid), {
+                        username: username,
+                        createdAt: new Date(),
+                        accountBalance: 1000, // Starting balance
+                        totalGamesPlayed: 0
+                    });
+                    
+                    // Create public leaderboard entry
+                    await setDoc(doc(this.db, 'leaderboard', user.uid), {
+                        username: username,
+                        accountBalance: 1000, // Starting balance
+                        joinDate: new Date()
+                    });
+
+                    console.log("User registered successfully:", user.uid);
+                    return user;
+                } catch (error) {
+                    console.error("Registration Error:", error);
+                    throw error;
+                }
+            }
+
+            // User Login
+            async loginUser(email, password) {
+                try {
+                    console.log("Logging in user:", email);
+                    const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
+                    console.log("User logged in successfully:", userCredential.user.uid);
+                    return userCredential.user;
+                } catch (error) {
+                    console.error("Login Error:", error);
+                    throw error;
+                }
+            }
+
+            // Logout
+            async logout() {
+                try {
+                    console.log("Logging out user");
+                    await this.auth.signOut();
+                    console.log("User logged out successfully");
+                } catch (error) {
+                    console.error("Logout Error:", error);
+                    throw error;
+                }
+            }
+
+            // Get Current User
+            getCurrentUser() {
+                return this.auth.currentUser;
+            }
+
+            // Get User Account Details - Secured version
+            async getUserAccountDetails(userId) {
+                try {
+                    console.log("Getting account details for user:", userId);
+                    
+                    // Security check: Only allow user to get their own details
+                    if (this.auth.currentUser && userId !== this.auth.currentUser.uid) {
+                        console.warn("User trying to access another user's details - denied");
+                        throw new Error('Unauthorized access');
+                    }
+                    
+                    const userRef = doc(this.db, 'users', userId);
+                    const userDoc = await getDoc(userRef);
+
+                    if (!userDoc.exists()) {
+                        console.error("User document not found");
+                        throw new Error('User not found');
+                    }
+
+                    const userData = userDoc.data();
+                    // Don't log sensitive data
+                    console.log("Retrieved user data for:", userData.username);
+                    return userData;
+                } catch (error) {
+                    console.error("Account Details Error:", error);
+                    throw error;
+                }
+            }
+
+            // Improved and more secure game transaction recording
+            async recordGameTransaction(gameId, userId, transactionType, amount) {
+                try {
+                    console.log(`Recording game transaction: ${transactionType} for ${amount} coins in ${gameId}`);
+                    
+                    // Security check: Only allow user to create transactions for themselves
+                    if (this.auth.currentUser && userId !== this.auth.currentUser.uid) {
+                        console.warn("User trying to create transaction for another user - denied");
+                        throw new Error('Unauthorized access');
+                    }
+                    
+                    // Get the user's current data
+                    const userRef = doc(this.db, 'users', userId);
+                    const userDoc = await getDoc(userRef);
+                    
+                    if (!userDoc.exists()) {
+                        throw new Error('User document not found');
+                    }
+                    
+                    const userData = userDoc.data();
+                    let currentBalance = userData.accountBalance || 0;
+                    
+                    // Create transaction record
+                    const transactionRef = collection(this.db, 'transactions');
+                    
+                    // Only update balance for certain transaction types
+                    if (transactionType === 'win' || transactionType === 'loss') {
+                        // Calculate new balance
+                        const newBalance = transactionType === 'win' 
+                            ? currentBalance + amount
+                            : Math.max(0, currentBalance - amount); // Prevent negative balance
+                        
+                        // Update user account in Firestore
+                        await updateDoc(userRef, {
+                            accountBalance: newBalance,
+                            totalGamesPlayed: (userData.totalGamesPlayed || 0) + 1
+                        });
+                        
+                        // Update leaderboard entry (for display purposes)
+                        const leaderboardRef = doc(this.db, 'leaderboard', userId);
+                        await updateDoc(leaderboardRef, {
+                            accountBalance: newBalance
+                        });
+                        
+                        // Record the transaction with before/after balances
+                        await addDoc(transactionRef, {
+                            userId: userId,
+                            gameId: gameId,
+                            transactionType: transactionType,
+                            amount: amount,
+                            timestamp: new Date(),
+                            prevBalance: currentBalance,
+                            newBalance: newBalance
+                        });
+                        
+                        return {
+                            success: true,
+                            prevBalance: currentBalance,
+                            newBalance: newBalance
+                        };
+                    } else {
+                        // Just record the game play without changing balance
+                        await addDoc(transactionRef, {
+                            userId: userId,
+                            gameId: gameId,
+                            transactionType: transactionType,
+                            timestamp: new Date()
+                        });
+                        
+                        return {
+                            success: true,
+                            currentBalance: currentBalance
+                        };
+                    }
+                } catch (error) {
+                    console.error("Transaction Error:", error);
+                    throw error;
+                }
+            }
+        }
+
         // Theme manager to handle theme application with security improvements
         const themeManager = {
             // Track the currently equipped theme
@@ -1526,6 +1728,637 @@
             }
         };
 
+        // IMPROVED: Secure Leaderboard Implementation
+        class VoidLeaderboard {
+            constructor(db) {
+                this.db = db;
+                this.unsubscribe = null;
+                this.leaderboardElement = document.getElementById('leaderboardList');
+                this.retryCount = 0;
+                this.maxRetries = 3;
+                this.retryTimeout = null;
+                this.isMinimized = false;
+                console.log("VoidLeaderboard initialized");
+                
+                // Set up minimize/maximize toggle
+                const toggleBtn = document.getElementById('leaderboardToggle');
+                if (toggleBtn) {
+                    toggleBtn.addEventListener('click', () => this.toggleLeaderboard());
+                }
+            }
+            
+            // Toggle leaderboard visibility
+            toggleLeaderboard() {
+                const container = document.querySelector('.leaderboard-container');
+                const toggleBtn = document.getElementById('leaderboardToggle');
+                
+                if (container) {
+                    if (this.isMinimized) {
+                        // Maximize
+                        container.classList.remove('leaderboard-minimized');
+                        if (toggleBtn) toggleBtn.textContent = '−';
+                        this.isMinimized = false;
+                        
+                        // For mobile
+                        if (window.innerWidth <= 768) {
+                            container.classList.add('expanded');
+                        }
+                    } else {
+                        // Minimize
+                        container.classList.add('leaderboard-minimized');
+                        if (toggleBtn) toggleBtn.textContent = '+';
+                        this.isMinimized = true;
+                        
+                        // For mobile
+                        if (window.innerWidth <= 768) {
+                            container.classList.remove('expanded');
+                        }
+                    }
+                }
+            }
+            
+            // Start real-time leaderboard updates - Reading from public leaderboard collection
+            startLeaderboardUpdates() {
+                try {
+                    if (this.unsubscribe) {
+                        // If already subscribed, unsubscribe first
+                        this.unsubscribe();
+                    }
+                    
+                    // Show loading state
+                    if (this.leaderboardElement) {
+                        this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Loading top players...</div>';
+                    }
+                    
+                    console.log("Starting leaderboard updates");
+                    
+                    // Read from users collection since we need to show balances
+                    const usersRef = collection(this.db, 'users');
+                    const q = query(usersRef, orderBy('accountBalance', 'desc'), limit(20));
+                    
+                    // Set up real-time listener
+                    this.unsubscribe = onSnapshot(q, 
+                        {
+                            includeMetadataChanges: true
+                        },
+                        (querySnapshot) => {
+                            // Reset retry count on successful data
+                            this.retryCount = 0;
+                            
+                            // Update UI with the snapshot data
+                            this.updateLeaderboardUI(querySnapshot);
+                        }, 
+                        (error) => {
+                            console.error("Leaderboard listener error:", error);
+                            
+                            // Retry after a short delay
+                            if (this.retryCount < 5) {
+                                this.retryCount++;
+                                console.log(`Retrying Firebase connection (${this.retryCount}/5)...`);
+                                setTimeout(() => this.startLeaderboardUpdates(), 2000);
+                            }
+                        }
+                    );
+                } catch (error) {
+                    console.error("Error setting up leaderboard:", error);
+                    // Retry immediately if there's an error
+                    setTimeout(() => this.startLeaderboardUpdates(), 1000);
+                }
+            }
+            
+            // IMPROVED: Secure leaderboard UI update with ban filtering and always showing 20 entries
+            updateLeaderboardUI(querySnapshot) {
+                if (!this.leaderboardElement) {
+                    console.error("Leaderboard element not found");
+                    return;
+                }
+                
+                // Always clear the leaderboard completely first
+                this.leaderboardElement.innerHTML = '';
+                
+                if (querySnapshot.empty) {
+                    this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+                    return;
+                }
+                
+                console.log("Updating leaderboard with new data");
+                
+                // Create array of valid users to display - FILTER OUT BANNED USERS
+                const validUsers = [];
+                querySnapshot.forEach((doc) => {
+                    if (doc.exists()) {
+                        const userData = doc.data();
+                        
+                        // Skip banned users
+                        if (userData.banned !== true) {
+                            validUsers.push({
+                                username: userData.username || 'Unknown',
+                                accountBalance: userData.accountBalance || 0
+                            });
+                        } else {
+                            console.log(`Skipping banned user: ${userData.username || 'Unknown'}`);
+                        }
+                    }
+                });
+                
+                // Display valid users (up to 20)
+                const displayCount = Math.min(validUsers.length, 20);
+                
+                for (let i = 0; i < displayCount; i++) {
+                    const userData = validUsers[i];
+                    const leaderboardItem = document.createElement('div');
+                    leaderboardItem.className = 'leaderboard-item';
+                    
+                    // Add animation class for new/updated items
+                    leaderboardItem.classList.add('leaderboard-updated');
+                    
+                    // Create structure with username container for proper text truncation
+                    leaderboardItem.innerHTML = `
+                        <span class="leaderboard-rank">#${i + 1}</span>
+                        <div class="leaderboard-username-container">
+                            <span class="leaderboard-username">${userData.username}</span>
+                        </div>
+                        <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+                    `;
+                    
+                    this.leaderboardElement.appendChild(leaderboardItem);
+                    
+                    // Remove animation class after animation is complete
+                    setTimeout(() => {
+                        leaderboardItem.classList.remove('leaderboard-updated');
+                    }, 1000);
+                }
+                
+                // Add placeholders to ensure we always show 20 entries
+                for (let i = displayCount; i < 20; i++) {
+                    const placeholderItem = document.createElement('div');
+                    placeholderItem.className = 'leaderboard-item';
+                    
+                    placeholderItem.innerHTML = `
+                        <span class="leaderboard-rank">#${i + 1}</span>
+                        <div class="leaderboard-username-container">
+                            <span class="leaderboard-username">...</span>
+                        </div>
+                        <span class="leaderboard-balance">--</span>
+                    `;
+                    
+                    this.leaderboardElement.appendChild(placeholderItem);
+                }
+                
+                console.log(`Leaderboard updated with ${displayCount} players and ${20 - displayCount} placeholders`);
+                
+                // Find and highlight VoidNetworkOnTop
+                this.highlightSpecialUsers();
+                
+                // If we don't have 20 valid users, try to fetch more
+                if (validUsers.length < 20 && querySnapshot.size >= 20) {
+                    this.fetchMoreUsers(validUsers.length);
+                }
+            }
+
+            // Add new method to fetch more users when we don't have enough for the leaderboard
+            async fetchMoreUsers(currentCount) {
+                try {
+                    // Only proceed if we have some data but not enough
+                    if (currentCount <= 0 || currentCount >= 20) return;
+                    
+                    console.log(`Only have ${currentCount} valid users, fetching more...`);
+                    
+                    // Get the last visible user's balance
+                    const lastVisible = this.leaderboardElement.querySelector(`.leaderboard-item:nth-child(${currentCount}) .leaderboard-balance`);
+                    if (!lastVisible) return;
+                    
+                    // Convert balance text back to number (remove commas)
+                    const lastBalanceText = lastVisible.textContent;
+                    const lastBalance = parseInt(lastBalanceText.replace(/,/g, ''));
+                    
+                    if (isNaN(lastBalance)) return;
+                    
+                    // Query for more users with lower balance
+                    const usersRef = collection(this.db, 'users');
+                    const moreUsers = query(
+                        usersRef,
+                        orderBy('accountBalance', 'desc'),
+                        where('accountBalance', '<', lastBalance),
+                        limit(40) // Get more to account for potential banned users
+                    );
+                    
+                    const moreSnapshot = await getDocs(moreUsers);
+                    
+                    if (moreSnapshot.empty) return;
+                    
+                    // Filter valid non-banned users
+                    const additionalUsers = [];
+                    moreSnapshot.forEach(doc => {
+                        if (doc.exists()) {
+                            const userData = doc.data();
+                            if (userData.banned !== true) {
+                                additionalUsers.push({
+                                    username: userData.username || 'Unknown',
+                                    accountBalance: userData.accountBalance || 0
+                                });
+                            }
+                        }
+                    });
+                    
+                    // Calculate how many more we need
+                    const needed = 20 - currentCount;
+                    const toAdd = Math.min(needed, additionalUsers.length);
+                    
+                    if (toAdd <= 0) return;
+                    
+                    console.log(`Adding ${toAdd} more users to complete the leaderboard`);
+                    
+                    // Replace placeholders with real users
+                    for (let i = 0; i < toAdd; i++) {
+                        const userData = additionalUsers[i];
+                        const rank = currentCount + i + 1;
+                        
+                        // Find the placeholder to replace
+                        const placeholder = this.leaderboardElement.querySelector(`.leaderboard-item:nth-child(${rank})`);
+                        if (placeholder) {
+                            // Create the real user entry
+                            const userItem = document.createElement('div');
+                            userItem.className = 'leaderboard-item leaderboard-updated';
+                            
+                            userItem.innerHTML = `
+                                <span class="leaderboard-rank">#${rank}</span>
+                                <div class="leaderboard-username-container">
+                                    <span class="leaderboard-username">${userData.username}</span>
+                                </div>
+                                <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+                            `;
+                            
+                            // Replace the placeholder
+                            placeholder.parentNode.replaceChild(userItem, placeholder);
+                            
+                            // Remove animation class after delay
+                            setTimeout(() => {
+                                userItem.classList.remove('leaderboard-updated');
+                            }, 1000);
+                        }
+                    }
+                    
+                    // Highlight any special users in the new entries
+                    this.highlightSpecialUsers();
+                    
+                } catch (error) {
+                    console.error("Error fetching more users:", error);
+                }
+            }
+                
+            // Specifically highlight special usernames
+            highlightSpecialUsers() {
+                const usernameElements = this.leaderboardElement.querySelectorAll('.leaderboard-username');
+                
+                usernameElements.forEach(el => {
+                    // Explicitly check for "VoidNetworkOnTop" username
+                    if (el.textContent === 'VoidNetworkOnTop') {
+                        // Apply blue styling
+                        el.style.color = '#1DA1F2';
+                        el.style.textShadow = '0 0 5px rgba(29, 161, 242, 0.3)';
+                        el.style.fontWeight = 'bold';
+                        
+                        // Add verification badge if it doesn't exist
+                        if (!el.querySelector('.verified-badge')) {
+                            const badge = document.createElement('span');
+                            badge.className = 'verified-badge';
+                            badge.textContent = '✓';
+                            badge.style.marginLeft = '4px';
+                            badge.style.color = '#1DA1F2';
+                            el.appendChild(badge);
+                        }
+                    }
+                });
+            }
+
+            // Stop leaderboard updates
+            stopLeaderboardUpdates() {
+                if (this.unsubscribe) {
+                    console.log("Stopping leaderboard updates");
+                    this.unsubscribe();
+                    this.unsubscribe = null;
+                }
+                
+                // Clear any pending timeouts
+                if (this.retryTimeout) {
+                    clearTimeout(this.retryTimeout);
+                }
+            }
+        }
+
+        // LootLabs Integration Manager
+        class LootLabsManager {
+            constructor(db, auth, accountingSystem) {
+                this.db = db;
+                this.auth = auth;
+                this.accounting = accountingSystem;
+                this.iframeLoaded = false;
+                
+                // LootLabs configuration with your API key
+                this.lootlabsConfig = {
+                    apiKey: '21dc67363e394820d13bd629b6e443563d1b7b586fe39b8b49b158882b27547c',
+                    appId: 'void-network',
+                    rewardAmount: 600, // 600 coins per ad watched
+                    dailyLimit: 5  // Maximum 5 ads per day
+                };
+                
+                console.log("LootLabs Manager initialized");
+                
+                // Set up message listener for iframe communication
+                window.addEventListener('message', this.handlePostMessage.bind(this));
+            }
+            
+            // Check if user has reached daily ad watch limit
+            async checkAdLimits(userId) {
+                try {
+                    // Get today's date at midnight for comparison
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    // Query ad watch history for today
+                    const adWatchesRef = collection(this.db, 'user_ad_watches', userId, 'history');
+                    const q = query(adWatchesRef, where('timestamp', '>=', today));
+                    const watchesSnapshot = await getDocs(q);
+                    
+                    const watchCount = watchesSnapshot.size;
+                    
+                    // Update UI counter
+                    const adCountElement = document.getElementById('ads-watched-count');
+                    if (adCountElement) {
+                        adCountElement.textContent = watchCount;
+                    }
+                    
+                    // Update watch ad button state
+                    const watchAdButton = document.getElementById('watch-ad-button');
+                    if (watchAdButton) {
+                        if (watchCount >= this.lootlabsConfig.dailyLimit) {
+                            watchAdButton.disabled = true;
+                            watchAdButton.textContent = 'Limit Reached';
+                        } else {
+                            watchAdButton.disabled = false;
+                            watchAdButton.textContent = 'Watch Ad';
+                        }
+                    }
+                    
+                    return {
+                        canWatchMore: watchCount < this.lootlabsConfig.dailyLimit,
+                        watchCount: watchCount
+                    };
+                } catch (error) {
+                    console.error("Error checking ad limits:", error);
+                    return {
+                        canWatchMore: false,
+                        watchCount: 0,
+                        error: error.message
+                    };
+                }
+            }
+            
+            // Generate a user hash for anonymity
+            generateUserHash(userId) {
+                // Simple hash function for demonstration
+                let hash = 0;
+                for (let i = 0; i < userId.length; i++) {
+                    const char = userId.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash; // Convert to 32-bit integer
+                }
+                return 'void_' + Math.abs(hash).toString(16);
+            }
+            
+            // Show the ad using LootLabs
+            async showAd() {
+                if (!this.auth.currentUser) {
+                    showNotification('Please log in to watch ads', 'error');
+                    return;
+                }
+                
+                const userId = this.auth.currentUser.uid;
+                
+                // Check if user has reached daily limit
+                const adLimits = await this.checkAdLimits(userId);
+                
+                if (!adLimits.canWatchMore) {
+                    showNotification(`You've reached your daily limit of ${this.lootlabsConfig.dailyLimit} ads`, 'error');
+                    return;
+                }
+                
+                try {
+                    // Show the LootLabs container
+                    const container = document.getElementById('lootlabs-container');
+                    if (container) {
+                        container.style.display = 'block';
+                    }
+                    
+                    // Initialize iframe if not already loaded
+                    if (!this.iframeLoaded) {
+                        this.initializeLootLabsIframe(userId);
+                    } else {
+                        // Show a loading indicator
+                        document.querySelector('.loading-indicator').style.display = 'block';
+                        
+                        // For simulation purposes, we'll fake an ad completion after 3 seconds
+                        setTimeout(() => {
+                            // This simulates the ad being completed
+                            this.processAdReward(userId);
+                            
+                            // Hide loading indicator
+                            document.querySelector('.loading-indicator').style.display = 'none';
+                            
+                            // Hide container
+                            container.style.display = 'none';
+                        }, 3000);
+                    }
+                } catch (error) {
+                    console.error("Error showing ad:", error);
+                    showNotification('Failed to load ad, please try again later', 'error');
+                    
+                    // Hide container on error
+                    const container = document.getElementById('lootlabs-container');
+                    if (container) {
+                        container.style.display = 'none';
+                    }
+                }
+            }
+            
+            // Initialize the LootLabs iframe
+            async initializeLootLabsIframe(userId) {
+                const iframe = document.getElementById('lootlabs-iframe');
+                const loadingIndicator = document.querySelector('.loading-indicator');
+                
+                if (!iframe) {
+                    console.error("LootLabs iframe not found");
+                    return;
+                }
+                
+                try {
+                    // Get user info to personalize the experience
+                    const userDetails = await voidAccounting.getUserAccountDetails(userId);
+                    const userHash = this.generateUserHash(userId);
+                    
+                    // Create a simulated LootLabs URL
+                    // In production, this would be a real URL to the LootLabs embed
+                    const embedUrl = new URL('https://loot-link.com/embed');
+                    embedUrl.searchParams.append('api_key', this.lootlabsConfig.apiKey);
+                    embedUrl.searchParams.append('app_id', this.lootlabsConfig.appId);
+                    embedUrl.searchParams.append('user_id', userHash);
+                    embedUrl.searchParams.append('username', userDetails.username || 'Player');
+                    
+                    // In a real implementation, you would set the iframe src to the embedUrl
+                    // For this simulation, we'll just fake it
+                    iframe.setAttribute('data-src', embedUrl.toString());
+                    
+                    // For simulation purposes, we'll fake an ad completion after 3 seconds
+                    setTimeout(() => {
+                        // This simulates the ad being completed
+                        this.processAdReward(userId);
+                        
+                        // Hide loading indicator
+                        if (loadingIndicator) {
+                            loadingIndicator.style.display = 'none';
+                        }
+                        
+                        // Hide container
+                        const container = document.getElementById('lootlabs-container');
+                        if (container) {
+                            container.style.display = 'none';
+                        }
+                        
+                        this.iframeLoaded = true;
+                    }, 3000);
+                } catch (error) {
+                    console.error("Error initializing LootLabs iframe:", error);
+                    
+                    // Show error in loading indicator
+                    if (loadingIndicator) {
+                        loadingIndicator.innerHTML = `
+                            <p>Error loading ad. Please try again.</p>
+                            <button id="retry-ad" style="
+                                background: rgba(255, 255, 255, 0.2);
+                                border: none;
+                                padding: 8px 16px;
+                                border-radius: 4px;
+                                color: white;
+                                margin-top: 10px;
+                                cursor: pointer;">Retry</button>
+                        `;
+                        
+                        // Add retry button handler
+                        document.getElementById('retry-ad')?.addEventListener('click', () => {
+                            this.showAd();
+                        });
+                    }
+                }
+            }
+            
+            // Handle postMessage events from the iframe
+            // In a real implementation, this would handle real messages from LootLabs
+            handlePostMessage(event) {
+                // In production, verify the origin
+                // if (event.origin !== 'https://loot-link.com') return;
+                
+                try {
+                    // For simulation purposes, we don't expect real messages
+                    console.log("Received message from iframe:", event.data);
+                } catch (error) {
+                    console.error("Error handling iframe message:", error);
+                }
+            }
+            
+            // Process the ad reward
+            async processAdReward(userId) {
+                try {
+                    // Generate a unique transaction ID
+                    const transactionId = 'ad_' + new Date().getTime() + '_' + Math.random().toString(36).substr(2, 9);
+                    
+                    // Record the ad watch in user history
+                    await this.recordAdWatch(userId, transactionId);
+                    
+                    // Get current user details
+                    const userRef = doc(this.db, 'users', userId);
+                    const userDoc = await getDoc(userRef);
+                    
+                    if (!userDoc.exists()) {
+                        throw new Error("User not found");
+                    }
+                    
+                    const userData = userDoc.data();
+                    const currentBalance = userData.accountBalance || 0;
+                    const newBalance = currentBalance + this.lootlabsConfig.rewardAmount;
+                    
+                    // Update user account balance
+                    await updateDoc(userRef, {
+                        accountBalance: newBalance
+                    });
+                    
+                    // Update leaderboard entry
+                    const leaderboardRef = doc(this.db, 'leaderboard', userId);
+                    await updateDoc(leaderboardRef, {
+                        accountBalance: newBalance
+                    });
+                    
+                    // Log transaction
+                    await addDoc(collection(this.db, 'transactions'), {
+                        userId: userId,
+                        transactionType: 'ad_reward',
+                        amount: this.lootlabsConfig.rewardAmount,
+                        timestamp: new Date(),
+                        prevBalance: currentBalance,
+                        newBalance: newBalance,
+                        transactionId: transactionId
+                    });
+                    
+                    // Update balance displays in UI
+                    document.getElementById('ad-balance-display').textContent = newBalance.toLocaleString();
+                    document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
+                    document.getElementById('balance-display').textContent = newBalance.toLocaleString();
+                    
+                    // Update ad limits
+                    await this.checkAdLimits(userId);
+                    
+                    // Show success notification
+                    showNotification(`You earned ${this.lootlabsConfig.rewardAmount} coins from watching an ad!`, 'success');
+                    
+                    return {
+                        success: true,
+                        reward: this.lootlabsConfig.rewardAmount,
+                        newBalance: newBalance
+                    };
+                } catch (error) {
+                    console.error("Error processing ad reward:", error);
+                    showNotification("Error processing reward, please try again", "error");
+                    throw error;
+                }
+            }
+            
+            // Record ad watch in user history
+            async recordAdWatch(userId, transactionId) {
+                try {
+                    // Add record to user's ad watch history
+                    const adWatchRef = collection(this.db, 'user_ad_watches', userId, 'history');
+                    
+                    await addDoc(adWatchRef, {
+                        transactionId: transactionId,
+                        timestamp: new Date(),
+                        rewarded: true,
+                        amount: this.lootlabsConfig.rewardAmount
+                    });
+                    
+                    console.log(`Recorded ad watch for user ${userId}`);
+                    return true;
+                } catch (error) {
+                    console.error("Error recording ad watch:", error);
+                    throw error;
+                }
+            }
+        }
+
+        // Initialize instances in the correct order
+        const voidAccounting = new VoidNetworkAccounting();
+        const voidLeaderboard = new VoidLeaderboard(db);
+        const lootLabsManager = new LootLabsManager(db, auth, voidAccounting);
+
         // Make sure shop container is properly hidden on page load
         document.addEventListener('DOMContentLoaded', function() {
             const shopContainer = document.getElementById('shop-container');
@@ -1539,6 +2372,11 @@
                 adContainer.style.display = 'none';
                 adContainer.classList.remove('visible');
             }
+            
+            // Add watch ad button click handler
+            document.getElementById('watch-ad-button')?.addEventListener('click', () => {
+                lootLabsManager.showAd();
+            });
         });
 
         // Profile Icon Toggle Functionality
@@ -1590,6 +2428,66 @@
             }
         });
 
+        // Earn Coins Icon Toggle Functionality
+        const earnCoinsIcon = document.getElementById('earn-coins-icon');
+        const adContainer = document.getElementById('ad-container');
+        
+        earnCoinsIcon.addEventListener('click', async (e) => {
+            e.stopPropagation(); // Prevent click from bubbling up
+            
+            // Close other containers if open
+            authContainer.style.display = 'none';
+            authContainer.classList.remove('visible');
+            
+            const shopContainer = document.getElementById('shop-container');
+            if (shopContainer) {
+                shopContainer.style.display = 'none';
+                shopContainer.classList.remove('visible');
+            }
+            
+            // Check if user is logged in
+            if (!auth.currentUser) {
+                showNotification('Please log in to earn coins', 'error');
+                
+                // Show auth container
+                authContainer.style.display = 'block';
+                setTimeout(() => {
+                    authContainer.classList.add('visible');
+                }, 10);
+                return;
+            }
+            
+            // Toggle visibility of ad container with animation
+            if (adContainer.style.display === 'block') {
+                adContainer.classList.remove('visible');
+                setTimeout(() => {
+                    adContainer.style.display = 'none';
+                }, 300);
+            } else {
+                adContainer.style.display = 'block';
+                setTimeout(() => {
+                    adContainer.classList.add('visible');
+                }, 10);
+                
+                // Update balance display
+                const userDetails = await voidAccounting.getUserAccountDetails(auth.currentUser.uid);
+                document.getElementById('ad-balance-display').textContent = userDetails.accountBalance.toLocaleString();
+                
+                // Check ad watch limits for today
+                await lootLabsManager.checkAdLimits(auth.currentUser.uid);
+            }
+        });
+        
+        // Ad container close button
+        const adCloseBtn = document.querySelector('.ad-close');
+        adCloseBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent click from bubbling up
+            adContainer.classList.remove('visible');
+            setTimeout(() => {
+                adContainer.style.display = 'none';
+            }, 300);
+        });
+
         // Improved Shop Icon Toggle Functionality
         const shopIcon = document.getElementById('shop-icon');
         const shopContainer = document.getElementById('shop-container');
@@ -1601,7 +2499,6 @@
             authContainer.style.display = 'none';
             authContainer.classList.remove('visible');
             
-            const adContainer = document.getElementById('ad-container');
             if (adContainer) {
                 adContainer.style.display = 'none';
                 adContainer.classList.remove('visible');
@@ -1660,57 +2557,6 @@
             shopContainer.classList.remove('visible');
             setTimeout(() => {
                 shopContainer.style.display = 'none';
-            }, 300);
-        });
-
-        // Earn Coins Icon Toggle Functionality
-        const earnCoinsIcon = document.getElementById('earn-coins-icon');
-        const adContainer = document.getElementById('ad-container');
-        
-        earnCoinsIcon.addEventListener('click', async (e) => {
-            e.stopPropagation(); // Prevent click from bubbling up
-            
-            // Close other containers if open
-            authContainer.style.display = 'none';
-            authContainer.classList.remove('visible');
-            
-            shopContainer.style.display = 'none';
-            shopContainer.classList.remove('visible');
-            
-            // Check if user is logged in
-            if (!auth.currentUser) {
-                showNotification('Please log in to earn coins', 'error');
-                return;
-            }
-            
-            // Toggle visibility of ad container with animation
-            if (adContainer.style.display === 'block') {
-                adContainer.classList.remove('visible');
-                setTimeout(() => {
-                    adContainer.style.display = 'none';
-                }, 300);
-            } else {
-                adContainer.style.display = 'block';
-                setTimeout(() => {
-                    adContainer.classList.add('visible');
-                }, 10);
-                
-                // Update balance display
-                const userDetails = await voidAccounting.getUserAccountDetails(auth.currentUser.uid);
-                document.getElementById('ad-balance-display').textContent = userDetails.accountBalance.toLocaleString();
-                
-                // Check ad watch limits for today
-                await lootLabsManager.checkAdLimits(auth.currentUser.uid);
-            }
-        });
-        
-        // Ad container close button
-        const adCloseBtn = document.querySelector('.ad-close');
-        adCloseBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent click from bubbling up
-            adContainer.classList.remove('visible');
-            setTimeout(() => {
-                adContainer.style.display = 'none';
             }, 300);
         });
 
@@ -2018,328 +2864,6 @@
                 });
             }
         });
-
-        // LootLabs Integration Manager
-        class LootLabsManager {
-            constructor(db, auth, accountingSystem) {
-                this.db = db;
-                this.auth = auth;
-                this.accounting = accountingSystem;
-                this.iframeLoaded = false;
-                
-                // LootLabs configuration with your API key
-                this.lootlabsConfig = {
-                    apiKey: '21dc67363e394820d13bd629b6e443563d1b7b586fe39b8b49b158882b27547c',
-                    appId: 'void-network',
-                    rewardAmount: 600, // 600 coins per ad watched
-                    dailyLimit: 5  // Maximum 5 ads per day
-                };
-                
-                console.log("LootLabs Manager initialized");
-                
-                // Set up message listener for iframe communication
-                window.addEventListener('message', this.handlePostMessage.bind(this));
-                
-                // Set up watch ad button click handler
-                document.getElementById('watch-ad-button')?.addEventListener('click', () => {
-                    this.showAd();
-                });
-            }
-            
-            // Check if user has reached daily ad watch limit
-            async checkAdLimits(userId) {
-                try {
-                    // Get today's date at midnight for comparison
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    
-                    // Query ad watch history for today
-                    const adWatchesRef = collection(this.db, 'user_ad_watches', userId, 'history');
-                    const q = query(adWatchesRef, where('timestamp', '>=', today));
-                    const watchesSnapshot = await getDocs(q);
-                    
-                    const watchCount = watchesSnapshot.size;
-                    
-                    // Update UI counter
-                    const adCountElement = document.getElementById('ads-watched-count');
-                    if (adCountElement) {
-                        adCountElement.textContent = watchCount;
-                    }
-                    
-                    // Update watch ad button state
-                    const watchAdButton = document.getElementById('watch-ad-button');
-                    if (watchAdButton) {
-                        if (watchCount >= this.lootlabsConfig.dailyLimit) {
-                            watchAdButton.disabled = true;
-                            watchAdButton.textContent = 'Limit Reached';
-                        } else {
-                            watchAdButton.disabled = false;
-                            watchAdButton.textContent = 'Watch Ad';
-                        }
-                    }
-                    
-                    return {
-                        canWatchMore: watchCount < this.lootlabsConfig.dailyLimit,
-                        watchCount: watchCount
-                    };
-                } catch (error) {
-                    console.error("Error checking ad limits:", error);
-                    return {
-                        canWatchMore: false,
-                        watchCount: 0,
-                        error: error.message
-                    };
-                }
-            }
-            
-            // Generate a user hash for anonymity
-            generateUserHash(userId) {
-                // Simple hash function for demonstration
-                let hash = 0;
-                for (let i = 0; i < userId.length; i++) {
-                    const char = userId.charCodeAt(i);
-                    hash = ((hash << 5) - hash) + char;
-                    hash = hash & hash; // Convert to 32-bit integer
-                }
-                return 'void_' + Math.abs(hash).toString(16);
-            }
-            
-            // Show the ad using LootLabs
-            async showAd() {
-                if (!this.auth.currentUser) {
-                    showNotification('Please log in to watch ads', 'error');
-                    return;
-                }
-                
-                const userId = this.auth.currentUser.uid;
-                
-                // Check if user has reached daily limit
-                const adLimits = await this.checkAdLimits(userId);
-                
-                if (!adLimits.canWatchMore) {
-                    showNotification(`You've reached your daily limit of ${this.lootlabsConfig.dailyLimit} ads`, 'error');
-                    return;
-                }
-                
-                try {
-                    // Show the LootLabs container
-                    const container = document.getElementById('lootlabs-container');
-                    if (container) {
-                        container.style.display = 'block';
-                    }
-                    
-                    // Initialize iframe if not already loaded
-                    if (!this.iframeLoaded) {
-                        this.initializeLootLabsIframe(userId);
-                    } else {
-                        // Show a loading indicator
-                        document.querySelector('.loading-indicator').style.display = 'block';
-                        
-                        // For simulation purposes, we'll fake an ad completion after 3 seconds
-                        setTimeout(() => {
-                            // This simulates the ad being completed
-                            this.processAdReward(userId);
-                            
-                            // Hide loading indicator
-                            document.querySelector('.loading-indicator').style.display = 'none';
-                            
-                            // Hide container
-                            container.style.display = 'none';
-                        }, 3000);
-                    }
-                } catch (error) {
-                    console.error("Error showing ad:", error);
-                    showNotification('Failed to load ad, please try again later', 'error');
-                    
-                    // Hide container on error
-                    const container = document.getElementById('lootlabs-container');
-                    if (container) {
-                        container.style.display = 'none';
-                    }
-                }
-            }
-            
-            // Initialize the LootLabs iframe
-            initializeLootLabsIframe(userId) {
-                const iframe = document.getElementById('lootlabs-iframe');
-                const loadingIndicator = document.querySelector('.loading-indicator');
-                
-                if (!iframe) {
-                    console.error("LootLabs iframe not found");
-                    return;
-                }
-                
-                try {
-                    // Get user info to personalize the experience
-                    voidAccounting.getUserAccountDetails(userId).then(userDetails => {
-                        const userHash = this.generateUserHash(userId);
-                        
-                        // Create a simulated LootLabs URL
-                        // In production, this would be a real URL to the LootLabs embed
-                        const embedUrl = new URL('https://loot-link.com/embed');
-                        embedUrl.searchParams.append('api_key', this.lootlabsConfig.apiKey);
-                        embedUrl.searchParams.append('app_id', this.lootlabsConfig.appId);
-                        embedUrl.searchParams.append('user_id', userHash);
-                        embedUrl.searchParams.append('username', userDetails.username || 'Player');
-                        
-                        // In a real implementation, you would set the iframe src to the embedUrl
-                        // For this simulation, we'll just fake it
-                        iframe.setAttribute('data-src', embedUrl.toString());
-                        
-                        // For simulation purposes, we'll fake an ad completion after 3 seconds
-                        setTimeout(() => {
-                            // This simulates the ad being completed
-                            this.processAdReward(userId);
-                            
-                            // Hide loading indicator
-                            if (loadingIndicator) {
-                                loadingIndicator.style.display = 'none';
-                            }
-                            
-                            // Hide container
-                            const container = document.getElementById('lootlabs-container');
-                            if (container) {
-                                container.style.display = 'none';
-                            }
-                            
-                            this.iframeLoaded = true;
-                        }, 3000);
-                    });
-                } catch (error) {
-                    console.error("Error initializing LootLabs iframe:", error);
-                    
-                    // Show error in loading indicator
-                    if (loadingIndicator) {
-                        loadingIndicator.innerHTML = `
-                            <p>Error loading ad. Please try again.</p>
-                            <button id="retry-ad" style="
-                                background: rgba(255, 255, 255, 0.2);
-                                border: none;
-                                padding: 8px 16px;
-                                border-radius: 4px;
-                                color: white;
-                                margin-top: 10px;
-                                cursor: pointer;">Retry</button>
-                        `;
-                        
-                        // Add retry button handler
-                        document.getElementById('retry-ad')?.addEventListener('click', () => {
-                            this.showAd();
-                        });
-                    }
-                }
-            }
-            
-            // Handle postMessage events from the iframe
-            // In a real implementation, this would handle real messages from LootLabs
-            handlePostMessage(event) {
-                // In production, verify the origin
-                // if (event.origin !== 'https://loot-link.com') return;
-                
-                try {
-                    // For simulation purposes, we don't expect real messages
-                    console.log("Received message from iframe:", event.data);
-                } catch (error) {
-                    console.error("Error handling iframe message:", error);
-                }
-            }
-            
-            // Process the ad reward
-            async processAdReward(userId) {
-                try {
-                    // Generate a unique transaction ID
-                    const transactionId = 'ad_' + new Date().getTime() + '_' + Math.random().toString(36).substr(2, 9);
-                    
-                    // Record the ad watch in user history
-                    await this.recordAdWatch(userId, transactionId);
-                    
-                    // Get current user details
-                    const userRef = doc(this.db, 'users', userId);
-                    const userDoc = await getDoc(userRef);
-                    
-                    if (!userDoc.exists()) {
-                        throw new Error("User not found");
-                    }
-                    
-                    const userData = userDoc.data();
-                    const currentBalance = userData.accountBalance || 0;
-                    const newBalance = currentBalance + this.lootlabsConfig.rewardAmount;
-                    
-                    // Update user account balance
-                    await updateDoc(userRef, {
-                        accountBalance: newBalance
-                    });
-                    
-                    // Update leaderboard entry
-                    const leaderboardRef = doc(this.db, 'leaderboard', userId);
-                    await updateDoc(leaderboardRef, {
-                        accountBalance: newBalance
-                    });
-                    
-                    // Log transaction
-                    await addDoc(collection(this.db, 'transactions'), {
-                        userId: userId,
-                        transactionType: 'ad_reward',
-                        amount: this.lootlabsConfig.rewardAmount,
-                        timestamp: new Date(),
-                        prevBalance: currentBalance,
-                        newBalance: newBalance,
-                        transactionId: transactionId
-                    });
-                    
-                    // Update balance displays in UI
-                    document.getElementById('ad-balance-display').textContent = newBalance.toLocaleString();
-                    document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
-                    document.getElementById('balance-display').textContent = newBalance.toLocaleString();
-                    
-                    // Update ad limits
-                    await this.checkAdLimits(userId);
-                    
-                    // Show success notification
-                    showNotification(`You earned ${this.lootlabsConfig.rewardAmount} coins from watching an ad!`, 'success');
-                    
-                    return {
-                        success: true,
-                        reward: this.lootlabsConfig.rewardAmount,
-                        newBalance: newBalance
-                    };
-                } catch (error) {
-                    console.error("Error processing ad reward:", error);
-                    showNotification("Error processing reward, please try again", "error");
-                    throw error;
-                }
-            }
-            
-            // Record ad watch in user history
-            async recordAdWatch(userId, transactionId) {
-                try {
-                    // Add record to user's ad watch history
-                    const adWatchRef = collection(this.db, 'user_ad_watches', userId, 'history');
-                    
-                    await addDoc(adWatchRef, {
-                        transactionId: transactionId,
-                        timestamp: new Date(),
-                        rewarded: true,
-                        amount: this.lootlabsConfig.rewardAmount
-                    });
-                    
-                    console.log(`Recorded ad watch for user ${userId}`);
-                    return true;
-                } catch (error) {
-                    console.error("Error recording ad watch:", error);
-                    throw error;
-                }
-            }
-        }
-        
-        // Initialize Accounting System
-        const voidAccounting = new VoidNetworkAccounting();
-
-        // Initialize LootLabs Manager
-        const lootLabsManager = new LootLabsManager(db, auth, voidAccounting);
-
-        // Initialize Leaderboard
-        const voidLeaderboard = new VoidLeaderboard(db);
 
         // Helper function to highlight VoidNetworkOnTop in the leaderboard
         function refreshLeaderboard() {
