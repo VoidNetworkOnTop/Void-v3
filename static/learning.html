@@ -3612,7 +3612,7 @@ class VoidLeaderboard {
         }
     }
     
-    // Process changes from Firestore and update leaderboard accordingly
+    // Process changes from Firestore and update leaderboard accordingly - FIXED
     processLeaderboardChanges(querySnapshot) {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
@@ -3627,23 +3627,8 @@ class VoidLeaderboard {
         
         console.log("Processing leaderboard changes");
         
-        // First check if we have changes that need processing
-        let hasChanges = false;
-        if (this.currentLeaderboardData.length === 0) {
-            hasChanges = true; // First load
-        } else {
-            // Check if any document was modified
-            querySnapshot.docChanges().forEach(change => {
-                if (change.type === 'added' || change.type === 'modified' || change.type === 'removed') {
-                    hasChanges = true;
-                }
-            });
-        }
-        
-        // Exit early if no changes detected
-        if (!hasChanges && this.currentLeaderboardData.length > 0) {
-            return;
-        }
+        // Always treat balance changes as significant - force a refresh
+        let hasChanges = true;
         
         // Get all current valid user documents
         const validUserIds = new Set();
@@ -3669,7 +3654,7 @@ class VoidLeaderboard {
                 
                 console.log(`Found ${validUserIds.size} valid users`);
                 
-                // Now filter and process leaderboard entries
+                // Now filter and process leaderboard entries with improved balance tracking
                 querySnapshot.forEach((docSnapshot) => {
                     if (docSnapshot.exists()) {
                         const userData = docSnapshot.data();
@@ -3677,6 +3662,16 @@ class VoidLeaderboard {
                         
                         // Only include users that exist in valid users set AND aren't banned in leaderboard
                         if (validUserIds.has(userId) && userData.banned !== true) {
+                            // Check if this user exists in our current data and if balance has changed
+                            const existingUserIndex = this.currentLeaderboardData.findIndex(u => u.id === userId);
+                            if (existingUserIndex >= 0) {
+                                const existingUser = this.currentLeaderboardData[existingUserIndex];
+                                // Log significant balance changes for debugging
+                                if (existingUser.accountBalance !== userData.accountBalance) {
+                                    console.log(`Balance change for ${userData.username}: ${existingUser.accountBalance} → ${userData.accountBalance}`);
+                                }
+                            }
+                            
                             validUsers.push({
                                 id: userId,
                                 username: userData.username || 'Unknown',
@@ -3692,8 +3687,26 @@ class VoidLeaderboard {
                     }
                 });
                 
-                // Sort by account balance descending (higher balances at the top)
-                const sortedUsers = validUsers.sort((a, b) => b.accountBalance - a.accountBalance);
+                // CRITICAL: Ensure proper sorting by balance with extra validation
+                const sortedUsers = validUsers.sort((a, b) => {
+                    // Force conversion to numbers to avoid type issues
+                    const balanceA = Number(a.accountBalance) || 0;
+                    const balanceB = Number(b.accountBalance) || 0;
+                    
+                    // Debug large balance differences
+                    const diff = balanceB - balanceA;
+                    if (Math.abs(diff) > 1000000) {
+                        console.log(`Large balance difference: ${a.username}(${balanceA}) vs ${b.username}(${balanceB})`);
+                    }
+                    
+                    return balanceB - balanceA; // Higher balances first
+                });
+                
+                // Log the top 5 users after sorting for debugging
+                console.log("Top 5 users after sorting:");
+                sortedUsers.slice(0, 5).forEach((user, idx) => {
+                    console.log(`${idx+1}. ${user.username}: ${user.accountBalance.toLocaleString()} coins`);
+                });
                 
                 // Keep track of previous positions to detect changes
                 const prevPositions = {};
@@ -3751,8 +3764,12 @@ class VoidLeaderboard {
             }
         });
         
-        // Sort by account balance descending
-        const sortedUsers = validUsers.sort((a, b) => b.accountBalance - a.accountBalance);
+        // Sort by account balance descending - with number conversion
+        const sortedUsers = validUsers.sort((a, b) => {
+            const balanceA = Number(a.accountBalance) || 0;
+            const balanceB = Number(b.accountBalance) || 0;
+            return balanceB - balanceA;
+        });
         
         // Keep track of previous positions to detect changes
         const prevPositions = {};
@@ -3884,9 +3901,9 @@ class VoidLeaderboard {
         return leaderboardItem;
     }
     
-    // Enhanced updateLeaderboardPositions method with improved animations
+    // Enhanced updateLeaderboardPositions method with improved position change handling - FIXED
     updateLeaderboardPositions(newUsers, prevPositions) {
-        console.log("Updating leaderboard positions with animations");
+        console.log("Updating leaderboard positions with enhanced animations");
         
         // First update all existing items and mark any that need to be moved
         const itemsToMove = [];
@@ -3910,10 +3927,15 @@ class VoidLeaderboard {
                 // Update balance regardless - with enhanced animation
                 const balanceEl = item.querySelector('.leaderboard-balance');
                 if (balanceEl) {
-                    const currentBalance = parseInt(balanceEl.textContent.replace(/,/g, ''));
-                    const newBalance = userData.accountBalance;
+                    const currentBalance = parseInt(balanceEl.textContent.replace(/,/g, '')) || 0;
+                    const newBalance = userData.accountBalance || 0;
                     
                     if (currentBalance !== newBalance) {
+                        // Log significant balance changes
+                        if (Math.abs(newBalance - currentBalance) > 100000) {
+                            console.log(`Significant balance change for ${userData.username}: ${currentBalance.toLocaleString()} → ${newBalance.toLocaleString()}`);
+                        }
+                        
                         // More noticeable balance change animation
                         balanceEl.classList.add('balance-updated');
                         setTimeout(() => balanceEl.classList.remove('balance-updated'), 1500);
@@ -3925,16 +3947,21 @@ class VoidLeaderboard {
                 
                 // If position changed - more visible animation
                 if (prevPosition !== undefined && prevPosition !== newPosition) {
-                    // Store for moving
+                    console.log(`Position change for ${userData.username}: ${prevPosition+1} → ${newPosition+1}`);
+                    
+                    // Store for moving with priority info
                     itemsToMove.push({
                         item: item,
                         newPosition: newPosition,
                         prevPosition: prevPosition,
-                        userData: userData
+                        userData: userData,
+                        // Add a priority flag for big position changes
+                        priority: Math.abs(prevPosition - newPosition) > 3
                     });
                 }
             } else {
                 // New user - create and insert with entrance animation
+                console.log(`New user added to leaderboard: ${userData.username} at position ${newPosition+1}`);
                 const newItem = this.createLeaderboardItem(userData, newPosition);
                 newItem.classList.add('leaderboard-updated');
                 
@@ -3961,8 +3988,13 @@ class VoidLeaderboard {
         if (itemsToMove.length > 0) {
             console.log(`Moving ${itemsToMove.length} items in leaderboard with enhanced animations`);
             
-            // Sort by new position to avoid conflicts when moving
+            // Sort by priority (big position changes first) then by position
             itemsToMove.sort((a, b) => {
+                // First by priority (high priority first)
+                if (a.priority && !b.priority) return -1;
+                if (!a.priority && b.priority) return 1;
+                
+                // Then by movement direction
                 // If moving up, process lower positions first
                 if (a.newPosition < a.prevPosition && b.newPosition < b.prevPosition) {
                     return a.newPosition - b.newPosition;
@@ -4003,23 +4035,30 @@ class VoidLeaderboard {
                 } else {
                     item.style.setProperty('--movement-intensity', animationIntensity);
                     item.classList.add('moving-up');
+                    
+                    // For significant upward movements, add extra highlighting
+                    if (movementDistance > 3) {
+                        item.classList.add('significant-movement');
+                    }
                 }
                 
                 // Move in DOM - reposition the element with smoother animation
-                if (newPosition === 0) {
-                    // Move to top
-                    this.leaderboardElement.prepend(item);
-                } else if (newPosition >= this.leaderboardElement.children.length) {
-                    // Move to bottom
-                    this.leaderboardElement.appendChild(item);
-                } else {
-                    // Insert at correct position
-                    this.leaderboardElement.insertBefore(item, this.leaderboardElement.children[newPosition]);
-                }
+                setTimeout(() => {
+                    if (newPosition === 0) {
+                        // Move to top
+                        this.leaderboardElement.prepend(item);
+                    } else if (newPosition >= this.leaderboardElement.children.length) {
+                        // Move to bottom
+                        this.leaderboardElement.appendChild(item);
+                    } else {
+                        // Insert at correct position
+                        this.leaderboardElement.insertBefore(item, this.leaderboardElement.children[newPosition]);
+                    }
+                }, move.priority ? 50 : 100); // Priority movements happen first
                 
                 // Remove animation classes after animation is complete
                 setTimeout(() => {
-                    item.classList.remove('moving-up', 'moving-down');
+                    item.classList.remove('moving-up', 'moving-down', 'significant-movement');
                     item.style.removeProperty('--movement-intensity');
                 }, 1500); // Longer duration for more visible effect
             });
@@ -4180,6 +4219,26 @@ function addLeaderboardAnimationStyles() {
     document.head.appendChild(style);
 }
 
+// Add extra styles for significant movement animations
+function addExtraLeaderboardStyles() {
+    const style = document.createElement('style');
+    style.textContent = `
+        /* Enhanced animation for significant movement */
+        @keyframes significant-up-movement {
+            0% { background-color: rgba(0, 255, 0, 0.4); box-shadow: 0 0 20px rgba(0, 255, 0, 0.6); }
+            15% { background-color: rgba(0, 255, 0, 0.6); box-shadow: 0 0 30px rgba(0, 255, 0, 0.8); }
+            85% { background-color: rgba(0, 255, 0, 0.3); box-shadow: 0 0 15px rgba(0, 255, 0, 0.4); }
+            100% { background-color: rgba(255, 255, 255, 0.05); box-shadow: none; }
+        }
+
+        .significant-movement {
+            animation: significant-up-movement 2s ease;
+            z-index: 100;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
 // Initialize Accounting System
 const voidAccounting = new VoidNetworkAccounting();
 
@@ -4198,6 +4257,19 @@ function refreshLeaderboard() {
     
     // After a short delay, manually highlight special users
     setTimeout(() => voidLeaderboard.highlightSpecialUsers(), 1000);
+}
+
+// Function to force a full leaderboard refresh when a balance change is detected
+function forceLeaderboardRefresh() {
+    console.log("Forcing complete leaderboard refresh");
+    
+    // Stop current listener and restart
+    voidLeaderboard.stopLeaderboardUpdates();
+    
+    // Force a new connection
+    setTimeout(() => {
+        voidLeaderboard.startLeaderboardUpdates();
+    }, 100);
 }
 
 // Detect screen size changes to handle mobile responsive layout
@@ -4394,19 +4466,23 @@ document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
     });
 });
 
-// Initialize layout and add enhanced animation styles on page load
+// Initialize layout and add enhanced animation styles on page load - UPDATED
 window.addEventListener('load', () => {
     handleResponsiveLayout();
     
     // Add the enhanced animation styles
     addLeaderboardAnimationStyles();
+    addExtraLeaderboardStyles();
     
     try {
         console.log("Page loaded, initializing app");
-        renderAppsList();  // This is the crucial line that ensures games are displayed
+        renderAppsList();
         
         // Start leaderboard updates
         voidLeaderboard.startLeaderboardUpdates();
+        
+        // Set up more frequent refreshes - improved frequency
+        setInterval(refreshLeaderboard, 8000); // Refresh every 8 seconds
         
         // Check if user is already logged in
         const user = auth.currentUser;
@@ -4421,9 +4497,6 @@ window.addEventListener('load', () => {
 
 // Check responsive layout on window resize
 window.addEventListener('resize', handleResponsiveLayout);
-
-// More frequent refresh to ensure leaderboard stays updated
-setInterval(refreshLeaderboard, 15000); // Refresh every 15 seconds instead of 30
 
 // Stop leaderboard updates when user leaves the page
 window.addEventListener('beforeunload', () => {
