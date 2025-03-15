@@ -2307,62 +2307,62 @@ class VoidLeaderboard {
         }
     }
     
-    // IMPROVED: Secure leaderboard UI update with avatar display and ban filtering
-    async updateLeaderboardUI(querySnapshot) {
-        if (!this.leaderboardElement) {
-            console.error("Leaderboard element not found");
-            return;
-        }
-        
-        // Always clear the leaderboard completely first
-        this.leaderboardElement.innerHTML = '';
-        
-        if (querySnapshot.empty) {
-            this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
-            return;
-        }
-        
-        console.log("Updating leaderboard with new data");
-        
-        // Create array of valid users to display - FILTER OUT BANNED USERS
-        const validUsers = [];
-        const userSettingsPromises = [];
-        
-        querySnapshot.forEach((doc) => {
-            if (doc.exists()) {
-                const userData = doc.data();
+// IMPROVED: Secure leaderboard UI update with avatar display and ban filtering
+async updateLeaderboardUI(querySnapshot) {
+    if (!this.leaderboardElement) {
+        console.error("Leaderboard element not found");
+        return;
+    }
+    
+    // Always clear the leaderboard completely first
+    this.leaderboardElement.innerHTML = '';
+    
+    if (querySnapshot.empty) {
+        this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+        return;
+    }
+    
+    console.log("Updating leaderboard with new data");
+    
+    // Create array of valid users to display - FILTER OUT BANNED USERS
+    const validUsers = [];
+    const userSettingsPromises = [];
+    
+    querySnapshot.forEach((docSnapshot) => {  // Changed 'doc' to 'docSnapshot' to avoid conflict
+        if (docSnapshot.exists()) {
+            const userData = docSnapshot.data();
+            
+            // Skip banned users
+            if (userData.banned !== true) {
+                validUsers.push({
+                    id: docSnapshot.id,
+                    username: userData.username || 'Unknown',
+                    accountBalance: userData.accountBalance || 0,
+                    avatar: null // Will be populated later if available
+                });
                 
-                // Skip banned users
-                if (userData.banned !== true) {
-                    validUsers.push({
-                        id: doc.id,
-                        username: userData.username || 'Unknown',
-                        accountBalance: userData.accountBalance || 0,
-                        avatar: null // Will be populated later if available
-                    });
-                    
-                    // Get user settings to check for avatar
-                    const settingsPromise = getDoc(doc(this.db, 'user_settings', doc.id))
-                        .then(settingsDoc => {
-                            if (settingsDoc.exists() && settingsDoc.data().equippedAvatar) {
-                                const avatarId = settingsDoc.data().equippedAvatar;
-                                // Find the user in our array and update their avatar
-                                const userIndex = validUsers.findIndex(u => u.id === doc.id);
-                                if (userIndex !== -1 && itemManager.items[avatarId]) {
-                                    validUsers[userIndex].avatar = itemManager.items[avatarId].url;
-                                }
+                // Get user settings to check for avatar - Fixed the doc function usage
+                const settingsPromise = getDoc(doc(this.db, 'user_settings', docSnapshot.id))
+                    .then(settingsDoc => {
+                        if (settingsDoc.exists() && settingsDoc.data().equippedAvatar) {
+                            const avatarId = settingsDoc.data().equippedAvatar;
+                            // Find the user in our array and update their avatar
+                            const userIndex = validUsers.findIndex(u => u.id === docSnapshot.id);
+                            if (userIndex !== -1 && itemManager.items[avatarId]) {
+                                validUsers[userIndex].avatar = itemManager.items[avatarId].url;
                             }
-                        })
-                        .catch(error => {
-                            console.error("Error getting user settings:", error);
-                        });
-                    
-                    userSettingsPromises.push(settingsPromise);
-                } else {
-                    console.log(`Skipping banned user: ${userData.username || 'Unknown'}`);
-                }
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Error getting user settings:", error);
+                    });
+                
+                userSettingsPromises.push(settingsPromise);
+            } else {
+                console.log(`Skipping banned user: ${userData.username || 'Unknown'}`);
             }
-        });
+        }
+    });
         
         // Wait for all user settings promises to resolve
         await Promise.all(userSettingsPromises);
@@ -2467,37 +2467,37 @@ class VoidLeaderboard {
             const additionalUsers = [];
             const userSettingsPromises = [];
             
-            moreSnapshot.forEach(doc => {
-                if (doc.exists()) {
-                    const userData = doc.data();
-                    if (userData.banned !== true) {
-                        additionalUsers.push({
-                            id: doc.id,
-                            username: userData.username || 'Unknown',
-                            accountBalance: userData.accountBalance || 0,
-                            avatar: null // Will be populated later if available
-                        });
-                        
-                        // Get user settings to check for avatar
-                        const settingsPromise = getDoc(doc(this.db, 'user_settings', doc.id))
-                            .then(settingsDoc => {
-                                if (settingsDoc.exists() && settingsDoc.data().equippedAvatar) {
-                                    const avatarId = settingsDoc.data().equippedAvatar;
-                                    // Find the user in our array and update their avatar
-                                    const userIndex = additionalUsers.findIndex(u => u.id === doc.id);
-                                    if (userIndex !== -1 && itemManager.items[avatarId]) {
-                                        additionalUsers[userIndex].avatar = itemManager.items[avatarId].url;
-                                    }
-                                }
-                            })
-                            .catch(error => {
-                                console.error("Error getting user settings:", error);
-                            });
-                        
-                        userSettingsPromises.push(settingsPromise);
-                    }
-                }
+moreSnapshot.forEach(docSnapshot => {  // Changed 'doc' to 'docSnapshot'
+    if (docSnapshot.exists()) {
+        const userData = docSnapshot.data();
+        if (userData.banned !== true) {
+            additionalUsers.push({
+                id: docSnapshot.id,
+                username: userData.username || 'Unknown',
+                accountBalance: userData.accountBalance || 0,
+                avatar: null // Will be populated later if available
             });
+            
+            // Get user settings to check for avatar
+            const settingsPromise = getDoc(doc(this.db, 'user_settings', docSnapshot.id))
+                .then(settingsDoc => {
+                    if (settingsDoc.exists() && settingsDoc.data().equippedAvatar) {
+                        const avatarId = settingsDoc.data().equippedAvatar;
+                        // Find the user in our array and update their avatar
+                        const userIndex = additionalUsers.findIndex(u => u.id === docSnapshot.id);
+                        if (userIndex !== -1 && itemManager.items[avatarId]) {
+                            additionalUsers[userIndex].avatar = itemManager.items[avatarId].url;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error("Error getting user settings:", error);
+                });
+            
+            userSettingsPromises.push(settingsPromise);
+        }
+    }
+});
             
             // Wait for all user settings promises to resolve
             await Promise.all(userSettingsPromises);
