@@ -1801,97 +1801,109 @@
             });
         }
 
-        // FIXED: Secure Purchase System that actually deducts coins
-        async function purchaseItem(itemId, itemType, price) {
-            if (!auth.currentUser) {
-                showNotification('Please log in to make purchases', 'error');
-                return;
-            }
+// FIXED: Secure Purchase System that actually deducts coins
+async function purchaseItem(itemId, itemType, price) {
+    if (!auth.currentUser) {
+        showNotification('Please log in to make purchases', 'error');
+        return;
+    }
+    
+    try {
+        const userId = auth.currentUser.uid;
+        
+        // Get current user details to check balance
+        const userRef = doc(db, 'users', userId);
+        const userDoc = await getDoc(userRef);
+        
+        if (!userDoc.exists()) {
+            throw new Error("User not found");
+        }
+        
+        const userData = userDoc.data();
+        
+        if (userData.accountBalance < price) {
+            showNotification('Not enough coins to make this purchase', 'error');
+            return;
+        }
+        
+        // Calculate new balance
+        const newBalance = userData.accountBalance - price;
+        
+        // IMPORTANT: Update user account balance (ACTUALLY DEDUCT COINS)
+        await updateDoc(userRef, {
+            accountBalance: newBalance
+        });
+        
+        // Check if leaderboard entry exists and update/create as needed
+        const leaderboardRef = doc(db, 'leaderboard', userId);
+        const leaderboardDoc = await getDoc(leaderboardRef);
+        
+        if (leaderboardDoc.exists()) {
+            // Update existing leaderboard entry
+            await updateDoc(leaderboardRef, {
+                accountBalance: newBalance
+            });
+        } else {
+            // Create new leaderboard entry
+            await setDoc(leaderboardRef, {
+                username: userData.username || 'Unknown',
+                accountBalance: newBalance,
+                joinDate: new Date()
+            });
+        }
+        
+        // Create a record in user_purchases
+        await addDoc(collection(db, 'user_purchases', userId, 'items'), {
+            itemId: itemId,
+            itemType: itemType,
+            price: price,
+            purchaseDate: new Date(),
+            itemName: getItemNameById(itemId)
+        });
+        
+        // Log transaction for records
+        await addDoc(collection(db, 'transactions'), {
+            userId: userId,
+            transactionType: 'purchase',
+            amount: price,
+            itemId: itemId,
+            itemType: itemType,
+            timestamp: new Date(),
+            prevBalance: userData.accountBalance,
+            newBalance: newBalance
+        });
+        
+        // Update UI to show item as owned and update balance displays
+        const button = document.querySelector(`.buy-button[data-item-id="${itemId}"]`);
+        if (button) {
+            button.textContent = "Equip";
+            button.classList.add('equip');
             
-            try {
-                const userId = auth.currentUser.uid;
-                
-                // Get current user details to check balance
-                const userRef = doc(db, 'users', userId);
-                const userDoc = await getDoc(userRef);
-                
-                if (!userDoc.exists()) {
-                    throw new Error("User not found");
-                }
-                
-                const userData = userDoc.data();
-                
-                if (userData.accountBalance < price) {
-                    showNotification('Not enough coins to make this purchase', 'error');
-                    return;
-                }
-                
-                // Calculate new balance
-                const newBalance = userData.accountBalance - price;
-                
-                // IMPORTANT: Update user account balance (ACTUALLY DEDUCT COINS)
-                await updateDoc(userRef, {
-                    accountBalance: newBalance
-                });
-                
-                // Update leaderboard entry (for display purposes)
-                const leaderboardRef = doc(db, 'leaderboard', userId);
-                await updateDoc(leaderboardRef, {
-                    accountBalance: newBalance
-                });
-                
-                // Create a record in user_purchases
-                await addDoc(collection(db, 'user_purchases', userId, 'items'), {
-                    itemId: itemId,
-                    itemType: itemType,
-                    price: price,
-                    purchaseDate: new Date(),
-                    itemName: getItemNameById(itemId)
-                });
-                
-                // Log transaction for records
-                await addDoc(collection(db, 'transactions'), {
-                    userId: userId,
-                    transactionType: 'purchase',
-                    amount: price,
-                    itemId: itemId,
-                    itemType: itemType,
-                    timestamp: new Date(),
-                    prevBalance: userData.accountBalance,
-                    newBalance: newBalance
-                });
-                
-                // Update UI to show item as owned and update balance displays
-                const button = document.querySelector(`.buy-button[data-item-id="${itemId}"]`);
-                if (button) {
-                    button.textContent = "Equip";
-                    button.classList.add('equip');
-                    
-                    // Add owned class to shop item
-                    const shopItem = button.closest('.shop-item');
-                    if (shopItem) {
-                        shopItem.classList.add('owned');
-                    }
-                }
-                
-                // Update balance displays
-                document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
-                document.getElementById('balance-display').textContent = newBalance.toLocaleString();
-                
-                // Update button states based on new balance
-                updateShopButtonsState(newBalance, {...await itemManager.checkPurchasedItems(userId), [itemId]: true});
-                
-                // Show success notification
-                showNotification(`Successfully purchased ${getItemNameById(itemId)} for ${price.toLocaleString()} coins!`, 'success');
-                
-                // Auto-equip the item after purchase
-                await equipItem(itemId, itemType);
-                
-            } catch (error) {
-                console.error('Purchase error:', error);
-                showNotification('Failed to complete purchase: ' + error.message, 'error');
+            // Add owned class to shop item
+            const shopItem = button.closest('.shop-item');
+            if (shopItem) {
+                shopItem.classList.add('owned');
             }
         }
+        
+        // Update balance displays
+        document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
+        document.getElementById('balance-display').textContent = newBalance.toLocaleString();
+        
+        // Update button states based on new balance
+        updateShopButtonsState(newBalance, {...await itemManager.checkPurchasedItems(userId), [itemId]: true});
+        
+        // Show success notification
+        showNotification(`Successfully purchased ${getItemNameById(itemId)} for ${price.toLocaleString()} coins!`, 'success');
+        
+        // Auto-equip the item after purchase
+        await equipItem(itemId, itemType);
+        
+    } catch (error) {
+        console.error('Purchase error:', error);
+        showNotification('Failed to complete purchase: ' + error.message, 'error');
+    }
+}
         
         // Secure Equip Item implementation
         async function equipItem(itemId, itemType) {
