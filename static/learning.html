@@ -3504,7 +3504,7 @@
         }
     }
 
-// IMPROVED: Secure Leaderboard Implementation with Dynamic Position Updates
+// IMPROVED: Secure Leaderboard Implementation with Dynamic Position Updates & Data Synchronization
 class VoidLeaderboard {
     constructor(db) {
         this.db = db;
@@ -3612,7 +3612,7 @@ class VoidLeaderboard {
         }
     }
     
-    // Process changes from Firestore and update leaderboard accordingly - FIXED
+    // Enhanced processLeaderboardChanges method with guaranteed synchronization and data freshness
     processLeaderboardChanges(querySnapshot) {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
@@ -3627,73 +3627,137 @@ class VoidLeaderboard {
         
         console.log("Processing leaderboard changes");
         
-        // Always treat balance changes as significant - force a refresh
-        let hasChanges = true;
-        
-        // Get all current valid user documents
+        // Get all current valid user documents - ENHANCED TO ENSURE FRESHNESS
         const validUserIds = new Set();
         const validUsers = [];
         
-        // Advanced validation with cross-reference to users collection
-        const checkValidUsers = async () => {
+        // Fetch FRESH user data for each leaderboard entry
+        const syncWithUserCollection = async () => {
             try {
-                // Get active users from users collection
-                const usersRef = collection(this.db, 'users');
-                const usersSnapshot = await getDocs(usersRef);
+                console.log("Syncing leaderboard with user collection for fresh data");
                 
-                // Create set of valid user IDs
-                usersSnapshot.forEach(userDoc => {
-                    if (userDoc.exists()) {
-                        const userData = userDoc.data();
-                        // Only include users that are not banned, disabled, or deleted
-                        if (userData && !userData.banned && !userData.accountDisabled && !userData.deleted) {
-                            validUserIds.add(userDoc.id);
-                        }
-                    }
-                });
-                
-                console.log(`Found ${validUserIds.size} valid users`);
-                
-                // Now filter and process leaderboard entries with improved balance tracking
+                // Create set of leaderboard entries for processing
+                const leaderboardEntries = new Map();
                 querySnapshot.forEach((docSnapshot) => {
                     if (docSnapshot.exists()) {
-                        const userData = docSnapshot.data();
-                        const userId = docSnapshot.id;
-                        
-                        // Only include users that exist in valid users set AND aren't banned in leaderboard
-                        if (validUserIds.has(userId) && userData.banned !== true) {
-                            // Check if this user exists in our current data and if balance has changed
-                            const existingUserIndex = this.currentLeaderboardData.findIndex(u => u.id === userId);
-                            if (existingUserIndex >= 0) {
-                                const existingUser = this.currentLeaderboardData[existingUserIndex];
-                                // Log significant balance changes for debugging
-                                if (existingUser.accountBalance !== userData.accountBalance) {
-                                    console.log(`Balance change for ${userData.username}: ${existingUser.accountBalance} → ${userData.accountBalance}`);
-                                }
-                            }
-                            
-                            validUsers.push({
-                                id: userId,
-                                username: userData.username || 'Unknown',
-                                accountBalance: userData.accountBalance || 0,
-                                avatar: userData.equippedAvatar ? itemManager.items[userData.equippedAvatar]?.url : null
-                            });
-                        } else {
-                            // If user is in leaderboard but not valid, remove from leaderboard collection
-                            console.log(`Removing invalid user from leaderboard: ${userData.username || 'Unknown user'}`);
-                            deleteDoc(doc(this.db, 'leaderboard', userId))
-                                .catch(error => console.error("Error removing invalid user from leaderboard:", error));
-                        }
+                        leaderboardEntries.set(docSnapshot.id, docSnapshot.data());
                     }
                 });
                 
-                // CRITICAL: Ensure proper sorting by balance with extra validation
-                const sortedUsers = validUsers.sort((a, b) => {
-                    // Force conversion to numbers to avoid type issues
-                    const balanceA = Number(a.accountBalance) || 0;
-                    const balanceB = Number(b.accountBalance) || 0;
+                // Fetch fresh data from users collection for ALL leaderboard users
+                // This ensures consistent data between collections
+                const userIds = [...leaderboardEntries.keys()];
+                
+                if (userIds.length === 0) {
+                    console.log("No leaderboard entries to sync");
+                    return [];
+                }
+                
+                // Get fresh user data in batches to avoid quota limits
+                const batchSize = 10;
+                const batches = [];
+                
+                for (let i = 0; i < userIds.length; i += batchSize) {
+                    const batch = userIds.slice(i, i + batchSize);
+                    batches.push(batch);
+                }
+                
+                const allUserData = [];
+                
+                // Process each batch
+                for (const batch of batches) {
+                    const usersRef = collection(this.db, 'users');
+                    const usersQuery = query(usersRef, where(documentId(), 'in', batch));
+                    const usersSnapshot = await getDocs(usersQuery);
                     
-                    // Debug large balance differences
+                    // Get valid users from this batch
+                    usersSnapshot.forEach(userDoc => {
+                        if (userDoc.exists()) {
+                            const userData = userDoc.data();
+                            // Only include users that are not banned, disabled, or deleted
+                            if (userData && !userData.banned && !userData.accountDisabled && !userData.deleted) {
+                                validUserIds.add(userDoc.id);
+                                
+                                // Get corresponding leaderboard entry for avatar
+                                const leaderboardEntry = leaderboardEntries.get(userDoc.id);
+                                const avatar = leaderboardEntry?.equippedAvatar ? 
+                                    itemManager.items[leaderboardEntry.equippedAvatar]?.url : null;
+                                
+                                // CRITICAL: Use USER COLLECTION BALANCE, not leaderboard balance
+                                // This ensures we always have the most up-to-date balance
+                                allUserData.push({
+                                    id: userDoc.id,
+                                    username: userData.username || 'Unknown',
+                                    accountBalance: userData.accountBalance || 0, // FRESH BALANCE from users collection
+                                    avatar: avatar,
+                                    // If balances don't match, log it for debugging
+                                    balanceMismatch: leaderboardEntry && 
+                                        leaderboardEntry.accountBalance !== userData.accountBalance
+                                });
+                                
+                                // If there's a mismatch between leaderboard and user balances, correct it
+                                if (leaderboardEntry && leaderboardEntry.accountBalance !== userData.accountBalance) {
+                                    console.log(`Balance mismatch for ${userData.username}: 
+                                        Leaderboard: ${leaderboardEntry.accountBalance} 
+                                        User: ${userData.accountBalance}
+                                        Fixing...`);
+                                    
+                                    // Update leaderboard with correct balance automatically
+                                    try {
+                                        const leaderboardRef = doc(this.db, 'leaderboard', userDoc.id);
+                                        updateDoc(leaderboardRef, {
+                                            accountBalance: userData.accountBalance
+                                        }).then(() => {
+                                            console.log(`Fixed balance for ${userData.username}`);
+                                        }).catch(error => {
+                                            console.error(`Failed to update leaderboard for ${userData.username}:`, error);
+                                        });
+                                    } catch (error) {
+                                        console.error(`Error updating leaderboard for ${userData.username}:`, error);
+                                    }
+                                }
+                            } else {
+                                console.log(`Skipping invalid user from leaderboard: ${userData.username || 'Unknown user'}`);
+                                // Remove invalid user from leaderboard
+                                try {
+                                    deleteDoc(doc(this.db, 'leaderboard', userDoc.id))
+                                        .catch(error => console.error("Error removing invalid user from leaderboard:", error));
+                                } catch (error) {
+                                    console.error("Error trying to remove user from leaderboard:", error);
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                return allUserData;
+            } catch (error) {
+                console.error("Error syncing with user collection:", error);
+                return [];
+            }
+        };
+        
+        // Modified process to use fresh user data
+        const processFreshData = async () => {
+            try {
+                // Get fresh data from users collection
+                const validUsers = await syncWithUserCollection();
+                
+                if (validUsers.length === 0) {
+                    console.log("No valid users found or sync failed");
+                    this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players found</div>';
+                    this.currentLeaderboardData = [];
+                    return;
+                }
+                
+                // CRITICAL: Ensure proper sorting by using TOSTRING + PARSEINT to avoid type issues
+                const sortedUsers = validUsers.sort((a, b) => {
+                    // Convert to string and use parseInt with radix to ensure proper number conversion
+                    // This handles all cases including strings, numbers, undefined, etc.
+                    const balanceA = parseInt(String(a.accountBalance || '0'), 10);
+                    const balanceB = parseInt(String(b.accountBalance || '0'), 10);
+                    
+                    // Log large differences for debugging
                     const diff = balanceB - balanceA;
                     if (Math.abs(diff) > 1000000) {
                         console.log(`Large balance difference: ${a.username}(${balanceA}) vs ${b.username}(${balanceB})`);
@@ -3705,7 +3769,8 @@ class VoidLeaderboard {
                 // Log the top 5 users after sorting for debugging
                 console.log("Top 5 users after sorting:");
                 sortedUsers.slice(0, 5).forEach((user, idx) => {
-                    console.log(`${idx+1}. ${user.username}: ${user.accountBalance.toLocaleString()} coins`);
+                    console.log(`${idx+1}. ${user.username}: ${Number(user.accountBalance).toLocaleString()} coins 
+                        ${user.balanceMismatch ? '⚠️ FIXED' : ''}`);
                 });
                 
                 // Keep track of previous positions to detect changes
@@ -3733,13 +3798,13 @@ class VoidLeaderboard {
                 this.highlightSpecialUsers();
                 
             } catch (error) {
-                console.error("Error in leaderboard validation:", error);
+                console.error("Error processing leaderboard with fresh data:", error);
                 this.processFallbackLeaderboard(querySnapshot);
             }
         };
         
-        // Execute the validation and update process
-        checkValidUsers();
+        // Execute the process with fresh data
+        processFreshData();
     }
     
     // Fallback method if the full validity check fails
@@ -3766,8 +3831,8 @@ class VoidLeaderboard {
         
         // Sort by account balance descending - with number conversion
         const sortedUsers = validUsers.sort((a, b) => {
-            const balanceA = Number(a.accountBalance) || 0;
-            const balanceB = Number(b.accountBalance) || 0;
+            const balanceA = parseInt(String(a.accountBalance || '0'), 10);
+            const balanceB = parseInt(String(b.accountBalance || '0'), 10);
             return balanceB - balanceA;
         });
         
@@ -3895,13 +3960,13 @@ class VoidLeaderboard {
                 ${avatarHTML}
                 <span class="leaderboard-username">${userData.username}</span>
             </div>
-            <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+            <span class="leaderboard-balance">${parseInt(String(userData.accountBalance || '0'), 10).toLocaleString()}</span>
         `;
         
         return leaderboardItem;
     }
     
-    // Enhanced updateLeaderboardPositions method with improved position change handling - FIXED
+    // Enhanced updateLeaderboardPositions method with improved position change handling
     updateLeaderboardPositions(newUsers, prevPositions) {
         console.log("Updating leaderboard positions with enhanced animations");
         
@@ -3927,8 +3992,8 @@ class VoidLeaderboard {
                 // Update balance regardless - with enhanced animation
                 const balanceEl = item.querySelector('.leaderboard-balance');
                 if (balanceEl) {
-                    const currentBalance = parseInt(balanceEl.textContent.replace(/,/g, '')) || 0;
-                    const newBalance = userData.accountBalance || 0;
+                    const currentBalance = parseInt(balanceEl.textContent.replace(/,/g, ''), 10) || 0;
+                    const newBalance = parseInt(String(userData.accountBalance || '0'), 10);
                     
                     if (currentBalance !== newBalance) {
                         // Log significant balance changes
@@ -4239,11 +4304,82 @@ function addExtraLeaderboardStyles() {
     document.head.appendChild(style);
 }
 
-// Initialize Accounting System
-const voidAccounting = new VoidNetworkAccounting();
-
-// Initialize Leaderboard
-const voidLeaderboard = new VoidLeaderboard(db);
+// Function to automatically sync all user balances with the leaderboard
+// Call this periodically to ensure leaderboard stays accurate
+async function syncAllUserBalancesToLeaderboard() {
+    try {
+        console.log("Starting full leaderboard synchronization with users collection");
+        
+        // Fetch all users
+        const usersRef = collection(db, 'users');
+        const usersSnapshot = await getDocs(usersRef);
+        
+        // Track statistics
+        let totalUsers = 0;
+        let updatedUsers = 0;
+        let errors = 0;
+        
+        // Process each user
+        const batch = writeBatch(db);
+        const batchUpdates = [];
+        
+        usersSnapshot.forEach(userDoc => {
+            if (userDoc.exists()) {
+                totalUsers++;
+                const userData = userDoc.data();
+                
+                // Skip banned/disabled users
+                if (userData.banned || userData.accountDisabled || userData.deleted) {
+                    return;
+                }
+                
+                // Prepare to update the leaderboard
+                const leaderboardRef = doc(db, 'leaderboard', userDoc.id);
+                
+                // Collect updates for batch processing
+                batchUpdates.push({
+                    ref: leaderboardRef,
+                    data: {
+                        username: userData.username || 'Unknown',
+                        accountBalance: userData.accountBalance || 0
+                    }
+                });
+            }
+        });
+        
+        // Process updates in smaller batches (Firestore has a limit of 500 operations per batch)
+        const batchSize = 400;
+        
+        for (let i = 0; i < batchUpdates.length; i += batchSize) {
+            const currentBatch = writeBatch(db);
+            const currentUpdates = batchUpdates.slice(i, i + batchSize);
+            
+            currentUpdates.forEach(update => {
+                currentBatch.set(update.ref, update.data, { merge: true });
+                updatedUsers++;
+            });
+            
+            await currentBatch.commit();
+        }
+        
+        console.log(`Leaderboard sync complete. Processed ${totalUsers} users, updated ${updatedUsers} leaderboard entries, encountered ${errors} errors.`);
+        
+        // Force a leaderboard refresh to show the updated data
+        forceLeaderboardRefresh();
+        
+        return {
+            totalUsers,
+            updatedUsers,
+            errors
+        };
+    } catch (error) {
+        console.error("Error in leaderboard sync:", error);
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
 
 // Helper function to refresh leaderboard and highlight special users
 function refreshLeaderboard() {
@@ -4272,539 +4408,105 @@ function forceLeaderboardRefresh() {
     }, 100);
 }
 
-// Detect screen size changes to handle mobile responsive layout
-function handleResponsiveLayout() {
-    const leaderboardContainer = document.querySelector('.leaderboard-container');
-    
-    if (window.innerWidth <= 768) {
-        // For mobile: Show the toggle button for collapse/expand
-        if (leaderboardContainer) {
-            const toggleBtn = document.getElementById('leaderboardToggle');
-            if (toggleBtn) {
-                toggleBtn.style.display = 'flex';
-            }
-            
-            // Auto-collapse on mobile initially
-            if (!voidLeaderboard.isMinimized && !leaderboardContainer.classList.contains('expanded')) {
-                voidLeaderboard.isMinimized = true;
-            }
-        }
-    } else {
-        // For desktop: hide the toggle button as the leaderboard is always visible
-        const toggleBtn = document.getElementById('leaderboardToggle');
-        if (toggleBtn) {
-            toggleBtn.style.display = 'none';
+// IMPORTANT: Updated recordGameTransaction method for VoidAccounting class
+// This must be added to your VoidAccounting class to ensure the leaderboard stays in sync!
+async recordGameTransaction(gameId, userId, transactionType, amount) {
+    try {
+        console.log(`Recording game transaction: ${transactionType} for ${amount} coins in ${gameId}`);
+        
+        // Security check: Only allow user to create transactions for themselves
+        if (this.auth.currentUser && userId !== this.auth.currentUser.uid) {
+            console.warn("User trying to create transaction for another user - denied");
+            throw new Error('Unauthorized access');
         }
         
-        // Reset any mobile-specific classes
-        if (leaderboardContainer) {
-            leaderboardContainer.classList.remove('expanded');
-        }
-    }
-}
-
-// Game loading logic with COMPLETE game definitions
-const defaultApps = [
-    {
-        title: "Ball Dropper",
-        imgSrc: "https://lh7-us.googleusercontent.com/CUj18dKaBkXv0WI59qpP2-Ub1J0KHyKXwgnhPBdmzDzwhQNvIkwPsrVLJCiSsS0iNOaF8-nAamakuiFLoRzYIGyOr-LOFJg9hD5IA9cIvjh5ZIHmBhT-hel39crAOTgz88P8jX2WApcC5PDnLbabDK_QC1vyFw",
-        link: "/local games/Plinko/plinko.html"
-    },
-    {
-        title: "MineFeild",
-        imgSrc: "https://lh7-us.googleusercontent.com/WAjTfpxFqdXwMOlzyChcCi40sg6-ukZN5u24gdmWyi9_Yca5-V8vBR6zrgOoADGwKKJM7e7cKEkq9i_chkYesJvN_VVnvKAfUOPIllTxR2mbOK-HiR0vlIgH_2_bY2Oqzh2ndVieVycQoGDMXuZC-8gpE85Ypg",
-        link: "/local games/CrossyRoad/crossy.html"
-    },
-    {
-        title: "Memory Squares",
-        imgSrc: "https://lh7-us.googleusercontent.com/USI3iEwtHyyyN6fdMllkREQg8h8N7xsXxw94Wb0umSNOzvXTgMtBtxMBXwgyVOHirbrZCVGU1JDeyVaW94xuTS-4vEvT1iZzriw3We_RIYDPW63aWxDEj8xZ_d7Nc3vi6LfrEr20QOOMvnWL8JD5XgbbC-PjKA",
-        link: "/local games/memory-square/mem.html"
-    },
-    {
-        title: "VoidSnake",
-        imgSrc: "https://lh7-us.googleusercontent.com/zPbDytQWYmY90BK7jPcdb8QQ8QNz4LWyhwUq1zNWiD64NNGC_8L21T_QDOl9z8R9QRvJtkFRvM9f83ODmjJJYgG6sZwi71SPiTUwASMOaofbb7wIOKEQJ-Wq1VSGVlCg3RmSdC7B4d-SGOfs_hRdmKjtxHbGOQ",
-        link: "/local games/Void Snake/Voidsnake.html"
-    },
-    {
-        title: "Heads Or Tails?",
-        imgSrc: "https://lh7-us.googleusercontent.com/jpunH9P0O_of8oU2ZilkliydM46qFTQxD__XgzIKv3OU7zZi77arrF9F2hGe-wgyzO5-57VJvN1zocVFN8549jIDkN2rKc9xEjcywhhJCldCaJkZnMgyEHtwJPuUsZZSu4DsK-L2b2eQGepfKwhgn4p7tgzrqA",
-        link: "/local games/CoinFlip/coinflip.html"
-    },
-    {
-        title: "Chicken Run",
-        imgSrc: "https://lh7-us.googleusercontent.com/JugrfbksXzV3Mwwp32MOX-DHGD1EQJmZIaB_RYn9VBvoihT7-bClXPzyfYJC4mGXsYsdTMWJh-Xxe8L9wpHrGntuc0Shzu9tqKCTSug-jM2SiW1BIBcok9Fxlz0JvZEqaKVMbSWK1dlWmw8caafDFRErSox7YA",
-        link: "/local games/ChickenRun/chickenrun.html"
-    },
-    {
-        title: "Black Jack",
-        imgSrc: "https://lh7-us.googleusercontent.com/OZqPInsN8s8qb43B5XLKVNm6uHmFM_GBSMVdBcr4Y8fYr-dX_jSqsu7keD7RoMafKFhUprNXkYYwpvmTwsNNkvmzR23M3XL1ykIp-8EpICFqttainlnXyRuobeBcEp4YE8fxhdDdBxgufc8EhjzItiMSAI821w",
-        link: "/local games/BlackJack/BlackJack.html"
-    },
-    {
-        title: "Tic Tac Toe",
-        imgSrc: "https://lh7-us.googleusercontent.com/9kSWLTVDFONfAKr5ypIjt5LvF36mUlapDOEMJdwX0jkF-wvLUAPvd6Pg42ws-2Fdq2dRvOtO3WRMOtkJiS7atfoqugRCHgAsxqni6PVbRlIoM-uqCAOWjVp-wCnFWxuHDWAPEGuwjNkiBYSXhTljpVMf4A_h2Q",
-        link: "/local games/TicTacToe/TicTacToe.html"
-    },
-    {
-        title: "Water Roulette",
-        imgSrc: "https://lh7-us.googleusercontent.com/55Ss_gX74t5Qy9Zr2OevrdodZtTs3lQ4KEAXiOhyMoRctF1EDDcaepxmc2Fou29Jl0AUWsl5NGx8xiDW89aOwgXnTtkrFa5B7TXOczHrtCbdyT8WFcrCcisyTUmd9h8XfGTmvbUZ2uXNZ8gZk7UoVMxuTh2tQw",
-        link: "/local games/RussianRoulette/RussianRoulette.html"
-    },
-    {
-        title: "Click Race Multiplayer",
-        imgSrc: "https://lh7-us.googleusercontent.com/0uIu5df5JmX-mNMQCWXZU39v4N0h3tYQntJyUgd74z_OBw5neJum7hYw7YroKxDZI4lqaEZi66aTB3PuKtJ2-DdaPqf9ZhyzVrMkBaHuFTlITvL3dBLWVqpFBRKWr9lapTsOrbZMhjlf6MyKa3mcou5hO3zl5g",
-        link: "/local games/ClickRace/ClickRace.html"
-    },
-];
-
-// Complete renderAppsList function
-function renderAppsList() {
-    const gamesList = document.getElementById("gamesList");
-    
-    if (!gamesList) {
-        console.error("Games list element not found");
-        return;
-    }
-    
-    gamesList.innerHTML = '';
-    console.log("Rendering games list");
-    
-    defaultApps.forEach(app => {
-        const appElement = document.createElement("div");
-        appElement.className = "game-item";
+        // Get the user's current data
+        const userRef = doc(this.db, 'users', userId);
+        const userDoc = await getDoc(userRef);
         
-        appElement.innerHTML = `
-            <div class="game-icon">
-                <img src="${app.imgSrc}" alt="${app.title} icon">
-            </div>
-            <h3 class="game-title">${app.title}</h3>
-        `;
-
-        appElement.onclick = () => {
-            // Check if user is logged in before navigating to game
-            const currentUser = voidAccounting.getCurrentUser();
-            if (currentUser) {
-                console.log("Navigating to game:", app.title);
-                
-                // Record the game play attempt
-                voidAccounting.recordGameTransaction(
-                    app.title.toLowerCase().replace(/\s+/g, '_'), 
-                    currentUser.uid,
-                    'game_play',
-                    0 // Just tracking the visit, not charging coins here
-                ).then(() => {
-                    // Navigate to the game after transaction is recorded
-                    window.location.href = app.link;
-                }).catch(error => {
-                    console.error("Error recording game visit:", error);
-                    // Still navigate even if tracking fails
-                    window.location.href = app.link;
-                });
-            } else {
-                alert('Please login to play games');
-                authContainer.style.display = 'block';
-                setTimeout(() => {
-                    authContainer.classList.add('visible');
-                }, 10);
-            }
-        };
-
-        gamesList.appendChild(appElement);
-    });
-}
-
-// Complete search functionality
-document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
-    const gamesList = document.getElementById("gamesList");
-    const searchTerm = this.value.toLowerCase();
-    
-    if (!gamesList) return;
-    
-    gamesList.innerHTML = '';
-    
-    defaultApps.forEach(app => {
-        if (app.title.toLowerCase().includes(searchTerm)) {
-            const appElement = document.createElement("div");
-            appElement.className = "game-item";
+        if (!userDoc.exists()) {
+            throw new Error('User document not found');
+        }
+        
+        const userData = userDoc.data();
+        let currentBalance = userData.accountBalance || 0;
+        
+        // Create transaction record
+        const transactionRef = collection(this.db, 'transactions');
+        
+        // Only update balance for certain transaction types
+        if (transactionType === 'win' || transactionType === 'loss') {
+            // Calculate new balance
+            const newBalance = transactionType === 'win' 
+                ? currentBalance + amount
+                : Math.max(0, currentBalance - amount); // Prevent negative balance
             
-            appElement.innerHTML = `
-                <div class="game-icon">
-                    <img src="${app.imgSrc}" alt="${app.title} icon">
-                </div>
-                <h3 class="game-title">${app.title}</h3>
-            `;
-
-            appElement.onclick = () => {
-                // Check if user is logged in before navigating to game
-                const currentUser = voidAccounting.getCurrentUser();
-                if (currentUser) {
-                    // Record the game play attempt
-                    voidAccounting.recordGameTransaction(
-                        app.title.toLowerCase().replace(/\s+/g, '_'), 
-                        currentUser.uid,
-                        'game_play',
-                        0 // Just tracking the visit, not charging coins here
-                    ).then(() => {
-                        // Navigate to the game after transaction is recorded
-                        window.location.href = app.link;
-                    }).catch(error => {
-                        console.error("Error recording game visit:", error);
-                        // Still navigate even if tracking fails
-                        window.location.href = app.link;
+            // Update user account in Firestore
+            await updateDoc(userRef, {
+                accountBalance: newBalance,
+                totalGamesPlayed: (userData.totalGamesPlayed || 0) + 1
+            });
+            
+            // CRITICAL: Always update leaderboard together with user balance
+            // This ensures the leaderboard stays in sync
+            const leaderboardRef = doc(this.db, 'leaderboard', userId);
+            await updateDoc(leaderboardRef, {
+                accountBalance: newBalance,
+                username: userData.username || 'Unknown' // Ensure username is always up to date
+            }).catch(error => {
+                // If leaderboard entry doesn't exist, create it
+                if (error.code === 'not-found') {
+                    setDoc(leaderboardRef, {
+                        username: userData.username || 'Unknown',
+                        accountBalance: newBalance,
+                        joinDate: new Date()
                     });
                 } else {
-                    alert('Please login to play games');
-                    authContainer.style.display = 'block';
-                    setTimeout(() => {
-                        authContainer.classList.add('visible');
-                    }, 10);
+                    console.error("Error updating leaderboard:", error);
                 }
-            };
-
-            gamesList.appendChild(appElement);
-        }
-    });
-});
-
-// Helper function to show login errors
-function showLoginError(message) {
-    // Remove any existing error message
-    const existingError = document.getElementById('login-error');
-    if (existingError) {
-        existingError.remove();
-    }
-    
-    // Create error message element
-    const errorDiv = document.createElement('div');
-    errorDiv.id = 'login-error';
-    errorDiv.style.color = '#ff6b6b';
-    errorDiv.style.marginTop = '10px';
-    errorDiv.style.fontSize = '0.9rem';
-    errorDiv.textContent = message;
-    
-    // Add to login form
-    const loginForm = document.getElementById('login-form');
-    if (loginForm) {
-        loginForm.appendChild(errorDiv);
-    } else {
-        // Fallback to alert if we can't find the form
-        alert(message);
-    }
-}
-
-// Helper function to show registration errors
-function showRegisterError(message) {
-    // Remove any existing error message
-    const existingError = document.getElementById('register-error');
-    if (existingError) {
-        existingError.remove();
-    }
-    
-    // Create error message element
-    const errorDiv = document.createElement('div');
-    errorDiv.id = 'register-error';
-    errorDiv.style.color = '#ff6b6b';
-    errorDiv.style.marginTop = '10px';
-    errorDiv.style.fontSize = '0.9rem';
-    errorDiv.textContent = message;
-    
-    // Add to register form
-    const registerForm = document.getElementById('register-form');
-    if (registerForm) {
-        registerForm.appendChild(errorDiv);
-    } else {
-        // Fallback to alert if we can't find the form
-        alert(message);
-    }
-}
-
-// Function to verify auth container structure
-function ensureAuthContainerStructure() {
-    const authContainer = document.getElementById('auth-container');
-    if (!authContainer) return;
-    
-    // Make sure login form has all required elements
-    const loginForm = document.getElementById('login-form');
-    if (loginForm) {
-        if (!loginForm.querySelector('#login-email')) {
-            const emailInput = document.createElement('input');
-            emailInput.type = 'email';
-            emailInput.id = 'login-email';
-            emailInput.placeholder = 'Email';
-            loginForm.insertBefore(emailInput, loginForm.querySelector('button'));
-        }
-        
-        if (!loginForm.querySelector('#login-password')) {
-            const passwordInput = document.createElement('input');
-            passwordInput.type = 'password';
-            passwordInput.id = 'login-password';
-            passwordInput.placeholder = 'Password';
-            loginForm.insertBefore(passwordInput, loginForm.querySelector('button'));
-        }
-    }
-    
-    // Make sure register form has all required elements
-    const registerForm = document.getElementById('register-form');
-    if (registerForm) {
-        if (!registerForm.querySelector('#register-username')) {
-            const usernameInput = document.createElement('input');
-            usernameInput.type = 'text';
-            usernameInput.id = 'register-username';
-            usernameInput.placeholder = 'Username';
-            registerForm.insertBefore(usernameInput, registerForm.querySelector('button'));
-        }
-        
-        if (!registerForm.querySelector('#register-email')) {
-            const emailInput = document.createElement('input');
-            emailInput.type = 'email';
-            emailInput.id = 'register-email';
-            emailInput.placeholder = 'Email';
-            registerForm.insertBefore(emailInput, registerForm.querySelector('button'));
-        }
-        
-        if (!registerForm.querySelector('#register-password')) {
-            const passwordInput = document.createElement('input');
-            passwordInput.type = 'password';
-            passwordInput.id = 'register-password';
-            passwordInput.placeholder = 'Password';
-            registerForm.insertBefore(passwordInput, registerForm.querySelector('button'));
-        }
-    }
-}
-
-// FIXED: Enhanced login button event handler
-document.getElementById('login-btn')?.addEventListener('click', async () => {
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
-    
-    // Clear any previous error messages
-    const errorMsgEl = document.getElementById('login-error');
-    if (errorMsgEl) {
-        errorMsgEl.remove();
-    }
-    
-    if (!email || !password) {
-        showLoginError('Please enter both email and password');
-        return;
-    }
-    
-    // Show loading indicator
-    const loginBtn = document.getElementById('login-btn');
-    const originalBtnText = loginBtn.textContent;
-    loginBtn.disabled = true;
-    loginBtn.textContent = 'Logging in...';
-    
-    try {
-        console.log('Attempting login for:', email);
-        const user = await voidAccounting.loginUser(email, password);
-        console.log('Login successful for user:', user.uid);
-        
-        // Reset button
-        loginBtn.textContent = originalBtnText;
-        loginBtn.disabled = false;
-        
-        // Update UI for logged in user
-        await updateUIForLoggedInUser(user);
-        
-        // Hide auth container after login
-        authContainer.style.display = 'none';
-        authContainer.classList.remove('visible');
-        
-        // Show success notification
-        showNotification('Login successful!', 'success');
-        
-        // Force a leaderboard refresh to ensure it's up to date with the user's data
-        forceLeaderboardRefresh();
-    } catch (error) {
-        console.error('Login failed:', error);
-        
-        // Reset button
-        loginBtn.textContent = originalBtnText;
-        loginBtn.disabled = false;
-        
-        // Display error to user
-        showLoginError(error.message || 'Login failed. Please try again.');
-    }
-});
-
-// FIXED: Enhanced register button event handler
-document.getElementById('register-btn')?.addEventListener('click', async () => {
-    const username = document.getElementById('register-username').value;
-    const email = document.getElementById('register-email').value;
-    const password = document.getElementById('register-password').value;
-    
-    // Clear any previous error messages
-    const errorMsgEl = document.getElementById('register-error');
-    if (errorMsgEl) {
-        errorMsgEl.remove();
-    }
-    
-    if (!username || !email || !password) {
-        showRegisterError('Please fill in all fields');
-        return;
-    }
-    
-    // Show loading indicator
-    const registerBtn = document.getElementById('register-btn');
-    const originalBtnText = registerBtn.textContent;
-    registerBtn.disabled = true;
-    registerBtn.textContent = 'Creating Account...';
-    
-    try {
-        console.log('Attempting registration for:', email);
-        const user = await voidAccounting.registerUser(email, password, username);
-        console.log('Registration successful for user:', user.uid);
-        
-        // Reset button
-        registerBtn.textContent = originalBtnText;
-        registerBtn.disabled = false;
-        
-        // Update UI for logged in user
-        await updateUIForLoggedInUser(user);
-        
-        // Hide auth container after registration
-        authContainer.style.display = 'none';
-        authContainer.classList.remove('visible');
-        
-        // Show success notification
-        showNotification('Account created successfully!', 'success');
-    } catch (error) {
-        console.error('Registration failed:', error);
-        
-        // Reset button
-        registerBtn.textContent = originalBtnText;
-        registerBtn.disabled = false;
-        
-        // Display error to user
-        showRegisterError(error.message || 'Registration failed. Please try again.');
-    }
-});
-
-// FIXED: Update UI for logged in user
-async function updateUIForLoggedInUser(user) {
-    if (!user) {
-        console.error("Cannot update UI: No user provided");
-        return;
-    }
-
-    try {
-        console.log("Updating UI for logged in user:", user.uid);
-        
-        document.getElementById('login-form').style.display = 'none';
-        document.getElementById('register-form').style.display = 'none';
-        document.getElementById('user-profile').style.display = 'block';
-        
-        // Show loading state
-        document.getElementById('username-display').textContent = "Loading...";
-        document.getElementById('balance-display').textContent = "...";
-        
-        // Fetch fresh user details
-        const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
-        document.getElementById('username-display').textContent = userDetails.username;
-        document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
-        console.log("Updated UI with username:", userDetails.username);
-        
-        // Load user's theme and avatar if they have them equipped
-        try {
-            await itemManager.loadUserPreferences(user.uid);
-        } catch (prefError) {
-            console.warn("Error loading user preferences:", prefError);
-            // Non-critical error, continue
-        }
-        
-        // Check if user is a developer and show dev tab if they are
-        try {
-            const isDev = await itemManager.verifyDevAccess();
-            const devTab = document.querySelector('.shop-tab[data-tab="dev"]');
+            });
             
-            if (devTab) {
-                if (isDev) {
-                    devTab.style.display = 'block';
-                } else {
-                    devTab.style.display = 'none';
-                }
-            }
-        } catch (devError) {
-            console.warn("Error checking dev access:", devError);
-            // Non-critical error, continue
+            // Record the transaction with before/after balances
+            await addDoc(transactionRef, {
+                userId: userId,
+                gameId: gameId,
+                transactionType: transactionType,
+                amount: amount,
+                timestamp: new Date(),
+                prevBalance: currentBalance,
+                newBalance: newBalance
+            });
+            
+            return {
+                success: true,
+                prevBalance: currentBalance,
+                newBalance: newBalance
+            };
+        } else {
+            // Just record the game play without changing balance
+            await addDoc(transactionRef, {
+                userId: userId,
+                gameId: gameId,
+                transactionType: transactionType,
+                timestamp: new Date()
+            });
+            
+            return {
+                success: true,
+                currentBalance: currentBalance
+            };
         }
-        
-        // Check for dev avatars and verify every minute
-        setInterval(async () => {
-            try {
-                await itemManager.verifyDevAccess();
-            } catch (error) {
-                console.warn("Error in periodic dev verification:", error);
-                // Non-critical error, continue
-            }
-        }, 60000); // Check every 1 minute
     } catch (error) {
-        console.error("Error updating UI:", error);
-        showNotification('Could not load user details. Please try again.', 'error');
+        console.error("Transaction Error:", error);
+        throw error;
     }
 }
 
-function updateUIForLoggedOutUser() {
-    document.getElementById('login-form').style.display = 'block';
-    document.getElementById('register-form').style.display = 'block';
-    document.getElementById('user-profile').style.display = 'none';
-}
-
-// Improved logout handler
-document.getElementById('logout-btn')?.addEventListener('click', async () => {
-    try {
-        // Show loading indicator
-        const logoutBtn = document.getElementById('logout-btn');
-        const originalBtnText = logoutBtn.textContent;
-        logoutBtn.disabled = true;
-        logoutBtn.textContent = 'Logging out...';
-        
-        // Unequip any theme before logging out
-        if (itemManager.currentTheme) {
-            try {
-                itemManager.unequipTheme();
-            } catch (error) {
-                console.warn("Error unequipping theme:", error);
-                // Non-critical error, continue
-            }
-        }
-        
-        await voidAccounting.logout();
-        
-        // Reset button (though it will be hidden)
-        logoutBtn.textContent = originalBtnText;
-        logoutBtn.disabled = false;
-        
-        updateUIForLoggedOutUser();
-        
-        // Close shop container if open
-        shopContainer.style.display = 'none';
-        shopContainer.classList.remove('visible');
-        
-        // Close auth container
-        authContainer.style.display = 'none';
-        authContainer.classList.remove('visible');
-        
-        // Show notification
-        showNotification('Logged out successfully', 'success');
-    } catch (error) {
-        console.error('Logout failed:', error);
-        alert('Logout failed: ' + error.message);
-        
-        // Reset button
-        const logoutBtn = document.getElementById('logout-btn');
-        if (logoutBtn) {
-            logoutBtn.textContent = 'Logout';
-            logoutBtn.disabled = false;
-        }
-    }
-});
+// Initialize Leaderboard
+const voidLeaderboard = new VoidLeaderboard(db);
 
 // Initialize layout and add enhanced animation styles on page load - UPDATED
 window.addEventListener('load', () => {
-    // Check if auth elements exist and create if needed
-    ensureAuthContainerStructure();
-    
     handleResponsiveLayout();
     
     // Add the enhanced animation styles
@@ -4818,8 +4520,14 @@ window.addEventListener('load', () => {
         // Start leaderboard updates
         voidLeaderboard.startLeaderboardUpdates();
         
+        // Initial sync on page load to correct balance inconsistencies
+        syncAllUserBalancesToLeaderboard();
+        
         // Set up more frequent refreshes - improved frequency
         setInterval(refreshLeaderboard, 8000); // Refresh every 8 seconds
+        
+        // Periodic full sync every 5 minutes
+        setInterval(syncAllUserBalancesToLeaderboard, 5 * 60 * 1000);
         
         // Check if user is already logged in
         const user = auth.currentUser;
@@ -4835,66 +4543,10 @@ window.addEventListener('load', () => {
     }
 });
 
-// Check responsive layout on window resize
-window.addEventListener('resize', handleResponsiveLayout);
-
 // Stop leaderboard updates when user leaves the page
 window.addEventListener('beforeunload', () => {
     voidLeaderboard.stopLeaderboardUpdates();
 });
-
-// Make sure voidAccounting.loginUser method is improved
-// If you're adding this to an existing class definition, replace its loginUser method with this:
-/*
-async loginUser(email, password) {
-    try {
-        console.log("Logging in user:", email);
-        
-        // Check for empty credentials
-        if (!email || !password) {
-            throw new Error('Email and password are required');
-        }
-        
-        // Add a slight delay to ensure Firebase has time to process
-        const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
-        
-        if (!userCredential || !userCredential.user) {
-            throw new Error('Login failed: No user returned');
-        }
-        
-        console.log("User logged in successfully:", userCredential.user.uid);
-        
-        // Verify the user has a profile in Firestore
-        const userDoc = await getDoc(doc(this.db, 'users', userCredential.user.uid));
-        
-        if (!userDoc.exists()) {
-            console.warn("User authenticated but no profile found. Creating minimal profile.");
-            // Create minimal profile if it doesn't exist
-            await setDoc(doc(this.db, 'users', userCredential.user.uid), {
-                username: email.split('@')[0], // Use part of email as username
-                createdAt: new Date(),
-                accountBalance: 1000, // Starting balance
-                totalGamesPlayed: 0
-            });
-        }
-        
-        return userCredential.user;
-    } catch (error) {
-        console.error("Login Error:", error);
-        
-        // Provide more user-friendly error messages
-        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-            throw new Error('Invalid email or password');
-        } else if (error.code === 'auth/too-many-requests') {
-            throw new Error('Too many login attempts. Please try again later');
-        } else if (error.code === 'auth/user-disabled') {
-            throw new Error('This account has been disabled');
-        } else {
-            throw error; // Re-throw other errors
-        }
-    }
-}
-*/
 </script>
 </body>
 </html>
