@@ -3406,7 +3406,7 @@ class VoidNetworkAccounting {
     }
 }
 
-// IMPROVED: Secure Leaderboard Implementation with Avatar Support
+// IMPROVED: Dynamic Leaderboard Implementation with Real-time Position Updates
 class VoidLeaderboard {
     constructor(db) {
         this.db = db;
@@ -3416,6 +3416,7 @@ class VoidLeaderboard {
         this.maxRetries = 3;
         this.retryTimeout = null;
         this.isMinimized = false;
+        this.currentLeaderboardData = []; // Track current leaderboard state
         console.log("VoidLeaderboard initialized");
         
         // Set up minimize/maximize toggle
@@ -3472,7 +3473,9 @@ class VoidLeaderboard {
             
             // Read from leaderboard collection to get users with avatars
             const leaderboardRef = collection(this.db, 'leaderboard');
-            const q = query(leaderboardRef, orderBy('accountBalance', 'desc'), limit(20));
+            
+            // Create query without orderBy - we'll handle sorting in memory for better animations
+            const q = query(leaderboardRef);
             
             // Set up real-time listener
             this.unsubscribe = onSnapshot(q, 
@@ -3483,8 +3486,8 @@ class VoidLeaderboard {
                     // Reset retry count on successful data
                     this.retryCount = 0;
                     
-                    // Update UI with the snapshot data
-                    this.updateLeaderboardUI(querySnapshot);
+                    // Process changes and update UI
+                    this.processLeaderboardChanges(querySnapshot);
                 }, 
                 (error) => {
                     console.error("Leaderboard listener error:", error);
@@ -3504,82 +3507,79 @@ class VoidLeaderboard {
         }
     }
     
-    // IMPROVED: Secure leaderboard UI update with avatar display
-    async updateLeaderboardUI(querySnapshot) {
+    // Process changes from Firestore and update leaderboard accordingly
+    processLeaderboardChanges(querySnapshot) {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
             return;
         }
         
-        // Always clear the leaderboard completely first
-        this.leaderboardElement.innerHTML = '';
-        
         if (querySnapshot.empty) {
             this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+            this.currentLeaderboardData = [];
             return;
         }
         
-        console.log("Updating leaderboard with new data");
+        console.log("Processing leaderboard changes");
         
-        // Create array of valid users to display - FILTER OUT BANNED USERS
+        // Extract all valid users (not banned)
         const validUsers = [];
         
-        // Read data from leaderboard entries with avatars
         querySnapshot.forEach((docSnapshot) => {
             if (docSnapshot.exists()) {
                 const userData = docSnapshot.data();
                 
                 // Skip banned users
                 if (userData.banned !== true) {
-                    // Add user with avatar if it exists in the leaderboard entry
                     validUsers.push({
                         id: docSnapshot.id,
                         username: userData.username || 'Unknown',
                         accountBalance: userData.accountBalance || 0,
                         avatar: userData.equippedAvatar ? itemManager.items[userData.equippedAvatar]?.url : null
                     });
-                } else {
-                    console.log(`Skipping banned user: ${userData.username || 'Unknown'}`);
                 }
             }
         });
         
-        // Display valid users (up to 20)
-        const displayCount = Math.min(validUsers.length, 20);
+        // Sort by account balance descending (higher balances at the top)
+        const sortedUsers = validUsers.sort((a, b) => b.accountBalance - a.accountBalance);
+        
+        // Keep track of previous positions to detect changes
+        const prevPositions = {};
+        this.currentLeaderboardData.forEach((user, index) => {
+            prevPositions[user.id] = index;
+        });
+        
+        // Take only top 20 for display
+        const topUsers = sortedUsers.slice(0, 20);
+        
+        // First time initialization - create all elements
+        if (this.currentLeaderboardData.length === 0) {
+            this.leaderboardElement.innerHTML = '';
+            this.renderInitialLeaderboard(topUsers);
+        } else {
+            // Update existing leaderboard
+            this.updateLeaderboardPositions(topUsers, prevPositions);
+        }
+        
+        // Update our current state
+        this.currentLeaderboardData = topUsers;
+        
+        // Highlight special users
+        this.highlightSpecialUsers();
+    }
+    
+    // Initial render of leaderboard
+    renderInitialLeaderboard(users) {
+        this.leaderboardElement.innerHTML = '';
+        
+        const displayCount = users.length;
         
         for (let i = 0; i < displayCount; i++) {
-            const userData = validUsers[i];
-            const leaderboardItem = document.createElement('div');
-            leaderboardItem.className = 'leaderboard-item';
-            
-            // Add animation class for new/updated items
-            leaderboardItem.classList.add('leaderboard-updated');
-            
-            // Create avatar HTML if user has one
-            let avatarHTML = '';
-            if (userData.avatar) {
-                avatarHTML = `
-                    <div class="leaderboard-avatar">
-                        <img src="${userData.avatar}" alt="${userData.username}'s avatar">
-                    </div>
-                `;
-            }
-            
-            leaderboardItem.innerHTML = `
-                <span class="leaderboard-rank">#${i + 1}</span>
-                <div class="leaderboard-username-container">
-                    ${avatarHTML}
-                    <span class="leaderboard-username">${userData.username}</span>
-                </div>
-                <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
-            `;
+            const userData = users[i];
+            const leaderboardItem = this.createLeaderboardItem(userData, i);
             
             this.leaderboardElement.appendChild(leaderboardItem);
-            
-            // Remove animation class after animation is complete
-            setTimeout(() => {
-                leaderboardItem.classList.remove('leaderboard-updated');
-            }, 1000);
         }
         
         // Add placeholders to ensure we always show 20 entries
@@ -3598,10 +3598,193 @@ class VoidLeaderboard {
             this.leaderboardElement.appendChild(placeholderItem);
         }
         
-        console.log(`Leaderboard updated with ${displayCount} players and ${20 - displayCount} placeholders`);
+        console.log(`Leaderboard initialized with ${displayCount} players and ${20 - displayCount} placeholders`);
+    }
+    
+    // Create a leaderboard item element
+    createLeaderboardItem(userData, position) {
+        const leaderboardItem = document.createElement('div');
+        leaderboardItem.className = 'leaderboard-item';
+        leaderboardItem.dataset.userId = userData.id;
+        leaderboardItem.dataset.position = position;
         
-        // Find and highlight VoidNetworkOnTop
-        this.highlightSpecialUsers();
+        // Create avatar HTML if user has one
+        let avatarHTML = '';
+        if (userData.avatar) {
+            avatarHTML = `
+                <div class="leaderboard-avatar">
+                    <img src="${userData.avatar}" alt="${userData.username}'s avatar">
+                </div>
+            `;
+        }
+        
+        leaderboardItem.innerHTML = `
+            <span class="leaderboard-rank">#${position + 1}</span>
+            <div class="leaderboard-username-container">
+                ${avatarHTML}
+                <span class="leaderboard-username">${userData.username}</span>
+            </div>
+            <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+        `;
+        
+        return leaderboardItem;
+    }
+    
+    // Update leaderboard positions when data changes
+    updateLeaderboardPositions(newUsers, prevPositions) {
+        // First update all existing items and mark any that need to be moved
+        const itemsToMove = [];
+        const existingItems = {};
+        
+        // Get all existing items
+        const leaderboardItems = this.leaderboardElement.querySelectorAll('.leaderboard-item[data-user-id]');
+        leaderboardItems.forEach(item => {
+            existingItems[item.dataset.userId] = item;
+        });
+        
+        // Process each user in new order
+        newUsers.forEach((userData, newPosition) => {
+            const userId = userData.id;
+            const prevPosition = prevPositions[userId];
+            
+            // If user exists in leaderboard
+            if (existingItems[userId]) {
+                const item = existingItems[userId];
+                
+                // Update balance regardless
+                const balanceEl = item.querySelector('.leaderboard-balance');
+                if (balanceEl) {
+                    if (balanceEl.textContent !== userData.accountBalance.toLocaleString()) {
+                        // Highlight balance change
+                        balanceEl.classList.add('balance-updated');
+                        setTimeout(() => balanceEl.classList.remove('balance-updated'), 1000);
+                        
+                        // Update balance text
+                        balanceEl.textContent = userData.accountBalance.toLocaleString();
+                    }
+                }
+                
+                // If position changed
+                if (prevPosition !== undefined && prevPosition !== newPosition) {
+                    // Store for moving
+                    itemsToMove.push({
+                        item: item,
+                        newPosition: newPosition,
+                        prevPosition: prevPosition,
+                        userData: userData
+                    });
+                }
+            } else {
+                // New user - create and insert
+                const newItem = this.createLeaderboardItem(userData, newPosition);
+                newItem.classList.add('leaderboard-updated');
+                
+                // Find where to insert
+                if (newPosition === 0) {
+                    // Insert at top
+                    this.leaderboardElement.prepend(newItem);
+                } else if (newPosition >= this.leaderboardElement.children.length) {
+                    // Insert at end
+                    this.leaderboardElement.appendChild(newItem);
+                } else {
+                    // Insert at position
+                    this.leaderboardElement.insertBefore(newItem, this.leaderboardElement.children[newPosition]);
+                }
+                
+                // Remove animation class after animation is complete
+                setTimeout(() => {
+                    newItem.classList.remove('leaderboard-updated');
+                }, 1000);
+            }
+        });
+        
+        // Now move items that changed position
+        if (itemsToMove.length > 0) {
+            console.log(`Moving ${itemsToMove.length} items in leaderboard`);
+            
+            // Sort by new position to avoid conflicts when moving
+            itemsToMove.sort((a, b) => {
+                // If moving up, process lower positions first
+                if (a.newPosition < a.prevPosition && b.newPosition < b.prevPosition) {
+                    return a.newPosition - b.newPosition;
+                }
+                // If moving down, process higher positions first
+                else if (a.newPosition > a.prevPosition && b.newPosition > b.prevPosition) {
+                    return b.newPosition - a.newPosition;
+                }
+                // Otherwise, just sort by new position
+                return a.newPosition - b.newPosition;
+            });
+            
+            // Process movements
+            itemsToMove.forEach(move => {
+                const item = move.item;
+                const newPosition = move.newPosition;
+                
+                // Update rank display
+                const rankEl = item.querySelector('.leaderboard-rank');
+                if (rankEl) {
+                    rankEl.textContent = `#${newPosition + 1}`;
+                }
+                
+                // Update position data attribute
+                item.dataset.position = newPosition;
+                
+                // Add moving class based on direction
+                if (move.prevPosition < newPosition) {
+                    item.classList.add('moving-down');
+                } else {
+                    item.classList.add('moving-up');
+                }
+                
+                // Move in DOM - reposition the element
+                if (newPosition === 0) {
+                    // Move to top
+                    this.leaderboardElement.prepend(item);
+                } else if (newPosition >= this.leaderboardElement.children.length) {
+                    // Move to bottom
+                    this.leaderboardElement.appendChild(item);
+                } else {
+                    // Insert at correct position
+                    this.leaderboardElement.insertBefore(item, this.leaderboardElement.children[newPosition]);
+                }
+                
+                // Remove animation classes after animation is complete
+                setTimeout(() => {
+                    item.classList.remove('moving-up', 'moving-down');
+                }, 1000);
+            });
+        }
+        
+        // Handle removals - if a user drops out of top 20
+        const currentIds = new Set(newUsers.map(user => user.id));
+        Object.keys(existingItems).forEach(userId => {
+            if (!currentIds.has(userId)) {
+                const item = existingItems[userId];
+                item.classList.add('fading-out');
+                
+                // Remove after animation
+                setTimeout(() => {
+                    if (item.parentNode) {
+                        item.parentNode.removeChild(item);
+                    }
+                    
+                    // Add placeholder if needed
+                    if (this.leaderboardElement.children.length < 20) {
+                        const placeholderItem = document.createElement('div');
+                        placeholderItem.className = 'leaderboard-item';
+                        placeholderItem.innerHTML = `
+                            <span class="leaderboard-rank">#${this.leaderboardElement.children.length + 1}</span>
+                            <div class="leaderboard-username-container">
+                                <span class="leaderboard-username">...</span>
+                            </div>
+                            <span class="leaderboard-balance">--</span>
+                        `;
+                        this.leaderboardElement.appendChild(placeholderItem);
+                    }
+                }, 500);
+            }
+        });
     }
     
     // Specifically highlight special usernames
@@ -3627,6 +3810,84 @@ class VoidLeaderboard {
                 }
             }
         });
+    }
+
+    // Stop leaderboard updates
+    stopLeaderboardUpdates() {
+        if (this.unsubscribe) {
+            console.log("Stopping leaderboard updates");
+            this.unsubscribe();
+            this.unsubscribe = null;
+        }
+        
+        // Clear any pending timeouts
+        if (this.retryTimeout) {
+            clearTimeout(this.retryTimeout);
+        }
+    }
+}
+
+// Add this CSS to the page for animation effects
+function addLeaderboardAnimationStyles() {
+    const styleElement = document.createElement('style');
+    styleElement.innerHTML = `
+        /* Leaderboard Item Animations */
+        @keyframes leaderboard-pulse {
+            0% { background-color: rgba(255, 215, 0, 0.3); }
+            100% { background-color: rgba(255, 255, 255, 0.05); }
+        }
+
+        @keyframes moving-up {
+            0% { transform: translateY(0); background-color: rgba(0, 255, 0, 0.2); }
+            10% { transform: translateY(-5px); background-color: rgba(0, 255, 0, 0.2); }
+            90% { transform: translateY(-5px); background-color: rgba(0, 255, 0, 0.1); }
+            100% { transform: translateY(0); background-color: rgba(255, 255, 255, 0.05); }
+        }
+
+        @keyframes moving-down {
+            0% { transform: translateY(0); background-color: rgba(255, 0, 0, 0.2); }
+            10% { transform: translateY(5px); background-color: rgba(255, 0, 0, 0.2); }
+            90% { transform: translateY(5px); background-color: rgba(255, 0, 0, 0.1); }
+            100% { transform: translateY(0); background-color: rgba(255, 255, 255, 0.05); }
+        }
+
+        @keyframes fading-out {
+            0% { opacity: 1; transform: translateX(0); }
+            100% { opacity: 0; transform: translateX(-20px); }
+        }
+
+        @keyframes balance-flash {
+            0% { color: #FFD700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.7); }
+            100% { color: #FFD700; text-shadow: 0 0 5px rgba(255, 215, 0, 0.3); }
+        }
+
+        .leaderboard-updated {
+            animation: leaderboard-pulse 1s ease;
+        }
+
+        .moving-up {
+            animation: moving-up 1s ease;
+        }
+
+        .moving-down {
+            animation: moving-down 1s ease;
+        }
+
+        .fading-out {
+            animation: fading-out 0.5s ease forwards;
+        }
+
+        .balance-updated {
+            animation: balance-flash 1s ease;
+        }
+    `;
+    document.head.appendChild(styleElement);
+}
+
+// Call this function when initializing the page to add animation styles
+document.addEventListener('DOMContentLoaded', function() {
+    addLeaderboardAnimationStyles();
+});
     }
 
     // Stop leaderboard updates
