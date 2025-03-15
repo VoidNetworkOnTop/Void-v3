@@ -2186,457 +2186,500 @@
             }
         };
 
-        // Avatar Roll System
-        const avatarRollSystem = {
-            // Config
-            minBet: 50000,
-            maxBet: 1000000,
-            maxRollsPerDay: 2,
-            cooldownHours: 24,
+// Update the avatarRollSystem implementation to ensure coin deduction works properly
+
+// Avatar Roll System
+const avatarRollSystem = {
+    // Config
+    minBet: 50000,
+    maxBet: 1000000,
+    maxRollsPerDay: 2,
+    cooldownHours: 24,
+    
+    // Current state
+    currentBet: 100000,
+    rollsRemaining: 2,
+    lastRollTimestamp: null,
+    isRolling: false,
+    
+    // DOM elements
+    rollButton: document.getElementById('rollButton'),
+    rollSlider: document.getElementById('rollAmountSlider'),
+    rollAmountDisplay: document.getElementById('rollAmount'),
+    rollsRemainingDisplay: document.getElementById('rollsRemaining'),
+    epicChanceDisplay: document.getElementById('epicChance'),
+    rareChanceDisplay: document.getElementById('rareChance'),
+    commonChanceDisplay: document.getElementById('commonChance'),
+    rollAnimationContainer: document.getElementById('rollAnimationContainer'),
+    rollAnimationTrack: document.getElementById('rollAnimationTrack'),
+    rollResultContainer: document.getElementById('rollResultContainer'),
+    rollResultImage: document.getElementById('rollResultImage'),
+    rollResultImg: document.getElementById('rollResultImg'),
+    rollResultName: document.getElementById('rollResultName'),
+    closeResultButton: document.getElementById('closeResultButton'),
+    
+    // Initialize the roll system
+    init() {
+        if (!this.rollButton || !this.rollSlider) return;
+        
+        // Set up slider event
+        this.rollSlider.addEventListener('input', () => this.updateBetAmount());
+        
+        // Set up roll button
+        this.rollButton.addEventListener('click', () => this.startRoll());
+        
+        // Set up close result button
+        this.closeResultButton.addEventListener('click', () => this.hideResult());
+        
+        // Initial update
+        this.updateBetAmount();
+        
+        console.log("Avatar Roll System initialized");
+    },
+    
+    // Update the displayed bet amount and chances
+    updateBetAmount() {
+        if (!this.rollSlider || !this.rollAmountDisplay) return;
+        
+        this.currentBet = parseInt(this.rollSlider.value);
+        this.rollAmountDisplay.textContent = this.currentBet.toLocaleString();
+        
+        // Calculate chances based on bet amount
+        const ratio = (this.currentBet - this.minBet) / (this.maxBet - this.minBet);
+        
+        // Epic chance increases with bet amount (3% to 15%)
+        const epicChance = 3 + (ratio * 12);
+        // Rare chance increases slightly (10% to 25%)
+        const rareChance = 10 + (ratio * 15);
+        // Common chance decreases as others increase
+        const commonChance = 100 - epicChance - rareChance;
+        
+        // Update displays
+        if (this.epicChanceDisplay) this.epicChanceDisplay.textContent = `${epicChance.toFixed(1)}%`;
+        if (this.rareChanceDisplay) this.rareChanceDisplay.textContent = `${rareChance.toFixed(1)}%`;
+        if (this.commonChanceDisplay) this.commonChanceDisplay.textContent = `${commonChance.toFixed(1)}%`;
+    },
+    
+    // Check user's roll eligibility and available rolls
+    async checkRollEligibility() {
+        try {
+            if (!auth.currentUser) {
+                showNotification('Please log in to use Avatar Roll', 'error');
+                return false;
+            }
             
-            // Current state
-            currentBet: 100000,
-            rollsRemaining: 2,
-            lastRollTimestamp: null,
-            isRolling: false,
+            // Get user account details
+            const userDetails = await voidAccounting.getUserAccountDetails(auth.currentUser.uid);
             
-            // DOM elements
-            rollButton: document.getElementById('rollButton'),
-            rollSlider: document.getElementById('rollAmountSlider'),
-            rollAmountDisplay: document.getElementById('rollAmount'),
-            rollsRemainingDisplay: document.getElementById('rollsRemaining'),
-            epicChanceDisplay: document.getElementById('epicChance'),
-            rareChanceDisplay: document.getElementById('rareChance'),
-            commonChanceDisplay: document.getElementById('commonChance'),
-            rollAnimationContainer: document.getElementById('rollAnimationContainer'),
-            rollAnimationTrack: document.getElementById('rollAnimationTrack'),
-            rollResultContainer: document.getElementById('rollResultContainer'),
-            rollResultImage: document.getElementById('rollResultImage'),
-            rollResultImg: document.getElementById('rollResultImg'),
-            rollResultName: document.getElementById('rollResultName'),
-            closeResultButton: document.getElementById('closeResultButton'),
+            if (userDetails.accountBalance < this.currentBet) {
+                showNotification(`Not enough coins for this roll. You need ${this.currentBet.toLocaleString()} coins.`, 'error');
+                return false;
+            }
             
-            // Initialize the roll system
-            init() {
-                if (!this.rollButton || !this.rollSlider) return;
-                
-                // Set up slider event
-                this.rollSlider.addEventListener('input', () => this.updateBetAmount());
-                
-                // Set up roll button
-                this.rollButton.addEventListener('click', () => this.startRoll());
-                
-                // Set up close result button
-                this.closeResultButton.addEventListener('click', () => this.hideResult());
-                
-                // Initial update
-                this.updateBetAmount();
-                
-                console.log("Avatar Roll System initialized");
-            },
+            // Check roll history for today
+            const userId = auth.currentUser.uid;
+            const rollHistoryRef = collection(db, 'avatar_rolls', userId, 'history');
             
-            // Update the displayed bet amount and chances
-            updateBetAmount() {
-                if (!this.rollSlider || !this.rollAmountDisplay) return;
-                
-                this.currentBet = parseInt(this.rollSlider.value);
-                this.rollAmountDisplay.textContent = this.currentBet.toLocaleString();
-                
-                // Calculate chances based on bet amount
-                const ratio = (this.currentBet - this.minBet) / (this.maxBet - this.minBet);
-                
-                // Epic chance increases with bet amount (3% to 15%)
-                const epicChance = 3 + (ratio * 12);
-                // Rare chance increases slightly (10% to 25%)
-                const rareChance = 10 + (ratio * 15);
-                // Common chance decreases as others increase
-                const commonChance = 100 - epicChance - rareChance;
-                
-                // Update displays
-                if (this.epicChanceDisplay) this.epicChanceDisplay.textContent = `${epicChance.toFixed(1)}%`;
-                if (this.rareChanceDisplay) this.rareChanceDisplay.textContent = `${rareChance.toFixed(1)}%`;
-                if (this.commonChanceDisplay) this.commonChanceDisplay.textContent = `${commonChance.toFixed(1)}%`;
-            },
+            // Get today's date (start of day)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
             
-            // Check user's roll eligibility and available rolls
-            async checkRollEligibility() {
-                try {
-                    if (!auth.currentUser) {
-                        showNotification('Please log in to use Avatar Roll', 'error');
-                        return false;
-                    }
-                    
-                    // Get user account details
-                    const userDetails = await voidAccounting.getUserAccountDetails(auth.currentUser.uid);
-                    
-                    if (userDetails.accountBalance < this.currentBet) {
-                        showNotification(`Not enough coins for this roll. You need ${this.currentBet.toLocaleString()} coins.`, 'error');
-                        return false;
-                    }
-                    
-                    // Check roll history for today
-                    const userId = auth.currentUser.uid;
-                    const rollHistoryRef = collection(db, 'avatar_rolls', userId, 'history');
-                    
-                    // Get today's date (start of day)
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    
-                    // Query rolls from today
-                    const q = query(
-                        rollHistoryRef,
-                        where('timestamp', '>=', today)
-                    );
-                    
-                    const rollsSnapshot = await getDocs(q);
-                    const rollsToday = rollsSnapshot.size;
-                    
-                    this.rollsRemaining = Math.max(0, this.maxRollsPerDay - rollsToday);
-                    
-                    // Update display
-                    if (this.rollsRemainingDisplay) {
-                        this.rollsRemainingDisplay.textContent = this.rollsRemaining;
-                    }
-                    
-                    if (this.rollsRemaining <= 0) {
-                        showNotification(`You've used all your avatar rolls for today. Come back tomorrow!`, 'error');
-                        return false;
-                    }
-                    
-                    return true;
-                } catch (error) {
-                    console.error("Error checking roll eligibility:", error);
-                    showNotification('Error checking roll eligibility', 'error');
-                    return false;
-                }
-            },
+            // Query rolls from today
+            const q = query(
+                rollHistoryRef,
+                where('timestamp', '>=', today)
+            );
             
-            // Perform the roll
-            async startRoll() {
-                if (this.isRolling) return;
+            const rollsSnapshot = await getDocs(q);
+            const rollsToday = rollsSnapshot.size;
+            
+            this.rollsRemaining = Math.max(0, this.maxRollsPerDay - rollsToday);
+            
+            // Update display
+            if (this.rollsRemainingDisplay) {
+                this.rollsRemainingDisplay.textContent = this.rollsRemaining;
+            }
+            
+            if (this.rollsRemaining <= 0) {
+                showNotification(`You've used all your avatar rolls for today. Come back tomorrow!`, 'error');
+                return false;
+            }
+            
+            return {
+                eligible: true,
+                userDetails: userDetails
+            };
+        } catch (error) {
+            console.error("Error checking roll eligibility:", error);
+            showNotification('Error checking roll eligibility', 'error');
+            return false;
+        }
+    },
+    
+    // Perform the roll
+    async startRoll() {
+        if (this.isRolling) return;
+        
+        try {
+            this.isRolling = true;
+            this.rollButton.disabled = true;
+            
+            // Check eligibility
+            const eligibilityCheck = await this.checkRollEligibility();
+            if (!eligibilityCheck || !eligibilityCheck.eligible) {
+                this.rollButton.disabled = false;
+                this.isRolling = false;
+                return;
+            }
+            
+            // Explicitly deduct coins before rolling (for immediate user feedback)
+            const deductionResult = await this.deductCoins(eligibilityCheck.userDetails);
+            if (!deductionResult) {
+                this.rollButton.disabled = false;
+                this.isRolling = false;
+                return;
+            }
+            
+            // Show animation
+            await this.showRollAnimation();
+            
+            // Process the roll
+            const result = await this.processRoll(deductionResult.newBalance, deductionResult.prevBalance);
+            
+            // Show result
+            this.showResult(result);
+            
+            // Update roll counts
+            this.rollsRemaining--;
+            if (this.rollsRemainingDisplay) {
+                this.rollsRemainingDisplay.textContent = this.rollsRemaining;
+            }
+            
+            // Enable button if rolls remain
+            if (this.rollsRemaining > 0) {
+                this.rollButton.disabled = false;
+            }
+            
+            this.isRolling = false;
+        } catch (error) {
+            console.error("Error during roll:", error);
+            showNotification('Error processing roll', 'error');
+            this.rollButton.disabled = false;
+            this.isRolling = false;
+        }
+    },
+    
+    // Deduct coins first to provide immediate feedback
+    async deductCoins(userDetails) {
+        try {
+            const userId = auth.currentUser.uid;
+            
+            // Calculate new balance
+            const prevBalance = userDetails.accountBalance;
+            const newBalance = prevBalance - this.currentBet;
+            
+            // Update user account balance in Firestore
+            const userRef = doc(db, 'users', userId);
+            await updateDoc(userRef, {
+                accountBalance: newBalance
+            });
+            
+            // Update leaderboard entry
+            const leaderboardRef = doc(db, 'leaderboard', userId);
+            const leaderboardDoc = await getDoc(leaderboardRef);
+            
+            if (leaderboardDoc.exists()) {
+                await updateDoc(leaderboardRef, {
+                    accountBalance: newBalance
+                });
+            }
+            
+            // Update UI immediately to show deduction
+            document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
+            document.getElementById('balance-display').textContent = newBalance.toLocaleString();
+            
+            // Show notification about deduction
+            showNotification(`${this.currentBet.toLocaleString()} coins deducted for Avatar Roll!`, 'success');
+            
+            return {
+                success: true,
+                newBalance: newBalance,
+                prevBalance: prevBalance
+            };
+        } catch (error) {
+            console.error("Error deducting coins:", error);
+            showNotification('Failed to deduct coins for roll', 'error');
+            return false;
+        }
+    },
+    
+    // Process the actual roll logic and database updates
+    async processRoll(newBalance, prevBalance) {
+        try {
+            // Calculate probabilities based on bet amount
+            const ratio = (this.currentBet - this.minBet) / (this.maxBet - this.minBet);
+            const epicChance = 3 + (ratio * 12);
+            const rareChance = 10 + (ratio * 15);
+            
+            // Roll for rarity first
+            const rarityRoll = Math.random() * 100;
+            let rarity;
+            
+            if (rarityRoll < epicChance) {
+                rarity = 'epic';
+            } else if (rarityRoll < (epicChance + rareChance)) {
+                rarity = 'rare';
+            } else {
+                rarity = 'common';
+            }
+            
+            // Get available avatars of that rarity
+            let availableAvatars = itemManager.getAvatarsByRarity(rarity);
+            
+            // If no avatars of that rarity, fall back to common
+            if (availableAvatars.length === 0) {
+                rarity = 'common';
+                availableAvatars = itemManager.getAvatarsByRarity('common');
+            }
+            
+            // Get purchased items to avoid duplicates
+            const purchasedItems = await itemManager.checkPurchasedItems(auth.currentUser.uid);
+            
+            // Filter out already owned avatars
+            const notOwnedAvatars = availableAvatars.filter(avatar => !purchasedItems[avatar.id]);
+            
+            // If all avatars of this rarity are owned, try a different rarity
+            let selectedAvatar;
+            if (notOwnedAvatars.length === 0) {
+                // Try all rarities in order
+                const allRarities = ['epic', 'rare', 'common'];
                 
-                try {
-                    this.isRolling = true;
-                    this.rollButton.disabled = true;
+                for (const fallbackRarity of allRarities) {
+                    if (fallbackRarity === rarity) continue; // Skip already tried rarity
                     
-                    // Check eligibility
-                    const canRoll = await this.checkRollEligibility();
-                    if (!canRoll) {
-                        this.rollButton.disabled = false;
-                        this.isRolling = false;
-                        return;
-                    }
+                    const fallbackAvatars = itemManager.getAvatarsByRarity(fallbackRarity);
+                    const notOwnedFallbacks = fallbackAvatars.filter(avatar => !purchasedItems[avatar.id]);
                     
-                    // Show animation
-                    await this.showRollAnimation();
-                    
-                    // Process the roll
-                    const result = await this.processRoll();
-                    
-                    // Show result
-                    this.showResult(result);
-                    
-                    // Update roll counts
-                    this.rollsRemaining--;
-                    if (this.rollsRemainingDisplay) {
-                        this.rollsRemainingDisplay.textContent = this.rollsRemaining;
-                    }
-                    
-                    // Enable button if rolls remain
-                    if (this.rollsRemaining > 0) {
-                        this.rollButton.disabled = false;
-                    }
-                    
-                    this.isRolling = false;
-                } catch (error) {
-                    console.error("Error during roll:", error);
-                    showNotification('Error processing roll', 'error');
-                    this.rollButton.disabled = false;
-                    this.isRolling = false;
-                }
-            },
-            
-            // Process the actual roll logic and database updates
-            async processRoll() {
-                try {
-                    // Calculate probabilities based on bet amount
-                    const ratio = (this.currentBet - this.minBet) / (this.maxBet - this.minBet);
-                    const epicChance = 3 + (ratio * 12);
-                    const rareChance = 10 + (ratio * 15);
-                    
-                    // Roll for rarity first
-                    const rarityRoll = Math.random() * 100;
-                    let rarity;
-                    
-                    if (rarityRoll < epicChance) {
-                        rarity = 'epic';
-                    } else if (rarityRoll < (epicChance + rareChance)) {
-                        rarity = 'rare';
-                    } else {
-                        rarity = 'common';
-                    }
-                    
-                    // Get available avatars of that rarity
-                    const availableAvatars = itemManager.getAvatarsByRarity(rarity);
-                    
-                    // If no avatars of that rarity, fall back to common
-                    if (availableAvatars.length === 0) {
-                        rarity = 'common';
-                        availableAvatars = itemManager.getAvatarsByRarity('common');
-                    }
-                    
-                    // Get purchased items to avoid duplicates
-                    const purchasedItems = await itemManager.checkPurchasedItems(auth.currentUser.uid);
-                    
-                    // Filter out already owned avatars
-                    const notOwnedAvatars = availableAvatars.filter(avatar => !purchasedItems[avatar.id]);
-                    
-                    // If all avatars of this rarity are owned, try a different rarity
-                    let selectedAvatar;
-                    if (notOwnedAvatars.length === 0) {
-                        // Try all rarities in order
-                        const allRarities = ['epic', 'rare', 'common'];
-                        
-                        for (const fallbackRarity of allRarities) {
-                            if (fallbackRarity === rarity) continue; // Skip already tried rarity
-                            
-                            const fallbackAvatars = itemManager.getAvatarsByRarity(fallbackRarity);
-                            const notOwnedFallbacks = fallbackAvatars.filter(avatar => !purchasedItems[avatar.id]);
-                            
-                            if (notOwnedFallbacks.length > 0) {
-                                // Randomly select from available avatars
-                                selectedAvatar = notOwnedFallbacks[Math.floor(Math.random() * notOwnedFallbacks.length)];
-                                rarity = fallbackRarity; // Update rarity to match
-                                break;
-                            }
-                        }
-                        
-                        // If still no avatar found, give coins back and show error
-                        if (!selectedAvatar) {
-                            showNotification('You already own all available avatars! Roll cost refunded.', 'error');
-                            return null;
-                        }
-                    } else {
+                    if (notOwnedFallbacks.length > 0) {
                         // Randomly select from available avatars
-                        selectedAvatar = notOwnedAvatars[Math.floor(Math.random() * notOwnedAvatars.length)];
+                        selectedAvatar = notOwnedFallbacks[Math.floor(Math.random() * notOwnedFallbacks.length)];
+                        rarity = fallbackRarity; // Update rarity to match
+                        break;
                     }
-                    
-                    // Process the transaction - deduct coins
+                }
+                
+                // If still no avatar found, give coins back and show error
+                if (!selectedAvatar) {
+                    // Refund the coins since there are no avatars to win
                     const userId = auth.currentUser.uid;
                     const userRef = doc(db, 'users', userId);
-                    const userDoc = await getDoc(userRef);
                     
-                    if (!userDoc.exists()) {
-                        throw new Error("User not found");
-                    }
+                    // Refund by adding the bet amount back
+                    const refundedBalance = newBalance + this.currentBet;
                     
-                    const userData = userDoc.data();
-                    
-                    // Calculate new balance
-                    const newBalance = userData.accountBalance - this.currentBet;
-                    
-                    // Update user account balance
                     await updateDoc(userRef, {
-                        accountBalance: newBalance
+                        accountBalance: refundedBalance
                     });
                     
-                    // Update leaderboard entry
+                    // Update leaderboard
                     const leaderboardRef = doc(db, 'leaderboard', userId);
-                    const leaderboardDoc = await getDoc(leaderboardRef);
-                    
-                    if (leaderboardDoc.exists()) {
+                    if (await getDoc(leaderboardRef).exists()) {
                         await updateDoc(leaderboardRef, {
-                            accountBalance: newBalance
-                        });
-                    } else {
-                        await setDoc(leaderboardRef, {
-                            username: userData.username || 'Unknown',
-                            accountBalance: newBalance,
-                            joinDate: new Date()
+                            accountBalance: refundedBalance
                         });
                     }
                     
-                    // Record the avatar roll in history
-                    await addDoc(collection(db, 'avatar_rolls', userId, 'history'), {
-                        betAmount: this.currentBet,
-                        timestamp: new Date(),
-                        result: selectedAvatar.id,
-                        rarity: rarity,
-                        prevBalance: userData.accountBalance,
-                        newBalance: newBalance
-                    });
+                    // Update UI
+                    document.getElementById('shop-balance-display').textContent = refundedBalance.toLocaleString();
+                    document.getElementById('balance-display').textContent = refundedBalance.toLocaleString();
                     
-                    // Record transaction
-                    await addDoc(collection(db, 'transactions'), {
-                        userId: userId,
-                        transactionType: 'avatar_roll',
-                        amount: this.currentBet,
-                        timestamp: new Date(),
-                        prevBalance: userData.accountBalance,
-                        newBalance: newBalance,
-                        metadata: {
-                            avatarId: selectedAvatar.id,
-                            rarity: rarity
-                        }
-                    });
-                    
-                    // Add avatar to user purchases
-                    await addDoc(collection(db, 'user_purchases', userId, 'items'), {
-                        itemId: selectedAvatar.id,
-                        itemType: 'avatar',
-                        price: 0, // Free from roll
-                        purchaseDate: new Date(),
-                        itemName: selectedAvatar.name,
-                        acquisition: 'roll'
-                    });
-                    
-                    // Update balance displays
-                    document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
-                    document.getElementById('balance-display').textContent = newBalance.toLocaleString();
-                    
-                    // Return the result
-                    return {
-                        avatar: selectedAvatar,
-                        rarity: rarity
-                    };
-                } catch (error) {
-                    console.error("Error processing roll:", error);
-                    throw error;
+                    showNotification('You already own all available avatars! Roll cost refunded.', 'error');
+                    return null;
                 }
-            },
-            
-            // Show animation for rolling
-            async showRollAnimation() {
-                if (!this.rollAnimationContainer || !this.rollAnimationTrack) return;
-                
-                try {
-                    // Clear previous items
-                    this.rollAnimationTrack.innerHTML = '';
-                    
-                    // Create animation items
-                    const commonAvatars = itemManager.getAvatarsByRarity('common');
-                    const rareAvatars = itemManager.getAvatarsByRarity('rare');
-                    const epicAvatars = itemManager.getAvatarsByRarity('epic');
-                    
-                    // If rare is empty, use common
-                    const rareItems = rareAvatars.length > 0 ? rareAvatars : commonAvatars;
-                    
-                    // All avatars to use in animation
-                    const allAvatars = [
-                        ...commonAvatars,
-                        ...rareItems,
-                        ...epicAvatars,
-                        ...commonAvatars,
-                        ...rareItems
-                    ];
-                    
-                    // Shuffle the array
-                    const shuffled = [...allAvatars].sort(() => Math.random() - 0.5);
-                    
-                    // Add at least 20 items to the animation
-                    const animationItems = [];
-                    while (animationItems.length < 30) {
-                        animationItems.push(...shuffled);
-                    }
-                    
-                    // Create HTML elements for each item
-                    animationItems.slice(0, 30).forEach(avatar => {
-                        const item = document.createElement('div');
-                        item.className = `roll-animation-item ${avatar.rarity}`;
-                        
-                        const img = document.createElement('img');
-                        img.src = avatar.url;
-                        img.alt = avatar.name;
-                        
-                        item.appendChild(img);
-                        this.rollAnimationTrack.appendChild(item);
-                    });
-                    
-                    // Show the animation container
-                    this.rollAnimationContainer.style.display = 'block';
-                    
-                    // Reset track position
-                    this.rollAnimationTrack.style.transition = 'none';
-                    this.rollAnimationTrack.style.transform = 'translateX(0)';
-                    
-                    // Force reflow
-                    void this.rollAnimationTrack.offsetWidth;
-                    
-                    // Start animation after a short delay
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    
-                    // Run animation
-                    this.rollAnimationTrack.style.transition = 'transform 5s cubic-bezier(0.1, 0.8, 0.2, 1)';
-                    
-                    // Calculate ending position
-                    const trackWidth = this.rollAnimationTrack.scrollWidth;
-                    const containerWidth = this.rollAnimationContainer.clientWidth;
-                    
-                    // Randomize ending position somewhat
-                    const baseEndPosition = -(trackWidth - containerWidth) * 0.7;
-                    const randomOffset = Math.random() * 300 - 150;
-                    const endPosition = baseEndPosition + randomOffset;
-                    
-                    this.rollAnimationTrack.style.transform = `translateX(${endPosition}px)`;
-                    
-                    // Wait for animation to complete
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                } catch (error) {
-                    console.error("Error in roll animation:", error);
-                }
-            },
-            
-            // Show the result of the roll
-            showResult(result) {
-                if (!result || !this.rollResultContainer) return;
-                
-                // Hide animation container
-                if (this.rollAnimationContainer) {
-                    this.rollAnimationContainer.style.display = 'none';
-                }
-                
-                // Set result data
-                if (this.rollResultImg) {
-                    this.rollResultImg.src = result.avatar.url;
-                    this.rollResultImg.alt = result.avatar.name;
-                }
-                
-                if (this.rollResultName) {
-                    this.rollResultName.textContent = result.avatar.name;
-                    this.rollResultName.className = `roll-result-name ${result.rarity}`;
-                }
-                
-                if (this.rollResultImage) {
-                    this.rollResultImage.className = `roll-result-image ${result.rarity}`;
-                }
-                
-                // Show result container
-                this.rollResultContainer.style.display = 'block';
-                
-                // Update shop UI to show item as owned
-                const shopItem = document.querySelector(`.shop-item[data-item-id="${result.avatar.id}"]`);
-                if (shopItem) {
-                    shopItem.classList.add('owned');
-                    
-                    const button = shopItem.querySelector('.buy-button');
-                    if (button) {
-                        button.textContent = "Equip";
-                        button.classList.add('equip');
-                        button.classList.remove('unequip');
-                    }
-                }
-                
-                // Show success notification
-                showNotification(`Congratulations! You won the ${result.rarity} ${result.avatar.name}!`, 'success');
-            },
-            
-            // Hide result and reset UI
-            hideResult() {
-                if (this.rollResultContainer) {
-                    this.rollResultContainer.style.display = 'none';
-                }
+            } else {
+                // Randomly select from available avatars
+                selectedAvatar = notOwnedAvatars[Math.floor(Math.random() * notOwnedAvatars.length)];
             }
-        };
+            
+            const userId = auth.currentUser.uid;
+            
+            // Record the avatar roll in history
+            await addDoc(collection(db, 'avatar_rolls', userId, 'history'), {
+                betAmount: this.currentBet,
+                timestamp: new Date(),
+                result: selectedAvatar.id,
+                rarity: rarity,
+                prevBalance: prevBalance,
+                newBalance: newBalance
+            });
+            
+            // Record transaction
+            await addDoc(collection(db, 'transactions'), {
+                userId: userId,
+                transactionType: 'avatar_roll',
+                amount: this.currentBet,
+                timestamp: new Date(),
+                prevBalance: prevBalance,
+                newBalance: newBalance,
+                metadata: {
+                    avatarId: selectedAvatar.id,
+                    rarity: rarity
+                }
+            });
+            
+            // Add avatar to user purchases
+            await addDoc(collection(db, 'user_purchases', userId, 'items'), {
+                itemId: selectedAvatar.id,
+                itemType: 'avatar',
+                price: 0, // Free from roll
+                purchaseDate: new Date(),
+                itemName: selectedAvatar.name,
+                acquisition: 'roll'
+            });
+            
+            // Return the result
+            return {
+                avatar: selectedAvatar,
+                rarity: rarity
+            };
+        } catch (error) {
+            console.error("Error processing roll:", error);
+            throw error;
+        }
+    },
+    
+    // Show animation for rolling
+    async showRollAnimation() {
+        if (!this.rollAnimationContainer || !this.rollAnimationTrack) return;
+        
+        try {
+            // Clear previous items
+            this.rollAnimationTrack.innerHTML = '';
+            
+            // Create animation items
+            const commonAvatars = itemManager.getAvatarsByRarity('common');
+            const rareAvatars = itemManager.getAvatarsByRarity('rare');
+            const epicAvatars = itemManager.getAvatarsByRarity('epic');
+            
+            // If rare is empty, use common
+            const rareItems = rareAvatars.length > 0 ? rareAvatars : commonAvatars;
+            
+            // All avatars to use in animation
+            const allAvatars = [
+                ...commonAvatars,
+                ...rareItems,
+                ...epicAvatars,
+                ...commonAvatars,
+                ...rareItems
+            ];
+            
+            // Shuffle the array
+            const shuffled = [...allAvatars].sort(() => Math.random() - 0.5);
+            
+            // Add at least 20 items to the animation
+            const animationItems = [];
+            while (animationItems.length < 30) {
+                animationItems.push(...shuffled);
+            }
+            
+            // Create HTML elements for each item
+            animationItems.slice(0, 30).forEach(avatar => {
+                const item = document.createElement('div');
+                item.className = `roll-animation-item ${avatar.rarity}`;
+                
+                const img = document.createElement('img');
+                img.src = avatar.url;
+                img.alt = avatar.name;
+                
+                item.appendChild(img);
+                this.rollAnimationTrack.appendChild(item);
+            });
+            
+            // Show the animation container
+            this.rollAnimationContainer.style.display = 'block';
+            
+            // Reset track position
+            this.rollAnimationTrack.style.transition = 'none';
+            this.rollAnimationTrack.style.transform = 'translateX(0)';
+            
+            // Force reflow
+            void this.rollAnimationTrack.offsetWidth;
+            
+            // Start animation after a short delay
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Run animation
+            this.rollAnimationTrack.style.transition = 'transform 5s cubic-bezier(0.1, 0.8, 0.2, 1)';
+            
+            // Calculate ending position
+            const trackWidth = this.rollAnimationTrack.scrollWidth;
+            const containerWidth = this.rollAnimationContainer.clientWidth;
+            
+            // Randomize ending position somewhat
+            const baseEndPosition = -(trackWidth - containerWidth) * 0.7;
+            const randomOffset = Math.random() * 300 - 150;
+            const endPosition = baseEndPosition + randomOffset;
+            
+            this.rollAnimationTrack.style.transform = `translateX(${endPosition}px)`;
+            
+            // Wait for animation to complete
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        } catch (error) {
+            console.error("Error in roll animation:", error);
+        }
+    },
+    
+    // Show the result of the roll
+    showResult(result) {
+        if (!result || !this.rollResultContainer) return;
+        
+        // Hide animation container
+        if (this.rollAnimationContainer) {
+            this.rollAnimationContainer.style.display = 'none';
+        }
+        
+        // Set result data
+        if (this.rollResultImg) {
+            this.rollResultImg.src = result.avatar.url;
+            this.rollResultImg.alt = result.avatar.name;
+        }
+        
+        if (this.rollResultName) {
+            this.rollResultName.textContent = result.avatar.name;
+            this.rollResultName.className = `roll-result-name ${result.rarity}`;
+        }
+        
+        if (this.rollResultImage) {
+            this.rollResultImage.className = `roll-result-image ${result.rarity}`;
+        }
+        
+        // Show result container
+        this.rollResultContainer.style.display = 'block';
+        
+        // Update shop UI to show item as owned
+        const shopItem = document.querySelector(`.shop-item[data-item-id="${result.avatar.id}"]`);
+        if (shopItem) {
+            shopItem.classList.add('owned');
+            
+            const button = shopItem.querySelector('.buy-button');
+            if (button) {
+                button.textContent = "Equip";
+                button.classList.add('equip');
+                button.classList.remove('unequip');
+            }
+        }
+        
+        // Show success notification
+        showNotification(`Congratulations! You won the ${result.rarity} ${result.avatar.name}!`, 'success');
+    },
+    
+    // Hide result and reset UI
+    hideResult() {
+        if (this.rollResultContainer) {
+            this.rollResultContainer.style.display = 'none';
+        }
+    }
+};
 
         // Make sure shop container is properly hidden on page load
         document.addEventListener('DOMContentLoaded', function() {
