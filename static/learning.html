@@ -1415,6 +1415,27 @@
                 display: none; /* Hide vertical ads on mobile */
             }
         }
+.ad-container {
+    min-height: 90px; /* Minimum height for ads */
+    min-width: 300px; /* Minimum width for ads */
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    display: block !important; /* Ensure container is displayed */
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.ad-container-horizontal {
+    height: 90px;
+    min-width: 728px;
+    margin: 15px auto;
+}
+
+.ad-container-vertical {
+    height: 600px;
+    min-width: 300px;
+    margin: 15px auto;
+}
     </style>
 </head>
 <body>
@@ -4608,24 +4629,126 @@
         });
     }
 
-    // Initialize Google Ads
-    function initializeGoogleAds() {
-        // Wait until DOM is ready with all ad containers
-        const adContainers = document.querySelectorAll(".ad-container");
-        if (adContainers.length === 0) {
-            console.warn("No ad containers found on page");
-            return;
-        }
-        
-        console.log(`Initializing ${adContainers.length} Google Ad units`);
-        
+// Replace the initializeGoogleAds function with this improved version
+function initializeGoogleAds() {
+    // Delay initialization to ensure containers are fully rendered with dimensions
+    setTimeout(() => {
         try {
-            // Initialize AdSense
-            (adsbygoogle = window.adsbygoogle || []).push({});
+            console.log("Starting Google Ads initialization");
+            
+            // Ensure all ad containers have width and height before initializing
+            const adContainers = document.querySelectorAll(".ad-container");
+            let validContainers = 0;
+            
+            adContainers.forEach((container, index) => {
+                // Make sure container is visible and has dimensions
+                if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+                    console.log(`Ad container ${index} has dimensions: ${container.offsetWidth}x${container.offsetHeight}`);
+                    validContainers++;
+                    
+                    // Set minimum size (fixes "No slot size" error)
+                    if (container.classList.contains('ad-container-horizontal')) {
+                        container.style.minHeight = "90px";
+                        container.style.minWidth = "728px";
+                    } else {
+                        container.style.minHeight = "250px";
+                        container.style.minWidth = "300px";
+                    }
+                    
+                    // Find the ins element inside this container
+                    const adSlot = container.querySelector('.adsbygoogle');
+                    if (adSlot && !adSlot.hasAttribute('data-ad-status')) {
+                        // Initialize this specific ad unit
+                        (adsbygoogle = window.adsbygoogle || []).push({});
+                    }
+                } else {
+                    console.warn(`Ad container ${index} has no dimensions, skipping`);
+                }
+            });
+            
+            console.log(`Initialized ${validContainers} of ${adContainers.length} ad containers`);
+            
         } catch (e) {
             console.error("Error initializing Google AdSense:", e);
         }
+    }, 2000); // Wait 2 seconds to ensure the page is fully rendered
+}
+
+// Improve the onAdError function to provide more details
+function onAdError(adErrorEvent) {
+    let errorMessage = "Unknown ad error";
+    
+    // Try to get detailed error information
+    try {
+        if (adErrorEvent && adErrorEvent.getError) {
+            const error = adErrorEvent.getError();
+            errorMessage = error.getMessage ? error.getMessage() : String(error);
+        }
+    } catch (e) {
+        errorMessage = "Error getting ad error details";
     }
+    
+    console.error("Video ad error:", errorMessage);
+    
+    // Hide the ad container
+    document.getElementById('ad-container').style.display = 'none';
+    
+    // Clean up the ads manager
+    if (adsManager) {
+        try {
+            adsManager.destroy();
+        } catch (e) {
+            console.error("Error destroying ads manager:", e);
+        }
+        adsManager = null;
+    }
+    
+    isAdPlaying = false;
+    showNotification("Error playing ad: " + errorMessage, "error");
+}
+
+// Replace the window.addEventListener('load', ...) function call with this
+window.addEventListener('load', async () => {
+    try {
+        console.log("Page loaded, initializing app");
+        
+        // Initialize UI elements
+        initializeUI();
+        
+        // Render the games list
+        renderAppsList();
+        
+        // Start leaderboard updates
+        voidLeaderboard.startLeaderboardUpdates();
+        
+        // Initialize responsive layout
+        handleResponsiveLayout();
+        
+        // Initialize ad system
+        initializeAdSystem();
+        
+        // Check if user is already logged in
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                console.log("User already logged in:", user.uid);
+                await updateUIForLoggedInUser(user);
+            } else {
+                updateUIForLoggedOutUser();
+            }
+        });
+        
+        // Wait a bit longer before initializing ads to ensure everything is rendered
+        setTimeout(() => {
+            try {
+                initializeGoogleAds();
+            } catch (e) {
+                console.error("Error initializing Google Ads:", e);
+            }
+        }, 5000); // Wait 5 seconds before trying to initialize ads
+    } catch (err) {
+        console.error('Error during initialization:', err);
+    }
+});
 
     // Helper function to refresh leaderboard and highlight special users
     function refreshLeaderboard() {
