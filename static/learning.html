@@ -3504,675 +3504,873 @@
         }
     }
 
-    // IMPROVED: Secure Leaderboard Implementation with Dynamic Position Updates
-    class VoidLeaderboard {
-        constructor(db) {
-            this.db = db;
-            this.unsubscribe = null;
-            this.leaderboardElement = document.getElementById('leaderboardList');
-            this.retryCount = 0;
-            this.maxRetries = 3;
-            this.retryTimeout = null;
-            this.isMinimized = false;
-            this.currentLeaderboardData = []; // Track current leaderboard state
-            console.log("VoidLeaderboard initialized");
-            
-            // Set up minimize/maximize toggle
-            const toggleBtn = document.getElementById('leaderboardToggle');
-            if (toggleBtn) {
-                toggleBtn.addEventListener('click', () => this.toggleLeaderboard());
-            }
-        }
+// IMPROVED: Secure Leaderboard Implementation with Dynamic Position Updates
+class VoidLeaderboard {
+    constructor(db) {
+        this.db = db;
+        this.unsubscribe = null;
+        this.leaderboardElement = document.getElementById('leaderboardList');
+        this.retryCount = 0;
+        this.maxRetries = 3;
+        this.retryTimeout = null;
+        this.cleanupInterval = null;
+        this.isMinimized = false;
+        this.currentLeaderboardData = []; // Track current leaderboard state
+        console.log("VoidLeaderboard initialized");
         
-        // Toggle leaderboard visibility
-        toggleLeaderboard() {
-            const container = document.querySelector('.leaderboard-container');
-            const toggleBtn = document.getElementById('leaderboardToggle');
-            
-            if (container) {
-                if (this.isMinimized) {
-                    // Maximize
-                    container.classList.remove('leaderboard-minimized');
-                    if (toggleBtn) toggleBtn.textContent = '−';
-                    this.isMinimized = false;
-                    
-                    // For mobile
-                    if (window.innerWidth <= 768) {
-                        container.classList.add('expanded');
-                    }
-                } else {
-                    // Minimize
-                    container.classList.add('leaderboard-minimized');
-                    if (toggleBtn) toggleBtn.textContent = '+';
-                    this.isMinimized = true;
-                    
-                    // For mobile
-                    if (window.innerWidth <= 768) {
-                        container.classList.remove('expanded');
-                    }
+        // Set up minimize/maximize toggle
+        const toggleBtn = document.getElementById('leaderboardToggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => this.toggleLeaderboard());
+        }
+    }
+    
+    // Toggle leaderboard visibility
+    toggleLeaderboard() {
+        const container = document.querySelector('.leaderboard-container');
+        const toggleBtn = document.getElementById('leaderboardToggle');
+        
+        if (container) {
+            if (this.isMinimized) {
+                // Maximize
+                container.classList.remove('leaderboard-minimized');
+                if (toggleBtn) toggleBtn.textContent = '−';
+                this.isMinimized = false;
+                
+                // For mobile
+                if (window.innerWidth <= 768) {
+                    container.classList.add('expanded');
+                }
+            } else {
+                // Minimize
+                container.classList.add('leaderboard-minimized');
+                if (toggleBtn) toggleBtn.textContent = '+';
+                this.isMinimized = true;
+                
+                // For mobile
+                if (window.innerWidth <= 768) {
+                    container.classList.remove('expanded');
                 }
             }
         }
+    }
+    
+    // Start real-time leaderboard updates - Reading from public leaderboard collection
+    startLeaderboardUpdates() {
+        try {
+            if (this.unsubscribe) {
+                // If already subscribed, unsubscribe first
+                this.unsubscribe();
+            }
+            
+            // Show loading state
+            if (this.leaderboardElement) {
+                this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Loading top players...</div>';
+            }
+            
+            console.log("Starting leaderboard updates");
+            
+            // Read from leaderboard collection to get users with avatars
+            const leaderboardRef = collection(this.db, 'leaderboard');
+            
+            // Create query without orderBy - we'll handle sorting in memory for better animations
+            const q = query(leaderboardRef);
+            
+            // Set up real-time listener
+            this.unsubscribe = onSnapshot(q, 
+                {
+                    includeMetadataChanges: true
+                },
+                (querySnapshot) => {
+                    // Reset retry count on successful data
+                    this.retryCount = 0;
+                    
+                    // Process changes and update UI
+                    this.processLeaderboardChanges(querySnapshot);
+                }, 
+                (error) => {
+                    console.error("Leaderboard listener error:", error);
+                    
+                    // Retry after a short delay
+                    if (this.retryCount < 5) {
+                        this.retryCount++;
+                        console.log(`Retrying Firebase connection (${this.retryCount}/5)...`);
+                        setTimeout(() => this.startLeaderboardUpdates(), 2000);
+                    }
+                }
+            );
+            
+            // Set up periodic cleanup of invalid users
+            // This helps ensure that banned/disabled/deleted users are removed
+            this.cleanupInterval = setInterval(() => {
+                this.cleanInvalidUsers();
+            }, 5 * 60 * 1000); // Check every 5 minutes
+        } catch (error) {
+            console.error("Error setting up leaderboard:", error);
+            // Retry immediately if there's an error
+            setTimeout(() => this.startLeaderboardUpdates(), 1000);
+        }
+    }
+    
+    // Process changes from Firestore and update leaderboard accordingly
+    processLeaderboardChanges(querySnapshot) {
+        if (!this.leaderboardElement) {
+            console.error("Leaderboard element not found");
+            return;
+        }
         
-        // Start real-time leaderboard updates - Reading from public leaderboard collection
-        startLeaderboardUpdates() {
+        if (querySnapshot.empty) {
+            this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+            this.currentLeaderboardData = [];
+            return;
+        }
+        
+        console.log("Processing leaderboard changes");
+        
+        // Get all current valid user documents
+        const validUserIds = new Set();
+        const validUsers = [];
+        
+        // First get active, valid user accounts from users collection
+        // This should be run after the leaderboard query to ensure we have up-to-date data
+        // for checking account validity
+        const checkValidUsers = async () => {
             try {
-                if (this.unsubscribe) {
-                    // If already subscribed, unsubscribe first
-                    this.unsubscribe();
-                }
+                const usersRef = collection(this.db, 'users');
+                const usersSnapshot = await getDocs(usersRef);
                 
-                // Show loading state
-                if (this.leaderboardElement) {
-                    this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Loading top players...</div>';
-                }
-                
-                console.log("Starting leaderboard updates");
-                
-                // Read from leaderboard collection to get users with avatars
-                const leaderboardRef = collection(this.db, 'leaderboard');
-                
-                // Create query without orderBy - we'll handle sorting in memory for better animations
-                const q = query(leaderboardRef);
-                
-                // Set up real-time listener
-                this.unsubscribe = onSnapshot(q, 
-                    {
-                        includeMetadataChanges: true
-                    },
-                    (querySnapshot) => {
-                        // Reset retry count on successful data
-                        this.retryCount = 0;
-                        
-                        // Process changes and update UI
-                        this.processLeaderboardChanges(querySnapshot);
-                    }, 
-                    (error) => {
-                        console.error("Leaderboard listener error:", error);
-                        
-                        // Retry after a short delay
-                        if (this.retryCount < 5) {
-                            this.retryCount++;
-                            console.log(`Retrying Firebase connection (${this.retryCount}/5)...`);
-                            setTimeout(() => this.startLeaderboardUpdates(), 2000);
+                // Create set of valid user IDs
+                usersSnapshot.forEach(userDoc => {
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        // Check if user is valid (not banned, disabled, deleted)
+                        if (userData && !userData.banned && !userData.accountDisabled && !userData.deleted) {
+                            validUserIds.add(userDoc.id);
                         }
                     }
-                );
+                });
+                
+                console.log(`Found ${validUserIds.size} valid users`);
+                
+                // Now filter leaderboard entries
+                querySnapshot.forEach((docSnapshot) => {
+                    if (docSnapshot.exists()) {
+                        const userData = docSnapshot.data();
+                        const userId = docSnapshot.id;
+                        
+                        // Only include users that exist in our valid users set AND don't have banned flag in leaderboard
+                        if (validUserIds.has(userId) && userData.banned !== true) {
+                            validUsers.push({
+                                id: userId,
+                                username: userData.username || 'Unknown',
+                                accountBalance: userData.accountBalance || 0,
+                                avatar: userData.equippedAvatar ? itemManager.items[userData.equippedAvatar]?.url : null
+                            });
+                        } else {
+                            // If user is in leaderboard but not valid, they should be removed from leaderboard collection
+                            console.log(`Removing invalid user from leaderboard: ${userData.username || 'Unknown user'}`);
+                            deleteDoc(doc(this.db, 'leaderboard', userId))
+                                .catch(error => console.error("Error removing invalid user from leaderboard:", error));
+                        }
+                    }
+                });
+                
+                // Sort by account balance descending (higher balances at the top)
+                const sortedUsers = validUsers.sort((a, b) => b.accountBalance - a.accountBalance);
+                
+                // Keep track of previous positions to detect changes
+                const prevPositions = {};
+                this.currentLeaderboardData.forEach((user, index) => {
+                    prevPositions[user.id] = index;
+                });
+                
+                // Take only top 20 for display
+                const topUsers = sortedUsers.slice(0, 20);
+                
+                // First time initialization - create all elements
+                if (this.currentLeaderboardData.length === 0) {
+                    this.leaderboardElement.innerHTML = '';
+                    this.renderInitialLeaderboard(topUsers);
+                } else {
+                    // Update existing leaderboard
+                    this.updateLeaderboardPositions(topUsers, prevPositions);
+                }
+                
+                // Update our current state
+                this.currentLeaderboardData = topUsers;
+                
+                // Highlight special users
+                this.highlightSpecialUsers();
             } catch (error) {
-                console.error("Error setting up leaderboard:", error);
-                // Retry immediately if there's an error
-                setTimeout(() => this.startLeaderboardUpdates(), 1000);
+                console.error("Error checking valid users:", error);
+                
+                // Fallback to simpler filtering if the full check fails
+                this.processFallbackLeaderboard(querySnapshot);
             }
+        };
+        
+        // Execute the validation check
+        checkValidUsers();
+    }
+    
+    // Fallback method if the full validity check fails
+    processFallbackLeaderboard(querySnapshot) {
+        console.log("Using fallback leaderboard processing");
+        
+        const validUsers = [];
+        
+        querySnapshot.forEach((docSnapshot) => {
+            if (docSnapshot.exists()) {
+                const userData = docSnapshot.data();
+                
+                // Skip users that are marked as banned in the leaderboard itself
+                if (userData.banned !== true && userData.accountDisabled !== true && userData.deleted !== true) {
+                    validUsers.push({
+                        id: docSnapshot.id,
+                        username: userData.username || 'Unknown',
+                        accountBalance: userData.accountBalance || 0,
+                        avatar: userData.equippedAvatar ? itemManager.items[userData.equippedAvatar]?.url : null
+                    });
+                }
+            }
+        });
+        
+        // Sort by account balance descending
+        const sortedUsers = validUsers.sort((a, b) => b.accountBalance - a.accountBalance);
+        
+        // Keep track of previous positions to detect changes
+        const prevPositions = {};
+        this.currentLeaderboardData.forEach((user, index) => {
+            prevPositions[user.id] = index;
+        });
+        
+        // Take only top 20 for display
+        const topUsers = sortedUsers.slice(0, 20);
+        
+        // Update the leaderboard
+        if (this.currentLeaderboardData.length === 0) {
+            this.leaderboardElement.innerHTML = '';
+            this.renderInitialLeaderboard(topUsers);
+        } else {
+            this.updateLeaderboardPositions(topUsers, prevPositions);
         }
         
-        // Process changes from Firestore and update leaderboard accordingly
-        processLeaderboardChanges(querySnapshot) {
-            if (!this.leaderboardElement) {
-                console.error("Leaderboard element not found");
-                return;
-            }
+        this.currentLeaderboardData = topUsers;
+        this.highlightSpecialUsers();
+    }
+    
+    // Additional method to periodically clean up invalid users from leaderboard
+    async cleanInvalidUsers() {
+        console.log("Performing leaderboard cleanup for invalid users");
+        try {
+            // Get all users from users collection to check validity
+            const usersRef = collection(this.db, 'users');
+            const usersSnapshot = await getDocs(usersRef);
             
-            if (querySnapshot.empty) {
-                this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
-                this.currentLeaderboardData = [];
-                return;
-            }
-            
-            console.log("Processing leaderboard changes");
-            
-            // Extract all valid users (not banned)
-            const validUsers = [];
-            
-            querySnapshot.forEach((docSnapshot) => {
-                if (docSnapshot.exists()) {
-                    const userData = docSnapshot.data();
-                    
-                    // Skip banned users
-                    if (userData.banned !== true) {
-                        // Add user with avatar if it exists in the leaderboard entry
-                        validUsers.push({
-                            id: docSnapshot.id,
-                            username: userData.username || 'Unknown',
-                            accountBalance: userData.accountBalance || 0,
-                            avatar: userData.equippedAvatar ? itemManager.items[userData.equippedAvatar]?.url : null
-                        });
-                    }
+            // Map of valid user IDs
+            const validUsers = new Map();
+            usersSnapshot.forEach(doc => {
+                const userData = doc.data();
+                // Only include users that are not banned, disabled, or deleted
+                if (userData && !userData.banned && !userData.accountDisabled && !userData.deleted) {
+                    validUsers.set(doc.id, userData.username || 'Unknown');
                 }
             });
             
-            // Sort by account balance descending (higher balances at the top)
-            const sortedUsers = validUsers.sort((a, b) => b.accountBalance - a.accountBalance);
+            // Get all leaderboard entries
+            const leaderboardRef = collection(this.db, 'leaderboard');
+            const leaderboardSnapshot = await getDocs(leaderboardRef);
             
-            // Keep track of previous positions to detect changes
-            const prevPositions = {};
-            this.currentLeaderboardData.forEach((user, index) => {
-                prevPositions[user.id] = index;
+            // Track invalid entries for removal
+            const invalidEntries = [];
+            leaderboardSnapshot.forEach(doc => {
+                const userId = doc.id;
+                // If user is not in our valid users map, they should be removed
+                if (!validUsers.has(userId)) {
+                    invalidEntries.push(userId);
+                }
             });
             
-            // Take only top 20 for display
-            const topUsers = sortedUsers.slice(0, 20);
+            // Remove invalid entries from leaderboard
+            for (const userId of invalidEntries) {
+                console.log(`Cleaning up invalid user ${userId} from leaderboard`);
+                await deleteDoc(doc(this.db, 'leaderboard', userId));
+            }
             
-            // First time initialization - create all elements
-            if (this.currentLeaderboardData.length === 0) {
-                this.leaderboardElement.innerHTML = '';
-                this.renderInitialLeaderboard(topUsers);
+            if (invalidEntries.length > 0) {
+                console.log(`Removed ${invalidEntries.length} invalid users from leaderboard`);
             } else {
-                // Update existing leaderboard
-                this.updateLeaderboardPositions(topUsers, prevPositions);
+                console.log("No invalid users found in leaderboard");
             }
+        } catch (error) {
+            console.error("Error during leaderboard cleanup:", error);
+        }
+    }
+    
+    // Initial render of leaderboard
+    renderInitialLeaderboard(users) {
+        this.leaderboardElement.innerHTML = '';
+        
+        const displayCount = users.length;
+        
+        for (let i = 0; i < displayCount; i++) {
+            const userData = users[i];
+            const leaderboardItem = this.createLeaderboardItem(userData, i);
             
-            // Update our current state
-            this.currentLeaderboardData = topUsers;
-            
-            // Highlight special users
-            this.highlightSpecialUsers();
+            this.leaderboardElement.appendChild(leaderboardItem);
         }
         
-        // Initial render of leaderboard
-        renderInitialLeaderboard(users) {
-            this.leaderboardElement.innerHTML = '';
+        // Add placeholders to ensure we always show 20 entries
+        for (let i = displayCount; i < 20; i++) {
+            const placeholderItem = document.createElement('div');
+            placeholderItem.className = 'leaderboard-item';
             
-            const displayCount = users.length;
-            
-            for (let i = 0; i < displayCount; i++) {
-                const userData = users[i];
-                const leaderboardItem = this.createLeaderboardItem(userData, i);
-                
-                this.leaderboardElement.appendChild(leaderboardItem);
-            }
-            
-            // Add placeholders to ensure we always show 20 entries
-            for (let i = displayCount; i < 20; i++) {
-                const placeholderItem = document.createElement('div');
-                placeholderItem.className = 'leaderboard-item';
-                
-                placeholderItem.innerHTML = `
-                    <span class="leaderboard-rank">#${i + 1}</span>
-                    <div class="leaderboard-username-container">
-                        <span class="leaderboard-username">...</span>
-                    </div>
-                    <span class="leaderboard-balance">--</span>
-                `;
-                
-                this.leaderboardElement.appendChild(placeholderItem);
-            }
-            
-            console.log(`Leaderboard initialized with ${displayCount} players and ${20 - displayCount} placeholders`);
-        }
-        
-        // Create a leaderboard item element
-        createLeaderboardItem(userData, position) {
-            const leaderboardItem = document.createElement('div');
-            leaderboardItem.className = 'leaderboard-item';
-            leaderboardItem.dataset.userId = userData.id;
-            leaderboardItem.dataset.position = position;
-            
-            // Create avatar HTML if user has one
-            let avatarHTML = '';
-            if (userData.avatar) {
-                avatarHTML = `
-                    <div class="leaderboard-avatar">
-                        <img src="${userData.avatar}" alt="${userData.username}'s avatar">
-                    </div>
-                `;
-            }
-            
-            leaderboardItem.innerHTML = `
-                <span class="leaderboard-rank">#${position + 1}</span>
+            placeholderItem.innerHTML = `
+                <span class="leaderboard-rank">#${i + 1}</span>
                 <div class="leaderboard-username-container">
-                    ${avatarHTML}
-                    <span class="leaderboard-username">${userData.username}</span>
+                    <span class="leaderboard-username">...</span>
                 </div>
-                <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+                <span class="leaderboard-balance">--</span>
             `;
             
-            return leaderboardItem;
+            this.leaderboardElement.appendChild(placeholderItem);
         }
         
-        // Update leaderboard positions when data changes
-        updateLeaderboardPositions(newUsers, prevPositions) {
-            // First update all existing items and mark any that need to be moved
-            const itemsToMove = [];
-            const existingItems = {};
+        console.log(`Leaderboard initialized with ${displayCount} players and ${20 - displayCount} placeholders`);
+    }
+    
+    // Create a leaderboard item element
+    createLeaderboardItem(userData, position) {
+        const leaderboardItem = document.createElement('div');
+        leaderboardItem.className = 'leaderboard-item';
+        leaderboardItem.dataset.userId = userData.id;
+        leaderboardItem.dataset.position = position;
+        
+        // Create avatar HTML if user has one
+        let avatarHTML = '';
+        if (userData.avatar) {
+            avatarHTML = `
+                <div class="leaderboard-avatar">
+                    <img src="${userData.avatar}" alt="${userData.username}'s avatar">
+                </div>
+            `;
+        }
+        
+        leaderboardItem.innerHTML = `
+            <span class="leaderboard-rank">#${position + 1}</span>
+            <div class="leaderboard-username-container">
+                ${avatarHTML}
+                <span class="leaderboard-username">${userData.username}</span>
+            </div>
+            <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+        `;
+        
+        return leaderboardItem;
+    }
+    
+    // Update leaderboard positions when data changes
+    updateLeaderboardPositions(newUsers, prevPositions) {
+        // First update all existing items and mark any that need to be moved
+        const itemsToMove = [];
+        const existingItems = {};
+        
+        // Get all existing items
+        const leaderboardItems = this.leaderboardElement.querySelectorAll('.leaderboard-item[data-user-id]');
+        leaderboardItems.forEach(item => {
+            existingItems[item.dataset.userId] = item;
+        });
+        
+        // Process each user in new order
+        newUsers.forEach((userData, newPosition) => {
+            const userId = userData.id;
+            const prevPosition = prevPositions[userId];
             
-            // Get all existing items
-            const leaderboardItems = this.leaderboardElement.querySelectorAll('.leaderboard-item[data-user-id]');
-            leaderboardItems.forEach(item => {
-                existingItems[item.dataset.userId] = item;
-            });
-            
-            // Process each user in new order
-            newUsers.forEach((userData, newPosition) => {
-                const userId = userData.id;
-                const prevPosition = prevPositions[userId];
+            // If user exists in leaderboard
+            if (existingItems[userId]) {
+                const item = existingItems[userId];
                 
-                // If user exists in leaderboard
-                if (existingItems[userId]) {
-                    const item = existingItems[userId];
-                    
-                    // Update balance regardless
-                    const balanceEl = item.querySelector('.leaderboard-balance');
-                    if (balanceEl) {
-                        if (balanceEl.textContent !== userData.accountBalance.toLocaleString()) {
-                            // Highlight balance change
-                            balanceEl.classList.add('balance-updated');
-                            setTimeout(() => balanceEl.classList.remove('balance-updated'), 1000);
-                            
-                            // Update balance text
-                            balanceEl.textContent = userData.accountBalance.toLocaleString();
-                        }
-                    }
-                    
-                    // If position changed
-                    if (prevPosition !== undefined && prevPosition !== newPosition) {
-                        // Store for moving
-                        itemsToMove.push({
-                            item: item,
-                            newPosition: newPosition,
-                            prevPosition: prevPosition,
-                            userData: userData
-                        });
-                    }
-                } else {
-                    // New user - create and insert
-                    const newItem = this.createLeaderboardItem(userData, newPosition);
-                    newItem.classList.add('leaderboard-updated');
-                    
-                    // Find where to insert
-                    if (newPosition === 0) {
-                        // Insert at top
-                        this.leaderboardElement.prepend(newItem);
-                    } else if (newPosition >= this.leaderboardElement.children.length) {
-                        // Insert at end
-                        this.leaderboardElement.appendChild(newItem);
-                    } else {
-                        // Insert at position
-                        this.leaderboardElement.insertBefore(newItem, this.leaderboardElement.children[newPosition]);
-                    }
-                    
-                    // Remove animation class after animation is complete
-                    setTimeout(() => {
-                        newItem.classList.remove('leaderboard-updated');
-                    }, 1000);
-                }
-            });
-            
-            // Now move items that changed position
-            if (itemsToMove.length > 0) {
-                console.log(`Moving ${itemsToMove.length} items in leaderboard`);
-                
-                // Sort by new position to avoid conflicts when moving
-                itemsToMove.sort((a, b) => {
-                    // If moving up, process lower positions first
-                    if (a.newPosition < a.prevPosition && b.newPosition < b.prevPosition) {
-                        return a.newPosition - b.newPosition;
-                    }
-                    // If moving down, process higher positions first
-                    else if (a.newPosition > a.prevPosition && b.newPosition > b.prevPosition) {
-                        return b.newPosition - a.newPosition;
-                    }
-                    // Otherwise, just sort by new position
-                    return a.newPosition - b.newPosition;
-                });
-                
-                // Process movements
-                itemsToMove.forEach(move => {
-                    const item = move.item;
-                    const newPosition = move.newPosition;
-                    
-                    // Update rank display
-                    const rankEl = item.querySelector('.leaderboard-rank');
-                    if (rankEl) {
-                        rankEl.textContent = `#${newPosition + 1}`;
-                    }
-                    
-                    // Update position data attribute
-                    item.dataset.position = newPosition;
-                    
-                    // Add moving class based on direction
-                    if (move.prevPosition < newPosition) {
-                        item.classList.add('moving-down');
-                    } else {
-                        item.classList.add('moving-up');
-                    }
-                    
-                    // Move in DOM - reposition the element
-                    if (newPosition === 0) {
-                        // Move to top
-                        this.leaderboardElement.prepend(item);
-                    } else if (newPosition >= this.leaderboardElement.children.length) {
-                        // Move to bottom
-                        this.leaderboardElement.appendChild(item);
-                    } else {
-                        // Insert at correct position
-                        this.leaderboardElement.insertBefore(item, this.leaderboardElement.children[newPosition]);
-                    }
-                    
-                    // Remove animation classes after animation is complete
-                    setTimeout(() => {
-                        item.classList.remove('moving-up', 'moving-down');
-                    }, 1000);
-                });
-            }
-            
-            // Handle removals - if a user drops out of top 20
-            const currentIds = new Set(newUsers.map(user => user.id));
-            Object.keys(existingItems).forEach(userId => {
-                if (!currentIds.has(userId)) {
-                    const item = existingItems[userId];
-                    item.classList.add('fading-out');
-                    
-                    // Remove after animation
-                    setTimeout(() => {
-                        if (item.parentNode) {
-                            item.parentNode.removeChild(item);
-                        }
+                // Update balance regardless
+                const balanceEl = item.querySelector('.leaderboard-balance');
+                if (balanceEl) {
+                    if (balanceEl.textContent !== userData.accountBalance.toLocaleString()) {
+                        // Highlight balance change
+                        balanceEl.classList.add('balance-updated');
+                        setTimeout(() => balanceEl.classList.remove('balance-updated'), 1000);
                         
-                        // Add placeholder if needed
-                        if (this.leaderboardElement.children.length < 20) {
-                            const placeholderItem = document.createElement('div');
-                            placeholderItem.className = 'leaderboard-item';
-                            placeholderItem.innerHTML = `
-                                <span class="leaderboard-rank">#${this.leaderboardElement.children.length + 1}</span>
-                                <div class="leaderboard-username-container">
-                                    <span class="leaderboard-username">...</span>
-                                </div>
-                                <span class="leaderboard-balance">--</span>
-                            `;
-                            this.leaderboardElement.appendChild(placeholderItem);
-                        }
-                    }, 500);
-                }
-            });
-        }
-        
-        // Specifically highlight special usernames
-        highlightSpecialUsers() {
-            const usernameElements = this.leaderboardElement.querySelectorAll('.leaderboard-username');
-            
-            usernameElements.forEach(el => {
-                // Explicitly check for "VoidNetworkOnTop" username
-                if (el.textContent === 'VoidNetworkOnTop') {
-                    // Apply blue styling
-                    el.style.color = '#1DA1F2';
-                    el.style.textShadow = '0 0 5px rgba(29, 161, 242, 0.3)';
-                    el.style.fontWeight = 'bold';
-                    
-                    // Add verification badge if it doesn't exist
-                    if (!el.querySelector('.verified-badge')) {
-                        const badge = document.createElement('span');
-                        badge.className = 'verified-badge';
-                        badge.textContent = '✓';
-                        badge.style.marginLeft = '4px';
-                        badge.style.color = '#1DA1F2';
-                        el.appendChild(badge);
+                        // Update balance text
+                        balanceEl.textContent = userData.accountBalance.toLocaleString();
                     }
                 }
-            });
-        }
-
-        // Stop leaderboard updates
-        stopLeaderboardUpdates() {
-            if (this.unsubscribe) {
-                console.log("Stopping leaderboard updates");
-                this.unsubscribe();
-                this.unsubscribe = null;
-            }
-            
-            // Clear any pending timeouts
-            if (this.retryTimeout) {
-                clearTimeout(this.retryTimeout);
-            }
-        }
-    }
-
-    // Initialize Accounting System
-    const voidAccounting = new VoidNetworkAccounting();
-
-    // Initialize Leaderboard
-    const voidLeaderboard = new VoidLeaderboard(db);
-
-    // Helper function to refresh leaderboard and highlight special users
-    function refreshLeaderboard() {
-        console.log("Manual leaderboard refresh requested");
-        
-        // Stop current listener and restart to force refresh
-        voidLeaderboard.stopLeaderboardUpdates();
-        
-        // Force a new connection attempt
-        voidLeaderboard.startLeaderboardUpdates();
-        
-        // After a short delay, manually highlight special users
-        setTimeout(() => voidLeaderboard.highlightSpecialUsers(), 1000);
-    }
-
-    // Detect screen size changes to handle mobile responsive layout
-    function handleResponsiveLayout() {
-        const leaderboardContainer = document.querySelector('.leaderboard-container');
-        
-        if (window.innerWidth <= 768) {
-            // For mobile: Show the toggle button for collapse/expand
-            if (leaderboardContainer) {
-                const toggleBtn = document.getElementById('leaderboardToggle');
-                if (toggleBtn) {
-                    toggleBtn.style.display = 'flex';
+                
+                // If position changed
+                if (prevPosition !== undefined && prevPosition !== newPosition) {
+                    // Store for moving
+                    itemsToMove.push({
+                        item: item,
+                        newPosition: newPosition,
+                        prevPosition: prevPosition,
+                        userData: userData
+                    });
+                }
+            } else {
+                // New user - create and insert
+                const newItem = this.createLeaderboardItem(userData, newPosition);
+                newItem.classList.add('leaderboard-updated');
+                
+                // Find where to insert
+                if (newPosition === 0) {
+                    // Insert at top
+                    this.leaderboardElement.prepend(newItem);
+                } else if (newPosition >= this.leaderboardElement.children.length) {
+                    // Insert at end
+                    this.leaderboardElement.appendChild(newItem);
+                } else {
+                    // Insert at position
+                    this.leaderboardElement.insertBefore(newItem, this.leaderboardElement.children[newPosition]);
                 }
                 
-                // Auto-collapse on mobile initially
-                if (!voidLeaderboard.isMinimized && !leaderboardContainer.classList.contains('expanded')) {
-                    voidLeaderboard.isMinimized = true;
+                // Remove animation class after animation is complete
+                setTimeout(() => {
+                    newItem.classList.remove('leaderboard-updated');
+                }, 1000);
+            }
+        });
+        
+        // Now move items that changed position
+        if (itemsToMove.length > 0) {
+            console.log(`Moving ${itemsToMove.length} items in leaderboard`);
+            
+            // Sort by new position to avoid conflicts when moving
+            itemsToMove.sort((a, b) => {
+                // If moving up, process lower positions first
+                if (a.newPosition < a.prevPosition && b.newPosition < b.prevPosition) {
+                    return a.newPosition - b.newPosition;
+                }
+                // If moving down, process higher positions first
+                else if (a.newPosition > a.prevPosition && b.newPosition > b.prevPosition) {
+                    return b.newPosition - a.newPosition;
+                }
+                // Otherwise, just sort by new position
+                return a.newPosition - b.newPosition;
+            });
+            
+            // Process movements
+            itemsToMove.forEach(move => {
+                const item = move.item;
+                const newPosition = move.newPosition;
+                
+                // Update rank display
+                const rankEl = item.querySelector('.leaderboard-rank');
+                if (rankEl) {
+                    rankEl.textContent = `#${newPosition + 1}`;
+                }
+                
+                // Update position data attribute
+                item.dataset.position = newPosition;
+                
+                // Add moving class based on direction
+                if (move.prevPosition < newPosition) {
+                    item.classList.add('moving-down');
+                } else {
+                    item.classList.add('moving-up');
+                }
+                
+                // Move in DOM - reposition the element
+                if (newPosition === 0) {
+                    // Move to top
+                    this.leaderboardElement.prepend(item);
+                } else if (newPosition >= this.leaderboardElement.children.length) {
+                    // Move to bottom
+                    this.leaderboardElement.appendChild(item);
+                } else {
+                    // Insert at correct position
+                    this.leaderboardElement.insertBefore(item, this.leaderboardElement.children[newPosition]);
+                }
+                
+                // Remove animation classes after animation is complete
+                setTimeout(() => {
+                    item.classList.remove('moving-up', 'moving-down');
+                }, 1000);
+            });
+        }
+        
+        // Handle removals - if a user drops out of top 20
+        const currentIds = new Set(newUsers.map(user => user.id));
+        Object.keys(existingItems).forEach(userId => {
+            if (!currentIds.has(userId)) {
+                const item = existingItems[userId];
+                item.classList.add('fading-out');
+                
+                // Remove after animation
+                setTimeout(() => {
+                    if (item.parentNode) {
+                        item.parentNode.removeChild(item);
+                    }
+                    
+                    // Add placeholder if needed
+                    if (this.leaderboardElement.children.length < 20) {
+                        const placeholderItem = document.createElement('div');
+                        placeholderItem.className = 'leaderboard-item';
+                        placeholderItem.innerHTML = `
+                            <span class="leaderboard-rank">#${this.leaderboardElement.children.length + 1}</span>
+                            <div class="leaderboard-username-container">
+                                <span class="leaderboard-username">...</span>
+                            </div>
+                            <span class="leaderboard-balance">--</span>
+                        `;
+                        this.leaderboardElement.appendChild(placeholderItem);
+                    }
+                }, 500);
+            }
+        });
+    }
+    
+    // Specifically highlight special usernames
+    highlightSpecialUsers() {
+        const usernameElements = this.leaderboardElement.querySelectorAll('.leaderboard-username');
+        
+        usernameElements.forEach(el => {
+            // Explicitly check for "VoidNetworkOnTop" username
+            if (el.textContent === 'VoidNetworkOnTop') {
+                // Apply blue styling
+                el.style.color = '#1DA1F2';
+                el.style.textShadow = '0 0 5px rgba(29, 161, 242, 0.3)';
+                el.style.fontWeight = 'bold';
+                
+                // Add verification badge if it doesn't exist
+                if (!el.querySelector('.verified-badge')) {
+                    const badge = document.createElement('span');
+                    badge.className = 'verified-badge';
+                    badge.textContent = '✓';
+                    badge.style.marginLeft = '4px';
+                    badge.style.color = '#1DA1F2';
+                    el.appendChild(badge);
                 }
             }
-        } else {
-            // For desktop: hide the toggle button as the leaderboard is always visible
+        });
+    }
+
+// Stop leaderboard updates
+    stopLeaderboardUpdates() {
+        if (this.unsubscribe) {
+            console.log("Stopping leaderboard updates");
+            this.unsubscribe();
+            this.unsubscribe = null;
+        }
+        
+        // Clear any pending timeouts
+        if (this.retryTimeout) {
+            clearTimeout(this.retryTimeout);
+        }
+        
+        // Clear the cleanup interval
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+    }
+}
+
+// Initialize Accounting System
+const voidAccounting = new VoidNetworkAccounting();
+
+// Initialize Leaderboard
+const voidLeaderboard = new VoidLeaderboard(db);
+
+// Helper function to refresh leaderboard and highlight special users
+function refreshLeaderboard() {
+    console.log("Manual leaderboard refresh requested");
+    
+    // Stop current listener and restart to force refresh
+    voidLeaderboard.stopLeaderboardUpdates();
+    
+    // Force a new connection attempt
+    voidLeaderboard.startLeaderboardUpdates();
+    
+    // After a short delay, manually highlight special users
+    setTimeout(() => voidLeaderboard.highlightSpecialUsers(), 1000);
+}
+
+// Detect screen size changes to handle mobile responsive layout
+function handleResponsiveLayout() {
+    const leaderboardContainer = document.querySelector('.leaderboard-container');
+    
+    if (window.innerWidth <= 768) {
+        // For mobile: Show the toggle button for collapse/expand
+        if (leaderboardContainer) {
             const toggleBtn = document.getElementById('leaderboardToggle');
             if (toggleBtn) {
-                toggleBtn.style.display = 'none';
+                toggleBtn.style.display = 'flex';
             }
             
-            // Reset any mobile-specific classes
-            if (leaderboardContainer) {
-                leaderboardContainer.classList.remove('expanded');
+            // Auto-collapse on mobile initially
+            if (!voidLeaderboard.isMinimized && !leaderboardContainer.classList.contains('expanded')) {
+                voidLeaderboard.isMinimized = true;
             }
+        }
+    } else {
+        // For desktop: hide the toggle button as the leaderboard is always visible
+        const toggleBtn = document.getElementById('leaderboardToggle');
+        if (toggleBtn) {
+            toggleBtn.style.display = 'none';
+        }
+        
+        // Reset any mobile-specific classes
+        if (leaderboardContainer) {
+            leaderboardContainer.classList.remove('expanded');
         }
     }
+}
 
-    // Initialize layout once DOM is loaded
-    window.addEventListener('load', () => {
-        handleResponsiveLayout();
-    });
+// Initialize layout once DOM is loaded
+window.addEventListener('load', () => {
+    handleResponsiveLayout();
+});
 
-    // Check on window resize
-    window.addEventListener('resize', handleResponsiveLayout);
+// Check on window resize
+window.addEventListener('resize', handleResponsiveLayout);
 
-    // Authentication Event Listeners
-    document.getElementById('login-btn')?.addEventListener('click', async () => {
-        const email = document.getElementById('login-email').value;
-        const password = document.getElementById('login-password').value;
-        
-        if (!email || !password) {
-            alert('Please enter both email and password');
-            return;
-        }
-        
-        try {
-            const user = await voidAccounting.loginUser(email, password);
-            console.log('Logged in user:', user);
-            await updateUIForLoggedInUser(user);
-            authContainer.style.display = 'none'; // Hide auth container after login
-            authContainer.classList.remove('visible');
-        } catch (error) {
-            alert('Login failed: ' + error.message);
-        }
-    });
-
-    document.getElementById('register-btn')?.addEventListener('click', async () => {
-        const username = document.getElementById('register-username').value;
-        const email = document.getElementById('register-email').value;
-        const password = document.getElementById('register-password').value;
-        
-        if (!username || !email || !password) {
-            alert('Please fill in all fields');
-            return;
-        }
-        
-        try {
-            const user = await voidAccounting.registerUser(email, password, username);
-            console.log('Registered user:', user);
-            await updateUIForLoggedInUser(user);
-            authContainer.style.display = 'none'; // Hide auth container after registration
-            authContainer.classList.remove('visible');
-        } catch (error) {
-            alert('Registration failed: ' + error.message);
-        }
-    });
-
-    document.getElementById('logout-btn')?.addEventListener('click', async () => {
-        try {
-            // Unequip any theme before logging out
-            if (itemManager.currentTheme) {
-                itemManager.unequipTheme();
-            }
-            
-            await voidAccounting.logout();
-            updateUIForLoggedOutUser();
-            
-            // Close shop container if open
-            shopContainer.style.display = 'none';
-            shopContainer.classList.remove('visible');
-        } catch (error) {
-            alert('Logout failed: ' + error.message);
-        }
-    });
-
-    // Update UI based on authentication state
-    async function updateUIForLoggedInUser(user) {
-        document.getElementById('login-form').style.display = 'none';
-        document.getElementById('register-form').style.display = 'none';
-        document.getElementById('user-profile').style.display = 'block';
-        
-        try {
-            // Fetch fresh user details
-            const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
-            document.getElementById('username-display').textContent = userDetails.username;
-            document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
-            console.log("Updated UI with username:", userDetails.username);
-            
-            // Load user's theme and avatar if they have them equipped
-            await itemManager.loadUserPreferences(user.uid);
-            
-            // Check if user is a developer and show dev tab if they are
-            const isDev = await itemManager.verifyDevAccess();
-            const devTab = document.querySelector('.shop-tab[data-tab="dev"]');
-            
-            if (devTab) {
-                if (isDev) {
-                    devTab.style.display = 'block';
-                } else {
-                    devTab.style.display = 'none';
-                }
-            }
-            
-            // Check for dev avatars and verify every minute
-            setInterval(async () => {
-                await itemManager.verifyDevAccess();
-            }, 60000); // Check every 1 minute
-        } catch (error) {
-            console.error("Error updating UI:", error);
-            alert('Could not load user details. Please try again.');
-        }
+// Authentication Event Listeners
+document.getElementById('login-btn')?.addEventListener('click', async () => {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+    
+    if (!email || !password) {
+        alert('Please enter both email and password');
+        return;
     }
-
-    function updateUIForLoggedOutUser() {
-        document.getElementById('login-form').style.display = 'block';
-        document.getElementById('register-form').style.display = 'block';
-        document.getElementById('user-profile').style.display = 'none';
+    
+    try {
+        const user = await voidAccounting.loginUser(email, password);
+        console.log('Logged in user:', user);
+        await updateUIForLoggedInUser(user);
+        authContainer.style.display = 'none'; // Hide auth container after login
+        authContainer.classList.remove('visible');
+    } catch (error) {
+        alert('Login failed: ' + error.message);
     }
+});
 
-    // Listen for authentication state changes
-    onAuthStateChanged(auth, async (user) => {
-        if (user) {
-            console.log("Auth state changed: User is signed in", user.uid);
-            await updateUIForLoggedInUser(user);
-        } else {
-            console.log("Auth state changed: User is signed out");
-            updateUIForLoggedOutUser();
-            
-            // Make sure items are unequipped when logged out
-            if (itemManager.currentTheme) {
-                itemManager.unequipTheme();
+document.getElementById('register-btn')?.addEventListener('click', async () => {
+    const username = document.getElementById('register-username').value;
+    const email = document.getElementById('register-email').value;
+    const password = document.getElementById('register-password').value;
+    
+    if (!username || !email || !password) {
+        alert('Please fill in all fields');
+        return;
+    }
+    
+    try {
+        const user = await voidAccounting.registerUser(email, password, username);
+        console.log('Registered user:', user);
+        await updateUIForLoggedInUser(user);
+        authContainer.style.display = 'none'; // Hide auth container after registration
+        authContainer.classList.remove('visible');
+    } catch (error) {
+        alert('Registration failed: ' + error.message);
+    }
+});
+
+document.getElementById('logout-btn')?.addEventListener('click', async () => {
+    try {
+        // Unequip any theme before logging out
+        if (itemManager.currentTheme) {
+            itemManager.unequipTheme();
+        }
+        
+        await voidAccounting.logout();
+        updateUIForLoggedOutUser();
+        
+        // Close shop container if open
+        shopContainer.style.display = 'none';
+        shopContainer.classList.remove('visible');
+    } catch (error) {
+        alert('Logout failed: ' + error.message);
+    }
+});
+
+// Update UI based on authentication state
+async function updateUIForLoggedInUser(user) {
+    document.getElementById('login-form').style.display = 'none';
+    document.getElementById('register-form').style.display = 'none';
+    document.getElementById('user-profile').style.display = 'block';
+    
+    try {
+        // Fetch fresh user details
+        const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
+        document.getElementById('username-display').textContent = userDetails.username;
+        document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
+        console.log("Updated UI with username:", userDetails.username);
+        
+        // Load user's theme and avatar if they have them equipped
+        await itemManager.loadUserPreferences(user.uid);
+        
+        // Check if user is a developer and show dev tab if they are
+        const isDev = await itemManager.verifyDevAccess();
+        const devTab = document.querySelector('.shop-tab[data-tab="dev"]');
+        
+        if (devTab) {
+            if (isDev) {
+                devTab.style.display = 'block';
+            } else {
+                devTab.style.display = 'none';
             }
-            itemManager.currentTheme = null;
-            itemManager.currentAvatar = null;
         }
+        
+        // Check for dev avatars and verify every minute
+        setInterval(async () => {
+            await itemManager.verifyDevAccess();
+        }, 60000); // Check every 1 minute
+    } catch (error) {
+        console.error("Error updating UI:", error);
+        alert('Could not load user details. Please try again.');
+    }
+}
+
+function updateUIForLoggedOutUser() {
+    document.getElementById('login-form').style.display = 'block';
+    document.getElementById('register-form').style.display = 'block';
+    document.getElementById('user-profile').style.display = 'none';
+}
+
+// Listen for authentication state changes
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        console.log("Auth state changed: User is signed in", user.uid);
+        await updateUIForLoggedInUser(user);
+    } else {
+        console.log("Auth state changed: User is signed out");
+        updateUIForLoggedOutUser();
+        
+        // Make sure items are unequipped when logged out
+        if (itemManager.currentTheme) {
+            itemManager.unequipTheme();
+        }
+        itemManager.currentTheme = null;
+        itemManager.currentAvatar = null;
+    }
+});
+
+// Game loading logic
+const defaultApps = [
+    {
+        title: "Ball Dropper",
+        imgSrc: "https://lh7-us.googleusercontent.com/CUj18dKaBkXv0WI59qpP2-Ub1J0KHyKXwgnhPBdmzDzwhQNvIkwPsrVLJCiSsS0iNOaF8-nAamakuiFLoRzYIGyOr-LOFJg9hD5IA9cIvjh5ZIHmBhT-hel39crAOTgz88P8jX2WApcC5PDnLbabDK_QC1vyFw",
+        link: "/local games/Plinko/plinko.html"
+    },
+    {
+        title: "MineFeild",
+        imgSrc: "https://lh7-us.googleusercontent.com/WAjTfpxFqdXwMOlzyChcCi40sg6-ukZN5u24gdmWyi9_Yca5-V8vBR6zrgOoADGwKKJM7e7cKEkq9i_chkYesJvN_VVnvKAfUOPIllTxR2mbOK-HiR0vlIgH_2_bY2Oqzh2ndVieVycQoGDMXuZC-8gpE85Ypg",
+        link: "/local games/CrossyRoad/crossy.html"
+    },
+    {
+        title: "Memory Squares",
+        imgSrc: "https://lh7-us.googleusercontent.com/USI3iEwtHyyyN6fdMllkREQg8h8N7xsXxw94Wb0umSNOzvXTgMtBtxMBXwgyVOHirbrZCVGU1JDeyVaW94xuTS-4vEvT1iZzriw3We_RIYDPW63aWxDEj8xZ_d7Nc3vi6LfrEr20QOOMvnWL8JD5XgbbC-PjKA",
+        link: "/local games/memory-square/mem.html"
+    },
+    {
+        title: "VoidSnake",
+        imgSrc: "https://lh7-us.googleusercontent.com/zPbDytQWYmY90BK7jPcdb8QQ8QNz4LWyhwUq1zNWiD64NNGC_8L21T_QDOl9z8R9QRvJtkFRvM9f83ODmjJJYgG6sZwi71SPiTUwASMOaofbb7wIOKEQJ-Wq1VSGVlCg3RmSdC7B4d-SGOfs_hRdmKjtxHbGOQ",
+        link: "/local games/Void Snake/Voidsnake.html"
+    },
+    {
+        title: "Heads Or Tails?",
+        imgSrc: "https://lh7-us.googleusercontent.com/jpunH9P0O_of8oU2ZilkliydM46qFTQxD__XgzIKv3OU7zZi77arrF9F2hGe-wgyzO5-57VJvN1zocVFN8549jIDkN2rKc9xEjcywhhJCldCaJkZnMgyEHtwJPuUsZZSu4DsK-L2b2eQGepfKwhgn4p7tgzrqA",
+        link: "/local games/CoinFlip/coinflip.html"
+    },
+    {
+        title: "Chicken Run",
+        imgSrc: "https://lh7-us.googleusercontent.com/JugrfbksXzV3Mwwp32MOX-DHGD1EQJmZIaB_RYn9VBvoihT7-bClXPzyfYJC4mGXsYsdTMWJh-Xxe8L9wpHrGntuc0Shzu9tqKCTSug-jM2SiW1BIBcok9Fxlz0JvZEqaKVMbSWK1dlWmw8caafDFRErSox7YA",
+        link: "/local games/ChickenRun/chickenrun.html"
+    },
+    {
+        title: "Black Jack",
+        imgSrc: "https://lh7-us.googleusercontent.com/OZqPInsN8s8qb43B5XLKVNm6uHmFM_GBSMVdBcr4Y8fYr-dX_jSqsu7keD7RoMafKFhUprNXkYYwpvmTwsNNkvmzR23M3XL1ykIp-8EpICFqttainlnXyRuobeBcEp4YE8fxhdDdBxgufc8EhjzItiMSAI821w",
+        link: "/local games/BlackJack/BlackJack.html"
+    },
+    {
+        title: "Tic Tac Toe",
+        imgSrc: "https://lh7-us.googleusercontent.com/9kSWLTVDFONfAKr5ypIjt5LvF36mUlapDOEMJdwX0jkF-wvLUAPvd6Pg42ws-2Fdq2dRvOtO3WRMOtkJiS7atfoqugRCHgAsxqni6PVbRlIoM-uqCAOWjVp-wCnFWxuHDWAPEGuwjNkiBYSXhTljpVMf4A_h2Q",
+        link: "/local games/TicTacToe/TicTacToe.html"
+    },
+    {
+        title: "Water Roulette",
+        imgSrc: "https://lh7-us.googleusercontent.com/55Ss_gX74t5Qy9Zr2OevrdodZtTs3lQ4KEAXiOhyMoRctF1EDDcaepxmc2Fou29Jl0AUWsl5NGx8xiDW89aOwgXnTtkrFa5B7TXOczHrtCbdyT8WFcrCcisyTUmd9h8XfGTmvbUZ2uXNZ8gZk7UoVMxuTh2tQw",
+        link: "/local games/RussianRoulette/RussianRoulette.html"
+    },
+    {
+        title: "Click Race Multiplayer",
+        imgSrc: "https://lh7-us.googleusercontent.com/0uIu5df5JmX-mNMQCWXZU39v4N0h3tYQntJyUgd74z_OBw5neJum7hYw7YroKxDZI4lqaEZi66aTB3PuKtJ2-DdaPqf9ZhyzVrMkBaHuFTlITvL3dBLWVqpFBRKWr9lapTsOrbZMhjlf6MyKa3mcou5hO3zl5g",
+        link: "/local games/ClickRace/ClickRace.html"
+    },
+];
+
+function renderAppsList() {
+    const gamesList = document.getElementById("gamesList");
+    
+    if (!gamesList) {
+        console.error("Games list element not found");
+        return;
+    }
+    
+    gamesList.innerHTML = '';
+    console.log("Rendering games list");
+    
+    defaultApps.forEach(app => {
+        const appElement = document.createElement("div");
+        appElement.className = "game-item";
+        
+        appElement.innerHTML = `
+            <div class="game-icon">
+                <img src="${app.imgSrc}" alt="${app.title} icon">
+            </div>
+            <h3 class="game-title">${app.title}</h3>
+        `;
+
+        appElement.onclick = () => {
+            // Check if user is logged in before navigating to game
+            const currentUser = voidAccounting.getCurrentUser();
+            if (currentUser) {
+                console.log("Navigating to game:", app.title);
+                
+                // Record the game play attempt
+                voidAccounting.recordGameTransaction(
+                    app.title.toLowerCase().replace(/\s+/g, '_'), 
+                    currentUser.uid,
+                    'game_play',
+                    0 // Just tracking the visit, not charging coins here
+                ).then(() => {
+                    // Navigate to the game after transaction is recorded
+                    window.location.href = app.link;
+                }).catch(error => {
+                    console.error("Error recording game visit:", error);
+                    // Still navigate even if tracking fails
+                    window.location.href = app.link;
+                });
+            } else {
+                alert('Please login to play games');
+                authContainer.style.display = 'block';
+                setTimeout(() => {
+                    authContainer.classList.add('visible');
+                }, 10);
+            }
+        };
+
+        gamesList.appendChild(appElement);
     });
+}
 
-    // Game loading logic
-    const defaultApps = [
-        {
-            title: "Ball Dropper",
-            imgSrc: "https://lh7-us.googleusercontent.com/CUj18dKaBkXv0WI59qpP2-Ub1J0KHyKXwgnhPBdmzDzwhQNvIkwPsrVLJCiSsS0iNOaF8-nAamakuiFLoRzYIGyOr-LOFJg9hD5IA9cIvjh5ZIHmBhT-hel39crAOTgz88P8jX2WApcC5PDnLbabDK_QC1vyFw",
-            link: "/local games/Plinko/plinko.html"
-        },
-        {
-            title: "MineFeild",
-            imgSrc: "https://lh7-us.googleusercontent.com/WAjTfpxFqdXwMOlzyChcCi40sg6-ukZN5u24gdmWyi9_Yca5-V8vBR6zrgOoADGwKKJM7e7cKEkq9i_chkYesJvN_VVnvKAfUOPIllTxR2mbOK-HiR0vlIgH_2_bY2Oqzh2ndVieVycQoGDMXuZC-8gpE85Ypg",
-            link: "/local games/CrossyRoad/crossy.html"
-        },
-        {
-            title: "Memory Squares",
-            imgSrc: "https://lh7-us.googleusercontent.com/USI3iEwtHyyyN6fdMllkREQg8h8N7xsXxw94Wb0umSNOzvXTgMtBtxMBXwgyVOHirbrZCVGU1JDeyVaW94xuTS-4vEvT1iZzriw3We_RIYDPW63aWxDEj8xZ_d7Nc3vi6LfrEr20QOOMvnWL8JD5XgbbC-PjKA",
-            link: "/local games/memory-square/mem.html"
-        },
-        {
-            title: "VoidSnake",
-            imgSrc: "https://lh7-us.googleusercontent.com/zPbDytQWYmY90BK7jPcdb8QQ8QNz4LWyhwUq1zNWiD64NNGC_8L21T_QDOl9z8R9QRvJtkFRvM9f83ODmjJJYgG6sZwi71SPiTUwASMOaofbb7wIOKEQJ-Wq1VSGVlCg3RmSdC7B4d-SGOfs_hRdmKjtxHbGOQ",
-            link: "/local games/Void Snake/Voidsnake.html"
-        },
-        {
-            title: "Heads Or Tails?",
-            imgSrc: "https://lh7-us.googleusercontent.com/jpunH9P0O_of8oU2ZilkliydM46qFTQxD__XgzIKv3OU7zZi77arrF9F2hGe-wgyzO5-57VJvN1zocVFN8549jIDkN2rKc9xEjcywhhJCldCaJkZnMgyEHtwJPuUsZZSu4DsK-L2b2eQGepfKwhgn4p7tgzrqA",
-            link: "/local games/CoinFlip/coinflip.html"
-        },
-        {
-            title: "Chicken Run",
-            imgSrc: "https://lh7-us.googleusercontent.com/JugrfbksXzV3Mwwp32MOX-DHGD1EQJmZIaB_RYn9VBvoihT7-bClXPzyfYJC4mGXsYsdTMWJh-Xxe8L9wpHrGntuc0Shzu9tqKCTSug-jM2SiW1BIBcok9Fxlz0JvZEqaKVMbSWK1dlWmw8caafDFRErSox7YA",
-            link: "/local games/ChickenRun/chickenrun.html"
-        },
-        {
-            title: "Black Jack",
-            imgSrc: "https://lh7-us.googleusercontent.com/OZqPInsN8s8qb43B5XLKVNm6uHmFM_GBSMVdBcr4Y8fYr-dX_jSqsu7keD7RoMafKFhUprNXkYYwpvmTwsNNkvmzR23M3XL1ykIp-8EpICFqttainlnXyRuobeBcEp4YE8fxhdDdBxgufc8EhjzItiMSAI821w",
-            link: "/local games/BlackJack/BlackJack.html"
-        },
-        {
-            title: "Tic Tac Toe",
-            imgSrc: "https://lh7-us.googleusercontent.com/9kSWLTVDFONfAKr5ypIjt5LvF36mUlapDOEMJdwX0jkF-wvLUAPvd6Pg42ws-2Fdq2dRvOtO3WRMOtkJiS7atfoqugRCHgAsxqni6PVbRlIoM-uqCAOWjVp-wCnFWxuHDWAPEGuwjNkiBYSXhTljpVMf4A_h2Q",
-            link: "/local games/TicTacToe/TicTacToe.html"
-        },
-        {
-            title: "Water Roulette",
-            imgSrc: "https://lh7-us.googleusercontent.com/55Ss_gX74t5Qy9Zr2OevrdodZtTs3lQ4KEAXiOhyMoRctF1EDDcaepxmc2Fou29Jl0AUWsl5NGx8xiDW89aOwgXnTtkrFa5B7TXOczHrtCbdyT8WFcrCcisyTUmd9h8XfGTmvbUZ2uXNZ8gZk7UoVMxuTh2tQw",
-            link: "/local games/RussianRoulette/RussianRoulette.html"
-        },
-        {
-            title: "Click Race Multiplayer",
-            imgSrc: "https://lh7-us.googleusercontent.com/0uIu5df5JmX-mNMQCWXZU39v4N0h3tYQntJyUgd74z_OBw5neJum7hYw7YroKxDZI4lqaEZi66aTB3PuKtJ2-DdaPqf9ZhyzVrMkBaHuFTlITvL3dBLWVqpFBRKWr9lapTsOrbZMhjlf6MyKa3mcou5hO3zl5g",
-            link: "/local games/ClickRace/ClickRace.html"
-        },
-    ];
-
-    function renderAppsList() {
-        const gamesList = document.getElementById("gamesList");
-        
-        if (!gamesList) {
-            console.error("Games list element not found");
-            return;
-        }
-        
-        gamesList.innerHTML = '';
-        console.log("Rendering games list");
-        
-        defaultApps.forEach(app => {
+document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
+    const gamesList = document.getElementById("gamesList");
+    const searchTerm = this.value.toLowerCase();
+    
+    if (!gamesList) return;
+    
+    gamesList.innerHTML = '';
+    
+    defaultApps.forEach(app => {
+        if (app.title.toLowerCase().includes(searchTerm)) {
             const appElement = document.createElement("div");
             appElement.className = "game-item";
             
@@ -4187,8 +4385,6 @@
                 // Check if user is logged in before navigating to game
                 const currentUser = voidAccounting.getCurrentUser();
                 if (currentUser) {
-                    console.log("Navigating to game:", app.title);
-                    
                     // Record the game play attempt
                     voidAccounting.recordGameTransaction(
                         app.title.toLowerCase().replace(/\s+/g, '_'), 
@@ -4213,88 +4409,37 @@
             };
 
             gamesList.appendChild(appElement);
-        });
-    }
-
-    document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
-        const gamesList = document.getElementById("gamesList");
-        const searchTerm = this.value.toLowerCase();
-        
-        if (!gamesList) return;
-        
-        gamesList.innerHTML = '';
-        
-        defaultApps.forEach(app => {
-            if (app.title.toLowerCase().includes(searchTerm)) {
-                const appElement = document.createElement("div");
-                appElement.className = "game-item";
-                
-                appElement.innerHTML = `
-                    <div class="game-icon">
-                        <img src="${app.imgSrc}" alt="${app.title} icon">
-                    </div>
-                    <h3 class="game-title">${app.title}</h3>
-                `;
-
-                appElement.onclick = () => {
-                    // Check if user is logged in before navigating to game
-                    const currentUser = voidAccounting.getCurrentUser();
-                    if (currentUser) {
-                        // Record the game play attempt
-                        voidAccounting.recordGameTransaction(
-                            app.title.toLowerCase().replace(/\s+/g, '_'), 
-                            currentUser.uid,
-                            'game_play',
-                            0 // Just tracking the visit, not charging coins here
-                        ).then(() => {
-                            // Navigate to the game after transaction is recorded
-                            window.location.href = app.link;
-                        }).catch(error => {
-                            console.error("Error recording game visit:", error);
-                            // Still navigate even if tracking fails
-                            window.location.href = app.link;
-                        });
-                    } else {
-                        alert('Please login to play games');
-                        authContainer.style.display = 'block';
-                        setTimeout(() => {
-                            authContainer.classList.add('visible');
-                        }, 10);
-                    }
-                };
-
-                gamesList.appendChild(appElement);
-            }
-        });
-    });
-
-    // Add periodic refresh to ensure leaderboard stays updated
-    setInterval(refreshLeaderboard, 30000); // Refresh every 30 seconds
-
-    // Load apps and start leaderboard on page load
-    window.addEventListener('load', async () => {
-        try {
-            console.log("Page loaded, initializing app");
-            renderAppsList();
-            
-            // Start leaderboard updates
-            voidLeaderboard.startLeaderboardUpdates();
-            
-            // Check if user is already logged in
-            const user = auth.currentUser;
-            if (user) {
-                console.log("User already logged in:", user.uid);
-                await updateUIForLoggedInUser(user);
-            }
-        } catch (err) {
-            console.error('Error during initialization:', err);
         }
     });
+});
 
-    // Stop leaderboard updates when user leaves the page
-    window.addEventListener('beforeunload', () => {
-        voidLeaderboard.stopLeaderboardUpdates();
-    });
-    </script>
+// Add periodic refresh to ensure leaderboard stays updated
+setInterval(refreshLeaderboard, 30000); // Refresh every 30 seconds
+
+// Load apps and start leaderboard on page load
+window.addEventListener('load', async () => {
+    try {
+        console.log("Page loaded, initializing app");
+        renderAppsList();
+        
+        // Start leaderboard updates
+        voidLeaderboard.startLeaderboardUpdates();
+        
+        // Check if user is already logged in
+        const user = auth.currentUser;
+        if (user) {
+            console.log("User already logged in:", user.uid);
+            await updateUIForLoggedInUser(user);
+        }
+    } catch (err) {
+        console.error('Error during initialization:', err);
+    }
+});
+
+// Stop leaderboard updates when user leaves the page
+window.addEventListener('beforeunload', () => {
+    voidLeaderboard.stopLeaderboardUpdates();
+});
+</script>
 </body>
 </html>
