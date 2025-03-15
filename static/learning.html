@@ -4466,8 +4466,345 @@ document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
     });
 });
 
+// Helper function to show login errors
+function showLoginError(message) {
+    // Remove any existing error message
+    const existingError = document.getElementById('login-error');
+    if (existingError) {
+        existingError.remove();
+    }
+    
+    // Create error message element
+    const errorDiv = document.createElement('div');
+    errorDiv.id = 'login-error';
+    errorDiv.style.color = '#ff6b6b';
+    errorDiv.style.marginTop = '10px';
+    errorDiv.style.fontSize = '0.9rem';
+    errorDiv.textContent = message;
+    
+    // Add to login form
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.appendChild(errorDiv);
+    } else {
+        // Fallback to alert if we can't find the form
+        alert(message);
+    }
+}
+
+// Helper function to show registration errors
+function showRegisterError(message) {
+    // Remove any existing error message
+    const existingError = document.getElementById('register-error');
+    if (existingError) {
+        existingError.remove();
+    }
+    
+    // Create error message element
+    const errorDiv = document.createElement('div');
+    errorDiv.id = 'register-error';
+    errorDiv.style.color = '#ff6b6b';
+    errorDiv.style.marginTop = '10px';
+    errorDiv.style.fontSize = '0.9rem';
+    errorDiv.textContent = message;
+    
+    // Add to register form
+    const registerForm = document.getElementById('register-form');
+    if (registerForm) {
+        registerForm.appendChild(errorDiv);
+    } else {
+        // Fallback to alert if we can't find the form
+        alert(message);
+    }
+}
+
+// Function to verify auth container structure
+function ensureAuthContainerStructure() {
+    const authContainer = document.getElementById('auth-container');
+    if (!authContainer) return;
+    
+    // Make sure login form has all required elements
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        if (!loginForm.querySelector('#login-email')) {
+            const emailInput = document.createElement('input');
+            emailInput.type = 'email';
+            emailInput.id = 'login-email';
+            emailInput.placeholder = 'Email';
+            loginForm.insertBefore(emailInput, loginForm.querySelector('button'));
+        }
+        
+        if (!loginForm.querySelector('#login-password')) {
+            const passwordInput = document.createElement('input');
+            passwordInput.type = 'password';
+            passwordInput.id = 'login-password';
+            passwordInput.placeholder = 'Password';
+            loginForm.insertBefore(passwordInput, loginForm.querySelector('button'));
+        }
+    }
+    
+    // Make sure register form has all required elements
+    const registerForm = document.getElementById('register-form');
+    if (registerForm) {
+        if (!registerForm.querySelector('#register-username')) {
+            const usernameInput = document.createElement('input');
+            usernameInput.type = 'text';
+            usernameInput.id = 'register-username';
+            usernameInput.placeholder = 'Username';
+            registerForm.insertBefore(usernameInput, registerForm.querySelector('button'));
+        }
+        
+        if (!registerForm.querySelector('#register-email')) {
+            const emailInput = document.createElement('input');
+            emailInput.type = 'email';
+            emailInput.id = 'register-email';
+            emailInput.placeholder = 'Email';
+            registerForm.insertBefore(emailInput, registerForm.querySelector('button'));
+        }
+        
+        if (!registerForm.querySelector('#register-password')) {
+            const passwordInput = document.createElement('input');
+            passwordInput.type = 'password';
+            passwordInput.id = 'register-password';
+            passwordInput.placeholder = 'Password';
+            registerForm.insertBefore(passwordInput, registerForm.querySelector('button'));
+        }
+    }
+}
+
+// FIXED: Enhanced login button event handler
+document.getElementById('login-btn')?.addEventListener('click', async () => {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+    
+    // Clear any previous error messages
+    const errorMsgEl = document.getElementById('login-error');
+    if (errorMsgEl) {
+        errorMsgEl.remove();
+    }
+    
+    if (!email || !password) {
+        showLoginError('Please enter both email and password');
+        return;
+    }
+    
+    // Show loading indicator
+    const loginBtn = document.getElementById('login-btn');
+    const originalBtnText = loginBtn.textContent;
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Logging in...';
+    
+    try {
+        console.log('Attempting login for:', email);
+        const user = await voidAccounting.loginUser(email, password);
+        console.log('Login successful for user:', user.uid);
+        
+        // Reset button
+        loginBtn.textContent = originalBtnText;
+        loginBtn.disabled = false;
+        
+        // Update UI for logged in user
+        await updateUIForLoggedInUser(user);
+        
+        // Hide auth container after login
+        authContainer.style.display = 'none';
+        authContainer.classList.remove('visible');
+        
+        // Show success notification
+        showNotification('Login successful!', 'success');
+        
+        // Force a leaderboard refresh to ensure it's up to date with the user's data
+        forceLeaderboardRefresh();
+    } catch (error) {
+        console.error('Login failed:', error);
+        
+        // Reset button
+        loginBtn.textContent = originalBtnText;
+        loginBtn.disabled = false;
+        
+        // Display error to user
+        showLoginError(error.message || 'Login failed. Please try again.');
+    }
+});
+
+// FIXED: Enhanced register button event handler
+document.getElementById('register-btn')?.addEventListener('click', async () => {
+    const username = document.getElementById('register-username').value;
+    const email = document.getElementById('register-email').value;
+    const password = document.getElementById('register-password').value;
+    
+    // Clear any previous error messages
+    const errorMsgEl = document.getElementById('register-error');
+    if (errorMsgEl) {
+        errorMsgEl.remove();
+    }
+    
+    if (!username || !email || !password) {
+        showRegisterError('Please fill in all fields');
+        return;
+    }
+    
+    // Show loading indicator
+    const registerBtn = document.getElementById('register-btn');
+    const originalBtnText = registerBtn.textContent;
+    registerBtn.disabled = true;
+    registerBtn.textContent = 'Creating Account...';
+    
+    try {
+        console.log('Attempting registration for:', email);
+        const user = await voidAccounting.registerUser(email, password, username);
+        console.log('Registration successful for user:', user.uid);
+        
+        // Reset button
+        registerBtn.textContent = originalBtnText;
+        registerBtn.disabled = false;
+        
+        // Update UI for logged in user
+        await updateUIForLoggedInUser(user);
+        
+        // Hide auth container after registration
+        authContainer.style.display = 'none';
+        authContainer.classList.remove('visible');
+        
+        // Show success notification
+        showNotification('Account created successfully!', 'success');
+    } catch (error) {
+        console.error('Registration failed:', error);
+        
+        // Reset button
+        registerBtn.textContent = originalBtnText;
+        registerBtn.disabled = false;
+        
+        // Display error to user
+        showRegisterError(error.message || 'Registration failed. Please try again.');
+    }
+});
+
+// FIXED: Update UI for logged in user
+async function updateUIForLoggedInUser(user) {
+    if (!user) {
+        console.error("Cannot update UI: No user provided");
+        return;
+    }
+
+    try {
+        console.log("Updating UI for logged in user:", user.uid);
+        
+        document.getElementById('login-form').style.display = 'none';
+        document.getElementById('register-form').style.display = 'none';
+        document.getElementById('user-profile').style.display = 'block';
+        
+        // Show loading state
+        document.getElementById('username-display').textContent = "Loading...";
+        document.getElementById('balance-display').textContent = "...";
+        
+        // Fetch fresh user details
+        const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
+        document.getElementById('username-display').textContent = userDetails.username;
+        document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
+        console.log("Updated UI with username:", userDetails.username);
+        
+        // Load user's theme and avatar if they have them equipped
+        try {
+            await itemManager.loadUserPreferences(user.uid);
+        } catch (prefError) {
+            console.warn("Error loading user preferences:", prefError);
+            // Non-critical error, continue
+        }
+        
+        // Check if user is a developer and show dev tab if they are
+        try {
+            const isDev = await itemManager.verifyDevAccess();
+            const devTab = document.querySelector('.shop-tab[data-tab="dev"]');
+            
+            if (devTab) {
+                if (isDev) {
+                    devTab.style.display = 'block';
+                } else {
+                    devTab.style.display = 'none';
+                }
+            }
+        } catch (devError) {
+            console.warn("Error checking dev access:", devError);
+            // Non-critical error, continue
+        }
+        
+        // Check for dev avatars and verify every minute
+        setInterval(async () => {
+            try {
+                await itemManager.verifyDevAccess();
+            } catch (error) {
+                console.warn("Error in periodic dev verification:", error);
+                // Non-critical error, continue
+            }
+        }, 60000); // Check every 1 minute
+    } catch (error) {
+        console.error("Error updating UI:", error);
+        showNotification('Could not load user details. Please try again.', 'error');
+    }
+}
+
+function updateUIForLoggedOutUser() {
+    document.getElementById('login-form').style.display = 'block';
+    document.getElementById('register-form').style.display = 'block';
+    document.getElementById('user-profile').style.display = 'none';
+}
+
+// Improved logout handler
+document.getElementById('logout-btn')?.addEventListener('click', async () => {
+    try {
+        // Show loading indicator
+        const logoutBtn = document.getElementById('logout-btn');
+        const originalBtnText = logoutBtn.textContent;
+        logoutBtn.disabled = true;
+        logoutBtn.textContent = 'Logging out...';
+        
+        // Unequip any theme before logging out
+        if (itemManager.currentTheme) {
+            try {
+                itemManager.unequipTheme();
+            } catch (error) {
+                console.warn("Error unequipping theme:", error);
+                // Non-critical error, continue
+            }
+        }
+        
+        await voidAccounting.logout();
+        
+        // Reset button (though it will be hidden)
+        logoutBtn.textContent = originalBtnText;
+        logoutBtn.disabled = false;
+        
+        updateUIForLoggedOutUser();
+        
+        // Close shop container if open
+        shopContainer.style.display = 'none';
+        shopContainer.classList.remove('visible');
+        
+        // Close auth container
+        authContainer.style.display = 'none';
+        authContainer.classList.remove('visible');
+        
+        // Show notification
+        showNotification('Logged out successfully', 'success');
+    } catch (error) {
+        console.error('Logout failed:', error);
+        alert('Logout failed: ' + error.message);
+        
+        // Reset button
+        const logoutBtn = document.getElementById('logout-btn');
+        if (logoutBtn) {
+            logoutBtn.textContent = 'Logout';
+            logoutBtn.disabled = false;
+        }
+    }
+});
+
 // Initialize layout and add enhanced animation styles on page load - UPDATED
 window.addEventListener('load', () => {
+    // Check if auth elements exist and create if needed
+    ensureAuthContainerStructure();
+    
     handleResponsiveLayout();
     
     // Add the enhanced animation styles
@@ -4489,6 +4826,9 @@ window.addEventListener('load', () => {
         if (user) {
             console.log("User already logged in:", user.uid);
             updateUIForLoggedInUser(user);
+        } else {
+            console.log("No user logged in on page load");
+            updateUIForLoggedOutUser();
         }
     } catch (err) {
         console.error('Error during initialization:', err);
@@ -4502,6 +4842,59 @@ window.addEventListener('resize', handleResponsiveLayout);
 window.addEventListener('beforeunload', () => {
     voidLeaderboard.stopLeaderboardUpdates();
 });
+
+// Make sure voidAccounting.loginUser method is improved
+// If you're adding this to an existing class definition, replace its loginUser method with this:
+/*
+async loginUser(email, password) {
+    try {
+        console.log("Logging in user:", email);
+        
+        // Check for empty credentials
+        if (!email || !password) {
+            throw new Error('Email and password are required');
+        }
+        
+        // Add a slight delay to ensure Firebase has time to process
+        const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
+        
+        if (!userCredential || !userCredential.user) {
+            throw new Error('Login failed: No user returned');
+        }
+        
+        console.log("User logged in successfully:", userCredential.user.uid);
+        
+        // Verify the user has a profile in Firestore
+        const userDoc = await getDoc(doc(this.db, 'users', userCredential.user.uid));
+        
+        if (!userDoc.exists()) {
+            console.warn("User authenticated but no profile found. Creating minimal profile.");
+            // Create minimal profile if it doesn't exist
+            await setDoc(doc(this.db, 'users', userCredential.user.uid), {
+                username: email.split('@')[0], // Use part of email as username
+                createdAt: new Date(),
+                accountBalance: 1000, // Starting balance
+                totalGamesPlayed: 0
+            });
+        }
+        
+        return userCredential.user;
+    } catch (error) {
+        console.error("Login Error:", error);
+        
+        // Provide more user-friendly error messages
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+            throw new Error('Invalid email or password');
+        } else if (error.code === 'auth/too-many-requests') {
+            throw new Error('Too many login attempts. Please try again later');
+        } else if (error.code === 'auth/user-disabled') {
+            throw new Error('This account has been disabled');
+        } else {
+            throw error; // Re-throw other errors
+        }
+    }
+}
+*/
 </script>
 </body>
 </html>
