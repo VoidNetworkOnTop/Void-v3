@@ -3122,42 +3122,186 @@
             // Initialize the avatar roll system
             avatarRollSystem.init();
             
-            // Set up the coin purchase button
-            const buyMillionCoinsBtn = document.getElementById('buy-million-coins');
-            const coinPurchasePopup = document.getElementById('coin-purchase-popup');
-            const buyCoinsButton = document.getElementById('buy-coins-button');
-            const closeCoinPopupBtn = document.getElementById('close-coin-popup');
-            
-            // Show coin purchase popup when button is clicked
-            if (buyMillionCoinsBtn) {
-                buyMillionCoinsBtn.addEventListener('click', () => {
-                    if (!auth.currentUser) {
-                        showNotification('Please log in to purchase coins', 'error');
-                        return;
-                    }
-                    
-                    coinPurchasePopup.style.display = 'block';
-                    setTimeout(() => {
-                        coinPurchasePopup.classList.add('visible');
-                    }, 10);
-                });
+// Set up the coin purchase button
+const buyMillionCoinsBtn = document.getElementById('buy-million-coins');
+const coinPurchasePopup = document.getElementById('coin-purchase-popup');
+const closeCoinPopupBtn = document.getElementById('close-coin-popup');
+
+// Update the price in the shop item
+document.querySelector('.section-coins .shop-item .price-amount').textContent = '$1.50 USD';
+
+// Update the popup content to include a Stripe container
+if (coinPurchasePopup) {
+    coinPurchasePopup.innerHTML = `
+        <h2>Buy Void Coins</h2>
+        <div class="coin-amount">1,000,000 Coins</div>
+        <p>Complete your purchase securely below. Total: $1.50 USD</p>
+        <div id="stripe-container" style="width: 100%; min-height: 250px; margin: 15px 0;"></div>
+        <button id="close-coin-popup">Cancel</button>
+    `;
+    coinPurchasePopup.style.maxWidth = '450px';
+}
+
+// Function to load Stripe.js
+function loadStripeEmbed() {
+    // Create the script element for Stripe.js
+    const stripeScript = document.createElement('script');
+    stripeScript.src = 'https://js.stripe.com/v3/';
+    stripeScript.async = true;
+    
+    // Initialize Stripe when the script loads
+    stripeScript.onload = function() {
+        initializeStripe();
+    };
+    
+    // Add the script to the document
+    document.head.appendChild(stripeScript);
+}
+
+// Initialize Stripe Elements
+function initializeStripe() {
+    // Initialize Stripe with your publishable key
+    const stripe = Stripe('pk_test_51OmPwcDMWKPyxs4Fz3J5uBewNcZ8SuuF2Js0LWAurRz7j1GxGdvFRxL8LEZOOHBtY5ExVRm0uMzyU3jYJcFRTAFT00vCbvZPwY');
+    
+    // Create an instance of Elements
+    const elements = stripe.elements({
+        mode: 'payment',
+        amount: 150, // $1.50 in cents
+        currency: 'usd',
+        appearance: {
+            theme: 'night',
+            variables: {
+                colorPrimary: '#FFD700',
+                colorBackground: '#000000',
+                colorText: '#ffffff',
+                colorDanger: '#ff6b6b',
+                fontFamily: 'Arial, sans-serif',
+                spacingUnit: '4px',
+                borderRadius: '5px'
             }
+        }
+    });
+    
+    // Create and mount the Payment Element
+    const paymentElement = elements.create('payment');
+    paymentElement.mount('#stripe-container');
+    
+    // Handle form submission (payment)
+    const form = document.createElement('form');
+    form.id = 'payment-form';
+    form.style.width = '100%';
+    form.style.marginTop = '15px';
+    
+    const submitButton = document.createElement('button');
+    submitButton.id = 'submit-payment';
+    submitButton.textContent = 'Pay $1.50';
+    submitButton.style.width = '100%';
+    submitButton.style.padding = '12px';
+    submitButton.style.background = 'linear-gradient(45deg, #FFD700, #FFA500)';
+    submitButton.style.color = '#000';
+    submitButton.style.fontWeight = 'bold';
+    submitButton.style.border = 'none';
+    submitButton.style.borderRadius = '5px';
+    submitButton.style.cursor = 'pointer';
+    submitButton.style.marginBottom = '10px';
+    
+    form.appendChild(submitButton);
+    document.getElementById('stripe-container').after(form);
+    
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        // Show loading state
+        submitButton.disabled = true;
+        submitButton.textContent = 'Processing...';
+        
+        // Confirm the payment
+        const {error} = await stripe.confirmPayment({
+            elements,
+            confirmParams: {
+                // Redirect to a success page after payment
+                return_url: window.location.href + '?payment=success',
+            },
+        });
+        
+        if (error) {
+            // Display error message
+            showNotification(`Payment failed: ${error.message}`, 'error');
+            submitButton.disabled = false;
+            submitButton.textContent = 'Try Again';
+        } else {
+            // Payment succeeded (though usually the redirect happens before this)
+            showNotification('Payment successful! 1,000,000 coins added to your account.', 'success');
             
-            // Open Stripe checkout when buy button is clicked
-            if (buyCoinsButton) {
-                buyCoinsButton.addEventListener('click', () => {
-                    window.open('https://buy.stripe.com/cN27uebFV8rTbte4gh', '_blank');
-                });
-            }
+            // Close the popup
+            closeCoinPopup();
+        }
+    });
+}
+
+// Function to close the coin popup
+function closeCoinPopup() {
+    coinPurchasePopup.classList.remove('visible');
+    setTimeout(() => {
+        coinPurchasePopup.style.display = 'none';
+        
+        // Clear the Stripe container
+        const stripeContainer = document.getElementById('stripe-container');
+        if (stripeContainer) {
+            stripeContainer.innerHTML = '';
+        }
+        
+        // Remove the payment form if it exists
+        const paymentForm = document.getElementById('payment-form');
+        if (paymentForm) {
+            paymentForm.remove();
+        }
+    }, 300);
+}
+
+// Show coin purchase popup when button is clicked
+if (buyMillionCoinsBtn) {
+    buyMillionCoinsBtn.addEventListener('click', (event) => {
+        if (!auth.currentUser) {
+            showNotification('Please log in to purchase coins', 'error');
+            return;
+        }
+        
+        // Show the popup
+        coinPurchasePopup.style.display = 'block';
+        
+        // Add visible class after a short delay for animation
+        setTimeout(() => {
+            coinPurchasePopup.classList.add('visible');
+        }, 10);
+        
+        // Load Stripe elements
+        loadStripeEmbed();
+        
+        // Prevent event propagation to avoid the popup closing immediately
+        event.stopPropagation();
+    });
+}
+
+// Close popup when close button is clicked
+if (closeCoinPopupBtn) {
+    closeCoinPopupBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent event from bubbling up
+        closeCoinPopup();
+    });
+}
+
+// Fix outside click handler to prevent immediate closing
+document.addEventListener('click', (event) => {
+    if (coinPurchasePopup && coinPurchasePopup.style.display === 'block') {
+        // Only close if click is outside the popup AND not on the buy button
+        if (!coinPurchasePopup.contains(event.target) && 
+            (!buyMillionCoinsBtn || !buyMillionCoinsBtn.contains(event.target))) {
             
-            // Close popup when close button is clicked
-            if (closeCoinPopupBtn) {
-                closeCoinPopupBtn.addEventListener('click', () => {
-                    coinPurchasePopup.classList.remove('visible');
-                    setTimeout(() => {
-                        coinPurchasePopup.style.display = 'none';
-                    }, 300);
-                });
+            closeCoinPopup();
+        }
+    }
+});
             }
             
             // Initial online/offline status
