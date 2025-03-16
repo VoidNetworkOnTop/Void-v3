@@ -3130,7 +3130,7 @@ const closeCoinPopupBtn = document.getElementById('close-coin-popup');
 // Update the price in the shop item
 document.querySelector('.section-coins .shop-item .price-amount').textContent = '$1.50 USD';
 
-// Update the popup content to include a Stripe container
+// Update the popup content to include an iframe for Stripe checkout
 if (coinPurchasePopup) {
     // Make the popup larger
     coinPurchasePopup.style.maxWidth = '800px';
@@ -3138,73 +3138,19 @@ if (coinPurchasePopup) {
     coinPurchasePopup.style.height = '80vh';
     coinPurchasePopup.style.maxHeight = '600px';
     
+    // Set the content with an iframe to embed the Stripe checkout page
     coinPurchasePopup.innerHTML = `
         <h2>Buy Void Coins</h2>
         <div class="coin-amount">1,000,000 Coins</div>
-        <div id="stripe-container" style="width: 100%; height: calc(100% - 150px); min-height: 350px; margin: 15px 0;"></div>
+        <iframe 
+            id="stripe-checkout-frame" 
+            src="https://buy.stripe.com/cN27uebFV8rTbte4gh" 
+            style="width: 100%; height: calc(100% - 130px); min-height: 400px; border: none; border-radius: 8px; margin: 10px 0;"
+            frameborder="0"
+            allow="payment"
+        ></iframe>
         <button id="close-coin-popup" style="width: 100%; margin-top: 10px;">Close</button>
     `;
-}
-
-// Function to load Stripe.js
-function loadStripeEmbed() {
-    // Create the script element for Stripe.js
-    const stripeScript = document.createElement('script');
-    stripeScript.src = 'https://js.stripe.com/v3/';
-    stripeScript.async = true;
-    
-    // Initialize Stripe when the script loads
-    stripeScript.onload = function() {
-        initializeStripe();
-    };
-    
-    // Add the script to the document
-    document.head.appendChild(stripeScript);
-}
-
-// Initialize Stripe Elements
-function initializeStripe() {
-    // Initialize Stripe with your publishable key
-    const stripe = Stripe('pk_test_51OmPwcDMWKPyxs4Fz3J5uBewNcZ8SuuF2Js0LWAurRz7j1GxGdvFRxL8LEZOOHBtY5ExVRm0uMzyU3jYJcFRTAFT00vCbvZPwY');
-    
-    // Create an instance of Elements with fullscreen checkout
-    const elements = stripe.elements({
-        mode: 'payment',
-        amount: 150, // $1.50 in cents
-        currency: 'usd',
-        appearance: {
-            theme: 'night',
-            variables: {
-                colorPrimary: '#FFD700',
-                colorBackground: '#000000',
-                colorText: '#ffffff',
-                colorDanger: '#ff6b6b',
-                fontFamily: 'Arial, sans-serif',
-                spacingUnit: '4px',
-                borderRadius: '5px'
-            }
-        }
-    });
-    
-    // Create and mount the Payment Element to fill the container
-    const paymentElement = elements.create('payment', {
-        layout: {
-            type: 'tabs',
-            defaultCollapsed: false
-        }
-    });
-    paymentElement.mount('#stripe-container');
-    
-    // Set up an automatic submit to handle payment
-    elements.submit()
-        .then(({error}) => {
-            if (error) {
-                showNotification(`Payment failed: ${error.message}`, 'error');
-            } else {
-                showNotification('Payment successful! 1,000,000 coins added to your account.', 'success');
-                closeCoinPopup();
-            }
-        });
 }
 
 // Function to close the coin popup
@@ -3212,12 +3158,6 @@ function closeCoinPopup() {
     coinPurchasePopup.classList.remove('visible');
     setTimeout(() => {
         coinPurchasePopup.style.display = 'none';
-        
-        // Clear the Stripe container
-        const stripeContainer = document.getElementById('stripe-container');
-        if (stripeContainer) {
-            stripeContainer.innerHTML = '';
-        }
     }, 300);
 }
 
@@ -3244,9 +3184,6 @@ if (buyMillionCoinsBtn) {
                     closeCoinPopup();
                 });
             }
-            
-            // Load Stripe elements
-            loadStripeEmbed();
         }, 10);
         
         // Prevent event propagation to avoid the popup closing immediately
