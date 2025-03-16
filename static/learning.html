@@ -3363,7 +3363,7 @@ class VoidNetworkAccounting {
     }
 }
 
-// IMPROVED: Secure Leaderboard Implementation with Avatar Support
+// IMPROVED: Secure Leaderboard Implementation with Avatar and Balance Support
 class VoidLeaderboard {
     constructor(db) {
         this.db = db;
@@ -3461,7 +3461,7 @@ class VoidLeaderboard {
         }
     }
     
-    // IMPROVED: Secure leaderboard UI update with avatar display
+    // IMPROVED: Secure leaderboard UI update with avatar display and accurate balance
     async updateLeaderboardUI(querySnapshot) {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
@@ -3488,11 +3488,14 @@ class VoidLeaderboard {
                 
                 // Skip banned users
                 if (userData.banned !== true) {
+                    // Make sure to get the accurate balance from the userData
+                    const accountBalance = userData.accountBalance || 0;
+                    
                     // Add user with avatar if it exists in the leaderboard entry
                     validUsers.push({
                         id: docSnapshot.id,
                         username: userData.username || 'Unknown',
-                        accountBalance: userData.accountBalance || 0,
+                        accountBalance: accountBalance, // Use the exact balance from Firestore
                         avatar: userData.equippedAvatar ? itemManager.items[userData.equippedAvatar]?.url : null
                     });
                 } else {
@@ -3522,13 +3525,16 @@ class VoidLeaderboard {
                 `;
             }
             
+            // Format the balance with commas
+            const formattedBalance = userData.accountBalance.toLocaleString();
+            
             leaderboardItem.innerHTML = `
                 <span class="leaderboard-rank">#${i + 1}</span>
                 <div class="leaderboard-username-container">
                     ${avatarHTML}
                     <span class="leaderboard-username">${userData.username}</span>
                 </div>
-                <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+                <span class="leaderboard-balance">${formattedBalance}</span>
             `;
             
             this.leaderboardElement.appendChild(leaderboardItem);
@@ -3557,7 +3563,7 @@ class VoidLeaderboard {
         
         console.log(`Leaderboard updated with ${displayCount} players and ${20 - displayCount} placeholders`);
         
-        // Find and highlight VoidNetworkOnTop
+        // Find and highlight special users
         this.highlightSpecialUsers();
     }
     
@@ -3601,374 +3607,394 @@ class VoidLeaderboard {
     }
 }
 
-// Initialize Accounting System
-const voidAccounting = new VoidNetworkAccounting();
+// IMPROVED: Transaction Management with Leaderboard Synchronization
+async function recordGameTransaction(gameId, userId, transactionType, amount) {
+    try {
+        console.log(`Recording game transaction: ${transactionType} for ${amount} coins in ${gameId}`);
+        
+        // Security check: Only allow user to create transactions for themselves
+        if (auth.currentUser && userId !== auth.currentUser.uid) {
+            console.warn("User trying to create transaction for another user - denied");
+            throw new Error('Unauthorized access');
+        }
+        
+        // Get the user's current data
+        const userRef = doc(db, 'users', userId);
+        const userDoc = await getDoc(userRef);
+        
+        if (!userDoc.exists()) {
+            throw new Error('User document not found');
+        }
+        
+        const userData = userDoc.data();
+        let currentBalance = userData.accountBalance || 0;
+        
+        // Create transaction record
+        const transactionRef = collection(db, 'transactions');
+        
+        // Only update balance for certain transaction types
+        if (transactionType === 'win' || transactionType === 'loss') {
+            // Calculate new balance
+            const newBalance = transactionType === 'win' 
+                ? currentBalance + amount
+                : Math.max(0, currentBalance - amount); // Prevent negative balance
+            
+            // Update user account in Firestore
+            await updateDoc(userRef, {
+                accountBalance: newBalance,
+                totalGamesPlayed: (userData.totalGamesPlayed || 0) + 1,
+                lastUpdated: new Date() // Add timestamp for easier debugging
+            });
+            
+            // IMPORTANT: Update leaderboard entry independently
+            const leaderboardRef = doc(db, 'leaderboard', userId);
+            const leaderboardDoc = await getDoc(leaderboardRef);
+            
+            if (leaderboardDoc.exists()) {
+                await updateDoc(leaderboardRef, {
+                    accountBalance: newBalance,
+                    lastUpdated: new Date()
+                });
+            } else {
+                // Create leaderboard entry if it doesn't exist
+                await setDoc(leaderboardRef, {
+                    username: userData.username || 'Unknown',
+                    accountBalance: newBalance,
+                    joinDate: new Date(),
+                    lastUpdated: new Date(),
+                    // Include avatar if available in user data
+                    equippedAvatar: userData.equippedAvatar || null
+                });
+            }
+            
+            // Record the transaction with before/after balances
+            await addDoc(transactionRef, {
+                userId: userId,
+                gameId: gameId,
+                transactionType: transactionType,
+                amount: amount,
+                timestamp: new Date(),
+                prevBalance: currentBalance,
+                newBalance: newBalance
+            });
+            
+            // Force refresh of coin display in UI
+            document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
+            document.getElementById('balance-display').textContent = newBalance.toLocaleString();
+            
+            // Return updated balance information
+            return {
+                success: true,
+                prevBalance: currentBalance,
+                newBalance: newBalance
+            };
+        } else {
+            // Just record the game play without changing balance
+            await addDoc(transactionRef, {
+                userId: userId,
+                gameId: gameId,
+                transactionType: transactionType,
+                timestamp: new Date()
+            });
+            
+            return {
+                success: true,
+                currentBalance: currentBalance
+            };
+        }
+    } catch (error) {
+        console.error("Transaction Error:", error);
+        throw error;
+    }
+}
 
-// Initialize Leaderboard
-const voidLeaderboard = new VoidLeaderboard(db);
+// SECURITY: Secure Transaction Function for Purchasing Items
+async function purchaseItem(itemId, itemType, price) {
+    if (!auth.currentUser) {
+        showNotification('Please log in to make purchases', 'error');
+        return;
+    }
+    
+    try {
+        const userId = auth.currentUser.uid;
+        
+        // Get current user details to check balance
+        const userRef = doc(db, 'users', userId);
+        const userDoc = await getDoc(userRef);
+        
+        if (!userDoc.exists()) {
+            throw new Error("User not found");
+        }
+        
+        const userData = userDoc.data();
+        
+        if (userData.accountBalance < price) {
+            showNotification('Not enough coins to make this purchase', 'error');
+            return;
+        }
+        
+        // Calculate new balance
+        const newBalance = userData.accountBalance - price;
+        
+        // IMPORTANT: Update user account balance (ACTUALLY DEDUCT COINS)
+        await updateDoc(userRef, {
+            accountBalance: newBalance,
+            lastUpdated: new Date()
+        });
+        
+        // Check if leaderboard entry exists and update/create as needed
+        const leaderboardRef = doc(db, 'leaderboard', userId);
+        const leaderboardDoc = await getDoc(leaderboardRef);
+        
+        if (leaderboardDoc.exists()) {
+            // Update existing leaderboard entry
+            await updateDoc(leaderboardRef, {
+                accountBalance: newBalance,
+                lastUpdated: new Date(),
+                // If it's an avatar, store it in the leaderboard too
+                ...(itemType === 'avatar' && itemId === itemManager.currentAvatar ? { equippedAvatar: itemId } : {})
+            });
+        } else {
+            // Create new leaderboard entry
+            await setDoc(leaderboardRef, {
+                username: userData.username || 'Unknown',
+                accountBalance: newBalance,
+                joinDate: new Date(),
+                lastUpdated: new Date(),
+                ...(itemType === 'avatar' ? { equippedAvatar: itemId } : {})
+            });
+        }
+        
+        // Create a record in user_purchases
+        await addDoc(collection(db, 'user_purchases', userId, 'items'), {
+            itemId: itemId,
+            itemType: itemType,
+            price: price,
+            purchaseDate: new Date(),
+            itemName: getItemNameById(itemId)
+        });
+        
+        // Log transaction for records
+        await addDoc(collection(db, 'transactions'), {
+            userId: userId,
+            transactionType: 'purchase',
+            amount: price,
+            itemId: itemId,
+            itemType: itemType,
+            timestamp: new Date(),
+            prevBalance: userData.accountBalance,
+            newBalance: newBalance
+        });
+        
+        // Update UI to show item as owned and update balance displays
+        const button = document.querySelector(`.buy-button[data-item-id="${itemId}"]`);
+        if (button) {
+            button.textContent = "Equip";
+            button.classList.add('equip');
+            
+            // Add owned class to shop item
+            const shopItem = button.closest('.shop-item');
+            if (shopItem) {
+                shopItem.classList.add('owned');
+            }
+        }
+        
+        // Update balance displays
+        document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
+        document.getElementById('balance-display').textContent = newBalance.toLocaleString();
+        
+        // Notify about balance update
+        notifyBalanceUpdate();
+        
+        // Update button states based on new balance
+        updateShopButtonsState(newBalance, {...await itemManager.checkPurchasedItems(userId), [itemId]: true});
+        
+        // Show success notification
+        showNotification(`Successfully purchased ${getItemNameById(itemId)} for ${price.toLocaleString()} coins!`, 'success');
+        
+        // Auto-equip the item after purchase
+        await equipItem(itemId, itemType);
+        
+    } catch (error) {
+        console.error('Purchase error:', error);
+        showNotification('Failed to complete purchase: ' + error.message, 'error');
+    }
+}
+
+// Function to notify about balance changes
+function notifyBalanceUpdate() {
+    // Create and dispatch a custom event
+    const event = new CustomEvent('balance-updated');
+    document.dispatchEvent(event);
+    
+    // Refresh leaderboard
+    if (voidLeaderboard) {
+        console.log("Balance updated, refreshing leaderboard");
+        voidLeaderboard.startLeaderboardUpdates();
+    }
+}
+
+// Add a function to fix AdSense
+function fixAdSenseContainers() {
+    const adContainers = document.querySelectorAll('.ad-container');
+    
+    adContainers.forEach(container => {
+        // Set explicit minimum dimensions
+        container.style.minWidth = '300px';
+        container.style.minHeight = '250px';
+        container.style.display = 'block';
+        container.style.overflow = 'hidden';
+        
+        // For horizontal ads
+        if (container.classList.contains('ad-container-horizontal')) {
+            container.style.width = '100%';
+            container.style.minWidth = '320px';
+            container.style.maxWidth = '970px';
+        }
+        
+        // For vertical ads
+        if (container.classList.contains('ad-container-vertical')) {
+            container.style.minHeight = '400px';
+            container.style.width = '100%';
+            container.style.maxWidth = '300px';
+            
+            // Hide on mobile
+            if (window.innerWidth <= 768) {
+                container.style.display = 'none';
+            }
+        }
+        
+        // Add wrapper if needed for AdSense
+        if (!container.querySelector('.ad-wrapper')) {
+            const adElements = container.querySelectorAll('.adsbygoogle');
+            
+            adElements.forEach(adElement => {
+                // Create a wrapper
+                const wrapper = document.createElement('div');
+                wrapper.className = 'ad-wrapper';
+                wrapper.style.width = '100%';
+                wrapper.style.height = '100%';
+                wrapper.style.minHeight = '250px';
+                wrapper.style.overflow = 'hidden';
+                
+                // Replace the ad with the wrapper containing the ad
+                const parent = adElement.parentNode;
+                parent.insertBefore(wrapper, adElement);
+                wrapper.appendChild(adElement);
+                
+                // Set explicit dimensions for the ad
+                adElement.style.display = 'block';
+                adElement.style.width = '100%';
+                adElement.style.height = '100%';
+            });
+        }
+    });
+}
+
+// Initialize AdSense properly
+function initAdsense() {
+    // Fix containers first
+    fixAdSenseContainers();
+    
+    // Reload ads after fixing containers
+    setTimeout(() => {
+        try {
+            const adElements = document.querySelectorAll('.adsbygoogle');
+            adElements.forEach(adElement => {
+                try {
+                    // Only try to load ads that aren't already loaded
+                    if (adElement.dataset.adsbygoogleStatus !== 'done') {
+                        (adsbygoogle = window.adsbygoogle || []).push({});
+                    }
+                } catch (e) {
+                    console.log('Error initializing individual ad:', e);
+                }
+            });
+        } catch (e) {
+            console.log('Error refreshing ads:', e);
+        }
+    }, 300);
+}
+
+// Setup periodic leaderboard refresh
+function setupLeaderboardRefresh() {
+    // Refresh leaderboard every 30 seconds to keep it up to date
+    const refreshInterval = setInterval(() => {
+        if (voidLeaderboard) {
+            console.log("Performing scheduled leaderboard refresh");
+            voidLeaderboard.startLeaderboardUpdates();
+        }
+    }, 30000);
+    
+    // Also refresh when user balance changes
+    document.addEventListener('balance-updated', () => {
+        if (voidLeaderboard) {
+            console.log("Balance updated, refreshing leaderboard");
+            voidLeaderboard.startLeaderboardUpdates();
+        }
+    });
+    
+    // Cleanup on page unload
+    window.addEventListener('unload', () => {
+        clearInterval(refreshInterval);
+    });
+}
 
 // Helper function to refresh leaderboard and highlight special users
 function refreshLeaderboard() {
     console.log("Manual leaderboard refresh requested");
     
     // Stop current listener and restart to force refresh
-    voidLeaderboard.stopLeaderboardUpdates();
-    
-    // Force a new connection attempt
-    voidLeaderboard.startLeaderboardUpdates();
-    
-    // After a short delay, manually highlight special users
-    setTimeout(() => voidLeaderboard.highlightSpecialUsers(), 1000);
-}
-
-// Detect screen size changes to handle mobile responsive layout
-function handleResponsiveLayout() {
-    const leaderboardContainer = document.querySelector('.leaderboard-container');
-    
-    if (window.innerWidth <= 768) {
-        // For mobile: Show the toggle button for collapse/expand
-        if (leaderboardContainer) {
-            const toggleBtn = document.getElementById('leaderboardToggle');
-            if (toggleBtn) {
-                toggleBtn.style.display = 'flex';
-            }
-            
-            // Auto-collapse on mobile initially
-            if (!voidLeaderboard.isMinimized && !leaderboardContainer.classList.contains('expanded')) {
-                voidLeaderboard.isMinimized = true;
-            }
-        }
-    } else {
-        // For desktop: hide the toggle button as the leaderboard is always visible
-        const toggleBtn = document.getElementById('leaderboardToggle');
-        if (toggleBtn) {
-            toggleBtn.style.display = 'none';
-        }
+    if (voidLeaderboard) {
+        voidLeaderboard.stopLeaderboardUpdates();
         
-        // Reset any mobile-specific classes
-        if (leaderboardContainer) {
-            leaderboardContainer.classList.remove('expanded');
-        }
-    }
-}
-
-// Initialize layout once DOM is loaded
-window.addEventListener('load', () => {
-    handleResponsiveLayout();
-});
-
-// Check on window resize
-window.addEventListener('resize', handleResponsiveLayout);
-
-// Authentication Event Listeners
-document.getElementById('login-btn')?.addEventListener('click', async () => {
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
-    
-    if (!email || !password) {
-        alert('Please enter both email and password');
-        return;
-    }
-    
-    try {
-        const user = await voidAccounting.loginUser(email, password);
-        console.log('Logged in user:', user);
-        await updateUIForLoggedInUser(user);
-        authContainer.style.display = 'none'; // Hide auth container after login
-        authContainer.classList.remove('visible');
-    } catch (error) {
-        alert('Login failed: ' + error.message);
-    }
-});
-
-document.getElementById('register-btn')?.addEventListener('click', async () => {
-    const username = document.getElementById('register-username').value;
-    const email = document.getElementById('register-email').value;
-    const password = document.getElementById('register-password').value;
-    
-    if (!username || !email || !password) {
-        alert('Please fill in all fields');
-        return;
-    }
-    
-    try {
-        const user = await voidAccounting.registerUser(email, password, username);
-        console.log('Registered user:', user);
-        await updateUIForLoggedInUser(user);
-        authContainer.style.display = 'none'; // Hide auth container after registration
-        authContainer.classList.remove('visible');
-    } catch (error) {
-        alert('Registration failed: ' + error.message);
-    }
-});
-
-document.getElementById('logout-btn')?.addEventListener('click', async () => {
-    try {
-        // Unequip any theme before logging out
-        if (itemManager.currentTheme) {
-            itemManager.unequipTheme();
-        }
-        
-        await voidAccounting.logout();
-        updateUIForLoggedOutUser();
-        
-        // Close shop container if open
-        shopContainer.style.display = 'none';
-        shopContainer.classList.remove('visible');
-    } catch (error) {
-        alert('Logout failed: ' + error.message);
-    }
-});
-
-// Update UI based on authentication state
-async function updateUIForLoggedInUser(user) {
-    document.getElementById('login-form').style.display = 'none';
-    document.getElementById('register-form').style.display = 'none';
-    document.getElementById('user-profile').style.display = 'block';
-    
-    try {
-        // Fetch fresh user details
-        const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
-        document.getElementById('username-display').textContent = userDetails.username;
-        document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
-        console.log("Updated UI with username:", userDetails.username);
-        
-        // Load user's theme and avatar if they have them equipped
-        await itemManager.loadUserPreferences(user.uid);
-        
-        // Check if user is a developer and show dev tab if they are
-        const isDev = await itemManager.verifyDevAccess();
-        const devTab = document.querySelector('.shop-tab[data-tab="dev"]');
-        
-        if (devTab) {
-            if (isDev) {
-                devTab.style.display = 'block';
-            } else {
-                devTab.style.display = 'none';
-            }
-        }
-        
-        // Check for dev avatars and verify every minute
-        setInterval(async () => {
-            await itemManager.verifyDevAccess();
-        }, 60000); // Check every 1 minute
-    } catch (error) {
-        console.error("Error updating UI:", error);
-        alert('Could not load user details. Please try again.');
-    }
-}
-
-function updateUIForLoggedOutUser() {
-    document.getElementById('login-form').style.display = 'block';
-    document.getElementById('register-form').style.display = 'block';
-    document.getElementById('user-profile').style.display = 'none';
-}
-
-// Listen for authentication state changes
-onAuthStateChanged(auth, async (user) => {
-    if (user) {
-        console.log("Auth state changed: User is signed in", user.uid);
-        await updateUIForLoggedInUser(user);
-    } else {
-        console.log("Auth state changed: User is signed out");
-        updateUIForLoggedOutUser();
-        
-        // Make sure items are unequipped when logged out
-        if (itemManager.currentTheme) {
-            itemManager.unequipTheme();
-        }
-        itemManager.currentTheme = null;
-        itemManager.currentAvatar = null;
-    }
-});
-
-// Game loading logic
-const defaultApps = [
-    {
-        title: "Ball Dropper",
-        imgSrc: "https://lh7-us.googleusercontent.com/CUj18dKaBkXv0WI59qpP2-Ub1J0KHyKXwgnhPBdmzDzwhQNvIkwPsrVLJCiSsS0iNOaF8-nAamakuiFLoRzYIGyOr-LOFJg9hD5IA9cIvjh5ZIHmBhT-hel39crAOTgz88P8jX2WApcC5PDnLbabDK_QC1vyFw",
-        link: "/local games/Plinko/plinko.html"
-    },
-    {
-        title: "MineFeild",
-        imgSrc: "https://lh7-us.googleusercontent.com/WAjTfpxFqdXwMOlzyChcCi40sg6-ukZN5u24gdmWyi9_Yca5-V8vBR6zrgOoADGwKKJM7e7cKEkq9i_chkYesJvN_VVnvKAfUOPIllTxR2mbOK-HiR0vlIgH_2_bY2Oqzh2ndVieVycQoGDMXuZC-8gpE85Ypg",
-        link: "/local games/CrossyRoad/crossy.html"
-    },
-    {
-        title: "Memory Squares",
-        imgSrc: "https://lh7-us.googleusercontent.com/USI3iEwtHyyyN6fdMllkREQg8h8N7xsXxw94Wb0umSNOzvXTgMtBtxMBXwgyVOHirbrZCVGU1JDeyVaW94xuTS-4vEvT1iZzriw3We_RIYDPW63aWxDEj8xZ_d7Nc3vi6LfrEr20QOOMvnWL8JD5XgbbC-PjKA",
-        link: "/local games/memory-square/mem.html"
-    },
-    {
-        title: "VoidSnake",
-        imgSrc: "https://lh7-us.googleusercontent.com/zPbDytQWYmY90BK7jPcdb8QQ8QNz4LWyhwUq1zNWiD64NNGC_8L21T_QDOl9z8R9QRvJtkFRvM9f83ODmjJJYgG6sZwi71SPiTUwASMOaofbb7wIOKEQJ-Wq1VSGVlCg3RmSdC7B4d-SGOfs_hRdmKjtxHbGOQ",
-        link: "/local games/Void Snake/Voidsnake.html"
-    },
-    {
-        title: "Heads Or Tails?",
-        imgSrc: "https://lh7-us.googleusercontent.com/jpunH9P0O_of8oU2ZilkliydM46qFTQxD__XgzIKv3OU7zZi77arrF9F2hGe-wgyzO5-57VJvN1zocVFN8549jIDkN2rKc9xEjcywhhJCldCaJkZnMgyEHtwJPuUsZZSu4DsK-L2b2eQGepfKwhgn4p7tgzrqA",
-        link: "/local games/CoinFlip/coinflip.html"
-    },
-    {
-        title: "Chicken Run",
-        imgSrc: "https://lh7-us.googleusercontent.com/JugrfbksXzV3Mwwp32MOX-DHGD1EQJmZIaB_RYn9VBvoihT7-bClXPzyfYJC4mGXsYsdTMWJh-Xxe8L9wpHrGntuc0Shzu9tqKCTSug-jM2SiW1BIBcok9Fxlz0JvZEqaKVMbSWK1dlWmw8caafDFRErSox7YA",
-        link: "/local games/ChickenRun/chickenrun.html"
-    },
-    {
-        title: "Black Jack",
-        imgSrc: "https://lh7-us.googleusercontent.com/OZqPInsN8s8qb43B5XLKVNm6uHmFM_GBSMVdBcr4Y8fYr-dX_jSqsu7keD7RoMafKFhUprNXkYYwpvmTwsNNkvmzR23M3XL1ykIp-8EpICFqttainlnXyRuobeBcEp4YE8fxhdDdBxgufc8EhjzItiMSAI821w",
-        link: "/local games/BlackJack/BlackJack.html"
-    },
-    {
-        title: "Tic Tac Toe",
-        imgSrc: "https://lh7-us.googleusercontent.com/9kSWLTVDFONfAKr5ypIjt5LvF36mUlapDOEMJdwX0jkF-wvLUAPvd6Pg42ws-2Fdq2dRvOtO3WRMOtkJiS7atfoqugRCHgAsxqni6PVbRlIoM-uqCAOWjVp-wCnFWxuHDWAPEGuwjNkiBYSXhTljpVMf4A_h2Q",
-        link: "/local games/TicTacToe/TicTacToe.html"
-    },
-    {
-        title: "Water Roulette",
-        imgSrc: "https://lh7-us.googleusercontent.com/55Ss_gX74t5Qy9Zr2OevrdodZtTs3lQ4KEAXiOhyMoRctF1EDDcaepxmc2Fou29Jl0AUWsl5NGx8xiDW89aOwgXnTtkrFa5B7TXOczHrtCbdyT8WFcrCcisyTUmd9h8XfGTmvbUZ2uXNZ8gZk7UoVMxuTh2tQw",
-        link: "/local games/RussianRoulette/RussianRoulette.html"
-    },
-    {
-        title: "Click Race Multiplayer",
-        imgSrc: "https://lh7-us.googleusercontent.com/0uIu5df5JmX-mNMQCWXZU39v4N0h3tYQntJyUgd74z_OBw5neJum7hYw7YroKxDZI4lqaEZi66aTB3PuKtJ2-DdaPqf9ZhyzVrMkBaHuFTlITvL3dBLWVqpFBRKWr9lapTsOrbZMhjlf6MyKa3mcou5hO3zl5g",
-        link: "/local games/ClickRace/ClickRace.html"
-    },
-];
-
-function renderAppsList() {
-    const gamesList = document.getElementById("gamesList");
-    
-    if (!gamesList) {
-        console.error("Games list element not found");
-        return;
-    }
-    
-    gamesList.innerHTML = '';
-    console.log("Rendering games list");
-    
-    defaultApps.forEach(app => {
-        const appElement = document.createElement("div");
-        appElement.className = "game-item";
-        
-        appElement.innerHTML = `
-            <div class="game-icon">
-                <img src="${app.imgSrc}" alt="${app.title} icon">
-            </div>
-            <h3 class="game-title">${app.title}</h3>
-        `;
-
-        appElement.onclick = () => {
-            // Check if user is logged in before navigating to game
-            const currentUser = voidAccounting.getCurrentUser();
-            if (currentUser) {
-                console.log("Navigating to game:", app.title);
-                
-                // Record the game play attempt
-                voidAccounting.recordGameTransaction(
-                    app.title.toLowerCase().replace(/\s+/g, '_'), 
-                    currentUser.uid,
-                    'game_play',
-                    0 // Just tracking the visit, not charging coins here
-                ).then(() => {
-                    // Navigate to the game after transaction is recorded
-                    window.location.href = app.link;
-                }).catch(error => {
-                    console.error("Error recording game visit:", error);
-                    // Still navigate even if tracking fails
-                    window.location.href = app.link;
-                });
-            } else {
-                alert('Please login to play games');
-                authContainer.style.display = 'block';
-                setTimeout(() => {
-                    authContainer.classList.add('visible');
-                }, 10);
-            }
-        };
-
-        gamesList.appendChild(appElement);
-    });
-}
-
-document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
-    const gamesList = document.getElementById("gamesList");
-    const searchTerm = this.value.toLowerCase();
-    
-    if (!gamesList) return;
-    
-    gamesList.innerHTML = '';
-    
-    defaultApps.forEach(app => {
-        if (app.title.toLowerCase().includes(searchTerm)) {
-            const appElement = document.createElement("div");
-            appElement.className = "game-item";
-            
-            appElement.innerHTML = `
-                <div class="game-icon">
-                    <img src="${app.imgSrc}" alt="${app.title} icon">
-                </div>
-                <h3 class="game-title">${app.title}</h3>
-            `;
-
-            appElement.onclick = () => {
-                // Check if user is logged in before navigating to game
-                const currentUser = voidAccounting.getCurrentUser();
-                if (currentUser) {
-                    // Record the game play attempt
-                    voidAccounting.recordGameTransaction(
-                        app.title.toLowerCase().replace(/\s+/g, '_'), 
-                        currentUser.uid,
-                        'game_play',
-                        0 // Just tracking the visit, not charging coins here
-                    ).then(() => {
-                        // Navigate to the game after transaction is recorded
-                        window.location.href = app.link;
-                    }).catch(error => {
-                        console.error("Error recording game visit:", error);
-                        // Still navigate even if tracking fails
-                        window.location.href = app.link;
-                    });
-                } else {
-                    alert('Please login to play games');
-                    authContainer.style.display = 'block';
-                    setTimeout(() => {
-                        authContainer.classList.add('visible');
-                    }, 10);
-                }
-            };
-
-            gamesList.appendChild(appElement);
-        }
-    });
-});
-
-// Add periodic refresh to ensure leaderboard stays updated
-setInterval(refreshLeaderboard, 30000); // Refresh every 30 seconds
-
-// Load apps and start leaderboard on page load
-window.addEventListener('load', async () => {
-    try {
-        console.log("Page loaded, initializing app");
-        renderAppsList();
-        
-        // Start leaderboard updates
+        // Force a new connection attempt
         voidLeaderboard.startLeaderboardUpdates();
         
-        // Check if user is already logged in
-        const user = auth.currentUser;
-        if (user) {
-            console.log("User already logged in:", user.uid);
-            await updateUIForLoggedInUser(user);
-        }
-    } catch (err) {
-        console.error('Error during initialization:', err);
+        // After a short delay, manually highlight special users
+        setTimeout(() => voidLeaderboard.highlightSpecialUsers(), 1000);
     }
-});
+}
 
-// Stop leaderboard updates when user leaves the page
-window.addEventListener('beforeunload', () => {
-    voidLeaderboard.stopLeaderboardUpdates();
+// Initialize everything when the DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Fix AdSense containers
+    fixAdSenseContainers();
+    
+    // Start leaderboard refreshing
+    setupLeaderboardRefresh();
+    
+    // Initial leaderboard load if it exists
+    if (typeof voidLeaderboard !== 'undefined') {
+        voidLeaderboard.startLeaderboardUpdates();
+    }
+    
+    // Add event listeners for situations where ads might need to be refreshed
+    const shopIcon = document.getElementById('shop-icon');
+    if (shopIcon) {
+        shopIcon.addEventListener('click', function() {
+            // Wait a moment for the shop to become visible before initializing ads
+            setTimeout(fixAdSenseContainers, 500);
+        });
+    }
+    
+    // Also fix ads when tabs are switched in the shop
+    const shopTabs = document.querySelectorAll('.shop-tab');
+    if (shopTabs.length > 0) {
+        shopTabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                // Wait a moment for the tab content to become visible
+                setTimeout(fixAdSenseContainers, 300);
+            });
+        });
+    }
+    
+    // Fix on resize too
+    window.addEventListener('resize', function() {
+        // Debounce the resize handler
+        clearTimeout(window.resizeTimer);
+        window.resizeTimer = setTimeout(fixAdSenseContainers, 300);
+    });
 });
     </script>
 </body>
