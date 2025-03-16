@@ -2045,7 +2045,7 @@ const itemManager = {
     currentTheme: null,
     currentAvatar: null,
     
-    // Items data with URLs
+// Items data with URLs
     items: {
         // Themes
         'forest_theme': {
@@ -4287,10 +4287,10 @@ class VoidNetworkAccounting {
             let userData, currentBalance, newBalance;
             
 // Use a batch for better consistency
-            const batch = writeBatch(this.db);
+            const batch = writeBatch(db);
             
             try {
-                const userRef = doc(this.db, 'users', userId);
+                const userRef = doc(db, 'users', userId);
                 const userDoc = await getDoc(userRef);
                 
                 if (!userDoc.exists()) {
@@ -4313,8 +4313,8 @@ class VoidNetworkAccounting {
                         totalGamesPlayed: (userData.totalGamesPlayed || 0) + 1
                     });
                     
-                    // Update leaderboard entry (for display purposes)
-                    const leaderboardRef = doc(this.db, 'leaderboard', userId);
+// Update leaderboard entry (for display purposes)
+                    const leaderboardRef = doc(db, 'leaderboard', userId);
                     const leaderboardDoc = await getDoc(leaderboardRef);
                     
                     if (leaderboardDoc.exists()) {
@@ -4335,7 +4335,7 @@ class VoidNetworkAccounting {
                     }
                     
                     // Add transaction record to batch
-                    const transactionRef = doc(collection(this.db, 'transactions'));
+                    const transactionRef = doc(collection(db, 'transactions'));
                     batch.set(transactionRef, {
                         userId: userId,
                         gameId: gameId,
@@ -4347,7 +4347,7 @@ class VoidNetworkAccounting {
                     });
                 } else {
                     // Just record the game play without changing balance
-                    const transactionRef = doc(collection(this.db, 'transactions'));
+                    const transactionRef = doc(collection(db, 'transactions'));
                     batch.set(transactionRef, {
                         userId: userId,
                         gameId: gameId,
@@ -4370,9 +4370,27 @@ class VoidNetworkAccounting {
                         userDataCache.lastUpdated = Date.now();
                     }
                     
-                    // Immediately update the leaderboard UI for this user
-                    if (voidLeaderboard) {
-                        voidLeaderboard.updateUserBalance(userId, newBalance);
+                    // Update leaderboard immediately with better error handling
+                    try {
+                        if (voidLeaderboard && typeof voidLeaderboard.updateUserBalance === 'function') {
+                            console.log(`Immediately updating leaderboard for user ${userId} to ${newBalance}`);
+                            voidLeaderboard.updateUserBalance(userId, newBalance);
+                            
+                            // As a backup, also refresh the whole leaderboard after a short delay
+                            setTimeout(() => {
+                                if (typeof refreshLeaderboard === 'function') {
+                                    refreshLeaderboard();
+                                }
+                            }, 2000);
+                        } else {
+                            console.warn("Leaderboard object or updateUserBalance method not available");
+                            // Fallback to refresh
+                            if (typeof refreshLeaderboard === 'function') {
+                                refreshLeaderboard();
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Error updating leaderboard immediately:", error);
                     }
                     
                     // Update balance displays in UI
@@ -4901,6 +4919,22 @@ window.addEventListener('load', async () => {
     }
 });
 
+// Clean up event listeners and timers when user leaves
+window.addEventListener('beforeunload', () => {
+    if (voidLeaderboard) {
+        voidLeaderboard.stopLeaderboardUpdates();
+    }
+    
+    if (leaderboardRefreshInterval) {
+        clearInterval(leaderboardRefreshInterval);
+    }
+    
+    // Clear any operation timeouts
+    if (operationQueue.length > 0) {
+        console.log(`${operationQueue.length} operations still in queue`);
+    }
+});
+
 // Shop Icon Toggle Functionality
 document.addEventListener('DOMContentLoaded', function() {
     const shopIcon = document.getElementById('shop-icon');
@@ -5340,6 +5374,190 @@ function setupShopButtonHandlers() {
         });
     });
 }
+
+// Enhanced version of the leaderboard real-time update functionality
+// Add this function to check if the leaderboard is working correctly
+function debugLeaderboard() {
+    console.log("Debug: Testing leaderboard update mechanism");
+    
+    // Force a complete leaderboard refresh
+    if (voidLeaderboard) {
+        voidLeaderboard.stopLeaderboardUpdates();
+        voidLeaderboard.startLeaderboardUpdates();
+        console.log("Debug: Restarted leaderboard updates");
+    }
+    
+    // Modify the VoidLeaderboard class to improve real-time updates
+    if (VoidLeaderboard && voidLeaderboard) {
+        // Reduce throttle delay for more responsive updates
+        voidLeaderboard.throttleDelay = 200; // Reduced from 1000ms
+
+        // Add more verbose logging to the onSnapshot handler
+        const originalStartLeaderboardUpdates = voidLeaderboard.startLeaderboardUpdates;
+        voidLeaderboard.startLeaderboardUpdates = function() {
+            try {
+                if (this.unsubscribe) {
+                    this.unsubscribe();
+                    this.unsubscribe = null;
+                }
+                
+                if (this.leaderboardElement) {
+                    this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Loading top players...</div>';
+                }
+                
+                console.log("Debug: Starting enhanced leaderboard updates");
+                
+                const leaderboardRef = collection(db, 'leaderboard');
+                let q;
+                
+                try {
+                    q = query(leaderboardRef, orderBy('accountBalance', 'desc'), limit(40));
+                } catch (error) {
+                    console.error("Error creating leaderboard query:", error);
+                    this.showErrorState("Error loading leaderboard");
+                    return;
+                }
+                
+                try {
+                    this.unsubscribe = onSnapshot(q, 
+                        {
+                            includeMetadataChanges: true
+                        },
+                        async (querySnapshot) => {
+                            console.log("Debug: Leaderboard snapshot received:", 
+                                        "Size:", querySnapshot.size, 
+                                        "From cache:", querySnapshot.metadata.fromCache,
+                                        "Has pending writes:", querySnapshot.metadata.hasPendingWrites);
+                            
+                            // Log changed documents
+                            querySnapshot.docChanges().forEach(change => {
+                                console.log("Debug: Document change type:", change.type, 
+                                            "Document ID:", change.doc.id,
+                                            "New data:", change.doc.data().accountBalance);
+                            });
+                            
+                            this.retryCount = 0;
+                            
+                            // Process updates immediately for better responsiveness
+                            clearTimeout(this.throttleTimer);
+                            this.throttleTimer = setTimeout(async () => {
+                                await this.updateLeaderboardUI(querySnapshot);
+                                console.log("Debug: Leaderboard UI updated");
+                                
+                                if (Date.now() - this.lastUpdateTime > 15000) { // Reduced from 30s to 15s
+                                    this.lastUpdateTime = Date.now();
+                                    await this.syncLeaderboardBalances(querySnapshot);
+                                    console.log("Debug: Leaderboard balances synced");
+                                }
+                            }, this.throttleDelay);
+                        }, 
+                        (error) => {
+                            console.error("Leaderboard listener error:", error);
+                            this.showErrorState("Connection error. Retrying...");
+                            
+                            if (this.retryCount < this.maxRetries) {
+                                this.retryCount++;
+                                console.log(`Retrying leaderboard connection (${this.retryCount}/${this.maxRetries})...`);
+                                clearTimeout(this.retryTimeout);
+                                this.retryTimeout = setTimeout(() => this.startLeaderboardUpdates(), 5000);
+                            } else {
+                                this.showErrorState("Connection failed. Please reload the page.");
+                            }
+                        }
+                    );
+                    console.log("Debug: Leaderboard listener attached successfully");
+                } catch (error) {
+                    console.error("Error setting up leaderboard listener:", error);
+                    this.showErrorState("Error loading leaderboard");
+                }
+            } catch (error) {
+                console.error("Error setting up leaderboard:", error);
+                this.showErrorState("Loading error. Retrying...");
+                setTimeout(() => this.startLeaderboardUpdates(), 5000);
+            }
+        };
+        
+        // Enhance the updateUserBalance method with better logging
+        const originalUpdateUserBalance = voidLeaderboard.updateUserBalance;
+        voidLeaderboard.updateUserBalance = function(userId, newBalance) {
+            console.log(`Debug: Updating user ${userId} balance to ${newBalance.toLocaleString()} in leaderboard UI`);
+            if (!this.leaderboardElement) {
+                console.log("Debug: Leaderboard element not found");
+                return;
+            }
+            
+            // Find the user in our cached data
+            const userIndex = this.leaderboardData.findIndex(user => user.id === userId);
+            console.log(`Debug: User found at index ${userIndex} in cached data:`, userIndex >= 0);
+            
+            if (userIndex >= 0) {
+                // Update the cached data
+                const oldBalance = this.leaderboardData[userIndex].accountBalance;
+                this.leaderboardData[userIndex].accountBalance = newBalance;
+                console.log(`Debug: Updated user balance in cache from ${oldBalance.toLocaleString()} to ${newBalance.toLocaleString()}`);
+                
+                // Get the user's element
+                const userElement = document.getElementById(`leaderboard-item-${userId}`);
+                if (userElement) {
+                    console.log("Debug: Found user element in DOM, updating display");
+                    // Update balance display
+                    const balanceElement = userElement.querySelector('.leaderboard-balance');
+                    if (balanceElement) {
+                        balanceElement.textContent = newBalance.toLocaleString();
+                        
+                        // Add animation to highlight the change
+                        userElement.classList.add('leaderboard-updated');
+                        setTimeout(() => {
+                            userElement.classList.remove('leaderboard-updated');
+                        }, 1000);
+                    } else {
+                        console.log("Debug: Balance element not found in user element");
+                    }
+                } else {
+                    console.log("Debug: User element not found in DOM");
+                }
+                
+                // Re-sort the leaderboard if needed
+                this.leaderboardData.sort((a, b) => b.accountBalance - a.accountBalance);
+                
+                // If the order changed significantly, do a full refresh
+                const newUserIndex = this.leaderboardData.findIndex(user => user.id === userId);
+                if (Math.abs(newUserIndex - userIndex) > 2) {
+                    console.log(`Debug: User position changed from ${userIndex} to ${newUserIndex}, refreshing leaderboard`);
+                    // Position changed by more than 2 spots, refresh the whole list
+                    this.renderCachedLeaderboard();
+                }
+            } else {
+                console.log(`Debug: User ${userId} not found in leaderboard cache, forcing refresh`);
+                // If user not in cache, force a refresh
+                this.stopLeaderboardUpdates();
+                this.startLeaderboardUpdates();
+            }
+        };
+        
+        // Directly update the leaderboard to see if it's working
+        console.log("Debug: Forcing immediate leaderboard update test");
+        if (auth.currentUser) {
+            const uid = auth.currentUser.uid;
+            voidAccounting.getUserAccountDetails(uid)
+                .then(userDetails => {
+                    // We're not changing the balance, just forcing a UI update with current balance
+                    voidLeaderboard.updateUserBalance(uid, userDetails.accountBalance);
+                })
+                .catch(error => {
+                    console.error("Debug: Error getting user details for test update:", error);
+                });
+        }
+    }
+    
+    // Reduce the refresh interval to 15 seconds for more frequent updates
+    clearInterval(leaderboardRefreshInterval);
+    leaderboardRefreshInterval = setInterval(refreshLeaderboard, 15000); // 15 seconds instead of 60
+    console.log("Debug: Leaderboard refresh interval reduced to 15 seconds");
+}
+
+// Call the debug function after a short delay to let everything initialize
+setTimeout(debugLeaderboard, 2000);
 </script>
 </body>
 </html>
