@@ -1,7 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4845994519357732"
-     crossorigin="anonymous"></script>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -884,34 +882,6 @@
         .notification.error {
             border-left: 4px solid #f44336;
         }
-        
-        /* Ad container styles */
-        .ad-container {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            overflow: hidden;
-            text-align: center;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-            z-index: 10;
-            position: relative;
-            min-width: 300px; /* Ensures minimum width for ads */
-            min-height: 50px; /* Ensures minimum height for ads */
-        }
-        
-        .ad-container-vertical {
-            width: 100%;
-            margin-top: 20px;
-            margin-bottom: 10px;
-            min-height: 250px; /* Minimum height for vertical ads */
-        }
-        
-        .ad-container-horizontal {
-            width: 100%;
-            min-height: 90px; /* Minimum height for horizontal ads */
-        }
 
         /* Avatar Roll Section Styles */
         .avatar-roll-container {
@@ -1250,29 +1220,6 @@
                 width: 90%;
                 max-width: 500px;
             }
-            
-            .ad-container-vertical {
-                display: none; /* Hide vertical ads on mobile */
-            }
-        }
-
-        /* Ad placeholder while loading */
-        .ad-placeholder {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            min-height: 90px;
-            color: rgba(255, 255, 255, 0.5);
-            font-size: 0.8rem;
-        }
-
-        /* Ensure ads in hidden tabs have proper dimensions when revealed */
-        .section-themes:not(.active) .ad-container,
-        .section-avatars:not(.active) .ad-container,
-        .section-roll:not(.active) .ad-container,
-        .section-dev:not(.active) .ad-container {
-            display: none !important;
         }
     </style>
 </head>
@@ -1414,11 +1361,6 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- Shop Ad - Horizontal -->
-                <div class="ad-container ad-container-horizontal">
-                    <div class="ad-placeholder">Ad Loading...</div>
-                </div>
             </div>
             
             <!-- AVATARS SECTION -->
@@ -1502,11 +1444,6 @@
                             </div>
                         </div>
                     </div>
-                </div>
-                
-                <!-- Shop Ad - Horizontal -->
-                <div class="ad-container ad-container-horizontal">
-                    <div class="ad-placeholder">Ad Loading...</div>
                 </div>
                 
                 <!-- Epic Avatars Section - New Added Avatars -->
@@ -1704,11 +1641,6 @@
             <div class="leaderboard-list" id="leaderboardList">
                 <div class="leaderboard-loading">Loading top players...</div>
             </div>
-            
-            <!-- Vertical Ad in Leaderboard -->
-            <div class="ad-container ad-container-vertical">
-                <div class="ad-placeholder">Ad Loading...</div>
-            </div>
         </div>
     </div>
 
@@ -1719,11 +1651,6 @@
                 <h1 class="site-title">Void Network</h1>
                 <h2 class="games-title">Void Games</h2>
                 <input type="text" id="searchApps" placeholder="Search void games...">
-                
-                <!-- Horizontal Ad below search bar -->
-                <div class="ad-container ad-container-horizontal">
-                    <div class="ad-placeholder">Ad Loading...</div>
-                </div>
             </div>
             <div class="games-grid" id="gamesList"></div>
         </div>
@@ -4122,6 +4049,59 @@ document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
     
     if (!gamesList) return;
     
+gamesList.innerHTML = '';
+console.log("Rendering games list");
+    
+defaultApps.forEach(app => {
+    const appElement = document.createElement("div");
+    appElement.className = "game-item";
+    
+    appElement.innerHTML = `
+        <div class="game-icon">
+            <img src="${app.imgSrc}" alt="${app.title} icon">
+        </div>
+        <h3 class="game-title">${app.title}</h3>
+    `;
+
+    appElement.onclick = () => {
+        // Check if user is logged in before navigating to game
+        const currentUser = voidAccounting.getCurrentUser();
+        if (currentUser) {
+            console.log("Navigating to game:", app.title);
+            
+            // Record the game play attempt
+            voidAccounting.recordGameTransaction(
+                app.title.toLowerCase().replace(/\s+/g, '_'), 
+                currentUser.uid,
+                'game_play',
+                0 // Just tracking the visit, not charging coins here
+            ).then(() => {
+                // Navigate to the game after transaction is recorded
+                window.location.href = app.link;
+            }).catch(error => {
+                console.error("Error recording game visit:", error);
+                // Still navigate even if tracking fails
+                window.location.href = app.link;
+            });
+        } else {
+            alert('Please login to play games');
+            authContainer.style.display = 'block';
+            setTimeout(() => {
+                authContainer.classList.add('visible');
+            }, 10);
+        }
+    };
+
+    gamesList.appendChild(appElement);
+});
+}
+
+document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
+    const gamesList = document.getElementById("gamesList");
+    const searchTerm = this.value.toLowerCase();
+    
+    if (!gamesList) return;
+    
     gamesList.innerHTML = '';
     
     defaultApps.forEach(app => {
@@ -4200,192 +4180,6 @@ window.addEventListener('load', async () => {
 // Stop leaderboard updates when user leaves the page
 window.addEventListener('beforeunload', () => {
     voidLeaderboard.stopLeaderboardUpdates();
-});
-
-// FIXED: Improved Ad Container Initialization
-function initializeAdContainers() {
-    // Find all ad containers
-    const adContainers = document.querySelectorAll('.ad-container');
-    
-    // Add placeholders to all containers
-    adContainers.forEach(container => {
-        // Skip already initialized containers
-        if (container.dataset.adInitialized === 'true') return;
-        
-        // Add a placeholder while ad loads
-        const placeholder = document.createElement('div');
-        placeholder.className = 'ad-placeholder';
-        placeholder.textContent = 'Ad Loading...';
-        container.appendChild(placeholder);
-    });
-    
-    // Initialize the smart ad loader
-    initSmartAdLoader();
-}
-
-// FIXED: Improved Smart Ad Loader
-function initSmartAdLoader() {
-    console.log("Initializing smart ad loader");
-    
-    // Setup intersection observer to detect when ad containers are visible
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            const container = entry.target;
-            
-            // Only initialize visible containers that haven't been initialized yet
-            if (entry.isIntersecting && !container.dataset.adInitialized) {
-                // Check if the container is in an active section
-                const parentSection = container.closest('.section-themes, .section-avatars, .section-roll, .section-dev');
-                if (!parentSection || parentSection.classList.contains('active')) {
-                    console.log("Loading ad in visible container");
-                    loadAdInContainer(container);
-                }
-            }
-        });
-    }, {
-        root: null, // Use viewport as root
-        threshold: 0.1 // Trigger when at least 10% of the container is visible
-    });
-    
-    // Observe all ad containers
-    document.querySelectorAll('.ad-container').forEach(container => {
-        observer.observe(container);
-    });
-    
-    // Also handle tab switching for ad loading
-    document.querySelectorAll('.shop-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            const targetSection = tab.dataset.tab;
-            const targetSectionElement = document.querySelector(`.section-${targetSection}`);
-            
-            // After the section becomes visible, initialize any ads in it
-            setTimeout(() => {
-                const containersInActiveSection = targetSectionElement.querySelectorAll('.ad-container');
-                containersInActiveSection.forEach(container => {
-                    if (!container.dataset.adInitialized) {
-                        console.log("Loading ad in newly visible section");
-                        loadAdInContainer(container);
-                    }
-                });
-            }, 200); // Small delay to ensure section is fully visible
-        });
-    });
-    
-    // FIXED: Manually trigger ad load for all visible containers after 1 second
-    setTimeout(() => {
-        document.querySelectorAll('.ad-container:not([data-ad-initialized="true"])').forEach(container => {
-            // Check if container is visible
-            const rect = container.getBoundingClientRect();
-            if (rect.top < window.innerHeight && rect.bottom > 0) {
-                console.log("Forcing ad load in visible container");
-                loadAdInContainer(container);
-            }
-        });
-    }, 1000);
-}
-
-// FIXED: Improved Ad Container Loading
-function loadAdInContainer(container) {
-    // Mark as initialized
-    container.dataset.adInitialized = 'true';
-    
-    try {
-        // Remove any placeholders
-        const placeholder = container.querySelector('.ad-placeholder');
-        if (placeholder) {
-            container.removeChild(placeholder);
-        }
-        
-        // Reset any inline styles
-        container.style.width = '';
-        container.style.height = '';
-        container.style.display = 'block';
-        
-        // Ensure container has content dimensions
-        const rect = container.getBoundingClientRect();
-        
-        // Don't proceed if container has no width
-        if (rect.width <= 1) {
-            console.warn('Ad container has no width, skipping ad initialization');
-            return;
-        }
-        
-        // Create a new ad unit
-        const adIns = document.createElement('ins');
-        adIns.className = 'adsbygoogle';
-        adIns.style.display = 'block';
-        adIns.setAttribute('data-ad-client', 'ca-pub-4845994519357732');
-        
-        // Set the appropriate ad slot based on container class
-        if (container.classList.contains('ad-container-vertical')) {
-            adIns.setAttribute('data-ad-slot', '5108888268'); // Vertical ad slot
-            adIns.style.width = '300px';
-            adIns.style.height = '250px';
-        } else {
-            adIns.setAttribute('data-ad-slot', '3546193454'); // Horizontal ad slot
-            adIns.setAttribute('data-full-width-responsive', 'true');
-        }
-        
-        // Clear the container and add the new ad
-        container.innerHTML = '';
-        container.appendChild(adIns);
-        
-        // Push the ad with a slight delay to ensure container dimensions are correct
-        setTimeout(() => {
-            try {
-                // FIXED: Properly reference adsbygoogle as a property of window
-                (window.adsbygoogle = window.adsbygoogle || []).push({});
-                console.log('Ad initialized in container');
-            } catch (error) {
-                console.error('Error initializing ad:', error);
-                // If ad fails to load, show a message
-                container.innerHTML = '<div class="ad-placeholder">Ad failed to load</div>';
-            }
-        }, 100); // Increased delay for better initialization
-    } catch (error) {
-        console.error('Error setting up ad container:', error);
-    }
-}
-
-// Initialize ads when DOM is loaded
-document.addEventListener('DOMContentLoaded', initializeAdContainers);
-
-// Update any ads when shop is opened
-document.getElementById('shop-icon')?.addEventListener('click', () => {
-    // Short delay to ensure shop is visible
-    setTimeout(() => {
-        // Find the active section
-        const activeSection = document.querySelector('.section-themes.active, .section-avatars.active, .section-roll.active, .section-dev.active');
-        if (activeSection) {
-            // Initialize ads in the active section
-            const containers = activeSection.querySelectorAll('.ad-container:not([data-ad-initialized="true"])');
-            containers.forEach(container => {
-                loadAdInContainer(container);
-            });
-        }
-    }, 300);
-});
-
-// Also handle window resize events to reinitialize ads if needed
-let resizeTimeout;
-window.addEventListener('resize', () => {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-        // Find visible, initialized ad containers
-        const visibleContainers = Array.from(document.querySelectorAll('.ad-container[data-ad-initialized="true"]'))
-            .filter(container => {
-                const rect = container.getBoundingClientRect();
-                return rect.width > 0 && rect.height > 0 && container.offsetParent !== null;
-            });
-            
-        // Reinitialize if dimensions have changed significantly
-        visibleContainers.forEach(container => {
-            // Reset initialization flag
-            container.dataset.adInitialized = 'false';
-            // Initialize again
-            loadAdInContainer(container);
-        });
-    }, 300);
 });
     </script>
 </body>
