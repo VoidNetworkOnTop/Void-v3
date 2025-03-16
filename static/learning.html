@@ -942,16 +942,22 @@
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
             z-index: 10;
             position: relative;
+            min-height: 100px; /* Add minimum height for ads */
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
         
         .ad-container-vertical {
             width: 100%;
             margin-top: 20px;
             margin-bottom: 10px;
+            min-height: 250px; /* Taller for vertical ads */
         }
         
         .ad-container-horizontal {
             width: 100%;
+            min-height: 120px; /* Shorter for horizontal ads */
         }
 
         /* Avatar Roll Section Styles */
@@ -1295,6 +1301,18 @@
             .ad-container-vertical {
                 display: none; /* Hide vertical ads on mobile */
             }
+        }
+
+        /* Debug styles for balance updates - makes it easier to see when balances change */
+        .debug-highlight {
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+            border: 1px solid rgba(0, 255, 0, 0.5);
+            animation: debug-pulse 1s infinite alternate;
+        }
+
+        @keyframes debug-pulse {
+            0% { background-color: rgba(0, 255, 0, 0.1); }
+            100% { background-color: rgba(0, 255, 0, 0.2); }
         }
     </style>
 </head>
@@ -2223,7 +2241,7 @@
                         refreshLeaderboard();
                     }
                     
-                    return isDev;
+return isDev;
                 } catch (error) {
                     console.error("Error verifying dev access:", error);
                     return false;
@@ -3572,9 +3590,8 @@
                     // Read from leaderboard collection to get users with avatars
                     const leaderboardRef = collection(this.db, 'leaderboard');
                     
-                    // Create query that specifically listens for accountBalance changes
-                    // We'll sort client-side for better animations
-                    const q = query(leaderboardRef);
+                    // Create query - IMPORTANT: specifically add orderBy for balance to trigger update events
+                    const q = query(leaderboardRef, orderBy("accountBalance", "desc"), limit(25));
                     
                     // Set up real-time listener with more responsive options
                     this.unsubscribe = onSnapshot(
@@ -3585,6 +3602,15 @@
                         (querySnapshot) => {
                             // Reset retry count on successful data
                             this.retryCount = 0;
+                            
+                            // Check if there are any changes to the data
+                            if (querySnapshot.docChanges().length > 0) {
+                                console.log("Detected changes in leaderboard data:", 
+                                    querySnapshot.docChanges().map(change => 
+                                        `${change.type} - ${change.doc.id} - ${change.doc.data().accountBalance || 0}`
+                                    )
+                                );
+                            }
                             
                             // Process changes and update UI
                             this.processLeaderboardChanges(querySnapshot);
@@ -3742,6 +3768,7 @@
                 // First update all existing items and mark any that need to be moved
                 const itemsToMove = [];
                 const existingItems = {};
+                let balanceUpdatesCount = 0;
                 
                 // Get all existing items
                 const leaderboardItems = this.leaderboardElement.querySelectorAll('.leaderboard-item[data-user-id]');
@@ -3759,13 +3786,14 @@
                     if (existingItems[userId]) {
                         const item = existingItems[userId];
                         
-                        // Compare current balance with the new one - convert both to numbers for reliable comparison
+                        // IMPORTANT: Fixed balance comparison - always convert to numbers
                         const currentDisplayedBalance = parseInt(item.dataset.balance || '0');
-                        const newBalance = userData.accountBalance;
+                        const newBalance = parseInt(userData.accountBalance || 0);
                         
-                        // Update balance if it has changed
+                        // Check if balance really changed by comparing as numbers
                         if (currentDisplayedBalance !== newBalance) {
-                            console.log(`Updating balance for ${userData.username}: ${currentDisplayedBalance} -> ${newBalance}`);
+                            balanceUpdatesCount++;
+                            console.log(`Balance update detected: ${userData.username}: ${currentDisplayedBalance} -> ${newBalance} (diff: ${newBalance - currentDisplayedBalance})`);
                             
                             // Update the data attribute with new raw value
                             item.dataset.balance = newBalance;
@@ -3775,17 +3803,15 @@
                             if (balanceEl) {
                                 // Add animation class based on balance change direction
                                 if (newBalance > currentDisplayedBalance) {
-                                    balanceEl.classList.add('balance-updated');
-                                    // Highlight item for increased balance
                                     item.classList.add('moving-up');
+                                    balanceEl.classList.add('balance-updated');
                                     setTimeout(() => {
                                         item.classList.remove('moving-up');
                                         balanceEl.classList.remove('balance-updated');
                                     }, 1000);
                                 } else if (newBalance < currentDisplayedBalance) {
-                                    balanceEl.classList.add('balance-updated');
-                                    // Highlight item for decreased balance
                                     item.classList.add('moving-down');
+                                    balanceEl.classList.add('balance-updated');
                                     setTimeout(() => {
                                         item.classList.remove('moving-down');
                                         balanceEl.classList.remove('balance-updated');
@@ -3830,6 +3856,10 @@
                         }, 1000);
                     }
                 });
+                
+                if (balanceUpdatesCount > 0) {
+                    console.log(`Updated ${balanceUpdatesCount} player balances in leaderboard`);
+                }
                 
                 // Now move items that changed position
                 if (itemsToMove.length > 0) {
@@ -3966,20 +3996,24 @@
         // Initialize Leaderboard
         const voidLeaderboard = new VoidLeaderboard(db);
 
-        // Helper function to refresh leaderboard and highlight special users
+        // Enhanced refreshLeaderboard function
         function refreshLeaderboard() {
             console.log("Manual leaderboard refresh requested");
             
             // Stop current listener and restart to force refresh
             voidLeaderboard.stopLeaderboardUpdates();
             
-            // Force a new connection attempt
+            // Force a new connection attempt with a slightly longer delay
             setTimeout(() => {
+                console.log("Reconnecting leaderboard after manual refresh");
                 voidLeaderboard.startLeaderboardUpdates();
                 
                 // After a short delay, manually highlight special users
-                setTimeout(() => voidLeaderboard.highlightSpecialUsers(), 1000);
-            }, 100); // Small delay to ensure clean disconnect before reconnecting
+                setTimeout(() => {
+                    console.log("Re-applying special user highlighting");
+                    voidLeaderboard.highlightSpecialUsers();
+                }, 1000);
+            }, 500); // Increased delay to ensure clean disconnect
         }
 
         // Detect screen size changes to handle mobile responsive layout
@@ -4304,8 +4338,8 @@
             });
         });
 
-        // Add periodic refresh to ensure leaderboard stays updated
-        setInterval(refreshLeaderboard, 15000); // Refresh every 15 seconds (reduced from 30)
+        // More frequent leaderboard refreshes
+        setInterval(refreshLeaderboard, 8000); // Refresh every 8 seconds for more responsive updates
 
         // Load apps and start leaderboard on page load
         window.addEventListener('load', async () => {
