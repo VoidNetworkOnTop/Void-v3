@@ -897,16 +897,20 @@
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
             z-index: 10;
             position: relative;
+            min-width: 300px; /* Ensures minimum width for ads */
+            min-height: 50px; /* Ensures minimum height for ads */
         }
         
         .ad-container-vertical {
             width: 100%;
             margin-top: 20px;
             margin-bottom: 10px;
+            min-height: 250px; /* Minimum height for vertical ads */
         }
         
         .ad-container-horizontal {
             width: 100%;
+            min-height: 90px; /* Minimum height for horizontal ads */
         }
 
         /* Avatar Roll Section Styles */
@@ -1251,6 +1255,25 @@
                 display: none; /* Hide vertical ads on mobile */
             }
         }
+
+        /* Ad placeholder while loading */
+        .ad-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            min-height: 90px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.8rem;
+        }
+
+        /* Ensure ads in hidden tabs have proper dimensions when revealed */
+        .section-themes:not(.active) .ad-container,
+        .section-avatars:not(.active) .ad-container,
+        .section-roll:not(.active) .ad-container,
+        .section-dev:not(.active) .ad-container {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
@@ -1394,18 +1417,7 @@
                 
                 <!-- Shop Ad - Horizontal -->
                 <div class="ad-container ad-container-horizontal">
-                    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4845994519357732"
-                         crossorigin="anonymous"></script>
-                    <!-- Void Coins 321 -->
-                    <ins class="adsbygoogle"
-                         style="display:block"
-                         data-ad-client="ca-pub-4845994519357732"
-                         data-ad-slot="3546193454"
-                         data-ad-format="auto"
-                         data-full-width-responsive="true"></ins>
-                    <script>
-                         (adsbygoogle = window.adsbygoogle || []).push({});
-                    </script>
+                    <div class="ad-placeholder">Ad Loading...</div>
                 </div>
             </div>
             
@@ -1494,18 +1506,7 @@
                 
                 <!-- Shop Ad - Horizontal -->
                 <div class="ad-container ad-container-horizontal">
-                    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4845994519357732"
-                         crossorigin="anonymous"></script>
-                    <!-- Void Coins 321 -->
-                    <ins class="adsbygoogle"
-                         style="display:block"
-                         data-ad-client="ca-pub-4845994519357732"
-                         data-ad-slot="3546193454"
-                         data-ad-format="auto"
-                         data-full-width-responsive="true"></ins>
-                    <script>
-                         (adsbygoogle = window.adsbygoogle || []).push({});
-                    </script>
+                    <div class="ad-placeholder">Ad Loading...</div>
                 </div>
                 
                 <!-- Epic Avatars Section - New Added Avatars -->
@@ -1706,18 +1707,7 @@
             
             <!-- Vertical Ad in Leaderboard -->
             <div class="ad-container ad-container-vertical">
-                <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4845994519357732"
-                     crossorigin="anonymous"></script>
-                <!-- Void Coins 1234 -->
-                <ins class="adsbygoogle"
-                     style="display:block"
-                     data-ad-client="ca-pub-4845994519357732"
-                     data-ad-slot="5108888268"
-                     data-ad-format="auto"
-                     data-full-width-responsive="true"></ins>
-                <script>
-                     (adsbygoogle = window.adsbygoogle || []).push({});
-                </script>
+                <div class="ad-placeholder">Ad Loading...</div>
             </div>
         </div>
     </div>
@@ -1732,18 +1722,7 @@
                 
                 <!-- Horizontal Ad below search bar -->
                 <div class="ad-container ad-container-horizontal">
-                    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4845994519357732"
-                         crossorigin="anonymous"></script>
-                    <!-- Void Coins 321 -->
-                    <ins class="adsbygoogle"
-                         style="display:block"
-                         data-ad-client="ca-pub-4845994519357732"
-                         data-ad-slot="3546193454"
-                         data-ad-format="auto"
-                         data-full-width-responsive="true"></ins>
-                    <script>
-                         (adsbygoogle = window.adsbygoogle || []).push({});
-                    </script>
+                    <div class="ad-placeholder">Ad Loading...</div>
                 </div>
             </div>
             <div class="games-grid" id="gamesList"></div>
@@ -2178,7 +2157,7 @@
                         refreshLeaderboard();
                     }
                     
-                    return isDev;
+return isDev;
                 } catch (error) {
                     console.error("Error verifying dev access:", error);
                     return false;
@@ -2377,7 +2356,7 @@
                     }
                     
                     // Get available avatars of that rarity
-                    const availableAvatars = itemManager.getAvatarsByRarity(rarity);
+                    let availableAvatars = itemManager.getAvatarsByRarity(rarity);
                     
                     // If no avatars of that rarity, fall back to common
                     if (availableAvatars.length === 0) {
@@ -3046,7 +3025,7 @@
                     refreshLeaderboard();
                 }
                 
-                // Save preferences to user settings
+// Save preferences to user settings
                 const preferences = {
                     theme: itemManager.currentTheme,
                     avatar: itemManager.currentAvatar
@@ -3151,6 +3130,305 @@
                 });
             }
         });
+
+// IMPROVED: Leaderboard class with enhanced balance syncing
+class VoidLeaderboard {
+    constructor(db) {
+        this.db = db;
+        this.unsubscribe = null;
+        this.leaderboardElement = document.getElementById('leaderboardList');
+        this.retryCount = 0;
+        this.maxRetries = 3;
+        this.retryTimeout = null;
+        this.isMinimized = false;
+        this.lastUpdateTime = 0;
+        console.log("VoidLeaderboard initialized");
+        
+        // Set up minimize/maximize toggle
+        const toggleBtn = document.getElementById('leaderboardToggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => this.toggleLeaderboard());
+        }
+    }
+    
+    // Toggle leaderboard visibility
+    toggleLeaderboard() {
+        const container = document.querySelector('.leaderboard-container');
+        const toggleBtn = document.getElementById('leaderboardToggle');
+        
+        if (container) {
+            if (this.isMinimized) {
+                // Maximize
+                container.classList.remove('leaderboard-minimized');
+                if (toggleBtn) toggleBtn.textContent = '−';
+                this.isMinimized = false;
+                
+                // For mobile
+                if (window.innerWidth <= 768) {
+                    container.classList.add('expanded');
+                }
+            } else {
+                // Minimize
+                container.classList.add('leaderboard-minimized');
+                if (toggleBtn) toggleBtn.textContent = '+';
+                this.isMinimized = true;
+                
+                // For mobile
+                if (window.innerWidth <= 768) {
+                    container.classList.remove('expanded');
+                }
+            }
+        }
+    }
+    
+    // Start real-time leaderboard updates with enhanced account balance sync
+    startLeaderboardUpdates() {
+        try {
+            if (this.unsubscribe) {
+                // If already subscribed, unsubscribe first
+                this.unsubscribe();
+            }
+            
+            // Show loading state
+            if (this.leaderboardElement) {
+                this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Loading top players...</div>';
+            }
+            
+            console.log("Starting leaderboard updates with improved account balance sync");
+            
+            // Read from leaderboard collection to get users with avatars and up-to-date balances
+            const leaderboardRef = collection(this.db, 'leaderboard');
+            const q = query(leaderboardRef, orderBy('accountBalance', 'desc'), limit(20));
+            
+            // Set up real-time listener with enhanced metadata options
+            this.unsubscribe = onSnapshot(q, 
+                {
+                    includeMetadataChanges: true
+                },
+                async (querySnapshot) => {
+                    // Reset retry count on successful data
+                    this.retryCount = 0;
+                    this.lastUpdateTime = Date.now();
+                    
+                    // Ensure leaderboard displays the very latest data
+                    await this.syncLeaderboardBalances(querySnapshot);
+                    
+                    // Update UI with the snapshot data
+                    this.updateLeaderboardUI(querySnapshot);
+                }, 
+                (error) => {
+                    console.error("Leaderboard listener error:", error);
+                    
+                    // Retry after a short delay
+                    if (this.retryCount < 5) {
+                        this.retryCount++;
+                        console.log(`Retrying Firebase connection (${this.retryCount}/5)...`);
+                        setTimeout(() => this.startLeaderboardUpdates(), 2000);
+                    }
+                }
+            );
+        } catch (error) {
+            console.error("Error setting up leaderboard:", error);
+            // Retry immediately if there's an error
+            setTimeout(() => this.startLeaderboardUpdates(), 1000);
+        }
+    }
+    
+    // NEW: Sync leaderboard balances with user accounts for more accurate display
+    async syncLeaderboardBalances(querySnapshot) {
+        // Only sync if more than 10 seconds have passed since last sync (to avoid excessive operations)
+        if (Date.now() - this.lastUpdateTime < 10000) return;
+        
+        try {
+            const updatePromises = [];
+            
+            // For each leaderboard entry, check if the user balance needs updating
+            querySnapshot.forEach(async (docSnapshot) => {
+                if (docSnapshot.exists()) {
+                    const leaderboardData = docSnapshot.data();
+                    const userId = docSnapshot.id;
+                    
+                    // Skip banned users
+                    if (leaderboardData.banned === true) return;
+                    
+                    // Get actual user document to compare balance
+                    const userRef = doc(this.db, 'users', userId);
+                    const userPromise = getDoc(userRef).then(userDoc => {
+                        if (userDoc.exists()) {
+                            const userData = userDoc.data();
+                            const userBalance = userData.accountBalance || 0;
+                            
+                            // If leaderboard balance differs from user balance, update it
+                            if (Math.abs(userBalance - (leaderboardData.accountBalance || 0)) > 0) {
+                                console.log(`Updating leaderboard balance for ${leaderboardData.username}: ${leaderboardData.accountBalance} -> ${userBalance}`);
+                                
+                                // Update leaderboard document with correct balance
+                                const leaderboardRef = doc(this.db, 'leaderboard', userId);
+                                return updateDoc(leaderboardRef, {
+                                    accountBalance: userBalance,
+                                    lastSynced: new Date()
+                                });
+                            }
+                        }
+                        return Promise.resolve();
+                    }).catch(error => {
+                        console.error(`Error syncing balance for user ${userId}:`, error);
+                        return Promise.resolve(); // Continue despite error
+                    });
+                    
+                    updatePromises.push(userPromise);
+                }
+            });
+            
+            // Wait for all updates to complete
+            await Promise.all(updatePromises);
+            console.log("Leaderboard balance sync complete");
+            
+            this.lastUpdateTime = Date.now();
+        } catch (error) {
+            console.error("Error syncing leaderboard balances:", error);
+        }
+    }
+    
+    // IMPROVED: Secure leaderboard UI update with avatar display and accurate balance
+    async updateLeaderboardUI(querySnapshot) {
+        if (!this.leaderboardElement) {
+            console.error("Leaderboard element not found");
+            return;
+        }
+        
+        // Always clear the leaderboard completely first
+        this.leaderboardElement.innerHTML = '';
+        
+        if (querySnapshot.empty) {
+            this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
+            return;
+        }
+        
+        console.log("Updating leaderboard with new data");
+        
+        // Create array of valid users to display - FILTER OUT BANNED USERS
+        const validUsers = [];
+        
+        // Read data from leaderboard entries with avatars
+        querySnapshot.forEach((docSnapshot) => {
+            if (docSnapshot.exists()) {
+                const userData = docSnapshot.data();
+                
+                // Skip banned users
+                if (userData.banned !== true) {
+                    // Add user with avatar if it exists in the leaderboard entry
+                    validUsers.push({
+                        id: docSnapshot.id,
+                        username: userData.username || 'Unknown',
+                        accountBalance: userData.accountBalance || 0,
+                        avatar: userData.equippedAvatar ? itemManager.items[userData.equippedAvatar]?.url : null
+                    });
+                } else {
+                    console.log(`Skipping banned user: ${userData.username || 'Unknown'}`);
+                }
+            }
+        });
+        
+        // Display valid users (up to 20)
+        const displayCount = Math.min(validUsers.length, 20);
+        
+        for (let i = 0; i < displayCount; i++) {
+            const userData = validUsers[i];
+            const leaderboardItem = document.createElement('div');
+            leaderboardItem.className = 'leaderboard-item';
+            
+            // Add animation class for new/updated items
+            leaderboardItem.classList.add('leaderboard-updated');
+            
+            // Create avatar HTML if user has one
+            let avatarHTML = '';
+            if (userData.avatar) {
+                avatarHTML = `
+                    <div class="leaderboard-avatar">
+                        <img src="${userData.avatar}" alt="${userData.username}'s avatar">
+                    </div>
+                `;
+            }
+            
+            leaderboardItem.innerHTML = `
+                <span class="leaderboard-rank">#${i + 1}</span>
+                <div class="leaderboard-username-container">
+                    ${avatarHTML}
+                    <span class="leaderboard-username">${userData.username}</span>
+                </div>
+                <span class="leaderboard-balance">${userData.accountBalance.toLocaleString()}</span>
+            `;
+            
+            this.leaderboardElement.appendChild(leaderboardItem);
+            
+            // Remove animation class after animation is complete
+            setTimeout(() => {
+                leaderboardItem.classList.remove('leaderboard-updated');
+            }, 1000);
+        }
+        
+        // Add placeholders to ensure we always show 20 entries
+        for (let i = displayCount; i < 20; i++) {
+            const placeholderItem = document.createElement('div');
+            placeholderItem.className = 'leaderboard-item';
+            
+            placeholderItem.innerHTML = `
+                <span class="leaderboard-rank">#${i + 1}</span>
+                <div class="leaderboard-username-container">
+                    <span class="leaderboard-username">...</span>
+                </div>
+                <span class="leaderboard-balance">--</span>
+            `;
+            
+            this.leaderboardElement.appendChild(placeholderItem);
+        }
+        
+        console.log(`Leaderboard updated with ${displayCount} players and ${20 - displayCount} placeholders`);
+        
+        // Find and highlight VoidNetworkOnTop
+        this.highlightSpecialUsers();
+    }
+    
+    // Specifically highlight special usernames
+    highlightSpecialUsers() {
+        const usernameElements = this.leaderboardElement.querySelectorAll('.leaderboard-username');
+        
+        usernameElements.forEach(el => {
+            // Explicitly check for "VoidNetworkOnTop" username
+            if (el.textContent === 'VoidNetworkOnTop') {
+                // Apply blue styling
+                el.style.color = '#1DA1F2';
+                el.style.textShadow = '0 0 5px rgba(29, 161, 242, 0.3)';
+                el.style.fontWeight = 'bold';
+                
+                // Add verification badge if it doesn't exist
+                if (!el.querySelector('.verified-badge')) {
+                    const badge = document.createElement('span');
+                    badge.className = 'verified-badge';
+                    badge.textContent = '✓';
+                    badge.style.marginLeft = '4px';
+                    badge.style.color = '#1DA1F2';
+                    el.appendChild(badge);
+                }
+            }
+        });
+    }
+
+    // Stop leaderboard updates
+    stopLeaderboardUpdates() {
+        if (this.unsubscribe) {
+            console.log("Stopping leaderboard updates");
+            this.unsubscribe();
+            this.unsubscribe = null;
+        }
+        
+        // Clear any pending timeouts
+        if (this.retryTimeout) {
+            clearTimeout(this.retryTimeout);
+        }
+    }
+}
 
 // IMPROVED: Secure VoidNetworkAccounting Class
 class VoidNetworkAccounting {
@@ -3363,638 +3641,614 @@ class VoidNetworkAccounting {
     }
 }
 
-// IMPROVED: Secure Leaderboard Implementation with Avatar and Balance Support
-class VoidLeaderboard {
-    constructor(db) {
-        this.db = db;
-        this.unsubscribe = null;
-        this.leaderboardElement = document.getElementById('leaderboardList');
-        this.retryCount = 0;
-        this.maxRetries = 3;
-        this.retryTimeout = null;
-        this.isMinimized = false;
-        console.log("VoidLeaderboard initialized");
-        
-        // Set up minimize/maximize toggle
-        const toggleBtn = document.getElementById('leaderboardToggle');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => this.toggleLeaderboard());
-        }
-    }
-    
-    // Toggle leaderboard visibility
-    toggleLeaderboard() {
-        const container = document.querySelector('.leaderboard-container');
-        const toggleBtn = document.getElementById('leaderboardToggle');
-        
-        if (container) {
-            if (this.isMinimized) {
-                // Maximize
-                container.classList.remove('leaderboard-minimized');
-                if (toggleBtn) toggleBtn.textContent = '−';
-                this.isMinimized = false;
-                
-                // For mobile
-                if (window.innerWidth <= 768) {
-                    container.classList.add('expanded');
-                }
-            } else {
-                // Minimize
-                container.classList.add('leaderboard-minimized');
-                if (toggleBtn) toggleBtn.textContent = '+';
-                this.isMinimized = true;
-                
-                // For mobile
-                if (window.innerWidth <= 768) {
-                    container.classList.remove('expanded');
-                }
-            }
-        }
-    }
-    
-    // Start real-time leaderboard updates - Reading from public leaderboard collection
-    startLeaderboardUpdates() {
-        try {
-            if (this.unsubscribe) {
-                // If already subscribed, unsubscribe first
-                this.unsubscribe();
-            }
-            
-            // Show loading state
-            if (this.leaderboardElement) {
-                this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Loading top players...</div>';
-            }
-            
-            console.log("Starting leaderboard updates");
-            
-            // Read from leaderboard collection to get users with avatars
-            const leaderboardRef = collection(this.db, 'leaderboard');
-            const q = query(leaderboardRef, orderBy('accountBalance', 'desc'), limit(20));
-            
-            // Set up real-time listener
-            this.unsubscribe = onSnapshot(q, 
-                {
-                    includeMetadataChanges: true
-                },
-                (querySnapshot) => {
-                    // Reset retry count on successful data
-                    this.retryCount = 0;
-                    
-                    // Update UI with the snapshot data
-                    this.updateLeaderboardUI(querySnapshot);
-                }, 
-                (error) => {
-                    console.error("Leaderboard listener error:", error);
-                    
-                    // Retry after a short delay
-                    if (this.retryCount < 5) {
-                        this.retryCount++;
-                        console.log(`Retrying Firebase connection (${this.retryCount}/5)...`);
-                        setTimeout(() => this.startLeaderboardUpdates(), 2000);
-                    }
-                }
-            );
-        } catch (error) {
-            console.error("Error setting up leaderboard:", error);
-            // Retry immediately if there's an error
-            setTimeout(() => this.startLeaderboardUpdates(), 1000);
-        }
-    }
-    
-    // IMPROVED: Secure leaderboard UI update with avatar display and accurate balance
-    async updateLeaderboardUI(querySnapshot) {
-        if (!this.leaderboardElement) {
-            console.error("Leaderboard element not found");
-            return;
-        }
-        
-        // Always clear the leaderboard completely first
-        this.leaderboardElement.innerHTML = '';
-        
-        if (querySnapshot.empty) {
-            this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players yet</div>';
-            return;
-        }
-        
-        console.log("Updating leaderboard with new data");
-        
-        // Create array of valid users to display - FILTER OUT BANNED USERS
-        const validUsers = [];
-        
-        // Read data from leaderboard entries with avatars
-        querySnapshot.forEach((docSnapshot) => {
-            if (docSnapshot.exists()) {
-                const userData = docSnapshot.data();
-                
-                // Skip banned users
-                if (userData.banned !== true) {
-                    // Make sure to get the accurate balance from the userData
-                    const accountBalance = userData.accountBalance || 0;
-                    
-                    // Add user with avatar if it exists in the leaderboard entry
-                    validUsers.push({
-                        id: docSnapshot.id,
-                        username: userData.username || 'Unknown',
-                        accountBalance: accountBalance, // Use the exact balance from Firestore
-                        avatar: userData.equippedAvatar ? itemManager.items[userData.equippedAvatar]?.url : null
-                    });
-                } else {
-                    console.log(`Skipping banned user: ${userData.username || 'Unknown'}`);
-                }
-            }
-        });
-        
-        // Display valid users (up to 20)
-        const displayCount = Math.min(validUsers.length, 20);
-        
-        for (let i = 0; i < displayCount; i++) {
-            const userData = validUsers[i];
-            const leaderboardItem = document.createElement('div');
-            leaderboardItem.className = 'leaderboard-item';
-            
-            // Add animation class for new/updated items
-            leaderboardItem.classList.add('leaderboard-updated');
-            
-            // Create avatar HTML if user has one
-            let avatarHTML = '';
-            if (userData.avatar) {
-                avatarHTML = `
-                    <div class="leaderboard-avatar">
-                        <img src="${userData.avatar}" alt="${userData.username}'s avatar">
-                    </div>
-                `;
-            }
-            
-            // Format the balance with commas
-            const formattedBalance = userData.accountBalance.toLocaleString();
-            
-            leaderboardItem.innerHTML = `
-                <span class="leaderboard-rank">#${i + 1}</span>
-                <div class="leaderboard-username-container">
-                    ${avatarHTML}
-                    <span class="leaderboard-username">${userData.username}</span>
-                </div>
-                <span class="leaderboard-balance">${formattedBalance}</span>
-            `;
-            
-            this.leaderboardElement.appendChild(leaderboardItem);
-            
-            // Remove animation class after animation is complete
-            setTimeout(() => {
-                leaderboardItem.classList.remove('leaderboard-updated');
-            }, 1000);
-        }
-        
-        // Add placeholders to ensure we always show 20 entries
-        for (let i = displayCount; i < 20; i++) {
-            const placeholderItem = document.createElement('div');
-            placeholderItem.className = 'leaderboard-item';
-            
-            placeholderItem.innerHTML = `
-                <span class="leaderboard-rank">#${i + 1}</span>
-                <div class="leaderboard-username-container">
-                    <span class="leaderboard-username">...</span>
-                </div>
-                <span class="leaderboard-balance">--</span>
-            `;
-            
-            this.leaderboardElement.appendChild(placeholderItem);
-        }
-        
-        console.log(`Leaderboard updated with ${displayCount} players and ${20 - displayCount} placeholders`);
-        
-        // Find and highlight special users
-        this.highlightSpecialUsers();
-    }
-    
-    // Specifically highlight special usernames
-    highlightSpecialUsers() {
-        const usernameElements = this.leaderboardElement.querySelectorAll('.leaderboard-username');
-        
-        usernameElements.forEach(el => {
-            // Explicitly check for "VoidNetworkOnTop" username
-            if (el.textContent === 'VoidNetworkOnTop') {
-                // Apply blue styling
-                el.style.color = '#1DA1F2';
-                el.style.textShadow = '0 0 5px rgba(29, 161, 242, 0.3)';
-                el.style.fontWeight = 'bold';
-                
-                // Add verification badge if it doesn't exist
-                if (!el.querySelector('.verified-badge')) {
-                    const badge = document.createElement('span');
-                    badge.className = 'verified-badge';
-                    badge.textContent = '✓';
-                    badge.style.marginLeft = '4px';
-                    badge.style.color = '#1DA1F2';
-                    el.appendChild(badge);
-                }
-            }
-        });
-    }
-
-    // Stop leaderboard updates
-    stopLeaderboardUpdates() {
-        if (this.unsubscribe) {
-            console.log("Stopping leaderboard updates");
-            this.unsubscribe();
-            this.unsubscribe = null;
-        }
-        
-        // Clear any pending timeouts
-        if (this.retryTimeout) {
-            clearTimeout(this.retryTimeout);
-        }
-    }
-}
-
-// IMPROVED: Transaction Management with Leaderboard Synchronization
-async function recordGameTransaction(gameId, userId, transactionType, amount) {
-    try {
-        console.log(`Recording game transaction: ${transactionType} for ${amount} coins in ${gameId}`);
-        
-        // Security check: Only allow user to create transactions for themselves
-        if (auth.currentUser && userId !== auth.currentUser.uid) {
-            console.warn("User trying to create transaction for another user - denied");
-            throw new Error('Unauthorized access');
-        }
-        
-        // Get the user's current data
-        const userRef = doc(db, 'users', userId);
-        const userDoc = await getDoc(userRef);
-        
-        if (!userDoc.exists()) {
-            throw new Error('User document not found');
-        }
-        
-        const userData = userDoc.data();
-        let currentBalance = userData.accountBalance || 0;
-        
-        // Create transaction record
-        const transactionRef = collection(db, 'transactions');
-        
-        // Only update balance for certain transaction types
-        if (transactionType === 'win' || transactionType === 'loss') {
-            // Calculate new balance
-            const newBalance = transactionType === 'win' 
-                ? currentBalance + amount
-                : Math.max(0, currentBalance - amount); // Prevent negative balance
-            
-            // Update user account in Firestore
-            await updateDoc(userRef, {
-                accountBalance: newBalance,
-                totalGamesPlayed: (userData.totalGamesPlayed || 0) + 1,
-                lastUpdated: new Date() // Add timestamp for easier debugging
-            });
-            
-            // IMPORTANT: Update leaderboard entry independently
-            const leaderboardRef = doc(db, 'leaderboard', userId);
-            const leaderboardDoc = await getDoc(leaderboardRef);
-            
-            if (leaderboardDoc.exists()) {
-                await updateDoc(leaderboardRef, {
-                    accountBalance: newBalance,
-                    lastUpdated: new Date()
-                });
-            } else {
-                // Create leaderboard entry if it doesn't exist
-                await setDoc(leaderboardRef, {
-                    username: userData.username || 'Unknown',
-                    accountBalance: newBalance,
-                    joinDate: new Date(),
-                    lastUpdated: new Date(),
-                    // Include avatar if available in user data
-                    equippedAvatar: userData.equippedAvatar || null
-                });
-            }
-            
-            // Record the transaction with before/after balances
-            await addDoc(transactionRef, {
-                userId: userId,
-                gameId: gameId,
-                transactionType: transactionType,
-                amount: amount,
-                timestamp: new Date(),
-                prevBalance: currentBalance,
-                newBalance: newBalance
-            });
-            
-            // Force refresh of coin display in UI
-            document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
-            document.getElementById('balance-display').textContent = newBalance.toLocaleString();
-            
-            // Return updated balance information
-            return {
-                success: true,
-                prevBalance: currentBalance,
-                newBalance: newBalance
-            };
-        } else {
-            // Just record the game play without changing balance
-            await addDoc(transactionRef, {
-                userId: userId,
-                gameId: gameId,
-                transactionType: transactionType,
-                timestamp: new Date()
-            });
-            
-            return {
-                success: true,
-                currentBalance: currentBalance
-            };
-        }
-    } catch (error) {
-        console.error("Transaction Error:", error);
-        throw error;
-    }
-}
-
-// SECURITY: Secure Transaction Function for Purchasing Items
-async function purchaseItem(itemId, itemType, price) {
-    if (!auth.currentUser) {
-        showNotification('Please log in to make purchases', 'error');
-        return;
-    }
+// IMPROVED: Force a sync of all user balances to leaderboard
+// This will ensure all leaderboard entries have the correct balances
+async function syncAllUserBalancesToLeaderboard() {
+    console.log("Starting full leaderboard balance sync");
     
     try {
-        const userId = auth.currentUser.uid;
+        // Get all users
+        const usersRef = collection(db, 'users');
+        const usersSnapshot = await getDocs(usersRef);
         
-        // Get current user details to check balance
-        const userRef = doc(db, 'users', userId);
-        const userDoc = await getDoc(userRef);
+        // For each user, update their leaderboard entry
+        const updatePromises = [];
         
-        if (!userDoc.exists()) {
-            throw new Error("User not found");
-        }
-        
-        const userData = userDoc.data();
-        
-        if (userData.accountBalance < price) {
-            showNotification('Not enough coins to make this purchase', 'error');
-            return;
-        }
-        
-        // Calculate new balance
-        const newBalance = userData.accountBalance - price;
-        
-        // IMPORTANT: Update user account balance (ACTUALLY DEDUCT COINS)
-        await updateDoc(userRef, {
-            accountBalance: newBalance,
-            lastUpdated: new Date()
-        });
-        
-        // Check if leaderboard entry exists and update/create as needed
-        const leaderboardRef = doc(db, 'leaderboard', userId);
-        const leaderboardDoc = await getDoc(leaderboardRef);
-        
-        if (leaderboardDoc.exists()) {
-            // Update existing leaderboard entry
-            await updateDoc(leaderboardRef, {
-                accountBalance: newBalance,
-                lastUpdated: new Date(),
-                // If it's an avatar, store it in the leaderboard too
-                ...(itemType === 'avatar' && itemId === itemManager.currentAvatar ? { equippedAvatar: itemId } : {})
-            });
-        } else {
-            // Create new leaderboard entry
-            await setDoc(leaderboardRef, {
-                username: userData.username || 'Unknown',
-                accountBalance: newBalance,
-                joinDate: new Date(),
-                lastUpdated: new Date(),
-                ...(itemType === 'avatar' ? { equippedAvatar: itemId } : {})
-            });
-        }
-        
-        // Create a record in user_purchases
-        await addDoc(collection(db, 'user_purchases', userId, 'items'), {
-            itemId: itemId,
-            itemType: itemType,
-            price: price,
-            purchaseDate: new Date(),
-            itemName: getItemNameById(itemId)
-        });
-        
-        // Log transaction for records
-        await addDoc(collection(db, 'transactions'), {
-            userId: userId,
-            transactionType: 'purchase',
-            amount: price,
-            itemId: itemId,
-            itemType: itemType,
-            timestamp: new Date(),
-            prevBalance: userData.accountBalance,
-            newBalance: newBalance
-        });
-        
-        // Update UI to show item as owned and update balance displays
-        const button = document.querySelector(`.buy-button[data-item-id="${itemId}"]`);
-        if (button) {
-            button.textContent = "Equip";
-            button.classList.add('equip');
-            
-            // Add owned class to shop item
-            const shopItem = button.closest('.shop-item');
-            if (shopItem) {
-                shopItem.classList.add('owned');
-            }
-        }
-        
-        // Update balance displays
-        document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
-        document.getElementById('balance-display').textContent = newBalance.toLocaleString();
-        
-        // Notify about balance update
-        notifyBalanceUpdate();
-        
-        // Update button states based on new balance
-        updateShopButtonsState(newBalance, {...await itemManager.checkPurchasedItems(userId), [itemId]: true});
-        
-        // Show success notification
-        showNotification(`Successfully purchased ${getItemNameById(itemId)} for ${price.toLocaleString()} coins!`, 'success');
-        
-        // Auto-equip the item after purchase
-        await equipItem(itemId, itemType);
-        
-    } catch (error) {
-        console.error('Purchase error:', error);
-        showNotification('Failed to complete purchase: ' + error.message, 'error');
-    }
-}
-
-// Function to notify about balance changes
-function notifyBalanceUpdate() {
-    // Create and dispatch a custom event
-    const event = new CustomEvent('balance-updated');
-    document.dispatchEvent(event);
-    
-    // Refresh leaderboard
-    if (voidLeaderboard) {
-        console.log("Balance updated, refreshing leaderboard");
-        voidLeaderboard.startLeaderboardUpdates();
-    }
-}
-
-// Add a function to fix AdSense
-function fixAdSenseContainers() {
-    const adContainers = document.querySelectorAll('.ad-container');
-    
-    adContainers.forEach(container => {
-        // Set explicit minimum dimensions
-        container.style.minWidth = '300px';
-        container.style.minHeight = '250px';
-        container.style.display = 'block';
-        container.style.overflow = 'hidden';
-        
-        // For horizontal ads
-        if (container.classList.contains('ad-container-horizontal')) {
-            container.style.width = '100%';
-            container.style.minWidth = '320px';
-            container.style.maxWidth = '970px';
-        }
-        
-        // For vertical ads
-        if (container.classList.contains('ad-container-vertical')) {
-            container.style.minHeight = '400px';
-            container.style.width = '100%';
-            container.style.maxWidth = '300px';
-            
-            // Hide on mobile
-            if (window.innerWidth <= 768) {
-                container.style.display = 'none';
-            }
-        }
-        
-        // Add wrapper if needed for AdSense
-        if (!container.querySelector('.ad-wrapper')) {
-            const adElements = container.querySelectorAll('.adsbygoogle');
-            
-            adElements.forEach(adElement => {
-                // Create a wrapper
-                const wrapper = document.createElement('div');
-                wrapper.className = 'ad-wrapper';
-                wrapper.style.width = '100%';
-                wrapper.style.height = '100%';
-                wrapper.style.minHeight = '250px';
-                wrapper.style.overflow = 'hidden';
+        usersSnapshot.forEach(userDoc => {
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                const userId = userDoc.id;
+                const userBalance = userData.accountBalance || 0;
                 
-                // Replace the ad with the wrapper containing the ad
-                const parent = adElement.parentNode;
-                parent.insertBefore(wrapper, adElement);
-                wrapper.appendChild(adElement);
-                
-                // Set explicit dimensions for the ad
-                adElement.style.display = 'block';
-                adElement.style.width = '100%';
-                adElement.style.height = '100%';
-            });
-        }
-    });
-}
-
-// Initialize AdSense properly
-function initAdsense() {
-    // Fix containers first
-    fixAdSenseContainers();
-    
-    // Reload ads after fixing containers
-    setTimeout(() => {
-        try {
-            const adElements = document.querySelectorAll('.adsbygoogle');
-            adElements.forEach(adElement => {
-                try {
-                    // Only try to load ads that aren't already loaded
-                    if (adElement.dataset.adsbygoogleStatus !== 'done') {
-                        (adsbygoogle = window.adsbygoogle || []).push({});
+                // Update or create leaderboard entry
+                const leaderboardRef = doc(db, 'leaderboard', userId);
+                const updatePromise = getDoc(leaderboardRef).then(leaderboardDoc => {
+                    if (leaderboardDoc.exists()) {
+                        // Update existing entry
+                        const leaderboardData = leaderboardDoc.data();
+                        if (leaderboardData.accountBalance !== userBalance) {
+                            return updateDoc(leaderboardRef, {
+                                accountBalance: userBalance,
+                                lastSynced: new Date()
+                            });
+                        }
+                    } else {
+                        // Create new entry
+                        return setDoc(leaderboardRef, {
+                            username: userData.username || 'Unknown',
+                            accountBalance: userBalance,
+                            joinDate: new Date(),
+                            lastSynced: new Date()
+                        });
                     }
-                } catch (e) {
-                    console.log('Error initializing individual ad:', e);
-                }
-            });
-        } catch (e) {
-            console.log('Error refreshing ads:', e);
-        }
-    }, 300);
+                    return Promise.resolve();
+                }).catch(error => {
+                    console.error(`Error updating leaderboard for user ${userId}:`, error);
+                    return Promise.resolve(); // Continue despite error
+                });
+                
+                updatePromises.push(updatePromise);
+            }
+        });
+        
+        // Wait for all updates to complete
+        await Promise.all(updatePromises);
+        console.log("Full leaderboard sync complete");
+        
+        // Refresh the leaderboard display
+        refreshLeaderboard();
+        
+        return true;
+    } catch (error) {
+        console.error("Error syncing all user balances:", error);
+        return false;
+    }
 }
 
-// Setup periodic leaderboard refresh
-function setupLeaderboardRefresh() {
-    // Refresh leaderboard every 30 seconds to keep it up to date
-    const refreshInterval = setInterval(() => {
-        if (voidLeaderboard) {
-            console.log("Performing scheduled leaderboard refresh");
-            voidLeaderboard.startLeaderboardUpdates();
-        }
-    }, 30000);
-    
-    // Also refresh when user balance changes
-    document.addEventListener('balance-updated', () => {
-        if (voidLeaderboard) {
-            console.log("Balance updated, refreshing leaderboard");
-            voidLeaderboard.startLeaderboardUpdates();
-        }
-    });
-    
-    // Cleanup on page unload
-    window.addEventListener('unload', () => {
-        clearInterval(refreshInterval);
-    });
-}
+// Initialize Accounting System
+const voidAccounting = new VoidNetworkAccounting();
+
+// Initialize Leaderboard
+const voidLeaderboard = new VoidLeaderboard(db);
 
 // Helper function to refresh leaderboard and highlight special users
 function refreshLeaderboard() {
     console.log("Manual leaderboard refresh requested");
     
     // Stop current listener and restart to force refresh
-    if (voidLeaderboard) {
-        voidLeaderboard.stopLeaderboardUpdates();
+    voidLeaderboard.stopLeaderboardUpdates();
+    
+    // Force a new connection attempt
+    voidLeaderboard.startLeaderboardUpdates();
+    
+    // After a short delay, manually highlight special users
+    setTimeout(() => voidLeaderboard.highlightSpecialUsers(), 1000);
+}
+
+// Detect screen size changes to handle mobile responsive layout
+function handleResponsiveLayout() {
+    const leaderboardContainer = document.querySelector('.leaderboard-container');
+    
+    if (window.innerWidth <= 768) {
+        // For mobile: Show the toggle button for collapse/expand
+        if (leaderboardContainer) {
+            const toggleBtn = document.getElementById('leaderboardToggle');
+            if (toggleBtn) {
+                toggleBtn.style.display = 'flex';
+            }
+            
+            // Auto-collapse on mobile initially
+            if (!voidLeaderboard.isMinimized && !leaderboardContainer.classList.contains('expanded')) {
+                voidLeaderboard.isMinimized = true;
+            }
+        }
+    } else {
+        // For desktop: hide the toggle button as the leaderboard is always visible
+        const toggleBtn = document.getElementById('leaderboardToggle');
+        if (toggleBtn) {
+            toggleBtn.style.display = 'none';
+        }
         
-        // Force a new connection attempt
-        voidLeaderboard.startLeaderboardUpdates();
-        
-        // After a short delay, manually highlight special users
-        setTimeout(() => voidLeaderboard.highlightSpecialUsers(), 1000);
+        // Reset any mobile-specific classes
+        if (leaderboardContainer) {
+            leaderboardContainer.classList.remove('expanded');
+        }
     }
 }
 
-// Initialize everything when the DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    // Fix AdSense containers
-    fixAdSenseContainers();
+// Initialize layout once DOM is loaded
+window.addEventListener('load', () => {
+    handleResponsiveLayout();
+});
+
+// Check on window resize
+window.addEventListener('resize', handleResponsiveLayout);
+
+// Authentication Event Listeners
+document.getElementById('login-btn')?.addEventListener('click', async () => {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
     
-    // Start leaderboard refreshing
-    setupLeaderboardRefresh();
-    
-    // Initial leaderboard load if it exists
-    if (typeof voidLeaderboard !== 'undefined') {
-        voidLeaderboard.startLeaderboardUpdates();
+    if (!email || !password) {
+        alert('Please enter both email and password');
+        return;
     }
     
-    // Add event listeners for situations where ads might need to be refreshed
-    const shopIcon = document.getElementById('shop-icon');
-    if (shopIcon) {
-        shopIcon.addEventListener('click', function() {
-            // Wait a moment for the shop to become visible before initializing ads
-            setTimeout(fixAdSenseContainers, 500);
-        });
+    try {
+        const user = await voidAccounting.loginUser(email, password);
+        console.log('Logged in user:', user);
+        await updateUIForLoggedInUser(user);
+        authContainer.style.display = 'none'; // Hide auth container after login
+        authContainer.classList.remove('visible');
+    } catch (error) {
+        alert('Login failed: ' + error.message);
+    }
+});
+
+document.getElementById('register-btn')?.addEventListener('click', async () => {
+    const username = document.getElementById('register-username').value;
+    const email = document.getElementById('register-email').value;
+    const password = document.getElementById('register-password').value;
+    
+    if (!username || !email || !password) {
+        alert('Please fill in all fields');
+        return;
     }
     
-    // Also fix ads when tabs are switched in the shop
-    const shopTabs = document.querySelectorAll('.shop-tab');
-    if (shopTabs.length > 0) {
-        shopTabs.forEach(tab => {
-            tab.addEventListener('click', function() {
-                // Wait a moment for the tab content to become visible
-                setTimeout(fixAdSenseContainers, 300);
-            });
-        });
+    try {
+        const user = await voidAccounting.registerUser(email, password, username);
+        console.log('Registered user:', user);
+        await updateUIForLoggedInUser(user);
+        authContainer.style.display = 'none'; // Hide auth container after registration
+        authContainer.classList.remove('visible');
+    } catch (error) {
+        alert('Registration failed: ' + error.message);
+    }
+});
+
+document.getElementById('logout-btn')?.addEventListener('click', async () => {
+    try {
+        // Unequip any theme before logging out
+        if (itemManager.currentTheme) {
+            itemManager.unequipTheme();
+        }
+        
+        await voidAccounting.logout();
+        updateUIForLoggedOutUser();
+        
+        // Close shop container if open
+        shopContainer.style.display = 'none';
+        shopContainer.classList.remove('visible');
+    } catch (error) {
+        alert('Logout failed: ' + error.message);
+    }
+});
+
+// Update UI based on authentication state
+async function updateUIForLoggedInUser(user) {
+    document.getElementById('login-form').style.display = 'none';
+    document.getElementById('register-form').style.display = 'none';
+    document.getElementById('user-profile').style.display = 'block';
+    
+    try {
+        // Fetch fresh user details
+        const userDetails = await voidAccounting.getUserAccountDetails(user.uid);
+        document.getElementById('username-display').textContent = userDetails.username;
+        document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
+        console.log("Updated UI with username:", userDetails.username);
+        
+        // Load user's theme and avatar if they have them equipped
+        await itemManager.loadUserPreferences(user.uid);
+        
+        // Check if user is a developer and show dev tab if they are
+        const isDev = await itemManager.verifyDevAccess();
+        const devTab = document.querySelector('.shop-tab[data-tab="dev"]');
+        
+        if (devTab) {
+            if (isDev) {
+                devTab.style.display = 'block';
+            } else {
+                devTab.style.display = 'none';
+            }
+        }
+        
+        // Check for dev avatars and verify every minute
+        setInterval(async () => {
+            await itemManager.verifyDevAccess();
+        }, 60000); // Check every 1 minute
+    } catch (error) {
+        console.error("Error updating UI:", error);
+        alert('Could not load user details. Please try again.');
+    }
+}
+
+function updateUIForLoggedOutUser() {
+    document.getElementById('login-form').style.display = 'block';
+    document.getElementById('register-form').style.display = 'block';
+    document.getElementById('user-profile').style.display = 'none';
+}
+
+// Listen for authentication state changes
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        console.log("Auth state changed: User is signed in", user.uid);
+        await updateUIForLoggedInUser(user);
+    } else {
+        console.log("Auth state changed: User is signed out");
+        updateUIForLoggedOutUser();
+        
+        // Make sure items are unequipped when logged out
+        if (itemManager.currentTheme) {
+            itemManager.unequipTheme();
+        }
+        itemManager.currentTheme = null;
+        itemManager.currentAvatar = null;
+    }
+});
+
+// Game loading logic
+const defaultApps = [
+    {
+        title: "Ball Dropper",
+        imgSrc: "https://lh7-us.googleusercontent.com/CUj18dKaBkXv0WI59qpP2-Ub1J0KHyKXwgnhPBdmzDzwhQNvIkwPsrVLJCiSsS0iNOaF8-nAamakuiFLoRzYIGyOr-LOFJg9hD5IA9cIvjh5ZIHmBhT-hel39crAOTgz88P8jX2WApcC5PDnLbabDK_QC1vyFw",
+        link: "/local games/Plinko/plinko.html"
+    },
+    {
+        title: "MineFeild",
+        imgSrc: "https://lh7-us.googleusercontent.com/WAjTfpxFqdXwMOlzyChcCi40sg6-ukZN5u24gdmWyi9_Yca5-V8vBR6zrgOoADGwKKJM7e7cKEkq9i_chkYesJvN_VVnvKAfUOPIllTxR2mbOK-HiR0vlIgH_2_bY2Oqzh2ndVieVycQoGDMXuZC-8gpE85Ypg",
+        link: "/local games/CrossyRoad/crossy.html"
+    },
+    {
+        title: "Memory Squares",
+        imgSrc: "https://lh7-us.googleusercontent.com/USI3iEwtHyyyN6fdMllkREQg8h8N7xsXxw94Wb0umSNOzvXTgMtBtxMBXwgyVOHirbrZCVGU1JDeyVaW94xuTS-4vEvT1iZzriw3We_RIYDPW63aWxDEj8xZ_d7Nc3vi6LfrEr20QOOMvnWL8JD5XgbbC-PjKA",
+        link: "/local games/memory-square/mem.html"
+    },
+    {
+        title: "VoidSnake",
+        imgSrc: "https://lh7-us.googleusercontent.com/zPbDytQWYmY90BK7jPcdb8QQ8QNz4LWyhwUq1zNWiD64NNGC_8L21T_QDOl9z8R9QRvJtkFRvM9f83ODmjJJYgG6sZwi71SPiTUwASMOaofbb7wIOKEQJ-Wq1VSGVlCg3RmSdC7B4d-SGOfs_hRdmKjtxHbGOQ",
+        link: "/local games/Void Snake/Voidsnake.html"
+    },
+    {
+        title: "Heads Or Tails?",
+        imgSrc: "https://lh7-us.googleusercontent.com/jpunH9P0O_of8oU2ZilkliydM46qFTQxD__XgzIKv3OU7zZi77arrF9F2hGe-wgyzO5-57VJvN1zocVFN8549jIDkN2rKc9xEjcywhhJCldCaJkZnMgyEHtwJPuUsZZSu4DsK-L2b2eQGepfKwhgn4p7tgzrqA",
+        link: "/local games/CoinFlip/coinflip.html"
+    },
+    {
+        title: "Chicken Run",
+        imgSrc: "https://lh7-us.googleusercontent.com/JugrfbksXzV3Mwwp32MOX-DHGD1EQJmZIaB_RYn9VBvoihT7-bClXPzyfYJC4mGXsYsdTMWJh-Xxe8L9wpHrGntuc0Shzu9tqKCTSug-jM2SiW1BIBcok9Fxlz0JvZEqaKVMbSWK1dlWmw8caafDFRErSox7YA",
+        link: "/local games/ChickenRun/chickenrun.html"
+    },
+    {
+        title: "Black Jack",
+        imgSrc: "https://lh7-us.googleusercontent.com/OZqPInsN8s8qb43B5XLKVNm6uHmFM_GBSMVdBcr4Y8fYr-dX_jSqsu7keD7RoMafKFhUprNXkYYwpvmTwsNNkvmzR23M3XL1ykIp-8EpICFqttainlnXyRuobeBcEp4YE8fxhdDdBxgufc8EhjzItiMSAI821w",
+        link: "/local games/BlackJack/BlackJack.html"
+    },
+    {
+        title: "Tic Tac Toe",
+        imgSrc: "https://lh7-us.googleusercontent.com/9kSWLTVDFONfAKr5ypIjt5LvF36mUlapDOEMJdwX0jkF-wvLUAPvd6Pg42ws-2Fdq2dRvOtO3WRMOtkJiS7atfoqugRCHgAsxqni6PVbRlIoM-uqCAOWjVp-wCnFWxuHDWAPEGuwjNkiBYSXhTljpVMf4A_h2Q",
+        link: "/local games/TicTacToe/TicTacToe.html"
+    },
+    {
+        title: "Water Roulette",
+        imgSrc: "https://lh7-us.googleusercontent.com/55Ss_gX74t5Qy9Zr2OevrdodZtTs3lQ4KEAXiOhyMoRctF1EDDcaepxmc2Fou29Jl0AUWsl5NGx8xiDW89aOwgXnTtkrFa5B7TXOczHrtCbdyT8WFcrCcisyTUmd9h8XfGTmvbUZ2uXNZ8gZk7UoVMxuTh2tQw",
+        link: "/local games/RussianRoulette/RussianRoulette.html"
+    },
+    {
+        title: "Click Race Multiplayer",
+        imgSrc: "https://lh7-us.googleusercontent.com/0uIu5df5JmX-mNMQCWXZU39v4N0h3tYQntJyUgd74z_OBw5neJum7hYw7YroKxDZI4lqaEZi66aTB3PuKtJ2-DdaPqf9ZhyzVrMkBaHuFTlITvL3dBLWVqpFBRKWr9lapTsOrbZMhjlf6MyKa3mcou5hO3zl5g",
+        link: "/local games/ClickRace/ClickRace.html"
+    },
+];
+
+function renderAppsList() {
+    const gamesList = document.getElementById("gamesList");
+    
+    if (!gamesList) {
+        console.error("Games list element not found");
+        return;
     }
     
-    // Fix on resize too
-    window.addEventListener('resize', function() {
-        // Debounce the resize handler
-        clearTimeout(window.resizeTimer);
-        window.resizeTimer = setTimeout(fixAdSenseContainers, 300);
+    gamesList.innerHTML = '';
+    console.log("Rendering games list");
+    
+    defaultApps.forEach(app => {
+        const appElement = document.createElement("div");
+        appElement.className = "game-item";
+        
+        appElement.innerHTML = `
+            <div class="game-icon">
+                <img src="${app.imgSrc}" alt="${app.title} icon">
+            </div>
+            <h3 class="game-title">${app.title}</h3>
+        `;
+
+        appElement.onclick = () => {
+            // Check if user is logged in before navigating to game
+            const currentUser = voidAccounting.getCurrentUser();
+            if (currentUser) {
+                console.log("Navigating to game:", app.title);
+                
+                // Record the game play attempt
+                voidAccounting.recordGameTransaction(
+                    app.title.toLowerCase().replace(/\s+/g, '_'), 
+                    currentUser.uid,
+                    'game_play',
+                    0 // Just tracking the visit, not charging coins here
+                ).then(() => {
+                    // Navigate to the game after transaction is recorded
+                    window.location.href = app.link;
+                }).catch(error => {
+                    console.error("Error recording game visit:", error);
+                    // Still navigate even if tracking fails
+                    window.location.href = app.link;
+                });
+            } else {
+                alert('Please login to play games');
+                authContainer.style.display = 'block';
+                setTimeout(() => {
+                    authContainer.classList.add('visible');
+                }, 10);
+            }
+        };
+
+        gamesList.appendChild(appElement);
     });
+}
+
+document.getElementById("searchApps")?.addEventListener("keyup", function(e) {
+    const gamesList = document.getElementById("gamesList");
+    const searchTerm = this.value.toLowerCase();
+    
+    if (!gamesList) return;
+    
+    gamesList.innerHTML = '';
+    
+    defaultApps.forEach(app => {
+        if (app.title.toLowerCase().includes(searchTerm)) {
+            const appElement = document.createElement("div");
+            appElement.className = "game-item";
+            
+            appElement.innerHTML = `
+                <div class="game-icon">
+                    <img src="${app.imgSrc}" alt="${app.title} icon">
+                </div>
+                <h3 class="game-title">${app.title}</h3>
+            `;
+
+            appElement.onclick = () => {
+                // Check if user is logged in before navigating to game
+                const currentUser = voidAccounting.getCurrentUser();
+                if (currentUser) {
+                    // Record the game play attempt
+                    voidAccounting.recordGameTransaction(
+                        app.title.toLowerCase().replace(/\s+/g, '_'), 
+                        currentUser.uid,
+                        'game_play',
+                        0 // Just tracking the visit, not charging coins here
+                    ).then(() => {
+                        // Navigate to the game after transaction is recorded
+                        window.location.href = app.link;
+                    }).catch(error => {
+                        console.error("Error recording game visit:", error);
+                        // Still navigate even if tracking fails
+                        window.location.href = app.link;
+                    });
+                } else {
+                    alert('Please login to play games');
+                    authContainer.style.display = 'block';
+                    setTimeout(() => {
+                        authContainer.classList.add('visible');
+                    }, 10);
+                }
+            };
+
+            gamesList.appendChild(appElement);
+        }
+    });
+});
+
+// Add periodic refresh to ensure leaderboard stays updated
+setInterval(refreshLeaderboard, 30000); // Refresh every 30 seconds
+
+// Load apps and start leaderboard on page load
+window.addEventListener('load', async () => {
+    try {
+        console.log("Page loaded, initializing app");
+        renderAppsList();
+        
+        // Start leaderboard updates
+        voidLeaderboard.startLeaderboardUpdates();
+        
+        // Check if user is already logged in
+        const user = auth.currentUser;
+        if (user) {
+            console.log("User already logged in:", user.uid);
+            await updateUIForLoggedInUser(user);
+        }
+
+        // Start synchronization on page load
+        syncAllUserBalancesToLeaderboard();
+    
+        // Set up periodic full sync (every 5 minutes)
+        setInterval(syncAllUserBalancesToLeaderboard, 300000);
+    } catch (err) {
+        console.error('Error during initialization:', err);
+    }
+});
+
+// Stop leaderboard updates when user leaves the page
+window.addEventListener('beforeunload', () => {
+    voidLeaderboard.stopLeaderboardUpdates();
+});
+
+// Improved ad container initialization
+// This code should be placed at the end of your document
+function initializeAdContainers() {
+    // Find all ad containers
+    const adContainers = document.querySelectorAll('.ad-container');
+    
+    // Add placeholders to all containers
+    adContainers.forEach(container => {
+        // Skip already initialized containers
+        if (container.dataset.adInitialized === 'true') return;
+        
+        // Add a placeholder while ad loads
+        const placeholder = document.createElement('div');
+        placeholder.className = 'ad-placeholder';
+        placeholder.textContent = 'Ad Loading...';
+        container.appendChild(placeholder);
+    });
+    
+    // Initialize the smart ad loader
+    initSmartAdLoader();
+}
+
+// Smart ad loader that only initializes ads when they become visible
+function initSmartAdLoader() {
+    // Setup intersection observer to detect when ad containers are visible
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            const container = entry.target;
+            
+            // Only initialize visible containers that haven't been initialized yet
+            if (entry.isIntersecting && !container.dataset.adInitialized) {
+                // Check if the container is in an active section
+                const parentSection = container.closest('.section-themes, .section-avatars, .section-roll, .section-dev');
+                if (!parentSection || parentSection.classList.contains('active')) {
+                    loadAdInContainer(container);
+                }
+            }
+        });
+    }, {
+        root: null, // Use viewport as root
+        threshold: 0.1 // Trigger when at least 10% of the container is visible
+    });
+    
+    // Observe all ad containers
+    document.querySelectorAll('.ad-container').forEach(container => {
+        observer.observe(container);
+    });
+    
+    // Also handle tab switching for ad loading
+    document.querySelectorAll('.shop-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetSection = tab.dataset.tab;
+            const targetSectionElement = document.querySelector(`.section-${targetSection}`);
+            
+            // After the section becomes visible, initialize any ads in it
+            setTimeout(() => {
+                const containersInActiveSection = targetSectionElement.querySelectorAll('.ad-container');
+                containersInActiveSection.forEach(container => {
+                    if (!container.dataset.adInitialized) {
+                        loadAdInContainer(container);
+                    }
+                });
+            }, 200); // Small delay to ensure section is fully visible
+        });
+    });
+}
+
+// Function to load an ad in a specific container
+function loadAdInContainer(container) {
+    // Mark as initialized
+    container.dataset.adInitialized = 'true';
+    
+    try {
+        // Remove any placeholders
+        const placeholder = container.querySelector('.ad-placeholder');
+        if (placeholder) {
+            container.removeChild(placeholder);
+        }
+        
+        // Reset any inline styles
+        container.style.width = '';
+        container.style.height = '';
+        container.style.display = 'block';
+        
+        // Ensure container has content dimensions
+        const rect = container.getBoundingClientRect();
+        
+        // Don't proceed if container has no width
+        if (rect.width <= 1) {
+            console.warn('Ad container has no width, skipping ad initialization');
+            return;
+        }
+        
+        // Create a new ad unit
+        const adIns = document.createElement('ins');
+        adIns.className = 'adsbygoogle';
+        adIns.style.display = 'block';
+        adIns.setAttribute('data-ad-client', 'ca-pub-4845994519357732');
+        
+        // Set the appropriate ad slot based on container class
+        if (container.classList.contains('ad-container-vertical')) {
+            adIns.setAttribute('data-ad-slot', '5108888268'); // Vertical ad slot
+            adIns.style.width = '300px';
+            adIns.style.height = '250px';
+        } else {
+            adIns.setAttribute('data-ad-slot', '3546193454'); // Horizontal ad slot
+            adIns.setAttribute('data-full-width-responsive', 'true');
+        }
+        
+        // Clear the container and add the new ad
+        container.innerHTML = '';
+        container.appendChild(adIns);
+        
+        // Push the ad with a slight delay to ensure container dimensions are correct
+        setTimeout(() => {
+            try {
+                (adsbygoogle = window.adsbygoogle || []).push({});
+                console.log('Ad initialized in container');
+            } catch (error) {
+                console.error('Error initializing ad:', error);
+                // If ad fails to load, show a message
+                container.innerHTML = '<div class="ad-placeholder">Ad failed to load</div>';
+            }
+        }, 50);
+    } catch (error) {
+        console.error('Error setting up ad container:', error);
+    }
+}
+
+// Initialize ads when DOM is loaded
+document.addEventListener('DOMContentLoaded', initializeAdContainers);
+
+// Update any ads when shop is opened
+document.getElementById('shop-icon')?.addEventListener('click', () => {
+    // Short delay to ensure shop is visible
+    setTimeout(() => {
+        // Find the active section
+        const activeSection = document.querySelector('.section-themes.active, .section-avatars.active, .section-roll.active, .section-dev.active');
+        if (activeSection) {
+            // Initialize ads in the active section
+            const containers = activeSection.querySelectorAll('.ad-container:not([data-ad-initialized="true"])');
+            containers.forEach(container => {
+                loadAdInContainer(container);
+            });
+        }
+    }, 300);
+});
+
+// Also handle window resize events to reinitialize ads if needed
+let resizeTimeout;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        // Find visible, initialized ad containers
+        const visibleContainers = Array.from(document.querySelectorAll('.ad-container[data-ad-initialized="true"]'))
+            .filter(container => {
+                const rect = container.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0 && container.offsetParent !== null;
+            });
+            
+        // Reinitialize if dimensions have changed significantly
+        visibleContainers.forEach(container => {
+            // Reset initialization flag
+            container.dataset.adInitialized = 'false';
+            // Initialize again
+            loadAdInContainer(container);
+        });
+    }, 300);
 });
     </script>
 </body>
