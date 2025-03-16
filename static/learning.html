@@ -4916,6 +4916,90 @@ window.addEventListener('beforeunload', () => {
         console.log(`${operationQueue.length} operations still in queue`);
     }
 });
+
+// Shop Icon Toggle Functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const shopIcon = document.getElementById('shop-icon');
+    const shopContainer = document.getElementById('shop-container');
+
+    if (shopIcon && shopContainer) {
+        shopIcon.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent click from bubbling up
+            
+            // Close auth container if open
+            const authContainer = document.getElementById('auth-container');
+            const coinPurchasePopup = document.getElementById('coin-purchase-popup');
+            
+            if (authContainer) {
+                authContainer.style.display = 'none';
+                authContainer.classList.remove('visible');
+            }
+            
+            if (coinPurchasePopup) {
+                coinPurchasePopup.style.display = 'none';
+                coinPurchasePopup.classList.remove('visible');
+            }
+            
+            // Toggle visibility of shop container with animation
+            if (shopContainer.style.display === 'block') {
+                shopContainer.classList.remove('visible');
+                setTimeout(() => {
+                    shopContainer.style.display = 'none';
+                }, 300);
+            } else {
+                shopContainer.style.display = 'block';
+                setTimeout(() => {
+                    shopContainer.classList.add('visible');
+                }, 10);
+                
+                // If user is logged in, check purchased items
+                if (auth.currentUser) {
+                    itemManager.checkPurchasedItems(auth.currentUser.uid)
+                        .then(() => {
+                            // Update shop balance display
+                            voidAccounting.getUserAccountDetails(auth.currentUser.uid)
+                                .then(userDetails => {
+                                    const shopBalanceDisplay = document.getElementById('shop-balance-display');
+                                    if (shopBalanceDisplay) {
+                                        shopBalanceDisplay.textContent = userDetails.accountBalance.toLocaleString();
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error("Error updating shop balance:", error);
+                                });
+                        })
+                        .catch(error => {
+                            console.error("Error checking purchased items:", error);
+                        });
+                }
+            }
+        });
+
+        // Close shop when clicking outside
+        document.addEventListener('click', (e) => {
+            if (shopContainer && shopContainer.style.display === 'block') {
+                // Check if click is outside shop container and not on shop icon
+                if (!shopContainer.contains(e.target) && !shopIcon.contains(e.target)) {
+                    shopContainer.classList.remove('visible');
+                    setTimeout(() => {
+                        shopContainer.style.display = 'none';
+                    }, 300);
+                }
+            }
+        });
+        
+        // Close shop when shop-close button is clicked
+        const shopCloseButton = document.querySelector('.shop-close');
+        if (shopCloseButton) {
+            shopCloseButton.addEventListener('click', () => {
+                shopContainer.classList.remove('visible');
+                setTimeout(() => {
+                    shopContainer.style.display = 'none';
+                }, 300);
+            });
+        }
+    }
+});
 </script>
 </body>
 </html>
