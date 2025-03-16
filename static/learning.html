@@ -1850,7 +1850,7 @@
                     type: 'avatar',
                     rarity: 'epic'
                 },
-                'monkey_avatar': {
+'monkey_avatar': {
                     url: 'https://lh7-us.googleusercontent.com/Z1SAiYbNGevHZhUGDPoUcDlnVtm84hTkZxb9u8IOX65t3nXfzhKX8aCdwOOzl5BnqNfccb6WAw4nUPxiuLkJEXF6SoiufDvjJNRWR94NWbtstNPA7n4cSwWNfZlNnxXGnltdRwQVfyTU1b8iu8N_Ne28-jA1Uw',
                     name: 'Monkey Avatar',
                     type: 'avatar',
@@ -3249,9 +3249,9 @@ class VoidLeaderboard {
             
             console.log("Starting leaderboard updates with improved account balance sync");
             
-            // Read from leaderboard collection to get users with avatars and up-to-date balances
+            // FIXED: Get more users (40 instead of 20) to ensure we have enough non-banned users
             const leaderboardRef = collection(this.db, 'leaderboard');
-            const q = query(leaderboardRef, orderBy('accountBalance', 'desc'), limit(20));
+            const q = query(leaderboardRef, orderBy('accountBalance', 'desc'), limit(40));
             
             // Set up real-time listener with enhanced metadata options
             this.unsubscribe = onSnapshot(q, 
@@ -3287,7 +3287,7 @@ class VoidLeaderboard {
         }
     }
     
-    // NEW: Sync leaderboard balances with user accounts for more accurate display
+    // Sync leaderboard balances with user accounts for more accurate display
     async syncLeaderboardBalances(querySnapshot) {
         // Only sync if more than 10 seconds have passed since last sync (to avoid excessive operations)
         if (Date.now() - this.lastUpdateTime < 10000) return;
@@ -3346,7 +3346,7 @@ class VoidLeaderboard {
         }
     }
     
-    // IMPROVED: Secure leaderboard UI update with avatar display and banned user filtering
+    // FIXED: Improved leaderboard UI update to always show exactly 20 non-banned users
     async updateLeaderboardUI(querySnapshot) {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
@@ -3436,7 +3436,8 @@ class VoidLeaderboard {
         // Sort by account balance again (just to be sure)
         validUsers.sort((a, b) => b.accountBalance - a.accountBalance);
         
-        // Display valid users (up to 20)
+        // FIXED: Display exactly 20 users, getting as many valid users as possible
+        // We'll always show the top validUsers up to 20
         const displayCount = Math.min(validUsers.length, 20);
         
         for (let i = 0; i < displayCount; i++) {
@@ -3474,23 +3475,27 @@ class VoidLeaderboard {
             }, 1000);
         }
         
-        // Add placeholders to ensure we always show 20 entries
-        for (let i = displayCount; i < 20; i++) {
-            const placeholderItem = document.createElement('div');
-            placeholderItem.className = 'leaderboard-item';
-            
-            placeholderItem.innerHTML = `
-                <span class="leaderboard-rank">#${i + 1}</span>
-                <div class="leaderboard-username-container">
-                    <span class="leaderboard-username">...</span>
-                </div>
-                <span class="leaderboard-balance">--</span>
-            `;
-            
-            this.leaderboardElement.appendChild(placeholderItem);
+        // FIXED: Only add placeholders if we couldn't get a full 20 valid users
+        // This ensures we fill the list completely with real users when possible
+        if (displayCount < 20) {
+            // After displaying all valid users, add placeholders to fill remaining spots
+            for (let i = displayCount; i < 20; i++) {
+                const placeholderItem = document.createElement('div');
+                placeholderItem.className = 'leaderboard-item';
+                
+                placeholderItem.innerHTML = `
+                    <span class="leaderboard-rank">#${i + 1}</span>
+                    <div class="leaderboard-username-container">
+                        <span class="leaderboard-username">...</span>
+                    </div>
+                    <span class="leaderboard-balance">--</span>
+                `;
+                
+                this.leaderboardElement.appendChild(placeholderItem);
+            }
         }
         
-        console.log(`Leaderboard updated with ${displayCount} players (${bannedCount} banned filtered out) and ${20 - displayCount} placeholders`);
+        console.log(`Leaderboard updated with ${displayCount} players (${bannedCount} banned filtered out) and ${Math.max(0, 20 - displayCount)} placeholders`);
         
         // Find and highlight special users
         this.highlightSpecialUsers();
@@ -4064,7 +4069,7 @@ function renderAppsList() {
         return;
     }
     
-    gamesList.innerHTML = '';
+gamesList.innerHTML = '';
     console.log("Rendering games list");
     
     defaultApps.forEach(app => {
@@ -4197,8 +4202,7 @@ window.addEventListener('beforeunload', () => {
     voidLeaderboard.stopLeaderboardUpdates();
 });
 
-// Improved ad container initialization
-// This code should be placed at the end of your document
+// FIXED: Improved Ad Container Initialization
 function initializeAdContainers() {
     // Find all ad containers
     const adContainers = document.querySelectorAll('.ad-container');
@@ -4219,8 +4223,10 @@ function initializeAdContainers() {
     initSmartAdLoader();
 }
 
-// Smart ad loader that only initializes ads when they become visible
+// FIXED: Improved Smart Ad Loader
 function initSmartAdLoader() {
+    console.log("Initializing smart ad loader");
+    
     // Setup intersection observer to detect when ad containers are visible
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
@@ -4231,6 +4237,7 @@ function initSmartAdLoader() {
                 // Check if the container is in an active section
                 const parentSection = container.closest('.section-themes, .section-avatars, .section-roll, .section-dev');
                 if (!parentSection || parentSection.classList.contains('active')) {
+                    console.log("Loading ad in visible container");
                     loadAdInContainer(container);
                 }
             }
@@ -4256,15 +4263,28 @@ function initSmartAdLoader() {
                 const containersInActiveSection = targetSectionElement.querySelectorAll('.ad-container');
                 containersInActiveSection.forEach(container => {
                     if (!container.dataset.adInitialized) {
+                        console.log("Loading ad in newly visible section");
                         loadAdInContainer(container);
                     }
                 });
             }, 200); // Small delay to ensure section is fully visible
         });
     });
+    
+    // FIXED: Manually trigger ad load for all visible containers after 1 second
+    setTimeout(() => {
+        document.querySelectorAll('.ad-container:not([data-ad-initialized="true"])').forEach(container => {
+            // Check if container is visible
+            const rect = container.getBoundingClientRect();
+            if (rect.top < window.innerHeight && rect.bottom > 0) {
+                console.log("Forcing ad load in visible container");
+                loadAdInContainer(container);
+            }
+        });
+    }, 1000);
 }
 
-// Function to load an ad in a specific container
+// FIXED: Improved Ad Container Loading
 function loadAdInContainer(container) {
     // Mark as initialized
     container.dataset.adInitialized = 'true';
@@ -4313,14 +4333,15 @@ function loadAdInContainer(container) {
         // Push the ad with a slight delay to ensure container dimensions are correct
         setTimeout(() => {
             try {
-                (adsbygoogle = window.adsbygoogle || []).push({});
+                // FIXED: Properly reference adsbygoogle as a property of window
+                (window.adsbygoogle = window.adsbygoogle || []).push({});
                 console.log('Ad initialized in container');
             } catch (error) {
                 console.error('Error initializing ad:', error);
                 // If ad fails to load, show a message
                 container.innerHTML = '<div class="ad-placeholder">Ad failed to load</div>';
             }
-        }, 50);
+        }, 100); // Increased delay for better initialization
     } catch (error) {
         console.error('Error setting up ad container:', error);
     }
