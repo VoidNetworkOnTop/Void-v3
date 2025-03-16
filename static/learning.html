@@ -2153,255 +2153,727 @@
                             });
                         }
                         
-// Refresh leaderboard
-                    refreshLeaderboard();
+                        // Refresh leaderboard
+                        refreshLeaderboard();
+                    }
+                    
+                    return isDev;
+                } catch (error) {
+                    console.error("Error verifying dev access:", error);
+                    return false;
                 }
-                
-                return isDev;
-            } catch (error) {
-                console.error("Error verifying dev access:", error);
-                return false;
             }
-        }
-    };
+        };
 
-    // Avatar Roll System
-    const avatarRollSystem = {
-        // Config
-        minBet: 50000,
-        maxBet: 1000000,
-        maxRollsPerDay: 2,
-        cooldownHours: 24,
-        
-        // Current state
-        currentBet: 100000,
-        rollsRemaining: 2,
-        lastRollTimestamp: null,
-        isRolling: false,
-        
-        // DOM elements
-        rollButton: document.getElementById('rollButton'),
-        rollSlider: document.getElementById('rollAmountSlider'),
-        rollAmountDisplay: document.getElementById('rollAmount'),
-        rollsRemainingDisplay: document.getElementById('rollsRemaining'),
-        epicChanceDisplay: document.getElementById('epicChance'),
-        rareChanceDisplay: document.getElementById('rareChance'),
-        commonChanceDisplay: document.getElementById('commonChance'),
-        rollAnimationContainer: document.getElementById('rollAnimationContainer'),
-        rollAnimationTrack: document.getElementById('rollAnimationTrack'),
-        rollResultContainer: document.getElementById('rollResultContainer'),
-        rollResultImage: document.getElementById('rollResultImage'),
-        rollResultImg: document.getElementById('rollResultImg'),
-        rollResultName: document.getElementById('rollResultName'),
-        closeResultButton: document.getElementById('closeResultButton'),
-        
-        // Initialize the roll system
-        init() {
-            if (!this.rollButton || !this.rollSlider) return;
+        // Avatar Roll System
+        const avatarRollSystem = {
+            // Config
+            minBet: 50000,
+            maxBet: 1000000,
+            maxRollsPerDay: 2,
+            cooldownHours: 24,
             
-            // Set up slider event
-            this.rollSlider.addEventListener('input', () => this.updateBetAmount());
+            // Current state
+            currentBet: 100000,
+            rollsRemaining: 2,
+            lastRollTimestamp: null,
+            isRolling: false,
             
-            // Set up roll button
-            this.rollButton.addEventListener('click', () => this.startRoll());
+            // DOM elements
+            rollButton: document.getElementById('rollButton'),
+            rollSlider: document.getElementById('rollAmountSlider'),
+            rollAmountDisplay: document.getElementById('rollAmount'),
+            rollsRemainingDisplay: document.getElementById('rollsRemaining'),
+            epicChanceDisplay: document.getElementById('epicChance'),
+            rareChanceDisplay: document.getElementById('rareChance'),
+            commonChanceDisplay: document.getElementById('commonChance'),
+            rollAnimationContainer: document.getElementById('rollAnimationContainer'),
+            rollAnimationTrack: document.getElementById('rollAnimationTrack'),
+            rollResultContainer: document.getElementById('rollResultContainer'),
+            rollResultImage: document.getElementById('rollResultImage'),
+            rollResultImg: document.getElementById('rollResultImg'),
+            rollResultName: document.getElementById('rollResultName'),
+            closeResultButton: document.getElementById('closeResultButton'),
             
-            // Set up close result button
-            this.closeResultButton.addEventListener('click', () => this.hideResult());
+            // Initialize the roll system
+            init() {
+                if (!this.rollButton || !this.rollSlider) return;
+                
+                // Set up slider event
+                this.rollSlider.addEventListener('input', () => this.updateBetAmount());
+                
+                // Set up roll button
+                this.rollButton.addEventListener('click', () => this.startRoll());
+                
+                // Set up close result button
+                this.closeResultButton.addEventListener('click', () => this.hideResult());
+                
+                // Initial update
+                this.updateBetAmount();
+                
+                console.log("Avatar Roll System initialized");
+            },
             
-            // Initial update
-            this.updateBetAmount();
+            // Update the displayed bet amount and chances
+            updateBetAmount() {
+                if (!this.rollSlider || !this.rollAmountDisplay) return;
+                
+                this.currentBet = parseInt(this.rollSlider.value);
+                this.rollAmountDisplay.textContent = this.currentBet.toLocaleString();
+                
+                // Calculate chances based on bet amount
+                const ratio = (this.currentBet - this.minBet) / (this.maxBet - this.minBet);
+                
+                // Epic chance increases with bet amount (3% to 15%)
+                const epicChance = 3 + (ratio * 12);
+                // Rare chance increases slightly (10% to 25%)
+                const rareChance = 10 + (ratio * 15);
+                // Common chance decreases as others increase
+                const commonChance = 100 - epicChance - rareChance;
+                
+                // Update displays
+                if (this.epicChanceDisplay) this.epicChanceDisplay.textContent = `${epicChance.toFixed(1)}%`;
+                if (this.rareChanceDisplay) this.rareChanceDisplay.textContent = `${rareChance.toFixed(1)}%`;
+                if (this.commonChanceDisplay) this.commonChanceDisplay.textContent = `${commonChance.toFixed(1)}%`;
+            },
             
-            console.log("Avatar Roll System initialized");
-        },
-        
-        // Update the displayed bet amount and chances
-        updateBetAmount() {
-            if (!this.rollSlider || !this.rollAmountDisplay) return;
-            
-            this.currentBet = parseInt(this.rollSlider.value);
-            this.rollAmountDisplay.textContent = this.currentBet.toLocaleString();
-            
-            // Calculate chances based on bet amount
-            const ratio = (this.currentBet - this.minBet) / (this.maxBet - this.minBet);
-            
-            // Epic chance increases with bet amount (3% to 15%)
-            const epicChance = 3 + (ratio * 12);
-            // Rare chance increases slightly (10% to 25%)
-            const rareChance = 10 + (ratio * 15);
-            // Common chance decreases as others increase
-            const commonChance = 100 - epicChance - rareChance;
-            
-            // Update displays
-            if (this.epicChanceDisplay) this.epicChanceDisplay.textContent = `${epicChance.toFixed(1)}%`;
-            if (this.rareChanceDisplay) this.rareChanceDisplay.textContent = `${rareChance.toFixed(1)}%`;
-            if (this.commonChanceDisplay) this.commonChanceDisplay.textContent = `${commonChance.toFixed(1)}%`;
-        },
-        
-        // Check user's roll eligibility and available rolls
-        async checkRollEligibility() {
-            try {
-                if (!auth.currentUser) {
-                    showNotification('Please log in to use Avatar Roll', 'error');
+            // Check user's roll eligibility and available rolls
+            async checkRollEligibility() {
+                try {
+                    if (!auth.currentUser) {
+                        showNotification('Please log in to use Avatar Roll', 'error');
+                        return false;
+                    }
+                    
+                    // Get user account details
+                    const userDetails = await voidAccounting.getUserAccountDetails(auth.currentUser.uid);
+                    
+                    if (userDetails.accountBalance < this.currentBet) {
+                        showNotification(`Not enough coins for this roll. You need ${this.currentBet.toLocaleString()} coins.`, 'error');
+                        return false;
+                    }
+                    
+                    // Check roll history for today
+                    const userId = auth.currentUser.uid;
+                    const rollHistoryRef = collection(db, 'avatar_rolls', userId, 'history');
+                    
+                    // Get today's date (start of day)
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    // Query rolls from today
+                    const q = query(
+                        rollHistoryRef,
+                        where('timestamp', '>=', today)
+                    );
+                    
+                    const rollsSnapshot = await getDocs(q);
+                    const rollsToday = rollsSnapshot.size;
+                    
+                    this.rollsRemaining = Math.max(0, this.maxRollsPerDay - rollsToday);
+                    
+                    // Update display
+                    if (this.rollsRemainingDisplay) {
+                        this.rollsRemainingDisplay.textContent = this.rollsRemaining;
+                    }
+                    
+                    if (this.rollsRemaining <= 0) {
+                        showNotification(`You've used all your avatar rolls for today. Come back tomorrow!`, 'error');
+                        return false;
+                    }
+                    
+                    return true;
+                } catch (error) {
+                    console.error("Error checking roll eligibility:", error);
+                    showNotification('Error checking roll eligibility', 'error');
                     return false;
                 }
-                
-                // Get user account details
-                const userDetails = await voidAccounting.getUserAccountDetails(auth.currentUser.uid);
-                
-                if (userDetails.accountBalance < this.currentBet) {
-                    showNotification(`Not enough coins for this roll. You need ${this.currentBet.toLocaleString()} coins.`, 'error');
-                    return false;
-                }
-                
-                // Check roll history for today
-                const userId = auth.currentUser.uid;
-                const rollHistoryRef = collection(db, 'avatar_rolls', userId, 'history');
-                
-                // Get today's date (start of day)
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                
-                // Query rolls from today
-                const q = query(
-                    rollHistoryRef,
-                    where('timestamp', '>=', today)
-                );
-                
-                const rollsSnapshot = await getDocs(q);
-                const rollsToday = rollsSnapshot.size;
-                
-                this.rollsRemaining = Math.max(0, this.maxRollsPerDay - rollsToday);
-                
-                // Update display
-                if (this.rollsRemainingDisplay) {
-                    this.rollsRemainingDisplay.textContent = this.rollsRemaining;
-                }
-                
-                if (this.rollsRemaining <= 0) {
-                    showNotification(`You've used all your avatar rolls for today. Come back tomorrow!`, 'error');
-                    return false;
-                }
-                
-                return true;
-            } catch (error) {
-                console.error("Error checking roll eligibility:", error);
-                showNotification('Error checking roll eligibility', 'error');
-                return false;
-            }
-        },
-        
-        // Perform the roll
-        async startRoll() {
-            if (this.isRolling) return;
+            },
             
-            try {
-                this.isRolling = true;
-                this.rollButton.disabled = true;
+            // Perform the roll
+            async startRoll() {
+                if (this.isRolling) return;
                 
-                // Check eligibility
-                const canRoll = await this.checkRollEligibility();
-                if (!canRoll) {
+                try {
+                    this.isRolling = true;
+                    this.rollButton.disabled = true;
+                    
+                    // Check eligibility
+                    const canRoll = await this.checkRollEligibility();
+                    if (!canRoll) {
+                        this.rollButton.disabled = false;
+                        this.isRolling = false;
+                        return;
+                    }
+                    
+                    // Show animation
+                    await this.showRollAnimation();
+                    
+                    // Process the roll
+                    const result = await this.processRoll();
+                    
+                    // Show result
+                    this.showResult(result);
+                    
+                    // Update roll counts
+                    this.rollsRemaining--;
+                    if (this.rollsRemainingDisplay) {
+                        this.rollsRemainingDisplay.textContent = this.rollsRemaining;
+                    }
+                    
+                    // Enable button if rolls remain
+                    if (this.rollsRemaining > 0) {
+                        this.rollButton.disabled = false;
+                    }
+                    
+                    this.isRolling = false;
+                } catch (error) {
+                    console.error("Error during roll:", error);
+                    showNotification('Error processing roll', 'error');
                     this.rollButton.disabled = false;
                     this.isRolling = false;
+                }
+            },
+            
+            // Process the actual roll logic and database updates
+            async processRoll() {
+                try {
+                    // Calculate probabilities based on bet amount
+                    const ratio = (this.currentBet - this.minBet) / (this.maxBet - this.minBet);
+                    const epicChance = 3 + (ratio * 12);
+                    const rareChance = 10 + (ratio * 15);
+                    
+                    // Roll for rarity first
+                    const rarityRoll = Math.random() * 100;
+                    let rarity;
+                    
+                    if (rarityRoll < epicChance) {
+                        rarity = 'epic';
+                    } else if (rarityRoll < (epicChance + rareChance)) {
+                        rarity = 'rare';
+                    } else {
+                        rarity = 'common';
+                    }
+                    
+                    // Get available avatars of that rarity
+                    let availableAvatars = itemManager.getAvatarsByRarity(rarity);
+                    
+                    // If no avatars of that rarity, fall back to common
+                    if (availableAvatars.length === 0) {
+                        rarity = 'common';
+                        availableAvatars = itemManager.getAvatarsByRarity('common');
+                    }
+                    
+                    // Get purchased items to avoid duplicates
+                    const purchasedItems = await itemManager.checkPurchasedItems(auth.currentUser.uid);
+                    
+                    // Filter out already owned avatars
+                    const notOwnedAvatars = availableAvatars.filter(avatar => !purchasedItems[avatar.id]);
+                    
+                    // If all avatars of this rarity are owned, try a different rarity
+                    let selectedAvatar;
+                    if (notOwnedAvatars.length === 0) {
+                        // Try all rarities in order
+                        const allRarities = ['epic', 'rare', 'common'];
+                        
+                        for (const fallbackRarity of allRarities) {
+                            if (fallbackRarity === rarity) continue; // Skip already tried rarity
+                            
+                            const fallbackAvatars = itemManager.getAvatarsByRarity(fallbackRarity);
+                            const notOwnedFallbacks = fallbackAvatars.filter(avatar => !purchasedItems[avatar.id]);
+                            
+                            if (notOwnedFallbacks.length > 0) {
+                                // Randomly select from available avatars
+                                selectedAvatar = notOwnedFallbacks[Math.floor(Math.random() * notOwnedFallbacks.length)];
+                                rarity = fallbackRarity; // Update rarity to match
+                                break;
+                            }
+                        }
+                        
+                        // If still no avatar found, give coins back and show error
+                        if (!selectedAvatar) {
+                            showNotification('You already own all available avatars! Roll cost refunded.', 'error');
+                            return null;
+                        }
+                    } else {
+                        // Randomly select from available avatars
+                        selectedAvatar = notOwnedAvatars[Math.floor(Math.random() * notOwnedAvatars.length)];
+                    }
+                    
+                    // Process the transaction - deduct coins
+                    const userId = auth.currentUser.uid;
+                    const userRef = doc(db, 'users', userId);
+                    const userDoc = await getDoc(userRef);
+                    
+                    if (!userDoc.exists()) {
+                        throw new Error("User not found");
+                    }
+                    
+                    const userData = userDoc.data();
+                    
+                    // Calculate new balance
+                    const newBalance = userData.accountBalance - this.currentBet;
+                    
+                    // Update user account balance
+                    await updateDoc(userRef, {
+                        accountBalance: newBalance
+                    });
+                    
+                    // Update leaderboard entry
+                    const leaderboardRef = doc(db, 'leaderboard', userId);
+                    const leaderboardDoc = await getDoc(leaderboardRef);
+                    
+                    if (leaderboardDoc.exists()) {
+                        await updateDoc(leaderboardRef, {
+                            accountBalance: newBalance
+                        });
+                    } else {
+                        await setDoc(leaderboardRef, {
+                            username: userData.username || 'Unknown',
+                            accountBalance: newBalance,
+                            joinDate: new Date()
+                        });
+                    }
+                    
+                    // Record the avatar roll in history
+                    await addDoc(collection(db, 'avatar_rolls', userId, 'history'), {
+                        betAmount: this.currentBet,
+                        timestamp: new Date(),
+                        result: selectedAvatar.id,
+                        rarity: rarity,
+                        prevBalance: userData.accountBalance,
+                        newBalance: newBalance
+                    });
+                    
+                    // Record transaction
+                    await addDoc(collection(db, 'transactions'), {
+                        userId: userId,
+                        transactionType: 'avatar_roll',
+                        amount: this.currentBet,
+                        timestamp: new Date(),
+                        prevBalance: userData.accountBalance,
+                        newBalance: newBalance,
+                        metadata: {
+                            avatarId: selectedAvatar.id,
+                            rarity: rarity
+                        }
+                    });
+                    
+                    // Add avatar to user purchases
+                    await addDoc(collection(db, 'user_purchases', userId, 'items'), {
+                        itemId: selectedAvatar.id,
+                        itemType: 'avatar',
+                        price: 0, // Free from roll
+                        purchaseDate: new Date(),
+                        itemName: selectedAvatar.name,
+                        acquisition: 'roll'
+                    });
+                    
+                    // Update balance displays
+                    document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
+                    document.getElementById('balance-display').textContent = newBalance.toLocaleString();
+                    
+                    // Return the result
+                    return {
+                        avatar: selectedAvatar,
+                        rarity: rarity
+                    };
+                } catch (error) {
+                    console.error("Error processing roll:", error);
+                    throw error;
+                }
+            },
+            
+            // Show animation for rolling
+            async showRollAnimation() {
+                if (!this.rollAnimationContainer || !this.rollAnimationTrack) return;
+                
+                try {
+                    // Clear previous items
+                    this.rollAnimationTrack.innerHTML = '';
+                    
+                    // Create animation items
+                    const commonAvatars = itemManager.getAvatarsByRarity('common');
+                    const rareAvatars = itemManager.getAvatarsByRarity('rare');
+                    const epicAvatars = itemManager.getAvatarsByRarity('epic');
+                    
+                    // If rare is empty, use common
+                    const rareItems = rareAvatars.length > 0 ? rareAvatars : commonAvatars;
+                    
+                    // All avatars to use in animation
+                    const allAvatars = [
+                        ...commonAvatars,
+                        ...rareItems,
+                        ...epicAvatars,
+                        ...commonAvatars,
+                        ...rareItems
+                    ];
+                    
+                    // Shuffle the array
+                    const shuffled = [...allAvatars].sort(() => Math.random() - 0.5);
+                    
+                    // Add at least 20 items to the animation
+                    const animationItems = [];
+                    while (animationItems.length < 30) {
+                        animationItems.push(...shuffled);
+                    }
+                    
+                    // Create HTML elements for each item
+                    animationItems.slice(0, 30).forEach(avatar => {
+                        const item = document.createElement('div');
+                        item.className = `roll-animation-item ${avatar.rarity}`;
+                        
+                        const img = document.createElement('img');
+                        img.src = avatar.url;
+                        img.alt = avatar.name;
+                        
+                        item.appendChild(img);
+                        this.rollAnimationTrack.appendChild(item);
+                    });
+                    
+                    // Show the animation container
+                    this.rollAnimationContainer.style.display = 'block';
+                    
+                    // Reset track position
+                    this.rollAnimationTrack.style.transition = 'none';
+                    this.rollAnimationTrack.style.transform = 'translateX(0)';
+                    
+                    // Force reflow
+                    void this.rollAnimationTrack.offsetWidth;
+                    
+                    // Start animation after a short delay
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    // Run animation
+                    this.rollAnimationTrack.style.transition = 'transform 5s cubic-bezier(0.1, 0.8, 0.2, 1)';
+                    
+                    // Calculate ending position
+                    const trackWidth = this.rollAnimationTrack.scrollWidth;
+                    const containerWidth = this.rollAnimationContainer.clientWidth;
+                    
+                    // Randomize ending position somewhat
+                    const baseEndPosition = -(trackWidth - containerWidth) * 0.7;
+                    const randomOffset = Math.random() * 300 - 150;
+                    const endPosition = baseEndPosition + randomOffset;
+                    
+                    this.rollAnimationTrack.style.transform = `translateX(${endPosition}px)`;
+                    
+                    // Wait for animation to complete
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                } catch (error) {
+                    console.error("Error in roll animation:", error);
+                }
+            },
+            
+            // Show the result of the roll
+            showResult(result) {
+                if (!result || !this.rollResultContainer) return;
+                
+                // Hide animation container
+                if (this.rollAnimationContainer) {
+                    this.rollAnimationContainer.style.display = 'none';
+                }
+                
+                // Set result data
+                if (this.rollResultImg) {
+                    this.rollResultImg.src = result.avatar.url;
+                    this.rollResultImg.alt = result.avatar.name;
+                }
+                
+                if (this.rollResultName) {
+                    this.rollResultName.textContent = result.avatar.name;
+                    this.rollResultName.className = `roll-result-name ${result.rarity}`;
+                }
+                
+                if (this.rollResultImage) {
+                    this.rollResultImage.className = `roll-result-image ${result.rarity}`;
+                }
+                
+                // Show result container
+                this.rollResultContainer.style.display = 'block';
+                
+                // Update shop UI to show item as owned
+                const shopItem = document.querySelector(`.shop-item[data-item-id="${result.avatar.id}"]`);
+                if (shopItem) {
+                    shopItem.classList.add('owned');
+                    
+                    const button = shopItem.querySelector('.buy-button');
+                    if (button) {
+                        button.textContent = "Equip";
+                        button.classList.add('equip');
+                        button.classList.remove('unequip');
+                    }
+                }
+                
+                // Show success notification
+                showNotification(`Congratulations! You won the ${result.rarity} ${result.avatar.name}!`, 'success');
+            },
+            
+            // Hide result and reset UI
+            hideResult() {
+                if (this.rollResultContainer) {
+                    this.rollResultContainer.style.display = 'none';
+                }
+            }
+        };
+
+        // Make sure shop container is properly hidden on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const shopContainer = document.getElementById('shop-container');
+            if (shopContainer) {
+                shopContainer.style.display = 'none';
+                shopContainer.classList.remove('visible');
+            }
+            
+            // Add event listeners to shop tabs
+            document.querySelectorAll('.shop-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    // Get the target section
+                    const targetSection = tab.dataset.tab;
+                    
+                    // Remove active class from all tabs and sections
+                    document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.section-themes, .section-avatars, .section-roll, .section-dev').forEach(s => s.classList.remove('active'));
+                    
+                    // Add active class to clicked tab and corresponding section
+                    tab.classList.add('active');
+                    document.querySelector(`.section-${targetSection}`).classList.add('active');
+                });
+            });
+
+            // Initialize the avatar roll system
+            avatarRollSystem.init();
+        });
+
+        // Profile Icon Toggle Functionality
+        const profileIcon = document.getElementById('profile-icon');
+        const authContainer = document.getElementById('auth-container');
+        
+        profileIcon.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent click from bubbling up
+            
+            // Close shop container if open
+            const shopContainer = document.getElementById('shop-container');
+            if (shopContainer) {
+                shopContainer.style.display = 'none';
+                shopContainer.classList.remove('visible');
+            }
+            
+            // Toggle visibility of auth container with animation
+            if (authContainer.style.display === 'block') {
+                authContainer.classList.remove('visible');
+                setTimeout(() => {
+                    authContainer.style.display = 'none';
+                }, 300);
+            } else {
+                authContainer.style.display = 'block';
+                setTimeout(() => {
+                    authContainer.classList.add('visible');
+                }, 10);
+                
+                // If user is logged in, refresh balance display
+                if (auth.currentUser) {
+                    // Add a small delay to ensure any pending transactions are complete
+                    setTimeout(() => {
+                        voidAccounting.getUserAccountDetails(auth.currentUser.uid)
+                            .then(userDetails => {
+                                document.getElementById('username-display').textContent = userDetails.username;
+                                document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
+                            })
+                            .catch(error => {
+                                console.error("Error refreshing balance:", error);
+                            });
+                    }, 300);
+                }
+            }
+        });
+
+        // Improved Shop Icon Toggle Functionality
+        const shopIcon = document.getElementById('shop-icon');
+        const shopContainer = document.getElementById('shop-container');
+        
+        shopIcon.addEventListener('click', async (e) => {
+            e.stopPropagation(); // Prevent click from bubbling up
+            
+            // Close auth container if open
+            authContainer.style.display = 'none';
+            authContainer.classList.remove('visible');
+            
+            // Toggle visibility of shop container with animation
+            if (shopContainer.style.display === 'block') {
+                shopContainer.classList.remove('visible');
+                setTimeout(() => {
+                    shopContainer.style.display = 'none';
+                }, 300);
+            } else {
+                // Check if user is logged in
+                if (!auth.currentUser) {
+                    showNotification('Please log in to access the shop', 'error');
                     return;
                 }
                 
-                // Show animation
-                await this.showRollAnimation();
+                shopContainer.style.display = 'block';
+                setTimeout(() => {
+                    shopContainer.classList.add('visible');
+                }, 10);
                 
-                // Process the roll
-                const result = await this.processRoll();
+                // Refresh balance in shop
+                const userDetails = await voidAccounting.getUserAccountDetails(auth.currentUser.uid);
+                document.getElementById('shop-balance-display').textContent = userDetails.accountBalance.toLocaleString();
                 
-                // Show result
-                this.showResult(result);
+                // Clear previous item states
+                document.querySelectorAll('.shop-item').forEach(item => {
+                    item.classList.remove('owned', 'equipped');
+                });
                 
-                // Update roll counts
-                this.rollsRemaining--;
-                if (this.rollsRemainingDisplay) {
-                    this.rollsRemainingDisplay.textContent = this.rollsRemaining;
-                }
+                // Reset all buttons first
+                document.querySelectorAll('.buy-button').forEach(button => {
+                    if (!button.disabled) {
+                        button.textContent = "Buy";
+                        button.classList.remove('equip', 'unequip');
+                    }
+                });
                 
-                // Enable button if rolls remain
-                if (this.rollsRemaining > 0) {
-                    this.rollButton.disabled = false;
-                }
-                
-                this.isRolling = false;
-            } catch (error) {
-                console.error("Error during roll:", error);
-                showNotification('Error processing roll', 'error');
-                this.rollButton.disabled = false;
-                this.isRolling = false;
-            }
-        },
-        
-        // Process the actual roll logic and database updates
-        async processRoll() {
-            try {
-                // Calculate probabilities based on bet amount
-                const ratio = (this.currentBet - this.minBet) / (this.maxBet - this.minBet);
-                const epicChance = 3 + (ratio * 12);
-                const rareChance = 10 + (ratio * 15);
-                
-                // Roll for rarity first
-                const rarityRoll = Math.random() * 100;
-                let rarity;
-                
-                if (rarityRoll < epicChance) {
-                    rarity = 'epic';
-                } else if (rarityRoll < (epicChance + rareChance)) {
-                    rarity = 'rare';
-                } else {
-                    rarity = 'common';
-                }
-                
-                // Get available avatars of that rarity
-                let availableAvatars = itemManager.getAvatarsByRarity(rarity);
-                
-                // If no avatars of that rarity, fall back to common
-                if (availableAvatars.length === 0) {
-                    rarity = 'common';
-                    availableAvatars = itemManager.getAvatarsByRarity('common');
-                }
-                
-                // Get purchased items to avoid duplicates
+                // Check purchased items and update buttons
                 const purchasedItems = await itemManager.checkPurchasedItems(auth.currentUser.uid);
                 
-                // Filter out already owned avatars
-                const notOwnedAvatars = availableAvatars.filter(avatar => !purchasedItems[avatar.id]);
+                // Check currently equipped items
+                await itemManager.loadUserPreferences(auth.currentUser.uid);
                 
-                // If all avatars of this rarity are owned, try a different rarity
-                let selectedAvatar;
-                if (notOwnedAvatars.length === 0) {
-                    // Try all rarities in order
-                    const allRarities = ['epic', 'rare', 'common'];
-                    
-                    for (const fallbackRarity of allRarities) {
-                        if (fallbackRarity === rarity) continue; // Skip already tried rarity
-                        
-                        const fallbackAvatars = itemManager.getAvatarsByRarity(fallbackRarity);
-                        const notOwnedFallbacks = fallbackAvatars.filter(avatar => !purchasedItems[avatar.id]);
-                        
-                        if (notOwnedFallbacks.length > 0) {
-                            // Randomly select from available avatars
-                            selectedAvatar = notOwnedFallbacks[Math.floor(Math.random() * notOwnedFallbacks.length)];
-                            rarity = fallbackRarity; // Update rarity to match
-                            break;
-                        }
+                // Update buy buttons based on user balance
+                updateShopButtonsState(userDetails.accountBalance, purchasedItems);
+                
+                // Check if user is developer and show/hide dev tab accordingly
+                const isDev = await itemManager.verifyDevAccess();
+                const devTab = document.querySelector('.shop-tab[data-tab="dev"]');
+                
+                if (devTab) {
+                    if (isDev) {
+                        devTab.style.display = 'block';
+                    } else {
+                        devTab.style.display = 'none';
                     }
-                    
-                    // If still no avatar found, give coins back and show error
-                    if (!selectedAvatar) {
-                        showNotification('You already own all available avatars! Roll cost refunded.', 'error');
-                        return null;
-                    }
-                } else {
-                    // Randomly select from available avatars
-                    selectedAvatar = notOwnedAvatars[Math.floor(Math.random() * notOwnedAvatars.length)];
                 }
                 
-                // Process the transaction - deduct coins
+                // Show the first tab (Themes) by default
+                document.querySelector('.shop-tab[data-tab="themes"]').click();
+                
+                // Update roll count for avatar roll
+                if (avatarRollSystem) {
+                    await avatarRollSystem.checkRollEligibility();
+                }
+            }
+        });
+        
+        // Improved shop close button
+        const shopCloseBtn = document.querySelector('.shop-close');
+        shopCloseBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent click from bubbling up
+            shopContainer.classList.remove('visible');
+            setTimeout(() => {
+                shopContainer.style.display = 'none';
+            }, 300);
+        });
+
+        // Improved click-outside handling
+        document.addEventListener('click', (event) => {
+            const profileIcon = document.getElementById('profile-icon');
+            const authContainer = document.getElementById('auth-container');
+            const shopIcon = document.getElementById('shop-icon');
+            const shopContainer = document.getElementById('shop-container');
+            
+            // Only process if the elements exist and are visible
+            if (shopContainer && shopContainer.style.display === 'block') {
+                // Check if click was outside the shop and not on the shop icon
+                if (!shopContainer.contains(event.target) && !shopIcon.contains(event.target)) {
+                    // Close shop container
+                    shopContainer.classList.remove('visible');
+                    setTimeout(() => {
+                        shopContainer.style.display = 'none';
+                    }, 300);
+                }
+            }
+            
+            if (authContainer && authContainer.style.display === 'block') {
+                if (!authContainer.contains(event.target) && !profileIcon.contains(event.target)) {
+                    // Close auth container
+                    authContainer.classList.remove('visible');
+                    setTimeout(() => {
+                        authContainer.style.display = 'none';
+                    }, 300);
+                }
+            }
+        });
+
+        // Update shop buttons based on user balance and purchased items
+        function updateShopButtonsState(userBalance, purchasedItems = {}) {
+            const shopItems = document.querySelectorAll('.shop-item');
+            
+            shopItems.forEach(item => {
+                const itemId = item.dataset.itemId;
+                const itemType = item.dataset.type;
+                const itemPrice = parseInt(item.dataset.price);
+                const buyButton = item.querySelector('.buy-button');
+                
+                // Skip buttons that are disabled for other reasons (e.g. coming soon)
+                if (buyButton.textContent === 'Coming Soon') {
+                    return;
+                }
+                
+                // Handle Dev items differently
+                if (itemId === 'void_bot_avatar' || itemId === 'design_master_avatar') {
+                    // These are handled separately with special logic
+                    return;
+                }
+                
+                // Reset classes
+                item.classList.remove('owned', 'equipped');
+                
+                // If this is the equipped item
+                if ((itemType === 'theme' && itemManager.currentTheme === itemId) ||
+                    (itemType === 'avatar' && itemManager.currentAvatar === itemId)) {
+                    buyButton.textContent = 'Unequip';
+                    buyButton.disabled = false;
+                    buyButton.classList.add('unequip');
+                    buyButton.classList.remove('equip');
+                    item.classList.add('equipped');
+                    return;
+                }
+                
+                // If user already purchased this item
+                if (purchasedItems[itemId]) {
+                    buyButton.textContent = 'Equip';
+                    buyButton.disabled = false;
+                    buyButton.classList.add('equip');
+                    buyButton.classList.remove('unequip');
+                    item.classList.add('owned');
+                    return;
+                }
+                
+                // If user can't afford it
+                if (userBalance < itemPrice) {
+                    buyButton.disabled = true;
+                    buyButton.textContent = 'Not enough coins';
+                    buyButton.classList.remove('equip', 'unequip');
+                } else {
+                    buyButton.disabled = false;
+                    buyButton.textContent = 'Buy';
+                    buyButton.classList.remove('equip', 'unequip');
+                }
+            });
+        }
+
+        // FIXED: Secure Purchase System that actually deducts coins and handles missing leaderboard entries
+        async function purchaseItem(itemId, itemType, price) {
+            if (!auth.currentUser) {
+                showNotification('Please log in to make purchases', 'error');
+                return;
+            }
+            
+            try {
                 const userId = auth.currentUser.uid;
+                
+                // Get current user details to check balance
                 const userRef = doc(db, 'users', userId);
                 const userDoc = await getDoc(userRef);
                 
@@ -2411,727 +2883,255 @@
                 
                 const userData = userDoc.data();
                 
-                // Calculate new balance
-                const newBalance = userData.accountBalance - this.currentBet;
+                if (userData.accountBalance < price) {
+                    showNotification('Not enough coins to make this purchase', 'error');
+                    return;
+                }
                 
-                // Update user account balance
+                // Calculate new balance
+                const newBalance = userData.accountBalance - price;
+                
+                // IMPORTANT: Update user account balance (ACTUALLY DEDUCT COINS)
                 await updateDoc(userRef, {
                     accountBalance: newBalance
                 });
                 
-                // Update leaderboard entry
+                // Check if leaderboard entry exists and update/create as needed
                 const leaderboardRef = doc(db, 'leaderboard', userId);
                 const leaderboardDoc = await getDoc(leaderboardRef);
                 
                 if (leaderboardDoc.exists()) {
+                    // Update existing leaderboard entry
                     await updateDoc(leaderboardRef, {
-                        accountBalance: newBalance
+                        accountBalance: newBalance,
+                        // If it's an avatar, store it in the leaderboard too
+                        ...(itemType === 'avatar' && itemId === itemManager.currentAvatar ? { equippedAvatar: itemId } : {})
                     });
                 } else {
+                    // Create new leaderboard entry
                     await setDoc(leaderboardRef, {
                         username: userData.username || 'Unknown',
                         accountBalance: newBalance,
-                        joinDate: new Date()
+                        joinDate: new Date(),
+                        ...(itemType === 'avatar' ? { equippedAvatar: itemId } : {})
                     });
                 }
                 
-                // Record the avatar roll in history
-                await addDoc(collection(db, 'avatar_rolls', userId, 'history'), {
-                    betAmount: this.currentBet,
+                // Create a record in user_purchases
+                await addDoc(collection(db, 'user_purchases', userId, 'items'), {
+                    itemId: itemId,
+                    itemType: itemType,
+                    price: price,
+                    purchaseDate: new Date(),
+                    itemName: getItemNameById(itemId)
+                });
+                
+                // Log transaction for records
+                await addDoc(collection(db, 'transactions'), {
+                    userId: userId,
+                    transactionType: 'purchase',
+                    amount: price,
+                    itemId: itemId,
+                    itemType: itemType,
                     timestamp: new Date(),
-                    result: selectedAvatar.id,
-                    rarity: rarity,
                     prevBalance: userData.accountBalance,
                     newBalance: newBalance
                 });
                 
-                // Record transaction
-                await addDoc(collection(db, 'transactions'), {
-                    userId: userId,
-                    transactionType: 'avatar_roll',
-                    amount: this.currentBet,
-                    timestamp: new Date(),
-                    prevBalance: userData.accountBalance,
-                    newBalance: newBalance,
-                    metadata: {
-                        avatarId: selectedAvatar.id,
-                        rarity: rarity
+                // Update UI to show item as owned and update balance displays
+                const button = document.querySelector(`.buy-button[data-item-id="${itemId}"]`);
+                if (button) {
+                    button.textContent = "Equip";
+                    button.classList.add('equip');
+                    
+                    // Add owned class to shop item
+                    const shopItem = button.closest('.shop-item');
+                    if (shopItem) {
+                        shopItem.classList.add('owned');
                     }
-                });
-                
-                // Add avatar to user purchases
-                await addDoc(collection(db, 'user_purchases', userId, 'items'), {
-                    itemId: selectedAvatar.id,
-                    itemType: 'avatar',
-                    price: 0, // Free from roll
-                    purchaseDate: new Date(),
-                    itemName: selectedAvatar.name,
-                    acquisition: 'roll'
-                });
+                }
                 
                 // Update balance displays
                 document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
                 document.getElementById('balance-display').textContent = newBalance.toLocaleString();
                 
-                // Return the result
-                return {
-                    avatar: selectedAvatar,
-                    rarity: rarity
-                };
+                // Update button states based on new balance
+                updateShopButtonsState(newBalance, {...await itemManager.checkPurchasedItems(userId), [itemId]: true});
+                
+                // Show success notification
+                showNotification(`Successfully purchased ${getItemNameById(itemId)} for ${price.toLocaleString()} coins!`, 'success');
+                
+                // Auto-equip the item after purchase
+                await equipItem(itemId, itemType);
+                
             } catch (error) {
-                console.error("Error processing roll:", error);
-                throw error;
+                console.error('Purchase error:', error);
+                showNotification('Failed to complete purchase: ' + error.message, 'error');
             }
-        },
+        }
         
-        // Show animation for rolling
-        async showRollAnimation() {
-            if (!this.rollAnimationContainer || !this.rollAnimationTrack) return;
+        // Secure Equip Item implementation
+        async function equipItem(itemId, itemType) {
+            if (!auth.currentUser) {
+                showNotification('Please log in to equip items', 'error');
+                return;
+            }
             
             try {
-                // Clear previous items
-                this.rollAnimationTrack.innerHTML = '';
-                
-                // Create animation items
-                const commonAvatars = itemManager.getAvatarsByRarity('common');
-                const rareAvatars = itemManager.getAvatarsByRarity('rare');
-                const epicAvatars = itemManager.getAvatarsByRarity('epic');
-                
-                // If rare is empty, use common
-                const rareItems = rareAvatars.length > 0 ? rareAvatars : commonAvatars;
-                
-                // All avatars to use in animation
-                const allAvatars = [
-                    ...commonAvatars,
-                    ...rareItems,
-                    ...epicAvatars,
-                    ...commonAvatars,
-                    ...rareItems
-                ];
-                
-                // Shuffle the array
-                const shuffled = [...allAvatars].sort(() => Math.random() - 0.5);
-                
-                // Add at least 20 items to the animation
-                const animationItems = [];
-                while (animationItems.length < 30) {
-                    animationItems.push(...shuffled);
-                }
-                
-                // Create HTML elements for each item
-                animationItems.slice(0, 30).forEach(avatar => {
-                    const item = document.createElement('div');
-                    item.className = `roll-animation-item ${avatar.rarity}`;
-                    
-                    const img = document.createElement('img');
-                    img.src = avatar.url;
-                    img.alt = avatar.name;
-                    
-                    item.appendChild(img);
-                    this.rollAnimationTrack.appendChild(item);
-                });
-                
-                // Show the animation container
-                this.rollAnimationContainer.style.display = 'block';
-                
-                // Reset track position
-                this.rollAnimationTrack.style.transition = 'none';
-                this.rollAnimationTrack.style.transform = 'translateX(0)';
-                
-                // Force reflow
-                void this.rollAnimationTrack.offsetWidth;
-                
-                // Start animation after a short delay
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-                // Run animation
-                this.rollAnimationTrack.style.transition = 'transform 5s cubic-bezier(0.1, 0.8, 0.2, 1)';
-                
-                // Calculate ending position
-                const trackWidth = this.rollAnimationTrack.scrollWidth;
-                const containerWidth = this.rollAnimationContainer.clientWidth;
-                
-                // Randomize ending position somewhat
-                const baseEndPosition = -(trackWidth - containerWidth) * 0.7;
-                const randomOffset = Math.random() * 300 - 150;
-                const endPosition = baseEndPosition + randomOffset;
-                
-                this.rollAnimationTrack.style.transform = `translateX(${endPosition}px)`;
-                
-                // Wait for animation to complete
-                await new Promise(resolve => setTimeout(resolve, 5000));
-            } catch (error) {
-                console.error("Error in roll animation:", error);
-            }
-        },
-        
-        // Show the result of the roll
-        showResult(result) {
-            if (!result || !this.rollResultContainer) return;
-            
-            // Hide animation container
-            if (this.rollAnimationContainer) {
-                this.rollAnimationContainer.style.display = 'none';
-            }
-            
-            // Set result data
-            if (this.rollResultImg) {
-                this.rollResultImg.src = result.avatar.url;
-                this.rollResultImg.alt = result.avatar.name;
-            }
-            
-            if (this.rollResultName) {
-                this.rollResultName.textContent = result.avatar.name;
-                this.rollResultName.className = `roll-result-name ${result.rarity}`;
-            }
-            
-            if (this.rollResultImage) {
-                this.rollResultImage.className = `roll-result-image ${result.rarity}`;
-            }
-            
-            // Show result container
-            this.rollResultContainer.style.display = 'block';
-            
-            // Update shop UI to show item as owned
-            const shopItem = document.querySelector(`.shop-item[data-item-id="${result.avatar.id}"]`);
-            if (shopItem) {
-                shopItem.classList.add('owned');
-                
-                const button = shopItem.querySelector('.buy-button');
-                if (button) {
-                    button.textContent = "Equip";
-                    button.classList.add('equip');
-                    button.classList.remove('unequip');
-                }
-            }
-            
-            // Show success notification
-            showNotification(`Congratulations! You won the ${result.rarity} ${result.avatar.name}!`, 'success');
-        },
-        
-        // Hide result and reset UI
-        hideResult() {
-            if (this.rollResultContainer) {
-                this.rollResultContainer.style.display = 'none';
-            }
-        }
-    };
-
-    // Make sure shop container is properly hidden on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        const shopContainer = document.getElementById('shop-container');
-        if (shopContainer) {
-            shopContainer.style.display = 'none';
-            shopContainer.classList.remove('visible');
-        }
-        
-        // Add event listeners to shop tabs
-        document.querySelectorAll('.shop-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                // Get the target section
-                const targetSection = tab.dataset.tab;
-                
-                // Remove active class from all tabs and sections
-                document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.section-themes, .section-avatars, .section-roll, .section-dev').forEach(s => s.classList.remove('active'));
-                
-                // Add active class to clicked tab and corresponding section
-                tab.classList.add('active');
-                document.querySelector(`.section-${targetSection}`).classList.add('active');
-            });
-        });
-
-        // Initialize the avatar roll system
-        avatarRollSystem.init();
-    });
-
-    // Profile Icon Toggle Functionality
-    const profileIcon = document.getElementById('profile-icon');
-    const authContainer = document.getElementById('auth-container');
-    
-    profileIcon.addEventListener('click', (e) => {
-        e.stopPropagation(); // Prevent click from bubbling up
-        
-        // Close shop container if open
-        const shopContainer = document.getElementById('shop-container');
-        if (shopContainer) {
-            shopContainer.style.display = 'none';
-            shopContainer.classList.remove('visible');
-        }
-        
-        // Toggle visibility of auth container with animation
-        if (authContainer.style.display === 'block') {
-            authContainer.classList.remove('visible');
-            setTimeout(() => {
-                authContainer.style.display = 'none';
-            }, 300);
-        } else {
-            authContainer.style.display = 'block';
-            setTimeout(() => {
-                authContainer.classList.add('visible');
-            }, 10);
-            
-            // If user is logged in, refresh balance display
-            if (auth.currentUser) {
-                // Add a small delay to ensure any pending transactions are complete
-                setTimeout(() => {
-                    voidAccounting.getUserAccountDetails(auth.currentUser.uid)
-                        .then(userDetails => {
-                            document.getElementById('username-display').textContent = userDetails.username;
-                            document.getElementById('balance-display').textContent = userDetails.accountBalance.toLocaleString();
-                        })
-                        .catch(error => {
-                            console.error("Error refreshing balance:", error);
-                        });
-                }, 300);
-            }
-        }
-    });
-
-    // Improved Shop Icon Toggle Functionality
-    const shopIcon = document.getElementById('shop-icon');
-    const shopContainer = document.getElementById('shop-container');
-    
-    shopIcon.addEventListener('click', async (e) => {
-        e.stopPropagation(); // Prevent click from bubbling up
-        
-        // Close auth container if open
-        authContainer.style.display = 'none';
-        authContainer.classList.remove('visible');
-        
-        // Toggle visibility of shop container with animation
-        if (shopContainer.style.display === 'block') {
-            shopContainer.classList.remove('visible');
-            setTimeout(() => {
-                shopContainer.style.display = 'none';
-            }, 300);
-        } else {
-            // Check if user is logged in
-            if (!auth.currentUser) {
-                showNotification('Please log in to access the shop', 'error');
-                return;
-            }
-            
-            shopContainer.style.display = 'block';
-            setTimeout(() => {
-                shopContainer.classList.add('visible');
-            }, 10);
-            
-            // Refresh balance in shop
-            const userDetails = await voidAccounting.getUserAccountDetails(auth.currentUser.uid);
-            document.getElementById('shop-balance-display').textContent = userDetails.accountBalance.toLocaleString();
-            
-            // Clear previous item states
-            document.querySelectorAll('.shop-item').forEach(item => {
-                item.classList.remove('owned', 'equipped');
-            });
-            
-            // Reset all buttons first
-            document.querySelectorAll('.buy-button').forEach(button => {
-                if (!button.disabled) {
-                    button.textContent = "Buy";
-                    button.classList.remove('equip', 'unequip');
-                }
-            });
-            
-            // Check purchased items and update buttons
-            const purchasedItems = await itemManager.checkPurchasedItems(auth.currentUser.uid);
-            
-            // Check currently equipped items
-            await itemManager.loadUserPreferences(auth.currentUser.uid);
-            
-            // Update buy buttons based on user balance
-            updateShopButtonsState(userDetails.accountBalance, purchasedItems);
-            
-            // Check if user is developer and show/hide dev tab accordingly
-            const isDev = await itemManager.verifyDevAccess();
-            const devTab = document.querySelector('.shop-tab[data-tab="dev"]');
-            
-            if (devTab) {
-                if (isDev) {
-                    devTab.style.display = 'block';
-                } else {
-                    devTab.style.display = 'none';
-                }
-            }
-            
-            // Show the first tab (Themes) by default
-            document.querySelector('.shop-tab[data-tab="themes"]').click();
-            
-            // Update roll count for avatar roll
-            if (avatarRollSystem) {
-                await avatarRollSystem.checkRollEligibility();
-            }
-        }
-    });
-    
-    // Improved shop close button
-    const shopCloseBtn = document.querySelector('.shop-close');
-    shopCloseBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // Prevent click from bubbling up
-        shopContainer.classList.remove('visible');
-        setTimeout(() => {
-            shopContainer.style.display = 'none';
-        }, 300);
-    });
-
-    // Improved click-outside handling
-    document.addEventListener('click', (event) => {
-        const profileIcon = document.getElementById('profile-icon');
-        const authContainer = document.getElementById('auth-container');
-        const shopIcon = document.getElementById('shop-icon');
-        const shopContainer = document.getElementById('shop-container');
-        
-        // Only process if the elements exist and are visible
-        if (shopContainer && shopContainer.style.display === 'block') {
-            // Check if click was outside the shop and not on the shop icon
-            if (!shopContainer.contains(event.target) && !shopIcon.contains(event.target)) {
-                // Close shop container
-                shopContainer.classList.remove('visible');
-                setTimeout(() => {
-                    shopContainer.style.display = 'none';
-                }, 300);
-            }
-        }
-        
-        if (authContainer && authContainer.style.display === 'block') {
-            if (!authContainer.contains(event.target) && !profileIcon.contains(event.target)) {
-                // Close auth container
-                authContainer.classList.remove('visible');
-                setTimeout(() => {
-                    authContainer.style.display = 'none';
-                }, 300);
-            }
-        }
-    });
-
-    // Update shop buttons based on user balance and purchased items
-    function updateShopButtonsState(userBalance, purchasedItems = {}) {
-        const shopItems = document.querySelectorAll('.shop-item');
-        
-        shopItems.forEach(item => {
-            const itemId = item.dataset.itemId;
-            const itemType = item.dataset.type;
-            const itemPrice = parseInt(item.dataset.price);
-            const buyButton = item.querySelector('.buy-button');
-            
-            // Skip buttons that are disabled for other reasons (e.g. coming soon)
-            if (buyButton.textContent === 'Coming Soon') {
-                return;
-            }
-            
-            // Handle Dev items differently
-            if (itemId === 'void_bot_avatar' || itemId === 'design_master_avatar') {
-                // These are handled separately with special logic
-                return;
-            }
-            
-            // Reset classes
-            item.classList.remove('owned', 'equipped');
-            
-            // If this is the equipped item
-            if ((itemType === 'theme' && itemManager.currentTheme === itemId) ||
-                (itemType === 'avatar' && itemManager.currentAvatar === itemId)) {
-                buyButton.textContent = 'Unequip';
-                buyButton.disabled = false;
-                buyButton.classList.add('unequip');
-                buyButton.classList.remove('equip');
-                item.classList.add('equipped');
-                return;
-            }
-            
-            // If user already purchased this item
-            if (purchasedItems[itemId]) {
-                buyButton.textContent = 'Equip';
-                buyButton.disabled = false;
-                buyButton.classList.add('equip');
-                buyButton.classList.remove('unequip');
-                item.classList.add('owned');
-                return;
-            }
-            
-            // If user can't afford it
-            if (userBalance < itemPrice) {
-                buyButton.disabled = true;
-                buyButton.textContent = 'Not enough coins';
-                buyButton.classList.remove('equip', 'unequip');
-            } else {
-                buyButton.disabled = false;
-                buyButton.textContent = 'Buy';
-                buyButton.classList.remove('equip', 'unequip');
-            }
-        });
-    }
-
-    // FIXED: Secure Purchase System that actually deducts coins and handles missing leaderboard entries
-    async function purchaseItem(itemId, itemType, price) {
-        if (!auth.currentUser) {
-            showNotification('Please log in to make purchases', 'error');
-            return;
-        }
-        
-        try {
-            const userId = auth.currentUser.uid;
-            
-            // Get current user details to check balance
-            const userRef = doc(db, 'users', userId);
-            const userDoc = await getDoc(userRef);
-            
-            if (!userDoc.exists()) {
-                throw new Error("User not found");
-            }
-            
-            const userData = userDoc.data();
-            
-            if (userData.accountBalance < price) {
-                showNotification('Not enough coins to make this purchase', 'error');
-                return;
-            }
-            
-            // Calculate new balance
-            const newBalance = userData.accountBalance - price;
-            
-            // IMPORTANT: Update user account balance (ACTUALLY DEDUCT COINS)
-            await updateDoc(userRef, {
-                accountBalance: newBalance
-            });
-            
-            // Check if leaderboard entry exists and update/create as needed
-            const leaderboardRef = doc(db, 'leaderboard', userId);
-            const leaderboardDoc = await getDoc(leaderboardRef);
-            
-            if (leaderboardDoc.exists()) {
-                // Update existing leaderboard entry
-                await updateDoc(leaderboardRef, {
-                    accountBalance: newBalance,
-                    // If it's an avatar, store it in the leaderboard too
-                    ...(itemType === 'avatar' && itemId === itemManager.currentAvatar ? { equippedAvatar: itemId } : {})
-                });
-            } else {
-                // Create new leaderboard entry
-                await setDoc(leaderboardRef, {
-                    username: userData.username || 'Unknown',
-                    accountBalance: newBalance,
-                    joinDate: new Date(),
-                    ...(itemType === 'avatar' ? { equippedAvatar: itemId } : {})
-                });
-            }
-            
-            // Create a record in user_purchases
-            await addDoc(collection(db, 'user_purchases', userId, 'items'), {
-                itemId: itemId,
-                itemType: itemType,
-                price: price,
-                purchaseDate: new Date(),
-                itemName: getItemNameById(itemId)
-            });
-            
-            // Log transaction for records
-            await addDoc(collection(db, 'transactions'), {
-                userId: userId,
-                transactionType: 'purchase',
-                amount: price,
-                itemId: itemId,
-                itemType: itemType,
-                timestamp: new Date(),
-                prevBalance: userData.accountBalance,
-                newBalance: newBalance
-            });
-            
-            // Update UI to show item as owned and update balance displays
-            const button = document.querySelector(`.buy-button[data-item-id="${itemId}"]`);
-            if (button) {
-                button.textContent = "Equip";
-                button.classList.add('equip');
-                
-                // Add owned class to shop item
-                const shopItem = button.closest('.shop-item');
-                if (shopItem) {
-                    shopItem.classList.add('owned');
-                }
-            }
-            
-            // Update balance displays
-            document.getElementById('shop-balance-display').textContent = newBalance.toLocaleString();
-            document.getElementById('balance-display').textContent = newBalance.toLocaleString();
-            
-            // Update button states based on new balance
-            updateShopButtonsState(newBalance, {...await itemManager.checkPurchasedItems(userId), [itemId]: true});
-            
-            // Show success notification
-            showNotification(`Successfully purchased ${getItemNameById(itemId)} for ${price.toLocaleString()} coins!`, 'success');
-            
-            // Auto-equip the item after purchase
-            await equipItem(itemId, itemType);
-            
-        } catch (error) {
-            console.error('Purchase error:', error);
-            showNotification('Failed to complete purchase: ' + error.message, 'error');
-        }
-    }
-    
-    // Secure Equip Item implementation
-    async function equipItem(itemId, itemType) {
-        if (!auth.currentUser) {
-            showNotification('Please log in to equip items', 'error');
-            return;
-        }
-        
-        try {
-            // For dev items, verify access first
-            if (itemId === 'void_bot_avatar' || itemId === 'design_master_avatar') {
-                const isDev = await itemManager.verifyDevAccess();
-                if (!isDev) {
-                    showNotification('Only developers can equip this item', 'error');
-                    return;
-                }
-            }
-            
-            // Update UI for this item
-            itemManager.updateShopItemUI(itemId, itemType, 'equip');
-            
-            // Set current item based on type
-            if (itemType === 'theme') {
-                itemManager.equipTheme(itemId);
-                itemManager.currentTheme = itemId;
-            } else if (itemType === 'avatar') {
-                itemManager.currentAvatar = itemId;
-                
-                // IMPORTANT: Update the leaderboard with the equipped avatar
-                const leaderboardRef = doc(db, 'leaderboard', auth.currentUser.uid);
-                const leaderboardDoc = await getDoc(leaderboardRef);
-                
-                if (leaderboardDoc.exists()) {
-                    await updateDoc(leaderboardRef, {
-                        equippedAvatar: itemId
-                    });
-                } else {
-                    // Create the leaderboard entry if it doesn't exist
-                    const userRef = doc(db, 'users', auth.currentUser.uid);
-                    const userDoc = await getDoc(userRef);
-                    
-                    if (userDoc.exists()) {
-                        const userData = userDoc.data();
-                        await setDoc(leaderboardRef, {
-                            username: userData.username || 'Unknown',
-                            accountBalance: userData.accountBalance || 0,
-                            joinDate: new Date(),
-                            equippedAvatar: itemId
-                        });
+                // For dev items, verify access first
+                if (itemId === 'void_bot_avatar' || itemId === 'design_master_avatar') {
+                    const isDev = await itemManager.verifyDevAccess();
+                    if (!isDev) {
+                        showNotification('Only developers can equip this item', 'error');
+                        return;
                     }
                 }
                 
-                // Refresh leaderboard to show new avatar
-                refreshLeaderboard();
+                // Update UI for this item
+                itemManager.updateShopItemUI(itemId, itemType, 'equip');
+                
+                // Set current item based on type
+                if (itemType === 'theme') {
+                    itemManager.equipTheme(itemId);
+                    itemManager.currentTheme = itemId;
+                } else if (itemType === 'avatar') {
+                    itemManager.currentAvatar = itemId;
+                    
+                    // IMPORTANT: Update the leaderboard with the equipped avatar
+                    const leaderboardRef = doc(db, 'leaderboard', auth.currentUser.uid);
+                    const leaderboardDoc = await getDoc(leaderboardRef);
+                    
+                    if (leaderboardDoc.exists()) {
+                        await updateDoc(leaderboardRef, {
+                            equippedAvatar: itemId
+                        });
+                    } else {
+                        // Create the leaderboard entry if it doesn't exist
+                        const userRef = doc(db, 'users', auth.currentUser.uid);
+                        const userDoc = await getDoc(userRef);
+                        
+                        if (userDoc.exists()) {
+                            const userData = userDoc.data();
+                            await setDoc(leaderboardRef, {
+                                username: userData.username || 'Unknown',
+                                accountBalance: userData.accountBalance || 0,
+                                joinDate: new Date(),
+                                equippedAvatar: itemId
+                            });
+                        }
+                    }
+                    
+                    // Refresh leaderboard to show new avatar
+                    refreshLeaderboard();
+                }
+                
+                // Save preferences to user settings
+                const preferences = {
+                    theme: itemManager.currentTheme,
+                    avatar: itemManager.currentAvatar
+                };
+                
+                await itemManager.saveUserPreferences(auth.currentUser.uid, preferences);
+                
+                // Show success notification
+                showNotification(`Equipped ${getItemNameById(itemId)}!`, 'success');
+                
+            } catch (error) {
+                console.error('Equip error:', error);
+                showNotification('Failed to equip item: ' + error.message, 'error');
             }
-            
-            // Save preferences to user settings
-            const preferences = {
-                theme: itemManager.currentTheme,
-                avatar: itemManager.currentAvatar
-            };
-            
-            await itemManager.saveUserPreferences(auth.currentUser.uid, preferences);
-            
-            // Show success notification
-            showNotification(`Equipped ${getItemNameById(itemId)}!`, 'success');
-            
-        } catch (error) {
-            console.error('Equip error:', error);
-            showNotification('Failed to equip item: ' + error.message, 'error');
-        }
-    }
-    
-    // Secure Unequip Item implementation
-    async function unequipItem(itemId, itemType) {
-        if (!auth.currentUser) {
-            showNotification('Please log in to unequip items', 'error');
-            return;
         }
         
-        try {
-            // Find the shop item
-            const shopItem = document.querySelector(`.shop-item[data-item-id="${itemId}"]`);
-            const button = shopItem?.querySelector('.buy-button');
-            
-            if (button) {
-                button.textContent = "Equip";
-                button.classList.remove('unequip');
-                button.classList.add('equip');
+        // Secure Unequip Item implementation
+        async function unequipItem(itemId, itemType) {
+            if (!auth.currentUser) {
+                showNotification('Please log in to unequip items', 'error');
+                return;
             }
             
-            if (shopItem) {
-                shopItem.classList.remove('equipped');
-                shopItem.classList.add('owned');
-            }
-            
-            // Update internal state
-            if (itemType === 'theme') {
-                // Unequip theme background
-                itemManager.unequipTheme();
-                itemManager.currentTheme = null;
-            } else if (itemType === 'avatar') {
-                itemManager.currentAvatar = null;
+            try {
+                // Find the shop item
+                const shopItem = document.querySelector(`.shop-item[data-item-id="${itemId}"]`);
+                const button = shopItem?.querySelector('.buy-button');
                 
-                // IMPORTANT: Remove avatar from leaderboard
-                const leaderboardRef = doc(db, 'leaderboard', auth.currentUser.uid);
-                const leaderboardDoc = await getDoc(leaderboardRef);
-                
-                if (leaderboardDoc.exists()) {
-                    await updateDoc(leaderboardRef, {
-                        equippedAvatar: null
-                    });
+                if (button) {
+                    button.textContent = "Equip";
+                    button.classList.remove('unequip');
+                    button.classList.add('equip');
                 }
                 
-                // Refresh leaderboard to remove avatar
-                refreshLeaderboard();
-            }
-            
-            // Save updated preferences
-            const preferences = {
-                theme: itemManager.currentTheme,
-                avatar: itemManager.currentAvatar
-            };
-            
-            await itemManager.saveUserPreferences(auth.currentUser.uid, preferences);
-            
-            // Show success notification
-            showNotification(`Unequipped ${getItemNameById(itemId)}`, 'success');
-            
-        } catch (error) {
-            console.error('Unequip error:', error);
-            showNotification('Failed to unequip item: ' + error.message, 'error');
-        }
-    }
-    
-    // Helper function to get item name by ID
-    function getItemNameById(itemId) {
-        const item = itemManager.items[itemId];
-        return item ? item.name : 'Unknown Item';
-    }
-    
-    // Add event listeners to shop buttons
-    document.querySelectorAll('.buy-button').forEach(button => {
-        if (button.textContent !== 'Coming Soon') {
-            button.addEventListener('click', async function() {
-                const itemId = this.dataset.itemId;
-                const itemType = this.dataset.type;
-                const itemElement = document.querySelector(`.shop-item[data-item-id="${itemId}"]`);
-                const price = parseInt(itemElement.dataset.price);
-                
-                // Check button state (Buy/Equip/Unequip)
-                if (this.textContent === 'Buy') {
-                    await purchaseItem(itemId, itemType, price);
-                } else if (this.textContent === 'Equip') {
-                    await equipItem(itemId, itemType);
-                } else if (this.textContent === 'Unequip') {
-                    await unequipItem(itemId, itemType);
+                if (shopItem) {
+                    shopItem.classList.remove('equipped');
+                    shopItem.classList.add('owned');
                 }
-            });
+                
+                // Update internal state
+                if (itemType === 'theme') {
+                    // Unequip theme background
+                    itemManager.unequipTheme();
+                    itemManager.currentTheme = null;
+                } else if (itemType === 'avatar') {
+                    itemManager.currentAvatar = null;
+                    
+                    // IMPORTANT: Remove avatar from leaderboard
+                    const leaderboardRef = doc(db, 'leaderboard', auth.currentUser.uid);
+                    const leaderboardDoc = await getDoc(leaderboardRef);
+                    
+                    if (leaderboardDoc.exists()) {
+                        await updateDoc(leaderboardRef, {
+                            equippedAvatar: null
+                        });
+                    }
+                    
+                    // Refresh leaderboard to remove avatar
+                    refreshLeaderboard();
+                }
+                
+                // Save updated preferences
+                const preferences = {
+                    theme: itemManager.currentTheme,
+                    avatar: itemManager.currentAvatar
+                };
+                
+                await itemManager.saveUserPreferences(auth.currentUser.uid, preferences);
+                
+                // Show success notification
+                showNotification(`Unequipped ${getItemNameById(itemId)}`, 'success');
+                
+            } catch (error) {
+                console.error('Unequip error:', error);
+                showNotification('Failed to unequip item: ' + error.message, 'error');
+            }
         }
-    });
+        
+        // Helper function to get item name by ID
+        function getItemNameById(itemId) {
+            const item = itemManager.items[itemId];
+            return item ? item.name : 'Unknown Item';
+        }
+        
+        // Add event listeners to shop buttons
+        document.querySelectorAll('.buy-button').forEach(button => {
+            if (button.textContent !== 'Coming Soon') {
+                button.addEventListener('click', async function() {
+                    const itemId = this.dataset.itemId;
+                    const itemType = this.dataset.type;
+                    const itemElement = document.querySelector(`.shop-item[data-item-id="${itemId}"]`);
+                    const price = parseInt(itemElement.dataset.price);
+                    
+                    // Check button state (Buy/Equip/Unequip)
+                    if (this.textContent === 'Buy') {
+                        await purchaseItem(itemId, itemType, price);
+                    } else if (this.textContent === 'Equip') {
+                        await equipItem(itemId, itemType);
+                    } else if (this.textContent === 'Unequip') {
+                        await unequipItem(itemId, itemType);
+                    }
+                });
+            }
+        });
 
-// IMPROVED: Leaderboard class with enhanced balance syncing and banned user filtering
+// IMPROVED: Leaderboard class with enhanced ban detection
 class VoidLeaderboard {
     constructor(db) {
         this.db = db;
@@ -3142,13 +3142,66 @@ class VoidLeaderboard {
         this.retryTimeout = null;
         this.isMinimized = false;
         this.lastUpdateTime = 0;
-        console.log("VoidLeaderboard initialized");
+        this.bannedUserCache = new Map(); // Cache for banned users to avoid repeated queries
+        this.lastCacheRefresh = 0;
+        console.log("VoidLeaderboard initialized with enhanced ban detection");
         
         // Set up minimize/maximize toggle
         const toggleBtn = document.getElementById('leaderboardToggle');
         if (toggleBtn) {
             toggleBtn.addEventListener('click', () => this.toggleLeaderboard());
         }
+        
+        // Initial load of banned users
+        this.refreshBannedUsersCache();
+    }
+    
+    // NEW: Load banned users into cache
+    async refreshBannedUsersCache() {
+        try {
+            console.log("Refreshing banned users cache");
+            this.bannedUserCache.clear();
+            
+            // Get all banned users from the banned_users collection
+            const bannedUsersSnapshot = await getDocs(collection(this.db, 'banned_users'));
+            
+            bannedUsersSnapshot.forEach(doc => {
+                this.bannedUserCache.set(doc.id, true);
+            });
+            
+            this.lastCacheRefresh = Date.now();
+            console.log(`Loaded ${this.bannedUserCache.size} banned users into cache`);
+        } catch (error) {
+            console.error("Error refreshing banned users cache:", error);
+        }
+    }
+    
+    // Check if a user is banned using both direct flags and banned_users collection
+    async isUserBanned(userId, userData) {
+        // First check direct flags in user data
+        if (userData.banned === true || userData.isBanned === true || userData.status === 'banned') {
+            return true;
+        }
+        
+        // Then check our banned users cache
+        if (this.bannedUserCache.has(userId)) {
+            return true;
+        }
+        
+        // If not in cache, check directly from the banned_users collection
+        // This is a fallback in case the cache hasn't been updated
+        try {
+            const bannedDoc = await getDoc(doc(this.db, 'banned_users', userId));
+            if (bannedDoc.exists()) {
+                // Update our cache
+                this.bannedUserCache.set(userId, true);
+                return true;
+            }
+        } catch (error) {
+            console.error(`Error checking ban status for ${userId}:`, error);
+        }
+        
+        return false;
     }
     
     // Toggle leaderboard visibility
@@ -3310,31 +3363,65 @@ class VoidLeaderboard {
         
         console.log("Updating leaderboard with new data");
         
+        // Refresh banned users cache every hour or if it's empty
+        if (this.bannedUserCache.size === 0 || Date.now() - this.lastCacheRefresh > 3600000) {
+            await this.refreshBannedUsersCache();
+            this.lastCacheRefresh = Date.now();
+        }
+        
         // Create array of valid users to display - COMPLETELY FILTER OUT BANNED USERS
         const validUsers = [];
         let bannedCount = 0;
+        const checkPromises = [];
         
         // Read data from leaderboard entries with avatars
         querySnapshot.forEach((docSnapshot) => {
             if (docSnapshot.exists()) {
                 const userData = docSnapshot.data();
+                const userId = docSnapshot.id;
                 
-                // Skip banned users completely - check multiple possible ban flags for robustness
-                if (userData.banned === true || userData.isBanned === true || userData.status === 'banned') {
-                    console.log(`Skipping banned user from leaderboard: ${userData.username || 'Unknown'}`);
-                    bannedCount++;
-                    return; // Skip this user entirely
-                }
-                
-                // Only add non-banned users
-                validUsers.push({
-                    id: docSnapshot.id,
-                    username: userData.username || 'Unknown',
-                    accountBalance: userData.accountBalance || 0,
-                    avatar: userData.equippedAvatar ? itemManager.items[userData.equippedAvatar]?.url : null
+                // Create a promise for the ban check
+                const checkPromise = this.isUserBanned(userId, userData).then(isBanned => {
+                    if (isBanned) {
+                        console.log(`Skipping banned user from leaderboard: ${userData.username || 'Unknown'} (${userId})`);
+                        bannedCount++;
+                        
+                        // IMPORTANT FIX: Update the leaderboard document to mark as banned
+                        // This ensures the banned flag is synchronized between collections
+                        if (!userData.banned) {
+                            updateDoc(doc(this.db, 'leaderboard', userId), {
+                                banned: true,
+                                banSyncedAt: new Date()
+                            }).catch(error => {
+                                console.error(`Error updating leaderboard banned status for ${userId}:`, error);
+                            });
+                        }
+                    } else {
+                        // Only add non-banned users
+                        validUsers.push({
+                            id: userId,
+                            username: userData.username || 'Unknown',
+                            accountBalance: userData.accountBalance || 0,
+                            avatar: userData.equippedAvatar ? itemManager.items[userData.equippedAvatar]?.url : null
+                        });
+                    }
+                }).catch(error => {
+                    console.error(`Error checking ban status for ${userId}:`, error);
+                    // If there's an error, default to including the user
+                    validUsers.push({
+                        id: userId,
+                        username: userData.username || 'Unknown',
+                        accountBalance: userData.accountBalance || 0,
+                        avatar: userData.equippedAvatar ? itemManager.items[userData.equippedAvatar]?.url : null
+                    });
                 });
+                
+                checkPromises.push(checkPromise);
             }
         });
+        
+        // Wait for all ban checks to complete
+        await Promise.all(checkPromises);
         
         if (bannedCount > 0) {
             console.log(`Total of ${bannedCount} banned users were excluded from leaderboard`);
@@ -3405,7 +3492,7 @@ class VoidLeaderboard {
         
         console.log(`Leaderboard updated with ${displayCount} players (${bannedCount} banned filtered out) and ${20 - displayCount} placeholders`);
         
-        // Find and highlight VoidNetworkOnTop
+        // Find and highlight special users
         this.highlightSpecialUsers();
     }
     
@@ -3445,65 +3532,6 @@ class VoidLeaderboard {
         // Clear any pending timeouts
         if (this.retryTimeout) {
             clearTimeout(this.retryTimeout);
-        }
-    }
-    
-    // NEW: Method to ban a user from the leaderboard
-    // This can be called by an admin to ban a user
-    async banUser(userId, reason = "Violation of community guidelines") {
-        try {
-            if (!userId) {
-                console.error("No user ID provided for banning");
-                return false;
-            }
-            
-            // Update the leaderboard entry to mark as banned
-            const leaderboardRef = doc(this.db, 'leaderboard', userId);
-            await updateDoc(leaderboardRef, {
-                banned: true,
-                banReason: reason,
-                banTimestamp: new Date()
-            });
-            
-            console.log(`User ${userId} has been banned from the leaderboard`);
-            
-            // Refresh leaderboard to remove banned user
-            this.stopLeaderboardUpdates();
-            this.startLeaderboardUpdates();
-            
-            return true;
-        } catch (error) {
-            console.error("Error banning user:", error);
-            return false;
-        }
-    }
-
-    // NEW: Method to unban a user from the leaderboard
-    async unbanUser(userId) {
-        try {
-            if (!userId) {
-                console.error("No user ID provided for unbanning");
-                return false;
-            }
-            
-            // Update the leaderboard entry to remove ban
-            const leaderboardRef = doc(this.db, 'leaderboard', userId);
-            await updateDoc(leaderboardRef, {
-                banned: false,
-                banReason: null,
-                unbannedTimestamp: new Date()
-            });
-            
-            console.log(`User ${userId} has been unbanned from the leaderboard`);
-            
-            // Refresh leaderboard to add user back
-            this.stopLeaderboardUpdates();
-            this.startLeaderboardUpdates();
-            
-            return true;
-        } catch (error) {
-            console.error("Error unbanning user:", error);
-            return false;
         }
     }
 }
