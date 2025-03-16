@@ -4901,22 +4901,6 @@ window.addEventListener('load', async () => {
     }
 });
 
-// Clean up event listeners and timers when user leaves
-window.addEventListener('beforeunload', () => {
-    if (voidLeaderboard) {
-        voidLeaderboard.stopLeaderboardUpdates();
-    }
-    
-    if (leaderboardRefreshInterval) {
-        clearInterval(leaderboardRefreshInterval);
-    }
-    
-    // Clear any operation timeouts
-    if (operationQueue.length > 0) {
-        console.log(`${operationQueue.length} operations still in queue`);
-    }
-});
-
 // Shop Icon Toggle Functionality
 document.addEventListener('DOMContentLoaded', function() {
     const shopIcon = document.getElementById('shop-icon');
@@ -4972,6 +4956,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             console.error("Error checking purchased items:", error);
                         });
                 }
+                
+                // Set up shop item button handlers
+                setupShopButtonHandlers();
             }
         });
 
@@ -4999,7 +4986,360 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     }
+    
+    // Add handlers for shop item buttons (buy, equip, unequip)
+    setupShopButtonHandlers();
 });
+
+// Function to set up shop button handlers
+function setupShopButtonHandlers() {
+    // Add event listeners to buy buttons
+    document.querySelectorAll('.buy-button').forEach(button => {
+        // Remove existing listeners first to prevent duplicates
+        const newButton = button.cloneNode(true);
+        button.parentNode.replaceChild(newButton, button);
+        
+        newButton.addEventListener('click', async function(e) {
+            e.preventDefault();
+            e.stopPropagation(); // Prevent event from bubbling up
+            
+            if (!auth.currentUser) {
+                showNotification('Please log in to purchase items', 'error');
+                return;
+            }
+            
+            const itemId = this.getAttribute('data-item-id');
+            const itemType = this.getAttribute('data-type');
+            
+            if (!itemId || !itemType) {
+                console.error("Missing item attributes");
+                return;
+            }
+            
+            // Check if this is a buy, equip, or unequip action
+            if (this.classList.contains('equip')) {
+                // This is an equip action
+                console.log(`Equipping item: ${itemId}`);
+                
+                // Disable button while processing
+                this.disabled = true;
+                this.classList.add('loading');
+                const originalText = this.textContent;
+                this.textContent = "Processing...";
+                
+                try {
+                    if (itemType === 'theme') {
+                        // Equip theme
+                        itemManager.equipTheme(itemId);
+                        
+                        // Update button to unequip
+                        this.textContent = "Unequip";
+                        this.classList.remove('equip');
+                        this.classList.add('unequip');
+                        
+                        // Mark as equipped in UI
+                        const shopItem = this.closest('.shop-item');
+                        if (shopItem) {
+                            shopItem.classList.remove('owned');
+                            shopItem.classList.add('equipped');
+                        }
+                        
+                        // Update other buttons
+                        document.querySelectorAll(`.buy-button[data-type="${itemType}"]`).forEach(otherButton => {
+                            if (otherButton !== this && otherButton.classList.contains('unequip')) {
+                                otherButton.textContent = "Equip";
+                                otherButton.classList.remove('unequip');
+                                otherButton.classList.add('equip');
+                                
+                                const otherItem = otherButton.closest('.shop-item');
+                                if (otherItem) {
+                                    otherItem.classList.remove('equipped');
+                                    otherItem.classList.add('owned');
+                                }
+                            }
+                        });
+                        
+                        // Save preferences
+                        await itemManager.saveUserPreferences(auth.currentUser.uid, {
+                            theme: itemId,
+                            avatar: itemManager.currentAvatar
+                        });
+                    } else if (itemType === 'avatar') {
+                        // Equip avatar
+                        itemManager.currentAvatar = itemId;
+                        
+                        // Update button to unequip
+                        this.textContent = "Unequip";
+                        this.classList.remove('equip');
+                        this.classList.add('unequip');
+                        
+                        // Mark as equipped in UI
+                        const shopItem = this.closest('.shop-item');
+                        if (shopItem) {
+                            shopItem.classList.remove('owned');
+                            shopItem.classList.add('equipped');
+                        }
+                        
+                        // Update other buttons
+                        document.querySelectorAll(`.buy-button[data-type="${itemType}"]`).forEach(otherButton => {
+                            if (otherButton !== this && otherButton.classList.contains('unequip')) {
+                                otherButton.textContent = "Equip";
+                                otherButton.classList.remove('unequip');
+                                otherButton.classList.add('equip');
+                                
+                                const otherItem = otherButton.closest('.shop-item');
+                                if (otherItem) {
+                                    otherItem.classList.remove('equipped');
+                                    otherItem.classList.add('owned');
+                                }
+                            }
+                        });
+                        
+                        // Save preferences and update leaderboard
+                        await itemManager.saveUserPreferences(auth.currentUser.uid, {
+                            theme: itemManager.currentTheme,
+                            avatar: itemId
+                        });
+                        
+                        // Update leaderboard entry with equipped avatar
+                        try {
+                            const leaderboardRef = doc(db, 'leaderboard', auth.currentUser.uid);
+                            await updateDoc(leaderboardRef, {
+                                equippedAvatar: itemId
+                            });
+                            
+                            // Refresh leaderboard
+                            refreshLeaderboard();
+                        } catch (error) {
+                            console.error("Error updating leaderboard:", error);
+                        }
+                    }
+                    
+                    showNotification(`${itemType.charAt(0).toUpperCase() + itemType.slice(1)} equipped successfully!`, 'success');
+                } catch (error) {
+                    console.error("Error equipping item:", error);
+                    showNotification("Error equipping item. Please try again.", "error");
+                    this.textContent = originalText;
+                } finally {
+                    this.disabled = false;
+                    this.classList.remove('loading');
+                }
+            } else if (this.classList.contains('unequip')) {
+                // This is an unequip action
+                console.log(`Unequipping item: ${itemId}`);
+                
+                // Disable button while processing
+                this.disabled = true;
+                this.classList.add('loading');
+                const originalText = this.textContent;
+                this.textContent = "Processing...";
+                
+                try {
+                    if (itemType === 'theme') {
+                        // Unequip theme
+                        itemManager.unequipTheme();
+                        
+                        // Update button to equip
+                        this.textContent = "Equip";
+                        this.classList.remove('unequip');
+                        this.classList.add('equip');
+                        
+                        // Mark as owned in UI
+                        const shopItem = this.closest('.shop-item');
+                        if (shopItem) {
+                            shopItem.classList.remove('equipped');
+                            shopItem.classList.add('owned');
+                        }
+                        
+                        // Save preferences
+                        await itemManager.saveUserPreferences(auth.currentUser.uid, {
+                            theme: null,
+                            avatar: itemManager.currentAvatar
+                        });
+                    } else if (itemType === 'avatar') {
+                        // Unequip avatar
+                        itemManager.currentAvatar = null;
+                        
+                        // Update button to equip
+                        this.textContent = "Equip";
+                        this.classList.remove('unequip');
+                        this.classList.add('equip');
+                        
+                        // Mark as owned in UI
+                        const shopItem = this.closest('.shop-item');
+                        if (shopItem) {
+                            shopItem.classList.remove('equipped');
+                            shopItem.classList.add('owned');
+                        }
+                        
+                        // Save preferences and update leaderboard
+                        await itemManager.saveUserPreferences(auth.currentUser.uid, {
+                            theme: itemManager.currentTheme,
+                            avatar: null
+                        });
+                        
+                        // Update leaderboard entry with equipped avatar
+                        try {
+                            const leaderboardRef = doc(db, 'leaderboard', auth.currentUser.uid);
+                            await updateDoc(leaderboardRef, {
+                                equippedAvatar: null
+                            });
+                            
+                            // Refresh leaderboard
+                            refreshLeaderboard();
+                        } catch (error) {
+                            console.error("Error updating leaderboard:", error);
+                        }
+                    }
+                    
+                    showNotification(`${itemType.charAt(0).toUpperCase() + itemType.slice(1)} unequipped successfully!`, 'success');
+                } catch (error) {
+                    console.error("Error unequipping item:", error);
+                    showNotification("Error unequipping item. Please try again.", "error");
+                    this.textContent = originalText;
+                } finally {
+                    this.disabled = false;
+                    this.classList.remove('loading');
+                }
+            } else {
+                // This is a buy action
+                console.log(`Buying item: ${itemId}`);
+                
+                // Get the item price
+                const shopItem = this.closest('.shop-item');
+                const itemPrice = parseInt(shopItem.getAttribute('data-price'), 10);
+                
+                if (isNaN(itemPrice)) {
+                    console.error("Invalid item price");
+                    return;
+                }
+                
+                // Disable button while processing
+                this.disabled = true;
+                this.classList.add('loading');
+                const originalText = this.textContent;
+                this.textContent = "Processing...";
+                
+                try {
+                    // Check if user has enough coins
+                    const userDetails = await voidAccounting.getUserAccountDetails(auth.currentUser.uid);
+                    if (userDetails.accountBalance < itemPrice) {
+                        showNotification(`Not enough coins. You need ${itemPrice.toLocaleString()} coins.`, 'error');
+                        this.textContent = originalText;
+                        this.disabled = false;
+                        this.classList.remove('loading');
+                        return;
+                    }
+                    
+                    // Proceed with purchase using a batch operation
+                    const batch = writeBatch(db);
+                    let newBalance;
+                    
+                    try {
+                        // Update user account balance
+                        const userRef = doc(db, 'users', auth.currentUser.uid);
+                        const userDoc = await getDoc(userRef);
+                        
+                        if (!userDoc.exists()) {
+                            throw new Error("User not found");
+                        }
+                        
+                        const userData = userDoc.data();
+                        const currentBalance = userData.accountBalance;
+                        newBalance = currentBalance - itemPrice;
+                        
+                        // Update user document
+                        batch.update(userRef, {
+                            accountBalance: newBalance
+                        });
+                        
+                        // Update leaderboard entry
+                        const leaderboardRef = doc(db, 'leaderboard', auth.currentUser.uid);
+                        const leaderboardDoc = await getDoc(leaderboardRef);
+                        
+                        if (leaderboardDoc.exists()) {
+                            batch.update(leaderboardRef, {
+                                accountBalance: newBalance
+                            });
+                        } else {
+                            batch.set(leaderboardRef, {
+                                username: userData.username || 'Unknown',
+                                accountBalance: newBalance,
+                                joinDate: new Date()
+                            });
+                        }
+                        
+                        // Add to user purchases
+                        const purchaseRef = doc(collection(db, 'user_purchases', auth.currentUser.uid, 'items'));
+                        batch.set(purchaseRef, {
+                            itemId: itemId,
+                            itemType: itemType,
+                            price: itemPrice,
+                            purchaseDate: new Date(),
+                            itemName: itemManager.items[itemId]?.name || itemId
+                        });
+                        
+                        // Record transaction
+                        const transactionRef = doc(collection(db, 'transactions'));
+                        batch.set(transactionRef, {
+                            userId: auth.currentUser.uid,
+                            transactionType: 'item_purchase',
+                            amount: itemPrice,
+                            timestamp: new Date(),
+                            prevBalance: currentBalance,
+                            newBalance: newBalance,
+                            metadata: {
+                                itemId: itemId,
+                                itemType: itemType
+                            }
+                        });
+                        
+                        // Commit the batch
+                        await batch.commit();
+                        
+                        // Update cache
+                        userDataCache.userData = {
+                            ...userDataCache.userData,
+                            accountBalance: newBalance
+                        };
+                        userDataCache.lastUpdated = Date.now();
+                        userDataCache.purchasedItems[itemId] = true;
+                        
+                        // Update UI
+                        const shopBalanceDisplay = document.getElementById('shop-balance-display');
+                        const balanceDisplay = document.getElementById('balance-display');
+                        
+                        if (shopBalanceDisplay) shopBalanceDisplay.textContent = newBalance.toLocaleString();
+                        if (balanceDisplay) balanceDisplay.textContent = newBalance.toLocaleString();
+                        
+                        // Update button to equip
+                        this.textContent = "Equip";
+                        this.classList.add('equip');
+                        
+                        // Mark as owned in UI
+                        shopItem.classList.add('owned');
+                        
+                        showNotification(`${itemManager.items[itemId]?.name || 'Item'} purchased successfully!`, 'success');
+                        
+                        // Update leaderboard immediately
+                        if (voidLeaderboard) {
+                            voidLeaderboard.updateUserBalance(auth.currentUser.uid, newBalance);
+                        }
+                    } catch (error) {
+                        console.error("Error processing purchase:", error);
+                        throw error;
+                    }
+                } catch (error) {
+                    console.error("Error buying item:", error);
+                    showNotification("Error purchasing item. Please try again.", "error");
+                } finally {
+                    this.disabled = false;
+                    this.classList.remove('loading');
+                }
+            }
+        });
+    });
+}
 </script>
 </body>
 </html>
