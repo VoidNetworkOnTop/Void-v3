@@ -3130,19 +3130,35 @@ const closeCoinPopupBtn = document.getElementById('close-coin-popup');
 // Update the price in the shop item and add the new 5 million coins option
 const coinsSection = document.querySelector('.section-coins .shop-items');
 if (coinsSection) {
-    // Update existing 1 million coins price
+    // Update existing 1 million coins price and add data attributes
     const oneMillionItem = coinsSection.querySelector('.shop-item');
     if (oneMillionItem) {
+        // Add proper data attributes for itemId, price and type
+        oneMillionItem.setAttribute('data-item-id', 'coins_1million');
+        oneMillionItem.setAttribute('data-price', '150'); // Actual price in cents
+        oneMillionItem.setAttribute('data-type', 'coins');
+        
         const priceElement = oneMillionItem.querySelector('.price-amount');
         if (priceElement) {
             priceElement.textContent = '$1.50 USD';
         }
+        
+        // Update the button with proper data attributes
+        const buyButton = oneMillionItem.querySelector('.buy-button');
+        if (buyButton) {
+            buyButton.setAttribute('data-item-id', 'coins_1million');
+            buyButton.setAttribute('data-type', 'coins');
+            buyButton.setAttribute('data-stripe-url', 'https://buy.stripe.com/cN27uebFV8rTbte4gh');
+            buyButton.setAttribute('data-coin-amount', '1000000');
+        }
     }
     
-    // Add the new 5 million coins option
+    // Add the new 5 million coins option with proper data attributes
     const fiveMillionItem = document.createElement('div');
     fiveMillionItem.className = 'shop-item';
-    fiveMillionItem.dataset.type = 'coins';
+    fiveMillionItem.setAttribute('data-item-id', 'coins_5million');
+    fiveMillionItem.setAttribute('data-price', '550'); // Actual price in cents
+    fiveMillionItem.setAttribute('data-type', 'coins');
     fiveMillionItem.innerHTML = `
         <div class="shop-item-image">
             <div class="coin-icon" style="background: linear-gradient(45deg, #FFD700, #FF8C00);">💰💰</div>
@@ -3152,7 +3168,7 @@ if (coinsSection) {
             <p class="shop-item-description">Get a MASSIVE boost with 5 million Void Coins - the ultimate package for serious players!</p>
             <div class="shop-item-price">
                 <span class="price-amount">$5.50 USD</span>
-                <button class="buy-button" id="buy-five-million-coins">Buy Now</button>
+                <button class="buy-button" data-item-id="coins_5million" data-type="coins" data-stripe-url="https://buy.stripe.com/dR615QfWb5fHeFq7su" data-coin-amount="5000000">Buy Now</button>
             </div>
         </div>
     `;
@@ -3162,7 +3178,7 @@ if (coinsSection) {
 }
 
 // Updated popup handler function that works with different coin amounts
-function showCoinPurchasePopup(coinAmount, price, stripeUrl) {
+function showCoinPurchasePopup(itemId, coinAmount, price, stripeUrl) {
     if (!auth.currentUser) {
         showNotification('Please log in to purchase coins', 'error');
         return;
@@ -3173,7 +3189,7 @@ function showCoinPurchasePopup(coinAmount, price, stripeUrl) {
         <h2>Buy Void Coins</h2>
         <div class="coin-amount">${coinAmount.toLocaleString()} Coins</div>
         <p>Complete your purchase securely through our payment provider. Click the button below to continue to checkout.</p>
-        <button id="buy-coins-button">Continue to Checkout</button>
+        <button id="buy-coins-button" data-item-id="${itemId}">Continue to Checkout</button>
         <button id="close-coin-popup">Cancel</button>
     `;
     
@@ -3189,8 +3205,20 @@ function showCoinPurchasePopup(coinAmount, price, stripeUrl) {
         if (buyCoinsButton) {
             buyCoinsButton.addEventListener('click', (e) => {
                 e.stopPropagation();
-                // Open Stripe in a new window instead of iframe
-                window.open(stripeUrl, '_blank');
+                
+                // Record the intent to purchase in Firestore
+                if (auth.currentUser) {
+                    // You can add code here to record the purchase intent
+                    // This would create a pending transaction record
+                    
+                    // For now, just open Stripe checkout
+                    window.open(stripeUrl, '_blank');
+                    
+                    // Optional: close the popup after opening Stripe
+                    setTimeout(() => {
+                        closeCoinPopup();
+                    }, 1000);
+                }
             });
         }
         
@@ -3213,24 +3241,20 @@ function closeCoinPopup() {
     }, 300);
 }
 
-// Set up event listeners after DOM is fully loaded
-document.addEventListener('DOMContentLoaded', function() {
-    // One Million Coins button
-    const buyMillionCoinsBtn = document.getElementById('buy-million-coins');
-    if (buyMillionCoinsBtn) {
-        buyMillionCoinsBtn.addEventListener('click', (event) => {
-            event.stopPropagation(); // Prevent event propagation
-            showCoinPurchasePopup(1000000, '$1.50', 'https://buy.stripe.com/cN27uebFV8rTbte4gh');
-        });
-    }
-    
-    // Five Million Coins button (needs to be attached after DOM loads since we added it dynamically)
-    const buyFiveMillionCoinsBtn = document.getElementById('buy-five-million-coins');
-    if (buyFiveMillionCoinsBtn) {
-        buyFiveMillionCoinsBtn.addEventListener('click', (event) => {
-            event.stopPropagation(); // Prevent event propagation
-            showCoinPurchasePopup(5000000, '$5.50', 'https://buy.stripe.com/dR615QfWb5fHeFq7su');
-        });
+// Add event listeners for coin purchase buttons
+document.addEventListener('click', function(event) {
+    // Check if the clicked element is a buy button for coins
+    if (event.target.classList.contains('buy-button') && event.target.dataset.type === 'coins') {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const itemId = event.target.dataset.itemId;
+        const coinAmount = parseInt(event.target.dataset.coinAmount, 10);
+        const stripeUrl = event.target.dataset.stripeUrl;
+        const priceElement = event.target.closest('.shop-item-price').querySelector('.price-amount');
+        const price = priceElement ? priceElement.textContent : '';
+        
+        showCoinPurchasePopup(itemId, coinAmount, price, stripeUrl);
     }
 });
 
