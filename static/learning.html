@@ -1,4 +1,203 @@
 <!DOCTYPE html>
+<script>
+window.addEventListener('load', function() {
+    // Check if we're within the 5-minute cooldown period
+    const lastPopupTime = localStorage.getItem('voidPopupLastShown');
+    const currentTime = Date.now();
+    if (lastPopupTime && (currentTime - parseInt(lastPopupTime)) < 5 * 60 * 1000) {
+        return; // Don't show if it's been less than 5 minutes
+    }
+    
+    // Create popup styles
+    const styleElement = document.createElement('style');
+    styleElement.textContent = `
+        .void-popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 10000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .void-popup {
+            width: 90%;
+            max-width: 600px;
+            background: #000;
+            border-radius: 10px;
+            padding: 30px;
+            position: relative;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 
+                0 0 2px #fff,
+                0 0 4px #fff,
+                0 0 8px rgba(255, 255, 255, 0.5),
+                inset 0 0 2px rgba(255, 255, 255, 0.2);
+            color: #fff;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+        .void-popup::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            background: #fff;
+            border-radius: 10px;
+            z-index: -1;
+            box-shadow: 
+                0 0 15px #fff,
+                0 0 30px rgba(255, 255, 255, 0.8),
+                0 0 40px rgba(255, 255, 255, 0.6),
+                0 0 50px rgba(255, 255, 255, 0.4);
+            opacity: 0.5;
+        }
+        .void-popup-title {
+            font-size: 2rem;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+        .void-popup-shop {
+            display: inline-block;
+            text-shadow: 
+                0 0 2px #000,
+                0 0 4px #000,
+                0 0 6px #000,
+                0 0 8px #000,
+                0 0 10px #000;
+        }
+        .void-popup-content {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 25px;
+            text-shadow: 
+                0 0 2px #fff,
+                0 0 4px rgba(255, 255, 255, 0.8);
+        }
+        .void-popup-button {
+            background: linear-gradient(45deg, #f5d100, #ff9d00);
+            color: #000;
+            font-weight: bold;
+            font-size: 1.2rem;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            margin-top: 10px;
+        }
+        .void-popup-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+            background: linear-gradient(45deg, #ffdf00, #ffb700);
+        }
+        .void-popup-button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+            opacity: 0.7;
+        }
+        .void-popup-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 1.8rem;
+            cursor: pointer;
+            transition: color 0.3s ease, transform 0.3s ease;
+            line-height: 1;
+            z-index: 2;
+        }
+        .void-popup-close:hover {
+            color: rgba(255, 255, 255, 1);
+            transform: scale(1.1);
+        }
+        .void-popup-close:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        .void-popup-timer {
+            position: absolute;
+            bottom: 15px;
+            right: 20px;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+    `;
+    document.head.appendChild(styleElement);
+    
+    // Create popup HTML
+    const popupOverlay = document.createElement('div');
+    popupOverlay.className = 'void-popup-overlay';
+    popupOverlay.innerHTML = `
+        <div class="void-popup">
+            <button class="void-popup-close" id="voidPopupClose" disabled>&times;</button>
+            <h2 class="void-popup-title">Welcome to <span class="void-popup-shop">Void Shop</span></h2>
+            <div class="void-popup-content">
+                Thanks for all of the support while The Void Games has been in development. I want to thank all the users that signed up. I have just released The <span class="void-popup-shop">Void Shop</span> where you can get awesome avatars, limited edition items and Buy coins to become Number 1 on the leaderboard!
+            </div>
+            <button class="void-popup-button" id="voidPopupButton" disabled>Open Shop (5)</button>
+            <div class="void-popup-timer" id="voidPopupTimer">You can close this popup in 5 seconds</div>
+        </div>
+    `;
+    document.body.appendChild(popupOverlay);
+    
+    // Handle the timer
+    const closeButton = document.getElementById('voidPopupClose');
+    const shopButton = document.getElementById('voidPopupButton');
+    const timerText = document.getElementById('voidPopupTimer');
+    let secondsLeft = 5;
+    
+    const countdownInterval = setInterval(() => {
+        secondsLeft--;
+        shopButton.textContent = `Open Shop (${secondsLeft})`;
+        timerText.textContent = `You can close this popup in ${secondsLeft} seconds`;
+        
+        if (secondsLeft <= 0) {
+            clearInterval(countdownInterval);
+            closeButton.disabled = false;
+            shopButton.disabled = false;
+            shopButton.textContent = 'Open Shop';
+            timerText.textContent = '';
+        }
+    }, 1000);
+    
+    // Function to close popup and open shop
+    function closePopupAndOpenShop() {
+        // Save the current time to start the 5-minute cooldown
+        localStorage.setItem('voidPopupLastShown', Date.now().toString());
+        
+        // Remove the popup
+        document.body.removeChild(popupOverlay);
+        
+        // Open the shop
+        const shopContainer = document.getElementById('shop-container');
+        if (shopContainer) {
+            shopContainer.style.display = 'block';
+            setTimeout(() => {
+                shopContainer.classList.add('visible');
+            }, 10);
+            
+            // Set up shop item button handlers
+            if (typeof setupShopButtonHandlers === 'function') {
+                setupShopButtonHandlers();
+            }
+        }
+    }
+    
+    // Add event listeners
+    closeButton.addEventListener('click', closePopupAndOpenShop);
+    shopButton.addEventListener('click', closePopupAndOpenShop);
+});
+</script>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
