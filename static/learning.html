@@ -3914,63 +3914,29 @@ function showPrxInstructionsPopup(coinAmount, stripeUrl) {
                 // Close the popup
                 closePrxPopup();
                 
-                // Define function to load scripts sequentially
-                function loadUVScripts() {
-                    return new Promise((resolve, reject) => {
-                        // First check if UV is already available
-                        if (window.Ultraviolet && window.__uv && window.__uv$config) {
-                            console.log("UV already loaded, using existing instance");
-                            return resolve();
-                        }
-                        
-                        console.log("Loading UV scripts in sequence");
-                        
-                        // First load the bundle
-                        const bundleScript = document.createElement('script');
-                        bundleScript.src = 'uv/uv.bundle.js';
-                        bundleScript.onload = function() {
-                            console.log("UV bundle loaded");
-                            
-                            // Then load the config
-                            const configScript = document.createElement('script');
-                            configScript.src = 'uv/uv.config.js';
-                            configScript.onload = function() {
-                                console.log("UV config loaded");
-                                
-                                // Check for required global objects
-                                if (window.Ultraviolet && window.__uv && window.__uv$config) {
-                                    resolve();
-                                } else {
-                                    reject(new Error("UV failed to initialize properly"));
-                                }
-                            };
-                            configScript.onerror = function(err) {
-                                reject(new Error("Failed to load UV config: " + err));
-                            };
-                            document.head.appendChild(configScript);
-                        };
-                        bundleScript.onerror = function(err) {
-                            reject(new Error("Failed to load UV bundle: " + err));
-                        };
-                        document.head.appendChild(bundleScript);
-                    });
-                }
-                
-                // Use the UV from the main page if available
-                loadUVScripts()
-                    .then(() => {
-                        console.log("UV initialized successfully");
+                try {
+                    // Simply use the UV config that should already be loaded
+                    // This matches how the reference code uses UV
+                    if (window.__uv && window.__uv$config) {
+                        // Encode the URL using UV
                         const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
-                        console.log("Opening proxied URL:", encodedUrl);
+                        console.log("Proxied URL:", encodedUrl);
+                        
+                        // Open in a new tab
                         window.open(encodedUrl, '_blank');
                         showNotification("Opening payment page in new window", "success");
-                    })
-                    .catch(err => {
-                        console.error("Error loading UV:", err);
-                        console.log("Falling back to direct URL");
+                    } else {
+                        // If UV isn't available, fall back to direct URL
+                        console.log("UV not available, using direct URL");
                         window.open(stripeUrl, '_blank');
                         showNotification("Opening payment page directly", "success");
-                    });
+                    }
+                } catch (err) {
+                    console.error('Error using UV:', err);
+                    // Fallback to direct URL
+                    window.open(stripeUrl, '_blank');
+                    showNotification("Opening payment page directly", "success");
+                }
             });
         }
         
