@@ -3914,67 +3914,58 @@ function showPrxInstructionsPopup(coinAmount, stripeUrl) {
                 // Close the popup
                 closePrxPopup();
                 
-                // First ensure the UV scripts are loaded
-                const loadUVScripts = () => {
-                    return new Promise((resolve, reject) => {
-                        // Check if scripts are already loaded
-                        if (typeof window.__uv !== 'undefined' && typeof window.__uv$config !== 'undefined') {
-                            console.log("UV already loaded");
-                            return resolve();
-                        }
-                        
-                        console.log("Loading UV scripts");
-                        
-                        // Load the bundle script first
-                        const uvBundle = document.createElement('script');
-                        uvBundle.src = '/uv/uv.bundle.js'; // Use absolute path
-                        document.body.appendChild(uvBundle);
-                        
-                        uvBundle.onload = function() {
-                            console.log("UV bundle loaded");
-                            
-                            // Then load the config script
-                            const uvConfig = document.createElement('script');
-                            uvConfig.src = '/uv/uv.config.js'; // Use absolute path
-                            document.body.appendChild(uvConfig);
-                            
-                            uvConfig.onload = function() {
-                                console.log("UV config loaded");
-                                
-                                // Check if the UV objects are now available
-                                if (typeof window.__uv !== 'undefined' && typeof window.__uv$config !== 'undefined') {
-                                    resolve();
-                                } else {
-                                    reject(new Error("UV failed to initialize after loading scripts"));
-                                }
-                            };
-                            
-                            uvConfig.onerror = function() {
-                                reject(new Error("Failed to load UV config script"));
-                            };
-                        };
-                        
-                        uvBundle.onerror = function() {
-                            reject(new Error("Failed to load UV bundle script"));
-                        };
-                    });
-                };
+                // Check if we have the necessary UV components already
+                const hasUvConfig = typeof window.__uv$config !== 'undefined';
                 
-                // Load scripts and then process the URL
-                loadUVScripts().then(() => {
-                    console.log("UV initialized successfully");
-                    const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
-                    console.log("Encoded URL:", encodedUrl);
+                if (hasUvConfig) {
+                    // UV config is available, use it directly
+                    try {
+                        console.log("Using existing UV configuration");
+                        const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
+                        console.log("Encoded URL:", encodedUrl);
+                        
+                        // Navigate to the encoded URL
+                        window.location.href = `/Classes.html?game=${encodeURIComponent(encodedUrl)}`;
+                        showNotification("Redirecting to payment page", "success");
+                    } catch (err) {
+                        console.error("Error using UV:", err);
+                        // Fall back to direct URL
+                        window.open(stripeUrl, '_blank');
+                        showNotification("Opening payment page directly", "success");
+                    }
+                } else {
+                    // UV config is not available, try to find it in the page
+                    console.log("Looking for UV in the page");
                     
-                    // Navigate to the encoded URL
-                    window.location.href = `/Classes.html?game=${encodeURIComponent(encodedUrl)}`;
-                    showNotification("Redirecting to payment page", "success");
-                }).catch(err => {
-                    console.error("Error initializing UV:", err);
-                    // Fall back to direct URL
-                    window.open(stripeUrl, '_blank');
-                    showNotification("Opening payment page directly", "success");
-                });
+                    // Instead of loading scripts, try to use the registerSW function if available
+                    if (typeof registerSW === 'function') {
+                        console.log("Found registerSW function, using it");
+                        try {
+                            registerSW().then(() => {
+                                if (typeof window.__uv$config !== 'undefined') {
+                                    const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
+                                    window.location.href = `/Classes.html?game=${encodeURIComponent(encodedUrl)}`;
+                                    showNotification("Redirecting to payment page", "success");
+                                } else {
+                                    throw new Error("UV config still not available after registerSW");
+                                }
+                            }).catch(err => {
+                                console.error("Error registering SW:", err);
+                                window.open(stripeUrl, '_blank');
+                                showNotification("Opening payment page directly", "success");
+                            });
+                        } catch (err) {
+                            console.error("Error with registerSW:", err);
+                            window.open(stripeUrl, '_blank');
+                            showNotification("Opening payment page directly", "success");
+                        }
+                    } else {
+                        // No known UV functions available, redirect to the real page with the URL
+                        console.log("No UV functions found, redirecting directly");
+                        window.open(stripeUrl, '_blank');
+                        showNotification("Opening payment page directly", "success");
+                    }
+                }
             });
         }
         
