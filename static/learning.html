@@ -3818,77 +3818,81 @@ window.addEventListener('load', function() {
             });
         }
 
-        // Function to show coin purchase popup
-        function showCoinPurchasePopup(itemId, coinAmount, price, stripeUrl) {
-            if (!auth.currentUser) {
-                showNotification('Please log in to purchase coins', 'error');
-                return;
-            }
-            
-            const coinPurchasePopup = document.getElementById('coin-purchase-popup');
-            
-            // Update popup content for the selected package
-            coinPurchasePopup.innerHTML = `
-                <h2>Buy Void Coins</h2>
-                <div class="coin-amount">${coinAmount.toLocaleString()} Coins</div>
-                <p>Complete your purchase securely through our payment provider. Click the button below to continue to checkout. If the payment menu is blocked when you press continue to checkout just press the button saying "Continue to checkout using PRX" and this should allow you to view the payment menu.</p>
-                <button id="buy-coins-button" data-item-id="${itemId}" data-url="${stripeUrl}">Continue to Checkout</button>
-                <button id="buy-coins-prx-button" data-item-id="${itemId}" data-url="${stripeUrl}">Continue to checkout using PRX</button>
-                <button id="close-coin-popup">Cancel</button>
-            `;
-            
-            // Show the popup
-            coinPurchasePopup.style.display = 'block';
-            
-            // Add visible class after a short delay for animation
-            setTimeout(() => {
-                coinPurchasePopup.classList.add('visible');
+// Function to show coin purchase popup
+function showCoinPurchasePopup(itemId, coinAmount, price, stripeUrl) {
+    if (!auth.currentUser) {
+        showNotification('Please log in to purchase coins', 'error');
+        return;
+    }
+    
+    const coinPurchasePopup = document.getElementById('coin-purchase-popup');
+    
+    // Update popup content for the selected package
+    coinPurchasePopup.innerHTML = `
+        <h2>Buy Void Coins</h2>
+        <div class="coin-amount">${coinAmount.toLocaleString()} Coins</div>
+        <p>Complete your purchase securely through our payment provider. Click the button below to continue to checkout. If the payment menu is blocked when you press continue to checkout just press the button saying "Continue to checkout using PRX" and this should allow you to view the payment menu.</p>
+        <button id="buy-coins-button" data-item-id="${itemId}" data-amount="${coinAmount}" data-url="${stripeUrl}">Continue to Checkout</button>
+        <button id="buy-coins-prx-button" data-item-id="${itemId}" data-amount="${coinAmount}" data-url="${stripeUrl}">Continue to checkout using PRX</button>
+        <button id="close-coin-popup">Cancel</button>
+    `;
+    
+    // Show the popup
+    coinPurchasePopup.style.display = 'block';
+    
+    // Add visible class after a short delay for animation
+    setTimeout(() => {
+        coinPurchasePopup.classList.add('visible');
+        
+        // Set up the Stripe checkout button
+        const buyCoinsButton = document.getElementById('buy-coins-button');
+        if (buyCoinsButton) {
+            buyCoinsButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 
-                // Set up the Stripe checkout button
-                const buyCoinsButton = document.getElementById('buy-coins-button');
-                if (buyCoinsButton) {
-                    buyCoinsButton.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
-                        // Store the amount in localStorage for completion handling
-                        localStorage.setItem('coinPurchaseAmount', coinAmount.toString());
-                        
-                        // Open the Stripe URL
-                        const url = this.getAttribute('data-url');
-                        window.open(url, '_blank');
-                    });
-                }
+                // Store the amount in localStorage for completion handling
+                localStorage.setItem('coinPurchaseAmount', coinAmount.toString());
                 
-// Set up the PRX checkout button
-                const buyPrxButton = document.getElementById('buy-coins-prx-button');
-                if (buyPrxButton) {
-                    buyPrxButton.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
-                        // Hide the current popup
-                        coinPurchasePopup.classList.remove('visible');
-                        setTimeout(() => {
-                            coinPurchasePopup.style.display = 'none';
-                            
-                            // Show PRX instructions popup
-                            showPrxInstructionsPopup(coinAmount, this.getAttribute('data-url'));
-                        }, 300);
-                    });
-                }
-                
-                // Set up the close button
-                const closeBtn = document.getElementById('close-coin-popup');
-                if (closeBtn) {
-                    closeBtn.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        closeCoinPopup();
-                    });
-                }
-            }, 10);
+                // Open the Stripe URL
+                const url = this.getAttribute('data-url');
+                window.open(url, '_blank');
+            });
         }
+        
+        // Set up the PRX checkout button
+        const buyPrxButton = document.getElementById('buy-coins-prx-button');
+        if (buyPrxButton) {
+            buyPrxButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Get coin amount from button data attribute to ensure correct value
+                const amount = parseInt(this.getAttribute('data-amount'), 10);
+                const url = this.getAttribute('data-url');
+                
+                // Hide the current popup
+                coinPurchasePopup.classList.remove('visible');
+                setTimeout(() => {
+                    coinPurchasePopup.style.display = 'none';
+                    
+                    // Show PRX instructions popup with the correct URL and amount
+                    showPrxInstructionsPopup(amount, url);
+                }, 300);
+            });
+        }
+        
+        // Set up the close button
+        const closeBtn = document.getElementById('close-coin-popup');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeCoinPopup();
+            });
+        }
+    }, 10);
+}
 
 // Function to show PRX instructions popup
 function showPrxInstructionsPopup(coinAmount, stripeUrl) {
@@ -3921,6 +3925,9 @@ function showPrxInstructionsPopup(coinAmount, stripeUrl) {
                     // UV config is available, use it directly
                     try {
                         console.log("Using existing UV configuration");
+                        console.log("Proxying URL:", stripeUrl);
+                        console.log("Coin amount:", coinAmount);
+                        
                         const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
                         console.log("Encoded URL:", encodedUrl);
                         
@@ -3998,23 +4005,129 @@ function showPrxInstructionsPopup(coinAmount, stripeUrl) {
         }
     }, 10);
 }
-        // Function to close the coin popup
-        function closeCoinPopup() {
-            const coinPurchasePopup = document.getElementById('coin-purchase-popup');
-            coinPurchasePopup.classList.remove('visible');
-            setTimeout(() => {
-                coinPurchasePopup.style.display = 'none';
-            }, 300);
-        }
 
-        // Function to close the PRX popup
-        function closePrxPopup() {
-            const prxInstructionsPopup = document.getElementById('prx-instructions-popup');
-            prxInstructionsPopup.classList.remove('visible');
-            setTimeout(() => {
-                prxInstructionsPopup.style.display = 'none';
-            }, 300);
-        }
+// Function to update coin shop items
+function updateCoinShopItems() {
+    // Get the coins section
+    const coinsSection = document.querySelector('.section-coins .shop-items');
+    if (!coinsSection) return;
+    
+    // Clear existing content
+    coinsSection.innerHTML = '';
+    
+    // Add the 1 million coins option
+    const oneMillionItem = document.createElement('div');
+    oneMillionItem.className = 'shop-item';
+    oneMillionItem.setAttribute('data-item-id', 'coins_1million_purchase');
+    oneMillionItem.setAttribute('data-price', '150');
+    oneMillionItem.innerHTML = `
+        <div class="shop-item-image">
+            <div class="coin-icon">💰</div>
+        </div>
+        <div class="shop-item-details">
+            <h3 class="shop-item-title">1,000,000 Void Coins</h3>
+            <p class="shop-item-description">Get a massive boost with 1 million Void Coins - perfect for buying premium items and themes!</p>
+            <div class="shop-item-price">
+                <span class="price-amount">$1.50 USD</span>
+                <button class="buy-coins-btn" data-amount="1000000" data-price="1.50" data-url="https://buy.stripe.com/cN27uebFV8rTbte4gh">Buy Now</button>
+            </div>
+        </div>
+    `;
+    coinsSection.appendChild(oneMillionItem);
+    
+    // Add the 5 million coins option
+    const fiveMillionItem = document.createElement('div');
+    fiveMillionItem.className = 'shop-item';
+    fiveMillionItem.setAttribute('data-item-id', 'coins_5million_purchase');
+    fiveMillionItem.setAttribute('data-price', '550');
+    fiveMillionItem.innerHTML = `
+        <div class="shop-item-image">
+            <div class="coin-icon" style="background: linear-gradient(45deg, #FFD700, #FF8C00);">💰💰</div>
+        </div>
+        <div class="shop-item-details">
+            <h3 class="shop-item-title">5,000,000 Void Coins</h3>
+            <p class="shop-item-description">Get a MASSIVE boost with 5 million Void Coins - the ultimate package for serious players!</p>
+            <div class="shop-item-price">
+                <span class="price-amount">$5.50 USD</span>
+                <button class="buy-coins-btn" data-amount="5000000" data-price="5.50" data-url="https://buy.stripe.com/dR615QfWb5fHeFq7su">Buy Now</button>
+            </div>
+        </div>
+    `;
+    coinsSection.appendChild(fiveMillionItem);
+
+    // Add the 10 million coins option
+    const tenMillionItem = document.createElement('div');
+    tenMillionItem.className = 'shop-item';
+    tenMillionItem.setAttribute('data-item-id', 'coins_10million_purchase');
+    tenMillionItem.setAttribute('data-price', '1050');
+    tenMillionItem.innerHTML = `
+        <div class="shop-item-image">
+            <div class="coin-icon" style="background: linear-gradient(45deg, #FFD700, #FF8C00);">💰💰</div>
+        </div>
+        <div class="shop-item-details">
+            <h3 class="shop-item-title">10,000,000 Void Coins</h3>
+            <p class="shop-item-description">Get a MASSIVE boost with 10 million Void Coins - the ultimate package for serious players!</p>
+            <div class="shop-item-price">
+                <span class="price-amount">$10.50 USD</span>
+                <button class="buy-coins-btn" data-amount="10000000" data-price="10.50" data-url="https://buy.stripe.com/fZe01MeS7aA168U8wz">Buy Now</button>
+            </div>
+        </div>
+    `;
+    coinsSection.appendChild(tenMillionItem);
+
+    // Add the 100 million coins option
+    const hunMillionItem = document.createElement('div');
+    hunMillionItem.className = 'shop-item';
+    hunMillionItem.setAttribute('data-item-id', 'coins_100million_purchase');
+    hunMillionItem.setAttribute('data-price', '10050');
+    hunMillionItem.innerHTML = `
+        <div class="shop-item-image">
+            <div class="coin-icon" style="background: linear-gradient(45deg, #FFD700, #FF8C00);">💰💰💰</div>
+        </div>
+        <div class="shop-item-details">
+            <h3 class="shop-item-title">100,000,000 Void Coins</h3>
+            <p class="shop-item-description">Get a INSANELY MASSIVE boost with 100 million Void Coins - boost you onto the leaderboard!</p>
+            <div class="shop-item-price">
+                <span class="price-amount">$100.50 USD</span>
+                <button class="buy-coins-btn" data-amount="100000000" data-price="100.50" data-url="https://buy.stripe.com/3cseWG39p23vbteaEJ">Buy Now</button>
+            </div>
+        </div>
+    `;
+    coinsSection.appendChild(hunMillionItem);
+    
+    // Add event listeners to buy buttons
+    document.querySelectorAll('.buy-coins-btn').forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation(); // Prevent event from bubbling up
+            
+            const amount = parseInt(this.getAttribute('data-amount'), 10);
+            const price = this.getAttribute('data-price');
+            const url = this.getAttribute('data-url');
+            const itemId = this.closest('.shop-item').getAttribute('data-item-id');
+            
+            showCoinPurchasePopup(itemId, amount, price, url);
+        });
+    });
+}
+
+// Function to close the coin popup
+function closeCoinPopup() {
+    const coinPurchasePopup = document.getElementById('coin-purchase-popup');
+    coinPurchasePopup.classList.remove('visible');
+    setTimeout(() => {
+        coinPurchasePopup.style.display = 'none';
+    }, 300);
+}
+
+// Function to close the PRX popup
+function closePrxPopup() {
+    const prxInstructionsPopup = document.getElementById('prx-instructions-popup');
+    prxInstructionsPopup.classList.remove('visible');
+    setTimeout(() => {
+        prxInstructionsPopup.style.display = 'none';
+    }, 300);
+}
 
         // Override the shop icon click handler to ensure coin shop is updated
         document.addEventListener('DOMContentLoaded', function() {
