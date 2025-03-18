@@ -4006,6 +4006,118 @@ function showPrxInstructionsPopup(coinAmount, stripeUrl) {
     }, 10);
 }
 
+// Function to show PRX instructions popup
+function showPrxInstructionsPopup(coinAmount, stripeUrl) {
+    const prxInstructionsPopup = document.getElementById('prx-instructions-popup');
+    
+    // Show the popup
+    prxInstructionsPopup.style.display = 'block';
+    
+    // Add visible class after a short delay for animation
+    setTimeout(() => {
+        prxInstructionsPopup.classList.add('visible');
+        
+        // Set up the continue button
+        const prxContinueButton = document.getElementById('prx-continue-button');
+        if (prxContinueButton) {
+            prxContinueButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Store the amount in localStorage for completion handling
+                localStorage.setItem('coinPurchaseAmount', coinAmount.toString());
+                
+                // Close the popup
+                closePrxPopup();
+                
+                // Check if we have the necessary UV components already
+                const hasUvConfig = typeof window.__uv$config !== 'undefined';
+                
+                if (hasUvConfig) {
+                    // UV config is available, use it directly
+                    try {
+                        console.log("Using existing UV configuration");
+                        console.log("Proxying URL:", stripeUrl);
+                        console.log("Coin amount:", coinAmount);
+                        
+                        const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
+                        console.log("Encoded URL:", encodedUrl);
+                        
+                        // Open in a new blank tab and set the location to the proxied URL
+                        const newTab = window.open('about:blank', '_blank');
+                        if (newTab) {
+                            newTab.location.href = encodedUrl;
+                            showNotification("Opening payment page in new window", "success");
+                        } else {
+                            // Popup blocked, try direct URL
+                            console.log("Popup blocked, trying direct URL");
+                            window.open(stripeUrl, '_blank');
+                            showNotification("Opening payment page directly", "success");
+                        }
+                    } catch (err) {
+                        console.error("Error using UV:", err);
+                        // Fall back to direct URL
+                        window.open(stripeUrl, '_blank');
+                        showNotification("Opening payment page directly", "success");
+                    }
+                } else {
+                    // UV config is not available, try to find it in the page
+                    console.log("Looking for UV in the page");
+                    
+                    // Instead of loading scripts, try to use the registerSW function if available
+                    if (typeof registerSW === 'function') {
+                        console.log("Found registerSW function, using it");
+                        try {
+                            registerSW().then(() => {
+                                if (typeof window.__uv$config !== 'undefined') {
+                                    const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
+                                    
+                                    // Open in a new blank tab and set location to the proxied URL
+                                    const newTab = window.open('about:blank', '_blank');
+                                    if (newTab) {
+                                        newTab.location.href = encodedUrl;
+                                        showNotification("Opening payment page in new window", "success");
+                                    } else {
+                                        // Popup blocked, try direct URL
+                                        console.log("Popup blocked, trying direct URL");
+                                        window.open(stripeUrl, '_blank');
+                                        showNotification("Opening payment page directly", "success");
+                                    }
+                                } else {
+                                    throw new Error("UV config still not available after registerSW");
+                                }
+                            }).catch(err => {
+                                console.error("Error registering SW:", err);
+                                window.open(stripeUrl, '_blank');
+                                showNotification("Opening payment page directly", "success");
+                            });
+                        } catch (err) {
+                            console.error("Error with registerSW:", err);
+                            window.open(stripeUrl, '_blank');
+                            showNotification("Opening payment page directly", "success");
+                        }
+                    } else {
+                        // No known UV functions available, redirect to the real page with the URL
+                        console.log("No UV functions found, redirecting directly");
+                        window.open(stripeUrl, '_blank');
+                        showNotification("Opening payment page directly", "success");
+                    }
+                }
+            });
+        }
+        
+        // Set up the close button
+        const closeBtn = document.getElementById('close-prx-popup');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                closePrxPopup();
+            });
+        }
+    }, 10);
+}
+
 // Function to update coin shop items
 function updateCoinShopItems() {
     // Get the coins section
