@@ -3914,29 +3914,67 @@ function showPrxInstructionsPopup(coinAmount, stripeUrl) {
                 // Close the popup
                 closePrxPopup();
                 
-                try {
-                    // Simply use the UV config that should already be loaded
-                    // This matches how the reference code uses UV
-                    if (window.__uv && window.__uv$config) {
-                        // Encode the URL using UV
-                        const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
-                        console.log("Proxied URL:", encodedUrl);
+                // First ensure the UV scripts are loaded
+                const loadUVScripts = () => {
+                    return new Promise((resolve, reject) => {
+                        // Check if scripts are already loaded
+                        if (typeof window.__uv !== 'undefined' && typeof window.__uv$config !== 'undefined') {
+                            console.log("UV already loaded");
+                            return resolve();
+                        }
                         
-                        // Open in a new tab
-                        window.open(encodedUrl, '_blank');
-                        showNotification("Opening payment page in new window", "success");
-                    } else {
-                        // If UV isn't available, fall back to direct URL
-                        console.log("UV not available, using direct URL");
-                        window.open(stripeUrl, '_blank');
-                        showNotification("Opening payment page directly", "success");
-                    }
-                } catch (err) {
-                    console.error('Error using UV:', err);
-                    // Fallback to direct URL
+                        console.log("Loading UV scripts");
+                        
+                        // Load the bundle script first
+                        const uvBundle = document.createElement('script');
+                        uvBundle.src = '/uv/uv.bundle.js'; // Use absolute path
+                        document.body.appendChild(uvBundle);
+                        
+                        uvBundle.onload = function() {
+                            console.log("UV bundle loaded");
+                            
+                            // Then load the config script
+                            const uvConfig = document.createElement('script');
+                            uvConfig.src = '/uv/uv.config.js'; // Use absolute path
+                            document.body.appendChild(uvConfig);
+                            
+                            uvConfig.onload = function() {
+                                console.log("UV config loaded");
+                                
+                                // Check if the UV objects are now available
+                                if (typeof window.__uv !== 'undefined' && typeof window.__uv$config !== 'undefined') {
+                                    resolve();
+                                } else {
+                                    reject(new Error("UV failed to initialize after loading scripts"));
+                                }
+                            };
+                            
+                            uvConfig.onerror = function() {
+                                reject(new Error("Failed to load UV config script"));
+                            };
+                        };
+                        
+                        uvBundle.onerror = function() {
+                            reject(new Error("Failed to load UV bundle script"));
+                        };
+                    });
+                };
+                
+                // Load scripts and then process the URL
+                loadUVScripts().then(() => {
+                    console.log("UV initialized successfully");
+                    const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
+                    console.log("Encoded URL:", encodedUrl);
+                    
+                    // Navigate to the encoded URL
+                    window.location.href = `/Classes.html?game=${encodeURIComponent(encodedUrl)}`;
+                    showNotification("Redirecting to payment page", "success");
+                }).catch(err => {
+                    console.error("Error initializing UV:", err);
+                    // Fall back to direct URL
                     window.open(stripeUrl, '_blank');
                     showNotification("Opening payment page directly", "success");
-                }
+                });
             });
         }
         
