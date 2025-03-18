@@ -3916,103 +3916,58 @@ function showPrxInstructionsPopup(coinAmount, stripeUrl) {
                 
                 // Process the URL with proper UV handling
                 try {
-                    // Make sure UV script is loaded if not already
+                    // Load the UV scripts if needed
                     if (typeof __uv === 'undefined' || typeof __uv$config === 'undefined') {
-                        // Try to load UV script dynamically if not present
-                        console.log("Loading UV scripts dynamically");
+                        // Load scripts from the document or dynamically
+                        const script1 = document.createElement('script');
+                        script1.src = 'uv/uv.bundle.js';
+                        document.head.appendChild(script1);
                         
-                        // Create and load uv.bundle.js
-                        const uvBundle = document.createElement('script');
-                        uvBundle.src = 'uv/uv.bundle.js';
-                        document.head.appendChild(uvBundle);
+                        const script2 = document.createElement('script');
+                        script2.src = 'uv/uv.config.js';
+                        document.head.appendChild(script2);
                         
-                        // Create and load uv.config.js
-                        const uvConfig = document.createElement('script');
-                        uvConfig.src = 'uv/uv.config.js';
-                        document.head.appendChild(uvConfig);
-                        
-                        // Wait for scripts to load then proceed
-                        uvBundle.onload = function() {
-                            uvConfig.onload = function() {
-                                // Now process with UV
-                                processWithUV();
-                            };
+                        script2.onload = function() {
+                            setTimeout(openPaymentWindow, 500); // Give a moment for UV to initialize
                         };
                     } else {
-                        // UV is already loaded, proceed directly
-                        processWithUV();
+                        openPaymentWindow();
                     }
                     
-                    function processWithUV() {
-                        console.log("Processing with UV");
-                        // Encode URL using UV
-                        const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
-                        console.log("Encoded URL:", encodedUrl);
-                        
-                        // Open in a new blank window
-                        const newWindow = window.open('about:blank', '_blank');
-                        
-                        if (newWindow) {
-                            // Write the redirect to the new window
-                            newWindow.document.write(`
-                                <!DOCTYPE html>
-                                <html>
-                                <head>
-                                    <title>Redirecting...</title>
-                                    <style>
-                                        body {
-                                            font-family: Arial, sans-serif;
-                                            display: flex;
-                                            justify-content: center;
-                                            align-items: center;
-                                            height: 100vh;
-                                            margin: 0;
-                                            background-color: #f7f7f7;
-                                        }
-                                        .loader {
-                                            border: 5px solid #f3f3f3;
-                                            border-top: 5px solid #3498db;
-                                            border-radius: 50%;
-                                            width: 50px;
-                                            height: 50px;
-                                            animation: spin 1s linear infinite;
-                                            margin-right: 15px;
-                                        }
-                                        @keyframes spin {
-                                            0% { transform: rotate(0deg); }
-                                            100% { transform: rotate(360deg); }
-                                        }
-                                        .container {
-                                            display: flex;
-                                            align-items: center;
-                                        }
-                                    </style>
-                                </head>
-                                <body>
-                                    <div class="container">
-                                        <div class="loader"></div>
-                                        <h2>Redirecting to payment page...</h2>
-                                    </div>
-                                    <script>
-                                        // Redirect to the proxied URL
-                                        window.location.href = "${encodedUrl}";
-                                    </script>
-                                </body>
-                                </html>
-                            `);
-                            showNotification("Opening payment page in new window", "success");
-                        } else {
-                            // If popup was blocked, try direct link
-                            console.log("Popup blocked, trying direct URL");
-                            window.location.href = encodedUrl;
-                            showNotification("Redirecting to payment page", "success");
+                    function openPaymentWindow() {
+                        try {
+                            // Try to use UV to encode the URL
+                            if (typeof __uv !== 'undefined' && typeof __uv$config !== 'undefined') {
+                                console.log("Using UV for payment URL");
+                                const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
+                                
+                                // Open in a new window
+                                const newWindow = window.open(encodedUrl, '_blank');
+                                
+                                if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+                                    // Popup was blocked
+                                    console.log("Popup blocked, trying direct navigation");
+                                    window.location.href = encodedUrl;
+                                }
+                                
+                                showNotification("Opening payment in new window", "success");
+                            } else {
+                                // Fallback if UV is not available
+                                console.log("UV not initialized, using direct URL");
+                                window.open(stripeUrl, '_blank');
+                                showNotification("Opening payment directly", "success");
+                            }
+                        } catch (e) {
+                            console.error("Error in payment window:", e);
+                            window.open(stripeUrl, '_blank');
+                            showNotification("Opening payment directly", "success");
                         }
                     }
                 } catch (err) {
-                    console.error('Error processing URL with UV:', err);
-                    // Fallback to direct URL as last resort
+                    // Final fallback
+                    console.error("Error in PRX process:", err);
                     window.open(stripeUrl, '_blank');
-                    showNotification("Redirecting to payment page directly", "success");
+                    showNotification("Opening payment directly", "success");
                 }
             });
         }
