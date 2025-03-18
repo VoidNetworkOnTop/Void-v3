@@ -3920,20 +3920,38 @@ function showPrxInstructionsPopup(coinAmount, stripeUrl) {
                         // UV is available, use it
                         console.log("Using UV proxy for navigation");
                         const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
-                        window.location.href = encodedUrl;
+                        window.open(encodedUrl, '_blank');
                     } else {
-                        // UV not available, try direct navigation
-                        console.log("UV not available, using direct navigation");
-                        window.location.href = stripeUrl;
+                        // UV not available, try another approach for proxying
+                        console.log("UV not available, attempting alternative proxy approach");
                         
-                        // Show notification about direct navigation
-                        showNotification("Opening payment page directly", "success");
+                        // Check if we're on a proxy service by looking at the URL
+                        const currentUrl = window.location.href;
+                        
+                        // If we appear to be on a proxy already, construct a proxy URL
+                        if (currentUrl.includes('/service/') || currentUrl.includes('/prx/')) {
+                            // Try to extract the base URL of the proxy
+                            const baseUrl = currentUrl.split('/service/')[0] || currentUrl.split('/prx/')[0];
+                            if (baseUrl) {
+                                // Construct a proxied URL
+                                const proxiedUrl = `${baseUrl}/service/${stripeUrl}`;
+                                console.log("Opening proxied URL:", proxiedUrl);
+                                window.open(proxiedUrl, '_blank');
+                                showNotification("Opening payment in new window", "success");
+                                return;
+                            }
+                        }
+                        
+                        // If we can't determine a proxy approach, use direct navigation as last resort
+                        console.log("Falling back to direct URL:", stripeUrl);
+                        window.open(stripeUrl, '_blank');
+                        showNotification("Opening payment page in new window", "success");
                     }
                 } catch (err) {
                     console.error('Error processing URL:', err);
-                    // Fallback to direct URL as last resort
-                    window.location.href = stripeUrl;
-                    showNotification("Redirecting to payment page", "success");
+                    // Fallback to direct URL as last resort using window.open
+                    window.open(stripeUrl, '_blank');
+                    showNotification("Redirecting to payment page in new window", "success");
                 }
             });
         }
@@ -3949,7 +3967,6 @@ function showPrxInstructionsPopup(coinAmount, stripeUrl) {
         }
     }, 10);
 }
-
         // Function to close the coin popup
         function closeCoinPopup() {
             const coinPurchasePopup = document.getElementById('coin-purchase-popup');
