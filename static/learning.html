@@ -3890,57 +3890,65 @@ window.addEventListener('load', function() {
             }, 10);
         }
 
-        // Function to show PRX instructions popup
-        function showPrxInstructionsPopup(coinAmount, stripeUrl) {
-            const prxInstructionsPopup = document.getElementById('prx-instructions-popup');
-            
-            // Show the popup
-            prxInstructionsPopup.style.display = 'block';
-            
-            // Add visible class after a short delay for animation
-            setTimeout(() => {
-                prxInstructionsPopup.classList.add('visible');
+// Function to show PRX instructions popup
+function showPrxInstructionsPopup(coinAmount, stripeUrl) {
+    const prxInstructionsPopup = document.getElementById('prx-instructions-popup');
+    
+    // Show the popup
+    prxInstructionsPopup.style.display = 'block';
+    
+    // Add visible class after a short delay for animation
+    setTimeout(() => {
+        prxInstructionsPopup.classList.add('visible');
+        
+        // Set up the continue button
+        const prxContinueButton = document.getElementById('prx-continue-button');
+        if (prxContinueButton) {
+            prxContinueButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
                 
-                // Set up the continue button
-                const prxContinueButton = document.getElementById('prx-continue-button');
-                if (prxContinueButton) {
-                    prxContinueButton.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
-                        // Store the amount in localStorage for completion handling
-                        localStorage.setItem('coinPurchaseAmount', coinAmount.toString());
-                        
-                        // Close the popup
-                        closePrxPopup();
-                        
-                        // Process the URL through UV proxy
-                        try {
-                            if (window.__uv && __uv$config) {
-                                const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
-                                window.location.href = encodedUrl;
-                            } else {
-                                console.error("UV not properly initialized");
-                                showNotification("Error loading payment page. Please try again.", "error");
-                            }
-                        } catch (err) {
-                            console.error('Error encoding URL for PRX:', err);
-                            showNotification("Error loading payment page. Please try again.", "error");
-                        }
-                    });
-                }
+                // Store the amount in localStorage for completion handling
+                localStorage.setItem('coinPurchaseAmount', coinAmount.toString());
                 
-                // Set up the close button
-                const closeBtn = document.getElementById('close-prx-popup');
-                if (closeBtn) {
-                    closeBtn.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        closePrxPopup();
-                    });
+                // Close the popup
+                closePrxPopup();
+                
+                // Process the URL with fallback options
+                try {
+                    if (typeof window.__uv !== 'undefined' && typeof __uv$config !== 'undefined') {
+                        // UV is available, use it
+                        console.log("Using UV proxy for navigation");
+                        const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
+                        window.location.href = encodedUrl;
+                    } else {
+                        // UV not available, try direct navigation
+                        console.log("UV not available, using direct navigation");
+                        window.location.href = stripeUrl;
+                        
+                        // Show notification about direct navigation
+                        showNotification("Opening payment page directly", "success");
+                    }
+                } catch (err) {
+                    console.error('Error processing URL:', err);
+                    // Fallback to direct URL as last resort
+                    window.location.href = stripeUrl;
+                    showNotification("Redirecting to payment page", "success");
                 }
-            }, 10);
+            });
         }
+        
+        // Set up the close button
+        const closeBtn = document.getElementById('close-prx-popup');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                closePrxPopup();
+            });
+        }
+    }, 10);
+}
 
         // Function to close the coin popup
         function closeCoinPopup() {
