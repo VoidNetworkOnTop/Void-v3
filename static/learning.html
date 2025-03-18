@@ -3914,44 +3914,105 @@ function showPrxInstructionsPopup(coinAmount, stripeUrl) {
                 // Close the popup
                 closePrxPopup();
                 
-                // Process the URL with fallback options
+                // Process the URL with proper UV handling
                 try {
-                    if (typeof window.__uv !== 'undefined' && typeof __uv$config !== 'undefined') {
-                        // UV is available, use it
-                        console.log("Using UV proxy for navigation");
-                        const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
-                        window.open(encodedUrl, '_blank');
+                    // Make sure UV script is loaded if not already
+                    if (typeof __uv === 'undefined' || typeof __uv$config === 'undefined') {
+                        // Try to load UV script dynamically if not present
+                        console.log("Loading UV scripts dynamically");
+                        
+                        // Create and load uv.bundle.js
+                        const uvBundle = document.createElement('script');
+                        uvBundle.src = 'uv/uv.bundle.js';
+                        document.head.appendChild(uvBundle);
+                        
+                        // Create and load uv.config.js
+                        const uvConfig = document.createElement('script');
+                        uvConfig.src = 'uv/uv.config.js';
+                        document.head.appendChild(uvConfig);
+                        
+                        // Wait for scripts to load then proceed
+                        uvBundle.onload = function() {
+                            uvConfig.onload = function() {
+                                // Now process with UV
+                                processWithUV();
+                            };
+                        };
                     } else {
-                        // UV not available, try another approach for proxying
-                        console.log("UV not available, attempting alternative proxy approach");
+                        // UV is already loaded, proceed directly
+                        processWithUV();
+                    }
+                    
+                    function processWithUV() {
+                        console.log("Processing with UV");
+                        // Encode URL using UV
+                        const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(stripeUrl);
+                        console.log("Encoded URL:", encodedUrl);
                         
-                        // Check if we're on a proxy service by looking at the URL
-                        const currentUrl = window.location.href;
+                        // Open in a new blank window
+                        const newWindow = window.open('about:blank', '_blank');
                         
-                        // If we appear to be on a proxy already, construct a proxy URL
-                        if (currentUrl.includes('/service/') || currentUrl.includes('/prx/')) {
-                            // Try to extract the base URL of the proxy
-                            const baseUrl = currentUrl.split('/service/')[0] || currentUrl.split('/prx/')[0];
-                            if (baseUrl) {
-                                // Construct a proxied URL
-                                const proxiedUrl = `${baseUrl}/service/${stripeUrl}`;
-                                console.log("Opening proxied URL:", proxiedUrl);
-                                window.open(proxiedUrl, '_blank');
-                                showNotification("Opening payment in new window", "success");
-                                return;
-                            }
+                        if (newWindow) {
+                            // Write the redirect to the new window
+                            newWindow.document.write(`
+                                <!DOCTYPE html>
+                                <html>
+                                <head>
+                                    <title>Redirecting...</title>
+                                    <style>
+                                        body {
+                                            font-family: Arial, sans-serif;
+                                            display: flex;
+                                            justify-content: center;
+                                            align-items: center;
+                                            height: 100vh;
+                                            margin: 0;
+                                            background-color: #f7f7f7;
+                                        }
+                                        .loader {
+                                            border: 5px solid #f3f3f3;
+                                            border-top: 5px solid #3498db;
+                                            border-radius: 50%;
+                                            width: 50px;
+                                            height: 50px;
+                                            animation: spin 1s linear infinite;
+                                            margin-right: 15px;
+                                        }
+                                        @keyframes spin {
+                                            0% { transform: rotate(0deg); }
+                                            100% { transform: rotate(360deg); }
+                                        }
+                                        .container {
+                                            display: flex;
+                                            align-items: center;
+                                        }
+                                    </style>
+                                </head>
+                                <body>
+                                    <div class="container">
+                                        <div class="loader"></div>
+                                        <h2>Redirecting to payment page...</h2>
+                                    </div>
+                                    <script>
+                                        // Redirect to the proxied URL
+                                        window.location.href = "${encodedUrl}";
+                                    </script>
+                                </body>
+                                </html>
+                            `);
+                            showNotification("Opening payment page in new window", "success");
+                        } else {
+                            // If popup was blocked, try direct link
+                            console.log("Popup blocked, trying direct URL");
+                            window.location.href = encodedUrl;
+                            showNotification("Redirecting to payment page", "success");
                         }
-                        
-                        // If we can't determine a proxy approach, use direct navigation as last resort
-                        console.log("Falling back to direct URL:", stripeUrl);
-                        window.open(stripeUrl, '_blank');
-                        showNotification("Opening payment page in new window", "success");
                     }
                 } catch (err) {
-                    console.error('Error processing URL:', err);
-                    // Fallback to direct URL as last resort using window.open
+                    console.error('Error processing URL with UV:', err);
+                    // Fallback to direct URL as last resort
                     window.open(stripeUrl, '_blank');
-                    showNotification("Redirecting to payment page in new window", "success");
+                    showNotification("Redirecting to payment page directly", "success");
                 }
             });
         }
