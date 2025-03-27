@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>edpuzzle.com</title>
+    <title>Void Network</title>
     
     <!-- Critical hints to prioritize game display -->
     <meta http-equiv="Page-Speed" content="High">
@@ -75,15 +75,16 @@
             display: flex;
             width: 100%;
             height: 100%;
-            padding-top: 50px; /* For header */
+            padding-top: 60px; /* Extra padding for header */
+            padding-bottom: 10px;
             box-sizing: border-box;
         }
 
         /* Main game container - independently styled */
         .game_container {
             background: #0a0a0a;
-            width: 75%;
-            height: 90vh; 
+            width: 72%; /* Slightly smaller to prevent cutoff */
+            height: 85vh; /* Smaller height to prevent cutoff */
             border-radius: 24px;
             display: flex;
             flex-direction: column;
@@ -103,7 +104,7 @@
         /* Game suggestions container - independently styled */
         .suggestions_container {
             width: 22%;
-            height: 90vh;
+            height: 85vh; /* Match the game container height */
             margin-left: 20px;
             display: flex;
             flex-direction: column;
@@ -291,7 +292,7 @@
             flex-direction: column;
             gap: 15px;
             overflow-y: auto;
-            max-height: 75vh;
+            max-height: 70vh;
         }
         
         .suggestion_item {
@@ -362,17 +363,6 @@
             fill: currentColor;
         }
 
-        /* Error message */
-        .error-message {
-            color: #ff5555;
-            text-align: center;
-            margin: 15px;
-            padding: 10px;
-            background: rgba(255, 0, 0, 0.1);
-            border-radius: 8px;
-            border: 1px solid rgba(255, 0, 0, 0.2);
-        }
-
         /* Responsive design */
         @media (max-width: 1200px) {
             .page_content {
@@ -380,11 +370,12 @@
                 align-items: center;
                 overflow-y: auto;
                 height: auto;
+                padding-bottom: 20px;
             }
             
             .game_container {
                 width: 90%;
-                height: 70vh;
+                height: 65vh;
                 margin-bottom: 20px;
             }
             
@@ -466,107 +457,48 @@
                     <h3 class="suggestions_title">More Games To Try</h3>
                 </div>
                 <div class="suggestions_content" id="gameSuggestions">
-                    <!-- Loading placeholder for suggested games -->
-                    <div id="suggestionsLoading" style="text-align:center; padding:20px;">
-                        <div style="width:30px; height:30px; border:3px solid rgba(100,180,255,0.2); border-top:3px solid #fff; border-radius:50%; animation:spin 1s linear infinite; margin:0 auto;"></div>
-                        <p style="margin-top:10px; color:#aaa;">Loading suggestions...</p>
-                    </div>
+                    <!-- Fixed game suggestions to avoid loading errors -->
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Script for direct access to games data -->
+    <!-- Script with hardcoded game suggestions (avoids loading errors) -->
     <script>
-        // Global variable to store all games once they're loaded
-        let allGames = [];
+        // Predefined popular games that don't depend on dynamic loading
+        const popularGames = [
+            {
+                title: "Slope",
+                imgSrc: "/gameimg/slopegame.webp",
+                link: "/uv/service/aHR0cHM6Ly9rYXp3aXJlLmNvbS9jZG4vZ2FtZS9zdGF0aWMvc2xvcGUvaW5kZXguaHRtbA=="
+            },
+            {
+                title: "1v1.lol",
+                imgSrc: "/gameimg/1v1lol.png",
+                link: "/uv/service/aHR0cHM6Ly8xdjEuc2Nob29s"
+            },
+            {
+                title: "Minecraft",
+                imgSrc: "/gameimg/minecraft.avif",
+                link: "/uv/service/aHR0cHM6Ly9tZWFkb3ctY29jb251dC1idXR0ZXJjdXAuZ2xpdGNoLm1l"
+            },
+            {
+                title: "Among Us",
+                imgSrc: "/gameimg/Amoungus.png",
+                link: "/uv/service/aHR0cHM6Ly9vdm8tZ2FtZS5naXRodWIuaW8vby9hbW9uZy11cw=="
+            },
+            {
+                title: "FNAF",
+                imgSrc: "/gameimg/fnaf.png",
+                link: "/uv/service/aHR0cHM6Ly9pbGlpbGwxLmdpdGh1Yi5pby9nbXovZm5hZi9pbmRleC5odG1s"
+            }
+        ];
         
-        // Key for storing game clicks in localStorage or sessionStorage
+        // Keys for localStorage
         const GAME_CLICKS_KEY = 'void_network_game_clicks';
         const GLOBAL_CLICKS_KEY = 'global_game_clicks';
         
-        // Function to load game data directly (more reliable than imports)
-        async function loadGamesData() {
-            try {
-                // First ensure UV config is loaded (needed for game links)
-                if (!window.__uv$config) {
-                    console.log("Waiting for UV config to load...");
-                    await new Promise(resolve => {
-                        const checkInterval = setInterval(() => {
-                            if (window.__uv$config) {
-                                clearInterval(checkInterval);
-                                resolve();
-                            }
-                        }, 100);
-                        
-                        // Timeout after 5 seconds
-                        setTimeout(() => {
-                            clearInterval(checkInterval);
-                            console.warn("UV config load timeout - continuing anyway");
-                            resolve();
-                        }, 5000);
-                    });
-                }
-                
-                // Fetch both game data files
-                const [gamesResponse, games2Response] = await Promise.all([
-                    fetch('/assets/json/games.js'),
-                    fetch('/assets/json/games2.js')
-                ]);
-                
-                if (!gamesResponse.ok || !games2Response.ok) {
-                    throw new Error('Failed to fetch game data files');
-                }
-                
-                const gamesText = await gamesResponse.text();
-                const games2Text = await games2Response.text();
-                
-                // Extract array data using a safer method than eval
-                const extractArrayData = (text) => {
-                    // Find the array definition between brackets
-                    const match = text.match(/const\s+\w+\s*=\s*(\[[\s\S]*?\]);/);
-                    if (match && match[1]) {
-                        // Use Function constructor instead of eval for better safety
-                        // Still has security implications but safer than eval in this context
-                        try {
-                            return new Function(`return ${match[1]}`)();
-                        } catch (e) {
-                            console.error("Error parsing game data:", e);
-                            return [];
-                        }
-                    }
-                    return [];
-                };
-                
-                const gamesData = extractArrayData(gamesText);
-                const games2Data = extractArrayData(games2Text);
-                
-                console.log(`Loaded ${gamesData.length} games from games.js`);
-                console.log(`Loaded ${games2Data.length} games from games2.js`);
-                
-                // Combine all games
-                allGames = [...gamesData, ...games2Data];
-                console.log(`Total games loaded: ${allGames.length}`);
-                
-                return allGames;
-            } catch (error) {
-                console.error("Error loading games data:", error);
-                const suggestionsElement = document.getElementById('gameSuggestions');
-                if (suggestionsElement) {
-                    suggestionsElement.innerHTML = `
-                        <div class="error-message">
-                            Error loading game suggestions: ${error.message}
-                            <button onclick="loadGamesData().then(loadRandomGameSuggestions)" style="margin-top:10px; background:#333; color:#fff; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">
-                                Try Again
-                            </button>
-                        </div>
-                    `;
-                }
-                return [];
-            }
-        }
-        
-        // Game clicks tracking system - both local and simulated global
+        // Game clicks tracking system
         function getGameClickCounts() {
             const storedData = localStorage.getItem(GAME_CLICKS_KEY);
             return storedData ? JSON.parse(storedData) : {};
@@ -576,16 +508,15 @@
             localStorage.setItem(GAME_CLICKS_KEY, JSON.stringify(clickCounts));
         }
         
-        // Simulated "global" click counts (would be server-side in production)
+        // Simulated "global" click counts
         function getGlobalClickCounts() {
             let storedData = localStorage.getItem(GLOBAL_CLICKS_KEY);
             if (!storedData) {
-                // Initialize with some random counts if not present
+                // Initialize with some random counts
                 const globalCounts = {};
-                for (const game of allGames) {
-                    // Random number between 10 and 1000
+                popularGames.forEach(game => {
                     globalCounts[game.title] = Math.floor(Math.random() * 990) + 10;
-                }
+                });
                 localStorage.setItem(GLOBAL_CLICKS_KEY, JSON.stringify(globalCounts));
                 storedData = localStorage.getItem(GLOBAL_CLICKS_KEY);
             }
@@ -596,7 +527,7 @@
             localStorage.setItem(GLOBAL_CLICKS_KEY, JSON.stringify(clickCounts));
         }
         
-        // Increment click count for a game (both local and global)
+        // Increment click count for a game
         function incrementGameClickCount(gameTitle) {
             if (!gameTitle) return;
             
@@ -605,70 +536,34 @@
             clickCounts[gameTitle] = (clickCounts[gameTitle] || 0) + 1;
             saveGameClickCounts(clickCounts);
             
-            // Update "global" clicks (simulated)
+            // Update "global" clicks
             const globalCounts = getGlobalClickCounts();
             globalCounts[gameTitle] = (globalCounts[gameTitle] || 0) + 1;
             saveGlobalClickCounts(globalCounts);
             
-            console.log(`Incremented click count for ${gameTitle} - now at ${globalCounts[gameTitle]} global plays`);
+            console.log(`Incremented click count for ${gameTitle}`);
         }
         
-        // Find a game title by its URL
-        function findGameTitleByUrl(url) {
-            if (!allGames || allGames.length === 0) return null;
-            const game = allGames.find(g => g.link === url);
-            return game ? game.title : null;
-        }
-        
-        // Get random games, excluding current one
-        function getRandomGames(count = 3, excludeUrl = null) {
-            if (!allGames || allGames.length === 0) return [];
-            
-            // Filter out the current game
-            const availableGames = excludeUrl 
-                ? allGames.filter(game => game.link !== excludeUrl)
-                : [...allGames];
-            
-            // Shuffle and slice
-            return [...availableGames]
-                .sort(() => 0.5 - Math.random())
-                .slice(0, Math.min(count, availableGames.length));
-        }
-        
-        // Load random game suggestions
-        function loadRandomGameSuggestions() {
+        // Load suggested games (using predefined data instead of dynamically loading)
+        function loadGameSuggestions() {
             const suggestionsElement = document.getElementById('gameSuggestions');
             if (!suggestionsElement) return;
             
             // Clear current suggestions
             suggestionsElement.innerHTML = '';
             
-            // Remove loading indicator
-            const loadingElement = document.getElementById('suggestionsLoading');
-            if (loadingElement) {
-                loadingElement.remove();
-            }
-            
             // Get current game URL
             const urlParams = new URLSearchParams(window.location.search);
             const currentGameUrl = urlParams.get('game');
             
-            // Get global click counts for sorting
+            // Filter out current game and get up to 3 random games
+            const availableGames = popularGames.filter(game => game.link !== currentGameUrl);
+            const randomGames = getRandomGames(availableGames, 3);
+            
+            // Get global click counts
             const globalCounts = getGlobalClickCounts();
             
-            // Get random suggestions
-            const randomGames = getRandomGames(3, currentGameUrl);
-            
-            if (randomGames.length === 0) {
-                suggestionsElement.innerHTML = `
-                    <div style="text-align:center; padding:15px; color:#aaa;">
-                        No game suggestions available
-                    </div>
-                `;
-                return;
-            }
-            
-            // Add each suggestion with its play count
+            // Add suggestions to container
             randomGames.forEach(game => {
                 const playCount = globalCounts[game.title] || 0;
                 
@@ -694,17 +589,23 @@
                 
                 // Add click handler
                 suggestionElement.addEventListener('click', function() {
-                    loadSuggestedGame(game.link, game.title);
+                    loadSuggestedGame(game);
                 });
                 
                 suggestionsElement.appendChild(suggestionElement);
             });
         }
         
+        // Function to get random games
+        function getRandomGames(games, count) {
+            const shuffled = [...games].sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, Math.min(count, shuffled.length));
+        }
+        
         // Function to load a suggested game
-        function loadSuggestedGame(gameUrl, gameTitle) {
+        function loadSuggestedGame(game) {
             // Track click
-            incrementGameClickCount(gameTitle);
+            incrementGameClickCount(game.title);
             
             // Show loading screen
             gameLoaded = false;
@@ -718,16 +619,16 @@
             
             // Use setTimeout to ensure the loading screen appears before navigating
             setTimeout(function() {
-                iframe.src = gameUrl;
+                iframe.src = game.link;
                 
                 // Update URL without page reload
                 const urlParams = new URLSearchParams(window.location.search);
-                urlParams.set('game', gameUrl);
+                urlParams.set('game', game.link);
                 const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
                 window.history.pushState({ path: newUrl }, '', newUrl);
                 
                 // Refresh game suggestions
-                loadRandomGameSuggestions();
+                loadGameSuggestions();
                 
                 // Start checking for visible content
                 startVisibilityCheck();
@@ -735,7 +636,7 @@
         }
     </script>
 
-    <!-- Global JavaScript - Define functions in global scope -->
+    <!-- Game loading and handling script -->
     <script>
         // Define our functions in global scope first
         let iframe;
@@ -820,7 +721,7 @@
             }
         }
         
-        // Load game function
+        // Load game function - loads game directly without waiting for other resources
         function loadGame() {
             const urlParams = new URLSearchParams(window.location.search);
             const gameUrl = urlParams.get('game');
@@ -830,12 +731,10 @@
                 return;
             }
             
-            // Track game click if we have the title
-            const gameTitle = findGameTitleByUrl(gameUrl);
-            if (gameTitle) {
-                incrementGameClickCount(gameTitle);
-            } else {
-                console.log("Could not find game title for:", gameUrl);
+            // Find game title if possible from our predefined list
+            const gameInfo = popularGames.find(g => g.link === gameUrl);
+            if (gameInfo) {
+                incrementGameClickCount(gameInfo.title);
             }
             
             // Set iframe src to load game
@@ -864,14 +763,14 @@
                     checkIframeVisibility();
                 }, 500);
                 
-                // Set max wait time - after 20 seconds, show game regardless
+                // Set max wait time - after 15 seconds, show game regardless
                 setTimeout(function() {
                     if (!gameLoaded) {
                         hideLoadingScreen();
                         loadingText.textContent = "Game may still be loading...";
                     }
-                }, 20000);
-            }, 2000);
+                }, 15000);
+            }, 1500);
         }
         
         // Check iframe visibility
@@ -886,7 +785,7 @@
                 try {
                     if (iframe.contentWindow && iframe.contentWindow.document.readyState === 'complete') {
                         // Additional wait to let the game render
-                        setTimeout(hideLoadingScreen, 1500);
+                        setTimeout(hideLoadingScreen, 1000);
                         return;
                     }
                 } catch (e) {
@@ -894,8 +793,8 @@
                 }
                 
                 // Method 2: Simple time-based detection
-                // If iframe has loaded for 8+ seconds, assume content is there
-                if (iframe.dataset.loadTime && new Date().getTime() - parseInt(iframe.dataset.loadTime) > 8000) {
+                // If iframe has loaded for 6+ seconds, assume content is there
+                if (iframe.dataset.loadTime && new Date().getTime() - parseInt(iframe.dataset.loadTime) > 6000) {
                     hideLoadingScreen();
                 }
             } catch (e) {
@@ -922,7 +821,7 @@
         }
         
         // Initialize when DOM is ready
-        document.addEventListener('DOMContentLoaded', async function() {
+        document.addEventListener('DOMContentLoaded', function() {
             // Get DOM elements
             iframe = document.getElementById('gframe');
             loadingScreen = document.getElementById('loadingScreen');
@@ -940,7 +839,7 @@
                     if (!gameLoaded) {
                         loadingText.textContent = "Almost ready...";
                     }
-                }, 2000);
+                }, 1500);
             });
             
             // Show Game button click handler
@@ -967,14 +866,11 @@
                 }
             });
             
-            // Load games data first
-            await loadGamesData();
-            
-            // Then load game suggestions
-            loadRandomGameSuggestions();
-            
-            // Start loading game
+            // Load game immediately (without waiting for other resources)
             loadGame();
+            
+            // Load game suggestions in parallel
+            setTimeout(loadGameSuggestions, 100);
         });
     </script>
 
