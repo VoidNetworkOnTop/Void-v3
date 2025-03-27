@@ -199,7 +199,11 @@ const games2Data = [
     imgSrc: "https://poeltl.nbpa.com/public/assets/183263d0-aa82-11ee-b417-db331415685f-W3Oc8TwNRI2qEKKc.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://poeltl.nbpa.com")
 },
-
+{
+    title: "Drive Mad 2", 
+    imgSrc: "https://lh7-us.googleusercontent.com/5F8Pz6v8-BwPCrwocDeK4flw-nkWCj3SvI2jXRzPB3t-51_bBoFDs0JMuFBaFVX8gIy54-L348JvZm42CDgeFNdDABjk9fzAUi9kUfHLDo2HQxLCatTCgKf4AhNpVsRYFJ2R5liv77dEgdRdrmdKgDHK1f6UEK0ApA-9JXrZnIMYgHIZqZhVGH_utYo0yqD4c8LMlm71?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://monstertracks.github.io/file/")
+},
 
 
    ];
