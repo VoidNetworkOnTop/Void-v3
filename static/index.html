@@ -248,6 +248,91 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
     }
 
+    /* Popular Games Section */
+    .popular-games-section {
+        padding: 1.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .popular-games-title {
+        font-size: 1.4rem;
+        margin: 0 0 1rem 0;
+        color: #ffcc00;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        text-align: center;
+        text-shadow: 0 0 10px rgba(255, 204, 0, 0.3);
+    }
+
+    .popular-games-container {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .popular-game-item {
+        padding: 0.8rem;
+        background: rgba(255, 204, 0, 0.1);
+        border-radius: 8px;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        text-align: center;
+        border: 1px solid rgba(255, 204, 0, 0.2);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.6rem;
+        width: 100px;
+    }
+
+    .popular-game-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        box-shadow: 0 0 10px rgba(255, 204, 0, 0.2);
+    }
+
+    .popular-game-icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .popular-game-title {
+        font-size: 0.9rem;
+        color: #ffcc00;
+        margin: 0;
+        font-weight: normal;
+        transition: all 0.3s ease;
+    }
+
+    .popular-game-item:hover {
+        background: rgba(255, 204, 0, 0.15);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        border-color: rgba(255, 204, 0, 0.3);
+    }
+
+    .popular-game-item:hover .popular-game-title {
+        color: #ffdd33;
+        text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+    }
+
+    .play-count {
+        font-size: 0.7rem;
+        color: rgba(255, 255, 255, 0.7);
+        background: rgba(0, 0, 0, 0.3);
+        padding: 0.15rem 0.4rem;
+        border-radius: 10px;
+        margin-top: 0.3rem;
+    }
+
     @media (max-width: 768px) {
         .games-box {
             width: 95%;
@@ -274,6 +359,24 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         .scrollable-content {
             padding: 1rem;
         }
+
+        .popular-games-container {
+            gap: 0.5rem;
+        }
+
+        .popular-game-item {
+            width: 85px;
+            padding: 0.6rem;
+        }
+
+        .popular-game-icon {
+            width: 40px;
+            height: 40px;
+        }
+
+        .popular-game-title {
+            font-size: 0.8rem;
+        }
     }
     </style>
 </head>
@@ -294,6 +397,12 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                 <h1 class="site-title">Void Network</h1>
                 <h2 class="games-title">Games</h2>
                 <input type="text" id="searchGames" placeholder="Search games...">
+            </div>
+
+            <!-- Popular Games Section -->
+            <div class="popular-games-section">
+                <h3 class="popular-games-title">Popular Games</h3>
+                <div class="popular-games-container" id="popularGamesList"></div>
             </div>
 
             <div class="scrollable-content">
@@ -552,10 +661,11 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     });
 </script>
 
-<!-- Games Loading and Header/Footer Inclusion -->
+<!-- Games Loading and Header/Footer Inclusion with Game Click Tracking -->
 <script type="module">
     try {
         const gamesList = document.getElementById("gamesList");
+        const popularGamesList = document.getElementById("popularGamesList");
         
         await new Promise(resolve => {
             if (window.__uv$config) {
@@ -575,17 +685,123 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         
         const games = [...gamesData, ...games2Data];
 
+        // Game clicks tracking system
+        const GAME_CLICKS_KEY = 'game_click_counts';
+        
+        // Get the current click counts from localStorage
+        function getGameClickCounts() {
+            const storedData = localStorage.getItem(GAME_CLICKS_KEY);
+            return storedData ? JSON.parse(storedData) : {};
+        }
+        
+        // Save click counts to localStorage
+        function saveGameClickCounts(clickCounts) {
+            localStorage.setItem(GAME_CLICKS_KEY, JSON.stringify(clickCounts));
+        }
+        
+        // Increment click count for a game
+        function incrementGameClickCount(gameTitle) {
+            const clickCounts = getGameClickCounts();
+            clickCounts[gameTitle] = (clickCounts[gameTitle] || 0) + 1;
+            saveGameClickCounts(clickCounts);
+            updatePopularGames(); // Refresh the popular games section
+        }
+        
+        // Update the popular games section
+        function updatePopularGames() {
+            const clickCounts = getGameClickCounts();
+            
+            // Convert to array for sorting
+            const gameClicksArray = Object.entries(clickCounts).map(([title, count]) => ({
+                title,
+                count
+            }));
+            
+            // Sort by click count in descending order
+            gameClicksArray.sort((a, b) => b.count - a.count);
+            
+            // Take only the top 5 or fewer
+            const topGames = gameClicksArray.slice(0, 5);
+            
+            // Clear the container
+            popularGamesList.innerHTML = '';
+            
+            if (topGames.length === 0) {
+                popularGamesList.innerHTML = '<div style="color: #ffcc00; text-align: center; width: 100%;">Play some games to see your favorites here!</div>';
+                return;
+            }
+            
+            // Add each popular game
+            topGames.forEach(gameData => {
+                const gameInfo = games.find(g => g.title === gameData.title);
+                if (gameInfo) {
+                    const gameElement = createPopularGameElement(gameInfo, gameData.count);
+                    popularGamesList.appendChild(gameElement);
+                }
+            });
+        }
+        
+        // Create a popular game element
+        function createPopularGameElement(game, clickCount) {
+            const gameElement = document.createElement("div");
+            gameElement.className = "popular-game-item";
+            gameElement.innerHTML = `
+                <div class="popular-game-icon">
+                    <img src="${game.imgSrc}" alt="${game.title} icon">
+                </div>
+                <h3 class="popular-game-title">${game.title}</h3>
+                <span class="play-count">${clickCount} plays</span>
+            `;
+            
+            // Add click handler
+            gameElement.onclick = async () => {
+                incrementGameClickCount(game.title);
+                
+                // Show loading overlay
+                const loadingOverlay = document.getElementById('loadingOverlay');
+                if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
+                    loadingOverlay.classList.remove('fade-out');
+                    document.getElementById('loadingText').textContent = 'Preparing game...';
+                    document.getElementById('progressFill').style.width = '0%';
+                }
+                
+                try {
+                    // Progress animation
+                    const progressFill = document.getElementById('progressFill');
+                    if (progressFill) {
+                        progressFill.style.width = '30%';
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        progressFill.style.width = '60%';
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        progressFill.style.width = '100%';
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                    }
+                } catch (error) {
+                    console.error('Error in loading animation:', error);
+                } finally {
+                    // Navigate to the game
+                    window.location.href = `/Classes.html?game=${encodeURIComponent(game.link)}`;
+                }
+            };
+            
+            return gameElement;
+        }
+
         function loadGame(game) {
             const gameElement = document.createElement("div");
             gameElement.className = "game-item";
-            gameElement.innerHTML = `<div class="game-icon">
+            gameElement.innerHTML = `
+                <div class="game-icon">
                     <img src="${game.imgSrc}" alt="${game.title} icon">
                 </div>
                 <h3 class="game-title">${game.title}</h3>
             `;
             
-            // Update click handler to work with service worker scope limitations
+            // Update click handler to track clicks
             gameElement.onclick = async () => {
+                // Track the click
+                incrementGameClickCount(game.title);
+                
                 // Show loading overlay
                 const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
@@ -620,6 +836,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             games.forEach(game => {
                 loadGame(game);
             });
+            
+            // Initialize the popular games section
+            updatePopularGames();
         } else {
             console.error("Games is not an array:", games);
             gamesList.innerHTML = '<div style="color: white;">Error: Games data is not in the correct format</div>';
