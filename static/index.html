@@ -247,6 +247,15 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         padding: 3px 8px;
         border-radius: 10px;
         border: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .play-count-icon {
+        width: 10px;
+        height: 10px;
+        opacity: 0.7;
     }
 
     .game-item:hover {
@@ -357,6 +366,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         padding: 0.15rem 0.4rem;
         border-radius: 10px;
         margin-top: 0.3rem;
+        display: flex;
+        align-items: center;
+        gap: 4px;
     }
 
     .trophy-icon {
@@ -595,6 +607,214 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     </div>
 </div>
 
+<!-- Simple Game Stats Module -->
+<script>
+    /**
+     * GameStats - A simple module for tracking game play statistics
+     * Uses localStorage to track play counts for games
+     */
+    const GameStats = {
+        // Storage key for play counts
+        PLAY_COUNTS_KEY: 'void_network_play_counts',
+        
+        /**
+         * Get all play counts from storage
+         * @returns {Object} Object with game IDs as keys and play counts as values
+         */
+        getPlayCounts: function() {
+            const stored = localStorage.getItem(this.PLAY_COUNTS_KEY);
+            if (!stored) {
+                return this.initializePlayCounts();
+            }
+            
+            try {
+                return JSON.parse(stored);
+            } catch (error) {
+                console.error('Error parsing play counts:', error);
+                return this.initializePlayCounts();
+            }
+        },
+        
+        /**
+         * Initialize play counts with default values
+         * @returns {Object} Default play counts
+         */
+        initializePlayCounts: function() {
+            // Default play counts for popular games
+            const defaultCounts = {
+                'minecraft': 34852,
+                'slope': 29461,
+                '1v1lol': 21593,
+                'amoungus': 18742,
+                'fnaf': 16983,
+                'retrobowl': 15742,
+                'subwaysurfers': 14523,
+                'cookieclicker': 12864,
+                'gunmayhem': 11582,
+                'tanukisunset': 10423,
+                'ducklife': 9752,
+                'drivemad': 8941,
+                'tunnel': 7845,
+                'paperio': 6723,
+                'flappybird': 5912
+            };
+            
+            // Save to local storage
+            localStorage.setItem(this.PLAY_COUNTS_KEY, JSON.stringify(defaultCounts));
+            
+            return defaultCounts;
+        },
+        
+        /**
+         * Save play counts to storage
+         * @param {Object} counts Object with game IDs as keys and play counts as values
+         */
+        savePlayCounts: function(counts) {
+            localStorage.setItem(this.PLAY_COUNTS_KEY, JSON.stringify(counts));
+        },
+        
+        /**
+         * Increment the play count for a specific game
+         * @param {string} gameId ID of the game to increment
+         * @returns {number} New play count
+         */
+        incrementPlayCount: function(gameId) {
+            if (!gameId) return 0;
+            
+            const counts = this.getPlayCounts();
+            
+            // Initialize count if not present
+            if (!counts[gameId]) {
+                counts[gameId] = 0;
+            }
+            
+            // Increment count
+            counts[gameId]++;
+            
+            // Save updated counts
+            this.savePlayCounts(counts);
+            
+            console.log(`Incremented play count for ${gameId}: ${counts[gameId]}`);
+            
+            return counts[gameId];
+        },
+        
+        /**
+         * Get play count for a specific game
+         * @param {string} gameId ID of the game
+         * @returns {number} Play count
+         */
+        getPlayCount: function(gameId) {
+            if (!gameId) return 0;
+            
+            const counts = this.getPlayCounts();
+            return counts[gameId] || 0;
+        },
+        
+        /**
+         * Get the top N most played games
+         * @param {number} limit Maximum number of games to return
+         * @returns {Array} Array of game IDs sorted by play count
+         */
+        getTopGames: function(limit = 5) {
+            const counts = this.getPlayCounts();
+            
+            // Convert to array of [id, count] pairs
+            const countArray = Object.entries(counts);
+            
+            // Sort by count in descending order
+            countArray.sort((a, b) => b[1] - a[1]);
+            
+            // Return just the game IDs, limited to requested amount
+            return countArray.slice(0, limit).map(pair => pair[0]);
+        }
+    };
+
+    /**
+     * Game Database - Game information and ID mapping
+     */
+    const GameDB = {
+        // Map of game IDs to objects with information
+        games: {},
+        
+        // Map of game URLs to IDs for lookup
+        urlToId: {},
+
+        /**
+         * Initialize the game database with game data from files
+         * @param {Array} games Array of game objects
+         */
+        initializeWithGames: function(games) {
+            if (!Array.isArray(games)) return;
+            
+            games.forEach(game => {
+                // Create a simple ID from title
+                const id = this.createIdFromTitle(game.title);
+                
+                // Store game info with ID
+                this.games[id] = {
+                    id: id,
+                    title: game.title,
+                    imgSrc: game.imgSrc,
+                    link: game.link
+                };
+                
+                // Store URL to ID mapping for lookup
+                this.urlToId[game.link] = id;
+            });
+            
+            console.log(`Initialized game database with ${Object.keys(this.games).length} games`);
+        },
+        
+        /**
+         * Create a simple ID from a game title
+         * @param {string} title Game title
+         * @returns {string} Simple ID
+         */
+        createIdFromTitle: function(title) {
+            return title.toLowerCase()
+                .replace(/[^a-z0-9]+/g, '') // Remove non-alphanumeric chars
+                .replace(/\s+/g, '');       // Remove spaces
+        },
+        
+        /**
+         * Get game information by ID
+         * @param {string} id Game ID
+         * @returns {Object|null} Game object or null if not found
+         */
+        getGameById: function(id) {
+            return this.games[id] || null;
+        },
+        
+        /**
+         * Get game ID from URL
+         * @param {string} url Game URL
+         * @returns {string|null} Game ID or null if not found
+         */
+        getGameIdFromUrl: function(url) {
+            return this.urlToId[url] || null;
+        },
+        
+        /**
+         * Get game information by URL
+         * @param {string} url Game URL
+         * @returns {Object|null} Game object or null if not found
+         */
+        getGameByUrl: function(url) {
+            const id = this.getGameIdFromUrl(url);
+            return id ? this.getGameById(id) : null;
+        },
+        
+        /**
+         * Get all games as an array
+         * @returns {Array} Array of game objects
+         */
+        getAllGames: function() {
+            return Object.values(this.games);
+        }
+    };
+</script>
+
 <!-- Loading Script -->
 <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -731,224 +951,170 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     });
 </script>
 
-<!-- Games Loading and Header/Footer Inclusion with Global Game Click Tracking -->
-<script>
-    // Constants for localStorage keys
-    const GAME_CLICKS_KEY = 'void_network_game_clicks';
-    const GLOBAL_CLICKS_KEY = 'global_game_clicks';
-    
-    // Function to load games data directly (more reliable than imports)
-    async function loadGamesData() {
-        try {
-            // First ensure UV config is loaded (needed for game links)
-            if (!window.__uv$config) {
-                console.log("Waiting for UV config to load...");
-                await new Promise(resolve => {
-                    const checkInterval = setInterval(() => {
-                        if (window.__uv$config) {
-                            clearInterval(checkInterval);
-                            resolve();
-                        }
-                    }, 100);
-                    
-                    // Timeout after 5 seconds
-                    setTimeout(() => {
-                        clearInterval(checkInterval);
-                        console.warn("UV config load timeout - continuing anyway");
+<!-- Games Loading and Header/Footer Inclusion with Game Click Tracking -->
+<script type="module">
+    try {
+        const gamesList = document.getElementById("gamesList");
+        const popularGamesList = document.getElementById("popularGamesList");
+        
+        // Wait for UV config to be available
+        await new Promise(resolve => {
+            if (window.__uv$config) {
+                resolve();
+            } else {
+                const checkUV = setInterval(() => {
+                    if (window.__uv$config) {
+                        clearInterval(checkUV);
                         resolve();
-                    }, 5000);
-                });
-            }
-            
-            // Fetch both game data files
-            const [gamesResponse, games2Response] = await Promise.all([
-                fetch('/assets/json/games.js'),
-                fetch('/assets/json/games2.js')
-            ]);
-            
-            if (!gamesResponse.ok || !games2Response.ok) {
-                throw new Error('Failed to fetch game data files');
-            }
-            
-            const gamesText = await gamesResponse.text();
-            const games2Text = await games2Response.text();
-            
-            // Extract array data using a safer method than eval
-            const extractArrayData = (text) => {
-                // Find the array definition between brackets
-                const match = text.match(/const\s+\w+\s*=\s*(\[[\s\S]*?\]);/);
-                if (match && match[1]) {
-                    // Use Function constructor instead of eval for better safety
-                    // Still has security implications but safer than eval in this context
-                    try {
-                        return new Function(`return ${match[1]}`)();
-                    } catch (e) {
-                        console.error("Error parsing game data:", e);
-                        return [];
                     }
-                }
-                return [];
-            };
-            
-            const gamesData = extractArrayData(gamesText);
-            const games2Data = extractArrayData(games2Text);
-            
-            console.log(`Loaded ${gamesData.length} games from games.js`);
-            console.log(`Loaded ${games2Data.length} games from games2.js`);
-            
-            // Combine all games
-            const allGames = [...gamesData, ...games2Data];
-            console.log(`Total games loaded: ${allGames.length}`);
-            
-            return allGames;
-        } catch (error) {
-            console.error("Error loading games data:", error);
-            const gamesElement = document.getElementById('gamesList');
-            if (gamesElement) {
-                gamesElement.innerHTML = `
-                    <div style="color: white; text-align: center; grid-column: 1 / -1; padding: 20px; background: rgba(255,0,0,0.1); border-radius: 8px;">
-                        Error loading games: ${error.message}
-                        <button onclick="window.location.reload()" style="margin-top:10px; background:#333; color:#fff; border:none; padding:8px 15px; border-radius:4px; cursor:pointer;">
-                            Reload Page
-                        </button>
-                    </div>
-                `;
+                }, 100);
+                
+                // Timeout after 5 seconds
+                setTimeout(() => {
+                    clearInterval(checkUV);
+                    console.warn("UV config load timeout - continuing anyway");
+                    resolve();
+                }, 5000);
             }
+        });
+
+        const { gamesData } = await import("/assets/json/games.js");
+        const { games2Data } = await import("/assets/json/games2.js");
+        
+        // Combine game data
+        const games = [...gamesData, ...games2Data];
+        
+        // Initialize the game database
+        GameDB.initializeWithGames(games);
+
+        /**
+         * Update the popular games section
+         */
+        function updatePopularGames() {
+            if (!popularGamesList) return;
             
-            const popularGamesElement = document.getElementById('popularGamesList');
+            // Remove loading indicator
             const loadingElement = document.getElementById('popularGamesLoading');
+            if (loadingElement) {
+                loadingElement.remove();
+            }
             
-            if (popularGamesElement && loadingElement) {
-                loadingElement.style.display = 'none';
-                popularGamesElement.innerHTML = `
-                    <div style="color: #ffcc00; text-align: center; width: 100%;">
-                        Could not load popular games. Please try again later.
+            // Get the top 5 games by play count
+            const topGameIds = GameStats.getTopGames(5);
+            
+            if (topGameIds.length === 0) {
+                popularGamesList.innerHTML = '<div style="color: #ffcc00; text-align: center; width: 100%;">Play some games to see your favorites here!</div>';
+                return;
+            }
+            
+            // Clear container
+            popularGamesList.innerHTML = '';
+            
+            // Add each popular game
+            topGameIds.forEach((gameId, index) => {
+                const gameInfo = GameDB.getGameById(gameId);
+                if (!gameInfo) return;
+                
+                const playCount = GameStats.getPlayCount(gameId);
+                
+                const gameElement = document.createElement("div");
+                gameElement.className = "popular-game-item";
+                
+                // Add trophy for top 3
+                let trophyHTML = '';
+                if (index < 3) {
+                    trophyHTML = `
+                        <div class="trophy-icon trophy-${index + 1}">
+                            <span class="trophy-badge">${index + 1}</span>
+                        </div>
+                    `;
+                }
+                
+                gameElement.innerHTML = `
+                    ${trophyHTML}
+                    <div class="popular-game-icon">
+                        <img src="${gameInfo.imgSrc}" alt="${gameInfo.title} icon">
+                    </div>
+                    <h3 class="popular-game-title">${gameInfo.title}</h3>
+                    <div class="play-count">
+                        <svg class="play-count-icon" viewBox="0 0 24 24">
+                            <path fill="currentColor" d="M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c4.42 0 8 1.79 8 4v2H4v-2c0-2.21 3.58-4 8-4z"/>
+                        </svg>
+                        ${playCount.toLocaleString()}
                     </div>
                 `;
-            }
+                
+                // Add click handler
+                gameElement.onclick = async () => {
+                    // Track the play
+                    GameStats.incrementPlayCount(gameId);
+                    
+                    // Show loading overlay
+                    const loadingOverlay = document.getElementById('loadingOverlay');
+                    if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
+                        loadingOverlay.classList.remove('fade-out');
+                        document.getElementById('loadingText').textContent = 'Preparing game...';
+                        document.getElementById('progressFill').style.width = '0%';
+                    }
+                    
+                    try {
+                        // Progress animation
+                        const progressFill = document.getElementById('progressFill');
+                        if (progressFill) {
+                            progressFill.style.width = '30%';
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                            progressFill.style.width = '60%';
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                            progressFill.style.width = '100%';
+                            await new Promise(resolve => setTimeout(resolve, 200));
+                        }
+                    } catch (error) {
+                        console.error('Error in loading animation:', error);
+                    } finally {
+                        // Navigate to the game
+                        window.location.href = `/Classes.html?game=${encodeURIComponent(gameInfo.link)}`;
+                    }
+                };
+                
+                popularGamesList.appendChild(gameElement);
+            });
+        }
+
+        /**
+         * Load a game item into the grid
+         * @param {Object} game Game object with title, imgSrc, and link
+         */
+        function loadGameItem(game) {
+            if (!gamesList) return;
             
-            return [];
-        }
-    }
-    
-    // Game clicks tracking system - both local and simulated global
-    function getGameClickCounts() {
-        const storedData = localStorage.getItem(GAME_CLICKS_KEY);
-        return storedData ? JSON.parse(storedData) : {};
-    }
-    
-    function saveGameClickCounts(clickCounts) {
-        localStorage.setItem(GAME_CLICKS_KEY, JSON.stringify(clickCounts));
-    }
-    
-    // Simulated "global" click counts (would be server-side in production)
-    function getGlobalClickCounts() {
-        let storedData = localStorage.getItem(GLOBAL_CLICKS_KEY);
-        if (!storedData) {
-            // Initialize with some random counts if not present
-            const globalCounts = {};
-            for (const game of allGames) {
-                // Random number between 10 and 1000
-                globalCounts[game.title] = Math.floor(Math.random() * 990) + 10;
-            }
-            localStorage.setItem(GLOBAL_CLICKS_KEY, JSON.stringify(globalCounts));
-            storedData = localStorage.getItem(GLOBAL_CLICKS_KEY);
-        }
-        return JSON.parse(storedData);
-    }
-    
-    function saveGlobalClickCounts(clickCounts) {
-        localStorage.setItem(GLOBAL_CLICKS_KEY, JSON.stringify(clickCounts));
-    }
-    
-    // Increment click count for a game (both local and global)
-    function incrementGameClickCount(gameTitle) {
-        if (!gameTitle) return;
-        
-        // Update local clicks
-        const clickCounts = getGameClickCounts();
-        clickCounts[gameTitle] = (clickCounts[gameTitle] || 0) + 1;
-        saveGameClickCounts(clickCounts);
-        
-        // Update "global" clicks (simulated)
-        const globalCounts = getGlobalClickCounts();
-        globalCounts[gameTitle] = (globalCounts[gameTitle] || 0) + 1;
-        saveGlobalClickCounts(globalCounts);
-        
-        console.log(`Incremented click count for ${gameTitle} - now at ${globalCounts[gameTitle]} global plays`);
-    }
-    
-    // Get the most popular games based on global click counts
-    function getPopularGames(count = 5) {
-        // Get the global click counts
-        const globalCounts = getGlobalClickCounts();
-        
-        // Convert to array for sorting
-        const gameClicksArray = Object.entries(globalCounts).map(([title, count]) => ({
-            title,
-            count
-        }));
-        
-        // Sort by click count in descending order
-        gameClicksArray.sort((a, b) => b.count - a.count);
-        
-        // Take only the top games
-        return gameClicksArray.slice(0, count);
-    }
-    
-    // Update the popular games section
-    function updatePopularGames() {
-        const popularGamesList = document.getElementById('popularGamesList');
-        if (!popularGamesList) return;
-        
-        // Remove loading indicator
-        const loadingElement = document.getElementById('popularGamesLoading');
-        if (loadingElement) {
-            loadingElement.remove();
-        }
-        
-        // Get top games
-        const topGames = getPopularGames(5);
-        
-        if (topGames.length === 0) {
-            popularGamesList.innerHTML = '<div style="color: #ffcc00; text-align: center; width: 100%;">No game data available</div>';
-            return;
-        }
-        
-        // Clear container
-        popularGamesList.innerHTML = '';
-        
-        // Add each popular game with trophy icons for top 3
-        topGames.forEach((gameData, index) => {
-            const gameInfo = allGames.find(g => g.title === gameData.title);
-            if (!gameInfo) return;
+            // Create game ID
+            const gameId = GameDB.createIdFromTitle(game.title);
+            
+            // Get play count
+            const playCount = GameStats.getPlayCount(gameId);
             
             const gameElement = document.createElement("div");
-            gameElement.className = "popular-game-item";
-            
-            // Add trophy for top 3
-            let trophyHTML = '';
-            if (index < 3) {
-                trophyHTML = `
-                    <div class="trophy-icon trophy-${index + 1}">
-                        <span class="trophy-badge">${index + 1}</span>
-                    </div>
-                `;
-            }
-            
+            gameElement.className = "game-item";
             gameElement.innerHTML = `
-                ${trophyHTML}
-                <div class="popular-game-icon">
-                    <img src="${gameInfo.imgSrc}" alt="${gameInfo.title} icon">
+                <div class="game-icon">
+                    <img src="${game.imgSrc}" alt="${game.title} icon">
                 </div>
-                <h3 class="popular-game-title">${gameInfo.title}</h3>
-                <span class="play-count">${gameData.count.toLocaleString()} plays</span>
+                <h3 class="game-title">${game.title}</h3>
+                <div class="play-count-badge">
+                    <svg class="play-count-icon" viewBox="0 0 24 24">
+                        <path fill="currentColor" d="M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c4.42 0 8 1.79 8 4v2H4v-2c0-2.21 3.58-4 8-4z"/>
+                    </svg>
+                    ${playCount.toLocaleString()}
+                </div>
             `;
             
             // Add click handler
             gameElement.onclick = async () => {
-                // Track the click
-                incrementGameClickCount(gameInfo.title);
+                // Track the play
+                GameStats.incrementPlayCount(gameId);
+                
+                // Update popular games section
+                updatePopularGames();
                 
                 // Show loading overlay
                 const loadingOverlay = document.getElementById('loadingOverlay');
@@ -973,118 +1139,54 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                     console.error('Error in loading animation:', error);
                 } finally {
                     // Navigate to the game
-                    window.location.href = `/Classes.html?game=${encodeURIComponent(gameInfo.link)}`;
+                    window.location.href = `/Classes.html?game=${encodeURIComponent(game.link)}`;
                 }
             };
             
-            popularGamesList.appendChild(gameElement);
-        });
-    }
-    
-    // Function to load a game item
-    function loadGameItem(game) {
-        const gamesList = document.getElementById("gamesList");
-        if (!gamesList) return;
-        
-        // Get global play count
-        const globalCounts = getGlobalClickCounts();
-        const playCount = globalCounts[game.title] || 0;
-        
-        const gameElement = document.createElement("div");
-        gameElement.className = "game-item";
-        gameElement.innerHTML = `
-            <div class="game-icon">
-                <img src="${game.imgSrc}" alt="${game.title} icon">
-            </div>
-            <h3 class="game-title">${game.title}</h3>
-            <span class="play-count-badge">${playCount.toLocaleString()}</span>
-        `;
-        
-        // Add click handler
-        gameElement.onclick = async () => {
-            // Track the click
-            incrementGameClickCount(game.title);
-            
-            // Update popular games section
-            updatePopularGames();
-            
-            // Show loading overlay
-            const loadingOverlay = document.getElementById('loadingOverlay');
-            if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
-                loadingOverlay.classList.remove('fade-out');
-                document.getElementById('loadingText').textContent = 'Preparing game...';
-                document.getElementById('progressFill').style.width = '0%';
-            }
-            
-            try {
-                // Progress animation
-                const progressFill = document.getElementById('progressFill');
-                if (progressFill) {
-                    progressFill.style.width = '30%';
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    progressFill.style.width = '60%';
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    progressFill.style.width = '100%';
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                }
-            } catch (error) {
-                console.error('Error in loading animation:', error);
-            } finally {
-                // Navigate to the game
-                window.location.href = `/Classes.html?game=${encodeURIComponent(game.link)}`;
-            }
-        };
-        
-        gamesList.appendChild(gameElement);
-    }
+            gamesList.appendChild(gameElement);
+        }
 
-    // Initialize the page
-    let allGames = [];
-    
-    async function initPage() {
-        try {
-            // Load games data
-            allGames = await loadGamesData();
+        // Load all games
+        if (Array.isArray(games)) {
+            games.forEach(game => {
+                loadGameItem(game);
+            });
             
-            // Update popular games
+            // Initialize the popular games section
             updatePopularGames();
-            
-            // Load all games
-            const gamesList = document.getElementById("gamesList");
-            if (gamesList && Array.isArray(allGames)) {
-                allGames.forEach(game => {
-                    loadGameItem(game);
-                });
+        } else {
+            console.error("Games is not an array:", games);
+            if (gamesList) {
+                gamesList.innerHTML = '<div style="color: white;">Error: Games data is not in the correct format</div>';
             }
-            
-            // Set up search functionality
-            const searchGames = document.getElementById("searchGames");
-            if (searchGames) {
-                searchGames.addEventListener("keyup", function(e) {
-                    const gamesList = document.getElementById("gamesList");
-                    if (!gamesList) return;
-                    
-                    gamesList.innerHTML = '';
-                    const searchTerm = this.value.toLowerCase();
-                    
-                    for (const game of allGames) {
-                        if (game.title.toLowerCase().includes(searchTerm)) {
-                            loadGameItem(game);
-                        }
+        }
+
+        // Set up search functionality
+        const searchGames = document.getElementById("searchGames");
+        if (searchGames) {
+            searchGames.addEventListener("keyup", function(e) {
+                if (!gamesList) return;
+                
+                gamesList.innerHTML = '';
+                const searchTerm = this.value.toLowerCase();
+                
+                for (const game of games) {
+                    if (game.title.toLowerCase().includes(searchTerm)) {
+                        loadGameItem(game);
                     }
-                });
-            }
-        } catch (error) {
-            console.error("Error initializing page:", error);
+                }
+            });
+        }
+    } catch (error) {
+        console.error("Error loading games:", error);
+        if (gamesList) {
+            gamesList.innerHTML = `<div style="color: white;">Error loading games: ${error.message}</div>`;
         }
     }
     
-    // Set up page initialization
-    document.addEventListener('DOMContentLoaded', () => {
-        initPage();
-        loadHTML("/assets/html/header.html", "header");
-        loadHTML("/assets/html/footer.html", "footer");
-    });
+    // Load header and footer
+    loadHTML("/assets/html/header.html", "header");
+    loadHTML("/assets/html/footer.html", "footer");
 </script>
 </body>
 </html>
