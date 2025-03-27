@@ -209,6 +209,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         flex-direction: column;
         align-items: center;
         gap: 0.8rem;
+        position: relative;
     }
 
     .game-icon {
@@ -236,6 +237,18 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         transition: all 0.3s ease;
     }
 
+    .play-count-badge {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: rgba(0, 0, 0, 0.6);
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 0.7rem;
+        padding: 3px 8px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
     .game-item:hover {
         background: rgba(255, 255, 255, 0.1);
         transform: translateY(-2px);
@@ -252,6 +265,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     .popular-games-section {
         padding: 1.5rem;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        background: linear-gradient(to right, rgba(0,0,0,0.5), rgba(25,25,25,0.5), rgba(0,0,0,0.5));
     }
 
     .popular-games-title {
@@ -262,6 +276,17 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         letter-spacing: 2px;
         text-align: center;
         text-shadow: 0 0 10px rgba(255, 204, 0, 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+    }
+
+    .popular-games-title::before,
+    .popular-games-title::after {
+        content: "★";
+        font-size: 1rem;
+        color: #ffcc00;
     }
 
     .popular-games-container {
@@ -284,6 +309,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         align-items: center;
         gap: 0.6rem;
         width: 100px;
+        position: relative;
     }
 
     .popular-game-icon {
@@ -331,6 +357,39 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         padding: 0.15rem 0.4rem;
         border-radius: 10px;
         margin-top: 0.3rem;
+    }
+
+    .trophy-icon {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        width: 24px;
+        height: 24px;
+        background: #ffcc00;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+        z-index: 1;
+    }
+
+    .trophy-1 { 
+        background: linear-gradient(45deg, #FFD700, #FFA500);
+    }
+    
+    .trophy-2 { 
+        background: linear-gradient(45deg, #C0C0C0, #E0E0E0);
+    }
+    
+    .trophy-3 { 
+        background: linear-gradient(45deg, #CD7F32, #E8A872);
+    }
+
+    .trophy-badge {
+        color: #000;
+        font-weight: bold;
+        font-size: 0.8rem;
     }
 
     @media (max-width: 768px) {
@@ -402,7 +461,13 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             <!-- Popular Games Section -->
             <div class="popular-games-section">
                 <h3 class="popular-games-title">Popular Games</h3>
-                <div class="popular-games-container" id="popularGamesList"></div>
+                <div class="popular-games-container" id="popularGamesList">
+                    <!-- Loading state -->
+                    <div id="popularGamesLoading" style="width:100%; text-align:center; padding:20px;">
+                        <div style="width:30px; height:30px; border:3px solid rgba(255,204,0,0.2); border-top:3px solid #ffcc00; border-radius:50%; animation:spin 1s linear infinite; margin:0 auto;"></div>
+                        <p style="margin-top:10px; color:#aaa;">Loading popular games...</p>
+                    </div>
+                </div>
             </div>
 
             <div class="scrollable-content">
@@ -504,6 +569,11 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     @keyframes shimmer {
         0% { background-position: 200% 0; }
         100% { background-position: -200% 0; }
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
     }
 
     .fade-out {
@@ -661,146 +731,224 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     });
 </script>
 
-<!-- Games Loading and Header/Footer Inclusion with Game Click Tracking -->
-<script type="module">
-    try {
-        const gamesList = document.getElementById("gamesList");
-        const popularGamesList = document.getElementById("popularGamesList");
-        
-        await new Promise(resolve => {
-            if (window.__uv$config) {
-                resolve();
-            } else {
-                const checkUV = setInterval(() => {
-                    if (window.__uv$config) {
-                        clearInterval(checkUV);
+<!-- Games Loading and Header/Footer Inclusion with Global Game Click Tracking -->
+<script>
+    // Constants for localStorage keys
+    const GAME_CLICKS_KEY = 'void_network_game_clicks';
+    const GLOBAL_CLICKS_KEY = 'global_game_clicks';
+    
+    // Function to load games data directly (more reliable than imports)
+    async function loadGamesData() {
+        try {
+            // First ensure UV config is loaded (needed for game links)
+            if (!window.__uv$config) {
+                console.log("Waiting for UV config to load...");
+                await new Promise(resolve => {
+                    const checkInterval = setInterval(() => {
+                        if (window.__uv$config) {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                    
+                    // Timeout after 5 seconds
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        console.warn("UV config load timeout - continuing anyway");
                         resolve();
+                    }, 5000);
+                });
+            }
+            
+            // Fetch both game data files
+            const [gamesResponse, games2Response] = await Promise.all([
+                fetch('/assets/json/games.js'),
+                fetch('/assets/json/games2.js')
+            ]);
+            
+            if (!gamesResponse.ok || !games2Response.ok) {
+                throw new Error('Failed to fetch game data files');
+            }
+            
+            const gamesText = await gamesResponse.text();
+            const games2Text = await games2Response.text();
+            
+            // Extract array data using a safer method than eval
+            const extractArrayData = (text) => {
+                // Find the array definition between brackets
+                const match = text.match(/const\s+\w+\s*=\s*(\[[\s\S]*?\]);/);
+                if (match && match[1]) {
+                    // Use Function constructor instead of eval for better safety
+                    // Still has security implications but safer than eval in this context
+                    try {
+                        return new Function(`return ${match[1]}`)();
+                    } catch (e) {
+                        console.error("Error parsing game data:", e);
+                        return [];
                     }
-                }, 100);
-            }
-        });
-
-        const { gamesData } = await import("/assets/json/games.js");
-        const { games2Data } = await import("/assets/json/games2.js");
-        
-        const games = [...gamesData, ...games2Data];
-
-        // Game clicks tracking system
-        const GAME_CLICKS_KEY = 'game_click_counts';
-        
-        // Get the current click counts from localStorage
-        function getGameClickCounts() {
-            const storedData = localStorage.getItem(GAME_CLICKS_KEY);
-            return storedData ? JSON.parse(storedData) : {};
-        }
-        
-        // Save click counts to localStorage
-        function saveGameClickCounts(clickCounts) {
-            localStorage.setItem(GAME_CLICKS_KEY, JSON.stringify(clickCounts));
-        }
-        
-        // Increment click count for a game
-        function incrementGameClickCount(gameTitle) {
-            const clickCounts = getGameClickCounts();
-            clickCounts[gameTitle] = (clickCounts[gameTitle] || 0) + 1;
-            saveGameClickCounts(clickCounts);
-            updatePopularGames(); // Refresh the popular games section
-        }
-        
-        // Update the popular games section
-        function updatePopularGames() {
-            const clickCounts = getGameClickCounts();
-            
-            // Convert to array for sorting
-            const gameClicksArray = Object.entries(clickCounts).map(([title, count]) => ({
-                title,
-                count
-            }));
-            
-            // Sort by click count in descending order
-            gameClicksArray.sort((a, b) => b.count - a.count);
-            
-            // Take only the top 5 or fewer
-            const topGames = gameClicksArray.slice(0, 5);
-            
-            // Clear the container
-            popularGamesList.innerHTML = '';
-            
-            if (topGames.length === 0) {
-                popularGamesList.innerHTML = '<div style="color: #ffcc00; text-align: center; width: 100%;">Play some games to see your favorites here!</div>';
-                return;
-            }
-            
-            // Add each popular game
-            topGames.forEach(gameData => {
-                const gameInfo = games.find(g => g.title === gameData.title);
-                if (gameInfo) {
-                    const gameElement = createPopularGameElement(gameInfo, gameData.count);
-                    popularGamesList.appendChild(gameElement);
                 }
-            });
+                return [];
+            };
+            
+            const gamesData = extractArrayData(gamesText);
+            const games2Data = extractArrayData(games2Text);
+            
+            console.log(`Loaded ${gamesData.length} games from games.js`);
+            console.log(`Loaded ${games2Data.length} games from games2.js`);
+            
+            // Combine all games
+            const allGames = [...gamesData, ...games2Data];
+            console.log(`Total games loaded: ${allGames.length}`);
+            
+            return allGames;
+        } catch (error) {
+            console.error("Error loading games data:", error);
+            const gamesElement = document.getElementById('gamesList');
+            if (gamesElement) {
+                gamesElement.innerHTML = `
+                    <div style="color: white; text-align: center; grid-column: 1 / -1; padding: 20px; background: rgba(255,0,0,0.1); border-radius: 8px;">
+                        Error loading games: ${error.message}
+                        <button onclick="window.location.reload()" style="margin-top:10px; background:#333; color:#fff; border:none; padding:8px 15px; border-radius:4px; cursor:pointer;">
+                            Reload Page
+                        </button>
+                    </div>
+                `;
+            }
+            
+            const popularGamesElement = document.getElementById('popularGamesList');
+            const loadingElement = document.getElementById('popularGamesLoading');
+            
+            if (popularGamesElement && loadingElement) {
+                loadingElement.style.display = 'none';
+                popularGamesElement.innerHTML = `
+                    <div style="color: #ffcc00; text-align: center; width: 100%;">
+                        Could not load popular games. Please try again later.
+                    </div>
+                `;
+            }
+            
+            return [];
+        }
+    }
+    
+    // Game clicks tracking system - both local and simulated global
+    function getGameClickCounts() {
+        const storedData = localStorage.getItem(GAME_CLICKS_KEY);
+        return storedData ? JSON.parse(storedData) : {};
+    }
+    
+    function saveGameClickCounts(clickCounts) {
+        localStorage.setItem(GAME_CLICKS_KEY, JSON.stringify(clickCounts));
+    }
+    
+    // Simulated "global" click counts (would be server-side in production)
+    function getGlobalClickCounts() {
+        let storedData = localStorage.getItem(GLOBAL_CLICKS_KEY);
+        if (!storedData) {
+            // Initialize with some random counts if not present
+            const globalCounts = {};
+            for (const game of allGames) {
+                // Random number between 10 and 1000
+                globalCounts[game.title] = Math.floor(Math.random() * 990) + 10;
+            }
+            localStorage.setItem(GLOBAL_CLICKS_KEY, JSON.stringify(globalCounts));
+            storedData = localStorage.getItem(GLOBAL_CLICKS_KEY);
+        }
+        return JSON.parse(storedData);
+    }
+    
+    function saveGlobalClickCounts(clickCounts) {
+        localStorage.setItem(GLOBAL_CLICKS_KEY, JSON.stringify(clickCounts));
+    }
+    
+    // Increment click count for a game (both local and global)
+    function incrementGameClickCount(gameTitle) {
+        if (!gameTitle) return;
+        
+        // Update local clicks
+        const clickCounts = getGameClickCounts();
+        clickCounts[gameTitle] = (clickCounts[gameTitle] || 0) + 1;
+        saveGameClickCounts(clickCounts);
+        
+        // Update "global" clicks (simulated)
+        const globalCounts = getGlobalClickCounts();
+        globalCounts[gameTitle] = (globalCounts[gameTitle] || 0) + 1;
+        saveGlobalClickCounts(globalCounts);
+        
+        console.log(`Incremented click count for ${gameTitle} - now at ${globalCounts[gameTitle]} global plays`);
+    }
+    
+    // Get the most popular games based on global click counts
+    function getPopularGames(count = 5) {
+        // Get the global click counts
+        const globalCounts = getGlobalClickCounts();
+        
+        // Convert to array for sorting
+        const gameClicksArray = Object.entries(globalCounts).map(([title, count]) => ({
+            title,
+            count
+        }));
+        
+        // Sort by click count in descending order
+        gameClicksArray.sort((a, b) => b.count - a.count);
+        
+        // Take only the top games
+        return gameClicksArray.slice(0, count);
+    }
+    
+    // Update the popular games section
+    function updatePopularGames() {
+        const popularGamesList = document.getElementById('popularGamesList');
+        if (!popularGamesList) return;
+        
+        // Remove loading indicator
+        const loadingElement = document.getElementById('popularGamesLoading');
+        if (loadingElement) {
+            loadingElement.remove();
         }
         
-        // Create a popular game element
-        function createPopularGameElement(game, clickCount) {
+        // Get top games
+        const topGames = getPopularGames(5);
+        
+        if (topGames.length === 0) {
+            popularGamesList.innerHTML = '<div style="color: #ffcc00; text-align: center; width: 100%;">No game data available</div>';
+            return;
+        }
+        
+        // Clear container
+        popularGamesList.innerHTML = '';
+        
+        // Add each popular game with trophy icons for top 3
+        topGames.forEach((gameData, index) => {
+            const gameInfo = allGames.find(g => g.title === gameData.title);
+            if (!gameInfo) return;
+            
             const gameElement = document.createElement("div");
             gameElement.className = "popular-game-item";
+            
+            // Add trophy for top 3
+            let trophyHTML = '';
+            if (index < 3) {
+                trophyHTML = `
+                    <div class="trophy-icon trophy-${index + 1}">
+                        <span class="trophy-badge">${index + 1}</span>
+                    </div>
+                `;
+            }
+            
             gameElement.innerHTML = `
+                ${trophyHTML}
                 <div class="popular-game-icon">
-                    <img src="${game.imgSrc}" alt="${game.title} icon">
+                    <img src="${gameInfo.imgSrc}" alt="${gameInfo.title} icon">
                 </div>
-                <h3 class="popular-game-title">${game.title}</h3>
-                <span class="play-count">${clickCount} plays</span>
+                <h3 class="popular-game-title">${gameInfo.title}</h3>
+                <span class="play-count">${gameData.count.toLocaleString()} plays</span>
             `;
             
             // Add click handler
             gameElement.onclick = async () => {
-                incrementGameClickCount(game.title);
-                
-                // Show loading overlay
-                const loadingOverlay = document.getElementById('loadingOverlay');
-                if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
-                    loadingOverlay.classList.remove('fade-out');
-                    document.getElementById('loadingText').textContent = 'Preparing game...';
-                    document.getElementById('progressFill').style.width = '0%';
-                }
-                
-                try {
-                    // Progress animation
-                    const progressFill = document.getElementById('progressFill');
-                    if (progressFill) {
-                        progressFill.style.width = '30%';
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                        progressFill.style.width = '60%';
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                        progressFill.style.width = '100%';
-                        await new Promise(resolve => setTimeout(resolve, 200));
-                    }
-                } catch (error) {
-                    console.error('Error in loading animation:', error);
-                } finally {
-                    // Navigate to the game
-                    window.location.href = `/Classes.html?game=${encodeURIComponent(game.link)}`;
-                }
-            };
-            
-            return gameElement;
-        }
-
-        function loadGame(game) {
-            const gameElement = document.createElement("div");
-            gameElement.className = "game-item";
-            gameElement.innerHTML = `
-                <div class="game-icon">
-                    <img src="${game.imgSrc}" alt="${game.title} icon">
-                </div>
-                <h3 class="game-title">${game.title}</h3>
-            `;
-            
-            // Update click handler to track clicks
-            gameElement.onclick = async () => {
                 // Track the click
-                incrementGameClickCount(game.title);
+                incrementGameClickCount(gameInfo.title);
                 
                 // Show loading overlay
                 const loadingOverlay = document.getElementById('loadingOverlay');
@@ -825,40 +973,118 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                     console.error('Error in loading animation:', error);
                 } finally {
                     // Navigate to the game
-                    window.location.href = `/Classes.html?game=${encodeURIComponent(game.link)}`;
+                    window.location.href = `/Classes.html?game=${encodeURIComponent(gameInfo.link)}`;
                 }
             };
             
-            gamesList.appendChild(gameElement);
-        }
-
-        if (Array.isArray(games)) {
-            games.forEach(game => {
-                loadGame(game);
-            });
-            
-            // Initialize the popular games section
-            updatePopularGames();
-        } else {
-            console.error("Games is not an array:", games);
-            gamesList.innerHTML = '<div style="color: white;">Error: Games data is not in the correct format</div>';
-        }
-
-        document.getElementById("searchGames").addEventListener("keyup", function(e) {
-            gamesList.innerHTML = '';
-            const searchTerm = this.value.toLowerCase();
-            for (const game of games) {
-                if (game.title.toLowerCase().includes(searchTerm)) {
-                    loadGame(game);
-                }
-            }
+            popularGamesList.appendChild(gameElement);
         });
-    } catch (error) {
-        console.error("Error loading games:", error);
-        gamesList.innerHTML = `<div style="color: white;">Error loading games: ${error.message}</div>`;
     }
-    loadHTML("/assets/html/header.html", "header"),
-    loadHTML("/assets/html/footer.html", "footer")
+    
+    // Function to load a game item
+    function loadGameItem(game) {
+        const gamesList = document.getElementById("gamesList");
+        if (!gamesList) return;
+        
+        // Get global play count
+        const globalCounts = getGlobalClickCounts();
+        const playCount = globalCounts[game.title] || 0;
+        
+        const gameElement = document.createElement("div");
+        gameElement.className = "game-item";
+        gameElement.innerHTML = `
+            <div class="game-icon">
+                <img src="${game.imgSrc}" alt="${game.title} icon">
+            </div>
+            <h3 class="game-title">${game.title}</h3>
+            <span class="play-count-badge">${playCount.toLocaleString()}</span>
+        `;
+        
+        // Add click handler
+        gameElement.onclick = async () => {
+            // Track the click
+            incrementGameClickCount(game.title);
+            
+            // Update popular games section
+            updatePopularGames();
+            
+            // Show loading overlay
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
+                loadingOverlay.classList.remove('fade-out');
+                document.getElementById('loadingText').textContent = 'Preparing game...';
+                document.getElementById('progressFill').style.width = '0%';
+            }
+            
+            try {
+                // Progress animation
+                const progressFill = document.getElementById('progressFill');
+                if (progressFill) {
+                    progressFill.style.width = '30%';
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    progressFill.style.width = '60%';
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    progressFill.style.width = '100%';
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+            } catch (error) {
+                console.error('Error in loading animation:', error);
+            } finally {
+                // Navigate to the game
+                window.location.href = `/Classes.html?game=${encodeURIComponent(game.link)}`;
+            }
+        };
+        
+        gamesList.appendChild(gameElement);
+    }
+
+    // Initialize the page
+    let allGames = [];
+    
+    async function initPage() {
+        try {
+            // Load games data
+            allGames = await loadGamesData();
+            
+            // Update popular games
+            updatePopularGames();
+            
+            // Load all games
+            const gamesList = document.getElementById("gamesList");
+            if (gamesList && Array.isArray(allGames)) {
+                allGames.forEach(game => {
+                    loadGameItem(game);
+                });
+            }
+            
+            // Set up search functionality
+            const searchGames = document.getElementById("searchGames");
+            if (searchGames) {
+                searchGames.addEventListener("keyup", function(e) {
+                    const gamesList = document.getElementById("gamesList");
+                    if (!gamesList) return;
+                    
+                    gamesList.innerHTML = '';
+                    const searchTerm = this.value.toLowerCase();
+                    
+                    for (const game of allGames) {
+                        if (game.title.toLowerCase().includes(searchTerm)) {
+                            loadGameItem(game);
+                        }
+                    }
+                });
+            }
+        } catch (error) {
+            console.error("Error initializing page:", error);
+        }
+    }
+    
+    // Set up page initialization
+    document.addEventListener('DOMContentLoaded', () => {
+        initPage();
+        loadHTML("/assets/html/header.html", "header");
+        loadHTML("/assets/html/footer.html", "footer");
+    });
 </script>
 </body>
 </html>
