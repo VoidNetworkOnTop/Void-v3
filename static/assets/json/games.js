@@ -12,7 +12,7 @@ const gamesData = [
 {
     title: "Slow Roads",
     imgSrc: "gameimg/SlowRoads.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://slowroads.io/") 
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://lizard-foil-pincushion.glitch.me") 
 },
 {
     title: "Swoop",
