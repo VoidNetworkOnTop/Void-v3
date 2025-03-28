@@ -752,7 +752,7 @@
 
     <!-- Game database and tracking script -->
     <script>
-        // Dynamic Game Database - loads from external files
+        // Dynamic Game Database - includes fallback data and external file loading
         const GameDB = {
             // Map game IDs to info objects
             games: {},
@@ -760,45 +760,104 @@
             // Map of URLs to game IDs for reverse lookup
             urlMap: {},
             
+            // Fallback games in case external files fail to load
+            fallbackGames: [
+                {
+                    id: 'minecraft',
+                    title: "Minecraft",
+                    imgSrc: "/gameimg/minecraft.avif",
+                    link: "/uv/service/aHR0cHM6Ly9tZWFkb3ctY29jb251dC1idXR0ZXJjdXAuZ2xpdGNoLm1l"
+                },
+                {
+                    id: 'slope',
+                    title: "Slope",
+                    imgSrc: "/gameimg/slopegame.webp",
+                    link: "/uv/service/aHR0cHM6Ly9rYXp3aXJlLmNvbS9jZG4vZ2FtZS9zdGF0aWMvc2xvcGUvaW5kZXguaHRtbA=="
+                },
+                {
+                    id: '1v1lol',
+                    title: "1v1.lol",
+                    imgSrc: "/gameimg/1v1lol.png",
+                    link: "/uv/service/aHR0cHM6Ly8xdjEuc2Nob28s"
+                },
+                {
+                    id: 'cookieclicker',
+                    title: "Cookie Clicker",
+                    imgSrc: "https://play-lh.googleusercontent.com/7QdF1mILpUj-xtZGzNwECuVHaVKJHobvYh45z9q7hGvCbmjH1oD_ZfRxbEqbB_yb6Dk",
+                    link: "/uv/service/aHR0cHM6Ly9jb29raWVjbGlja2VyLmVl"
+                },
+                {
+                    id: 'flappybird',
+                    title: "Flappy Bird",
+                    imgSrc: "/gameimg/flappybird.jpg",
+                    link: "/uv/service/aHR0cHM6Ly9mbGFwcHliaXJkZ2FtZS5naXRodWIuaW8vZmlsZS8="
+                }
+            ],
+            
             /**
-             * Load game data from external files
+             * Load game data from external files with fallback
              * @returns {Promise} Promise that resolves when data is loaded
              */
             loadGameData: async function() {
                 try {
-                    // Load the games.js file
-                    const gamesScript = document.createElement('script');
-                    gamesScript.src = '/assets/json/games.js';
-                    document.head.appendChild(gamesScript);
+                    // Try to fetch the game data directly using fetch API
+                    const [gamesResponse, games2Response] = await Promise.allSettled([
+                        fetch('/assets/json/games.js').then(res => res.text()),
+                        fetch('/assets/json/games2.js').then(res => res.text())
+                    ]);
                     
-                    // Load the games2.js file
-                    const games2Script = document.createElement('script');
-                    games2Script.src = '/assets/json/games2.js';
-                    document.head.appendChild(games2Script);
-                    
-                    // Wait for both scripts to load
-                    return new Promise((resolve) => {
-                        // Check every 100ms if the data is available
-                        const checkInterval = setInterval(() => {
-                            // Check if gamesData and games2Data are defined
-                            if (typeof window.gamesData !== 'undefined' && typeof window.games2Data !== 'undefined') {
-                                clearInterval(checkInterval);
-                                
-                                // Merge game data into our database
-                                this.processGameData([...window.gamesData, ...window.games2Data]);
-                                resolve();
+                    // Process games.js data
+                    let gamesData = [];
+                    if (gamesResponse.status === 'fulfilled') {
+                        try {
+                            // Convert text content to usable data by extracting the array
+                            const gamesContent = gamesResponse.value;
+                            // Find the array portion and parse it
+                            const arrayMatch = gamesContent.match(/const\s+gamesData\s*=\s*(\[[\s\S]*?\]);/);
+                            if (arrayMatch && arrayMatch[1]) {
+                                // Use Function constructor to safely evaluate the array
+                                gamesData = new Function('return ' + arrayMatch[1])();
                             }
-                        }, 100);
-                        
-                        // Set a timeout in case scripts fail to load
-                        setTimeout(() => {
-                            clearInterval(checkInterval);
-                            console.error('Failed to load game data within timeout');
-                            resolve(); // Resolve anyway to prevent blocking
-                        }, 5000);
-                    });
+                        } catch (parseError) {
+                            console.error('Error parsing games.js:', parseError);
+                        }
+                    }
+                    
+                    // Process games2.js data
+                    let games2Data = [];
+                    if (games2Response.status === 'fulfilled') {
+                        try {
+                            // Convert text content to usable data by extracting the array
+                            const games2Content = games2Response.value;
+                            // Find the array portion and parse it
+                            const arrayMatch = games2Content.match(/const\s+games2Data\s*=\s*(\[[\s\S]*?\]);/);
+                            if (arrayMatch && arrayMatch[1]) {
+                                // Use Function constructor to safely evaluate the array
+                                games2Data = new Function('return ' + arrayMatch[1])();
+                            }
+                        } catch (parseError) {
+                            console.error('Error parsing games2.js:', parseError);
+                        }
+                    }
+                    
+                    // Check if we got any games
+                    const allGames = [...gamesData, ...games2Data];
+                    
+                    if (allGames.length > 0) {
+                        // Process the combined game data
+                        this.processGameData(allGames);
+                        console.log(`Successfully loaded ${allGames.length} games from external files`);
+                        return;
+                    } else {
+                        // If we didn't get any games, fall back to the default games
+                        console.warn('No games loaded from external files, using fallback games');
+                        this.processGameData(this.fallbackGames);
+                    }
                 } catch (error) {
                     console.error('Error loading game data:', error);
+                    // Use fallback games
+                    console.warn('Using fallback games due to loading error');
+                    this.processGameData(this.fallbackGames);
                 }
             },
             
@@ -1153,7 +1212,7 @@
         /**
          * Load game suggestions and display them
          */
-        async function loadGameSuggestions() {
+        function loadGameSuggestions() {
             const suggestionsElement = document.getElementById('gameSuggestions');
             if (!suggestionsElement) return;
             
@@ -1167,7 +1226,7 @@
             // Clear loading state
             suggestionsElement.innerHTML = '';
             
-            if (randomGames.length === 0) {
+            if (!randomGames || randomGames.length === 0) {
                 suggestionsElement.innerHTML = `
                     <div style="text-align:center; padding:20px; color:#aaa;">
                         No game suggestions available
