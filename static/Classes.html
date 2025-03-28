@@ -803,8 +803,10 @@
                     // Randomly decide which game file to use
                     // This will add variety to the suggested games
                     const useGames1 = Math.random() >= 0.5;
+                    
+                    // Use the correct paths to the files in the root directory
                     const filePath = useGames1 ? '/assets/json/games.js' : '/assets/json/games2.js';
-                    const backupPath = useGames1 ? '/static/assets/json/games2.js' : '/static/assets/json/games.js';
+                    const backupPath = useGames1 ? '/assets/json/games2.js' : '/assets/json/games.js';
                     
                     console.log(`Attempting to load game data from: ${filePath}`);
                     
@@ -823,7 +825,27 @@
                             if (!response.ok) throw new Error(`Failed to load ${backupPath}: ${response.status}`);
                         } catch (backupError) {
                             console.error(`Could not load backup game file (${backupPath}): ${backupError.message}`);
-                            throw new Error('Both game files failed to load');
+                            
+                            // Try alternative paths with static prefix
+                            console.log("Trying alternative paths with /static prefix...");
+                            
+                            const staticFilePath = `/static${filePath}`;
+                            const staticBackupPath = `/static${backupPath}`;
+                            
+                            try {
+                                response = await fetch(staticFilePath);
+                                if (!response.ok) throw new Error(`Failed to load ${staticFilePath}: ${response.status}`);
+                                console.log(`Successfully loaded from alternative path: ${staticFilePath}`);
+                            } catch (staticPrimaryError) {
+                                try {
+                                    response = await fetch(staticBackupPath);
+                                    if (!response.ok) throw new Error(`Failed to load ${staticBackupPath}: ${response.status}`);
+                                    console.log(`Successfully loaded from alternative path: ${staticBackupPath}`);
+                                } catch (staticBackupError) {
+                                    console.error("All file paths attempts failed");
+                                    throw new Error('All game file loading attempts failed');
+                                }
+                            }
                         }
                     }
                     
@@ -831,28 +853,39 @@
                     const fileContent = await response.text();
                     
                     // Determine which array to extract based on which file we loaded
-                    const isGames1 = filePath.includes('games.js');
+                    const loadedPath = response.url;
+                    const isGames1 = loadedPath.includes('games.js') && !loadedPath.includes('games2.js');
                     const arrayName = isGames1 ? 'gamesData' : 'games2Data';
                     
-                    // Extract the array data
-                    const arrayMatch = fileContent.match(new RegExp(`const\\s+${arrayName}\\s*=\\s*(\\[\\s\\S]*?\\]);`));
+                    console.log(`Extracting array named '${arrayName}' from ${loadedPath}`);
+                    
+                    // Extract the array data with a more flexible regex
+                    // This should match various formats of the array declaration
+                    const arrayMatch = fileContent.match(new RegExp(`(?:const|var|let)\\s+${arrayName}\\s*=\\s*(\\[\\s\\S]*?\\])(?:;|export)`));
                     
                     if (!arrayMatch || !arrayMatch[1]) {
-                        console.error(`Could not extract game data from ${filePath}`);
+                        console.error(`Could not extract game data from ${loadedPath}`);
+                        console.log("First 100 chars of file:", fileContent.substring(0, 100));
                         throw new Error('Failed to parse game data');
                     }
                     
                     // Use Function constructor to safely evaluate the array
-                    const gamesData = new Function('return ' + arrayMatch[1])();
-                    
-                    if (gamesData && gamesData.length > 0) {
-                        // Process the game data
-                        this.processGameData(gamesData);
-                        console.log(`Successfully loaded ${gamesData.length} games from ${filePath}`);
-                        return;
-                    } else {
-                        // If we didn't get any valid games, throw an error
-                        throw new Error('No valid games found in the loaded file');
+                    try {
+                        const gamesData = new Function('return ' + arrayMatch[1])();
+                        
+                        if (gamesData && gamesData.length > 0) {
+                            // Process the game data
+                            this.processGameData(gamesData);
+                            console.log(`Successfully loaded ${gamesData.length} games from ${loadedPath}`);
+                            return;
+                        } else {
+                            // If we didn't get any valid games, throw an error
+                            throw new Error('No valid games found in the loaded file');
+                        }
+                    } catch (evalError) {
+                        console.error("Error evaluating game data:", evalError);
+                        console.log("Extracted array data:", arrayMatch[1].substring(0, 200) + "...");
+                        throw new Error('Failed to evaluate game data');
                     }
                 } catch (error) {
                     console.error('Error loading game data:', error);
