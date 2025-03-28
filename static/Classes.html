@@ -800,58 +800,59 @@
              */
             loadGameData: async function() {
                 try {
-                    // Try to fetch the game data directly using fetch API
-                    const [gamesResponse, games2Response] = await Promise.allSettled([
-                        fetch('/assets/json/games.js').then(res => res.text()),
-                        fetch('/assets/json/games2.js').then(res => res.text())
-                    ]);
+                    // Randomly decide which game file to use
+                    // This will add variety to the suggested games
+                    const useGames1 = Math.random() >= 0.5;
+                    const filePath = useGames1 ? '/static/assets/json/games.js' : '/static/assets/json/games2.js';
+                    const backupPath = useGames1 ? '/static/assets/json/games2.js' : '/static/assets/json/games.js';
                     
-                    // Process games.js data
-                    let gamesData = [];
-                    if (gamesResponse.status === 'fulfilled') {
+                    console.log(`Attempting to load game data from: ${filePath}`);
+                    
+                    // Try to fetch the primary game data file
+                    let response;
+                    try {
+                        response = await fetch(filePath);
+                        if (!response.ok) throw new Error(`Failed to load ${filePath}: ${response.status}`);
+                    } catch (primaryError) {
+                        console.warn(`Could not load primary game file (${filePath}): ${primaryError.message}`);
+                        console.log(`Attempting to load backup file: ${backupPath}`);
+                        
+                        // Try the backup file if the primary fails
                         try {
-                            // Convert text content to usable data by extracting the array
-                            const gamesContent = gamesResponse.value;
-                            // Find the array portion and parse it
-                            const arrayMatch = gamesContent.match(/const\s+gamesData\s*=\s*(\[[\s\S]*?\]);/);
-                            if (arrayMatch && arrayMatch[1]) {
-                                // Use Function constructor to safely evaluate the array
-                                gamesData = new Function('return ' + arrayMatch[1])();
-                            }
-                        } catch (parseError) {
-                            console.error('Error parsing games.js:', parseError);
+                            response = await fetch(backupPath);
+                            if (!response.ok) throw new Error(`Failed to load ${backupPath}: ${response.status}`);
+                        } catch (backupError) {
+                            console.error(`Could not load backup game file (${backupPath}): ${backupError.message}`);
+                            throw new Error('Both game files failed to load');
                         }
                     }
                     
-                    // Process games2.js data
-                    let games2Data = [];
-                    if (games2Response.status === 'fulfilled') {
-                        try {
-                            // Convert text content to usable data by extracting the array
-                            const games2Content = games2Response.value;
-                            // Find the array portion and parse it
-                            const arrayMatch = games2Content.match(/const\s+games2Data\s*=\s*(\[[\s\S]*?\]);/);
-                            if (arrayMatch && arrayMatch[1]) {
-                                // Use Function constructor to safely evaluate the array
-                                games2Data = new Function('return ' + arrayMatch[1])();
-                            }
-                        } catch (parseError) {
-                            console.error('Error parsing games2.js:', parseError);
-                        }
+                    // Get the text content of the file
+                    const fileContent = await response.text();
+                    
+                    // Determine which array to extract based on which file we loaded
+                    const isGames1 = filePath.includes('games.js');
+                    const arrayName = isGames1 ? 'gamesData' : 'games2Data';
+                    
+                    // Extract the array data
+                    const arrayMatch = fileContent.match(new RegExp(`const\\s+${arrayName}\\s*=\\s*(\\[\\s\\S]*?\\]);`));
+                    
+                    if (!arrayMatch || !arrayMatch[1]) {
+                        console.error(`Could not extract game data from ${filePath}`);
+                        throw new Error('Failed to parse game data');
                     }
                     
-                    // Check if we got any games
-                    const allGames = [...gamesData, ...games2Data];
+                    // Use Function constructor to safely evaluate the array
+                    const gamesData = new Function('return ' + arrayMatch[1])();
                     
-                    if (allGames.length > 0) {
-                        // Process the combined game data
-                        this.processGameData(allGames);
-                        console.log(`Successfully loaded ${allGames.length} games from external files`);
+                    if (gamesData && gamesData.length > 0) {
+                        // Process the game data
+                        this.processGameData(gamesData);
+                        console.log(`Successfully loaded ${gamesData.length} games from ${filePath}`);
                         return;
                     } else {
-                        // If we didn't get any games, fall back to the default games
-                        console.warn('No games loaded from external files, using fallback games');
-                        this.processGameData(this.fallbackGames);
+                        // If we didn't get any valid games, throw an error
+                        throw new Error('No valid games found in the loaded file');
                     }
                 } catch (error) {
                     console.error('Error loading game data:', error);
@@ -1237,34 +1238,14 @@
             
             // Add each game as a suggestion
             randomGames.forEach(game => {
-                // Get global play count and trend
-                const playCount = GlobalGameStats.getGlobalPlayCount(game.id);
-                const trend = GlobalGameStats.getGameTrend(game.id);
-                
                 // Create suggestion element
                 const suggestionElement = document.createElement('div');
                 suggestionElement.className = 'suggestion_item';
                 suggestionElement.setAttribute('data-game-id', game.id);
                 
-                // Build trend indicator HTML
+                // We're removing the trend indicators and player counts,
+                // so we'll set trendHTML to an empty string
                 let trendHTML = '';
-                if (trend === 'rising') {
-                    trendHTML = `
-                        <div class="trend-indicator trend-rising">
-                            <svg width="10" height="10" viewBox="0 0 24 24">
-                                <path fill="currentColor" d="M7 14l5-5 5 5z"/>
-                            </svg>
-                        </div>
-                    `;
-                } else if (trend === 'falling') {
-                    trendHTML = `
-                        <div class="trend-indicator trend-falling">
-                            <svg width="10" height="10" viewBox="0 0 24 24">
-                                <path fill="currentColor" d="M7 10l5 5 5-5z"/>
-                            </svg>
-                        </div>
-                    `;
-                }
                 
                 suggestionElement.innerHTML = `
                     ${trendHTML}
@@ -1273,13 +1254,7 @@
                     </div>
                     <div class="suggestion_info">
                         <h4 class="suggestion_title">${game.title}</h4>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-                            <div class="play-count">
-                                <svg class="play-count-icon" viewBox="0 0 24 24">
-                                    <path fill="currentColor" d="M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c4.42 0 8 1.79 8 4v2H4v-2c0-2.21 3.58-4 8-4z"/>
-                                </svg>
-                                ${playCount.toLocaleString()}
-                            </div>
+                        <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 5px;">
                             <button class="suggestion_play">
                                 <svg class="suggestion_play_icon" viewBox="0 0 24 24">
                                     <path d="M8 5v14l11-7z" fill="currentColor"/>
