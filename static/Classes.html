@@ -74,7 +74,7 @@
         /* Main content area - centered with proper spacing */
         .page_content {
             display: flex;
-            width: 90%;
+            width: 95%;
             max-width: 1600px;
             height: 100%;
             padding-top: 70px; /* Extra padding to avoid header overlap */
@@ -309,6 +309,7 @@
             cursor: pointer;
             transition: all 0.3s ease;
             border: 1px solid rgba(255,255,255,0.1);
+            position: relative;
         }
         
         .suggestion_item:hover {
@@ -382,6 +383,52 @@
             opacity: 0.7;
         }
 
+        /* Trend indicators for games */
+        .trend-indicator {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .trend-rising {
+            color: #4CAF50;
+        }
+
+        .trend-falling {
+            color: #F44336;
+        }
+
+        .trend-steady {
+            color: #FFC107;
+        }
+
+        /* Scrollbar styling for suggestions content */
+        .suggestions_content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .suggestions_content::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            margin: 4px;
+            border-radius: 3px;
+        }
+
+        .suggestions_content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+
+        .suggestions_content::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
         /* Responsive design */
         @media (max-width: 1200px) {
             .page_content {
@@ -429,6 +476,311 @@
             }
         }
     </style>
+
+    <!-- Global Game Stats Script -->
+    <script>
+        /**
+         * GlobalGameStats - A module for tracking and simulating global game play statistics
+         * 
+         * This module provides a combination of:
+         * 1. Real user interaction tracking (stored in localStorage)
+         * 2. Simulated global statistics that appear consistent across all users
+         * 3. Time-based increments to simulate ongoing play by other users
+         */
+        const GlobalGameStats = {
+            // Storage keys
+            USER_PLAYS_KEY: 'user_game_plays',
+            LAST_UPDATE_KEY: 'global_stats_last_update',
+            
+            // Base popularity factors (higher = more popular)
+            popularityFactors: {
+                'minecraft': 10.0,
+                'slope': 8.5,
+                '1v1lol': 7.8,
+                'amoungus': 7.2, 
+                'fnaf': 6.9,
+                'retrobowl': 6.5,
+                'subwaysurfers': 6.3,
+                'cookieclicker': 5.8,
+                'gunmayhem': 5.5,
+                'tanukisunset': 5.2,
+                'ducklife': 5.0,
+                'drivemad': 4.7,
+                'tunnel': 4.5,
+                'paperio': 4.2,
+                'flappybird': 4.0,
+                // Many other games with lower factors (3.5 to 1.0)
+            },
+            
+            // Initial base counts (as of a specific reference date)
+            // Reference date: January 1, 2023
+            referenceDate: new Date(2023, 0, 1).getTime(),
+            baseCounts: {
+                'minecraft': 25842,
+                'slope': 21461,
+                '1v1lol': 18593,
+                'amoungus': 15742,
+                'fnaf': 14983,
+                'retrobowl': 13742,
+                'subwaysurfers': 12523,
+                'cookieclicker': 11864,
+                'gunmayhem': 10582,
+                'tanukisunset': 9423,
+                'ducklife': 8752,
+                'drivemad': 7941,
+                'tunnel': 6845,
+                'paperio': 5723,
+                'flappybird': 4912
+            },
+            
+            /**
+             * Initialize the game statistics system
+             * Sets default values for any uninitialized games
+             * @param {Array} gameList - List of game objects with id properties
+             */
+            initialize: function(gameList) {
+                // Initialize user plays if not present
+                let userPlays = this.getUserPlays();
+                let updated = false;
+                
+                // Ensure we have default popularity factors for all games
+                if (gameList && gameList.length > 0) {
+                    gameList.forEach(game => {
+                        const id = game.id || this.createIdFromTitle(game.title);
+                        
+                        // Set default popularity factor if not present
+                        if (!this.popularityFactors[id]) {
+                            // Assign a random popularity between 1.0 and 3.5 for new games
+                            this.popularityFactors[id] = 1.0 + (Math.random() * 2.5);
+                        }
+                        
+                        // Set default base count if not present
+                        if (!this.baseCounts[id]) {
+                            // Random base count between 1000 and 4000 for new games
+                            this.baseCounts[id] = Math.floor(1000 + (Math.random() * 3000));
+                        }
+                        
+                        // Initialize user plays counter if not present
+                        if (userPlays[id] === undefined) {
+                            userPlays[id] = 0;
+                            updated = true;
+                        }
+                    });
+                }
+                
+                // Save user plays if updated
+                if (updated) {
+                    this.saveUserPlays(userPlays);
+                }
+                
+                // Update the last update timestamp if not present
+                if (!localStorage.getItem(this.LAST_UPDATE_KEY)) {
+                    localStorage.setItem(this.LAST_UPDATE_KEY, Date.now().toString());
+                }
+                
+                console.log('Global game stats initialized');
+                
+                // Return this for chaining
+                return this;
+            },
+            
+            /**
+             * Create a simple ID from a game title
+             * @param {string} title Game title
+             * @returns {string} Simple ID
+             */
+            createIdFromTitle: function(title) {
+                return title.toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '') // Remove non-alphanumeric chars
+                    .replace(/\s+/g, '');       // Remove spaces
+            },
+            
+            /**
+             * Get the user's personal play counts
+             * @returns {Object} Object with game IDs as keys and play counts as values
+             */
+            getUserPlays: function() {
+                const stored = localStorage.getItem(this.USER_PLAYS_KEY);
+                return stored ? JSON.parse(stored) : {};
+            },
+            
+            /**
+             * Save the user's personal play counts
+             * @param {Object} plays Object with game IDs as keys and play counts as values
+             */
+            saveUserPlays: function(plays) {
+                localStorage.setItem(this.USER_PLAYS_KEY, JSON.stringify(plays));
+            },
+            
+            /**
+             * Record a play by the current user
+             * @param {string} gameId ID of the game that was played
+             * @returns {number} New user play count for this game
+             */
+            recordUserPlay: function(gameId) {
+                if (!gameId) return 0;
+                
+                // Get current user plays
+                const userPlays = this.getUserPlays();
+                
+                // Initialize if not present
+                if (userPlays[gameId] === undefined) {
+                    userPlays[gameId] = 0;
+                }
+                
+                // Increment count
+                userPlays[gameId]++;
+                
+                // Save updated plays
+                this.saveUserPlays(userPlays);
+                
+                console.log(`User played ${gameId}, total user plays: ${userPlays[gameId]}`);
+                
+                return userPlays[gameId];
+            },
+            
+            /**
+             * Get global play count for a specific game
+             * @param {string} gameId ID of the game
+             * @returns {number} Simulated global play count
+             */
+            getGlobalPlayCount: function(gameId) {
+                if (!gameId) return 0;
+                
+                // Get user's plays for this game
+                const userPlays = this.getUserPlays();
+                const userPlayCount = userPlays[gameId] || 0;
+                
+                // Get simulated global count
+                const simulatedCount = this.getSimulatedCount(gameId);
+                
+                // Return simulated global count plus user's personal plays
+                return simulatedCount + userPlayCount;
+            },
+            
+            /**
+             * Calculate simulated play count based on time and popularity
+             * @param {string} gameId ID of the game
+             * @returns {number} Simulated play count (excluding user's plays)
+             */
+            getSimulatedCount: function(gameId) {
+                if (!gameId) return 0;
+                
+                // Get base count
+                const baseCount = this.baseCounts[gameId] || 1000;
+                
+                // Get popularity factor (plays per day)
+                const popularityFactor = this.popularityFactors[gameId] || 1.0;
+                
+                // Calculate time-based increment
+                const now = Date.now();
+                const daysSinceReference = (now - this.referenceDate) / (1000 * 60 * 60 * 24);
+                
+                // Base plays from reference date till now
+                // We use a non-linear formula to simulate more realistic growth patterns
+                // sqrt(days) gives slower growth over time, multiplied by daily popularity factor
+                const baseTimePlays = Math.floor(Math.sqrt(daysSinceReference) * popularityFactor * 20);
+                
+                // Add daily variance based on day of week (more plays on weekends)
+                const date = new Date(now);
+                const dayOfWeek = date.getDay(); // 0 is Sunday, 6 is Saturday
+                const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+                const dayFactor = isWeekend ? 1.2 : 1.0;
+                
+                // Add time of day variance (more plays during peak hours)
+                const hour = date.getHours();
+                let hourFactor = 1.0;
+                
+                // Peak hours: 3-5pm and 7-9pm
+                if ((hour >= 15 && hour <= 17) || (hour >= 19 && hour <= 21)) {
+                    hourFactor = 1.3;
+                }
+                // Late night/early morning: reduced activity
+                else if (hour >= 1 && hour <= 5) {
+                    hourFactor = 0.7;
+                }
+                
+                // Calculate final time-based plays with variance
+                const timePlays = Math.floor(baseTimePlays * dayFactor * hourFactor);
+                
+                // Combine base count with time-based plays
+                return baseCount + timePlays;
+            },
+            
+            /**
+             * Get all global play counts for all games
+             * @returns {Object} Object with game IDs as keys and global play counts as values
+             */
+            getAllGlobalCounts: function() {
+                const counts = {};
+                
+                // Get all game IDs from popularity factors
+                const gameIds = Object.keys(this.popularityFactors);
+                
+                // Calculate global count for each game
+                gameIds.forEach(gameId => {
+                    counts[gameId] = this.getGlobalPlayCount(gameId);
+                });
+                
+                return counts;
+            },
+            
+            /**
+             * Get the top N most played games
+             * @param {number} limit Maximum number of games to return
+             * @returns {Array} Array of [gameId, count] pairs sorted by count
+             */
+            getTopGames: function(limit = 5) {
+                // Get all global counts
+                const counts = this.getAllGlobalCounts();
+                
+                // Convert to array of [id, count] pairs
+                const countArray = Object.entries(counts);
+                
+                // Sort by count in descending order
+                countArray.sort((a, b) => b[1] - a[1]);
+                
+                // Return limited number of pairs
+                return countArray.slice(0, limit);
+            },
+            
+            /**
+             * Get popularity trend for a game (increasing, steady, or decreasing)
+             * @param {string} gameId ID of the game
+             * @returns {string} Trend: 'rising', 'steady', or 'falling'
+             */
+            getGameTrend: function(gameId) {
+                if (!gameId) return 'steady';
+                
+                const popularityFactor = this.popularityFactors[gameId] || 1.0;
+                
+                // Simple trend calculation based on popularity factor
+                if (popularityFactor >= 5.0) return 'rising';
+                if (popularityFactor <= 2.0) return 'falling';
+                return 'steady';
+            },
+            
+            /**
+             * Update game's popularity factor based on recent play patterns
+             * This would normally use server analytics, but we'll simulate it
+             * @param {string} gameId ID of the game
+             * @param {number} playDelta Change in plays (positive or negative)
+             */
+            updatePopularityFactor: function(gameId, playDelta) {
+                if (!gameId) return;
+                
+                const currentFactor = this.popularityFactors[gameId] || 1.0;
+                
+                // Calculate new factor with limits
+                const newFactor = Math.max(0.5, Math.min(12.0, currentFactor + (playDelta * 0.01)));
+                
+                // Update factor
+                this.popularityFactors[gameId] = newFactor;
+                
+                console.log(`Updated popularity factor for ${gameId}: ${newFactor.toFixed(2)}`);
+            }
+        };
+    </script>
 </head>
 <body>
     <!-- Minimal header -->
@@ -486,134 +838,11 @@
         </div>
     </div>
 
-    <!-- Simple game tracking script -->
+    <!-- Game database and tracking script -->
     <script>
-        /**
-         * GameStats - A simple module for tracking game play statistics
-         * Uses localStorage to track play counts for games
-         */
-        const GameStats = {
-            // Storage key for play counts
-            PLAY_COUNTS_KEY: 'void_network_play_counts',
-            
-            /**
-             * Get all play counts from storage
-             * @returns {Object} Object with game IDs as keys and play counts as values
-             */
-            getPlayCounts: function() {
-                const stored = localStorage.getItem(this.PLAY_COUNTS_KEY);
-                if (!stored) {
-                    return this.initializePlayCounts();
-                }
-                
-                try {
-                    return JSON.parse(stored);
-                } catch (error) {
-                    console.error('Error parsing play counts:', error);
-                    return this.initializePlayCounts();
-                }
-            },
-            
-            /**
-             * Initialize play counts with default values
-             * @returns {Object} Default play counts
-             */
-            initializePlayCounts: function() {
-                // Default play counts for popular games
-                const defaultCounts = {
-                    'minecraft': 34852,
-                    'slope': 29461,
-                    '1v1lol': 21593,
-                    'amoungus': 18742,
-                    'fnaf': 16983,
-                    'retrobowl': 15742,
-                    'subwaysurfers': 14523,
-                    'cookieclicker': 12864,
-                    'gunmayhem': 11582,
-                    'tanukisunset': 10423,
-                    'ducklife': 9752,
-                    'drivemad': 8941,
-                    'tunnel': 7845,
-                    'paperio': 6723,
-                    'flappybird': 5912
-                };
-                
-                // Save to local storage
-                localStorage.setItem(this.PLAY_COUNTS_KEY, JSON.stringify(defaultCounts));
-                
-                return defaultCounts;
-            },
-            
-            /**
-             * Save play counts to storage
-             * @param {Object} counts Object with game IDs as keys and play counts as values
-             */
-            savePlayCounts: function(counts) {
-                localStorage.setItem(this.PLAY_COUNTS_KEY, JSON.stringify(counts));
-            },
-            
-            /**
-             * Increment the play count for a specific game
-             * @param {string} gameId ID of the game to increment
-             * @returns {number} New play count
-             */
-            incrementPlayCount: function(gameId) {
-                if (!gameId) return 0;
-                
-                const counts = this.getPlayCounts();
-                
-                // Initialize count if not present
-                if (!counts[gameId]) {
-                    counts[gameId] = 0;
-                }
-                
-                // Increment count
-                counts[gameId]++;
-                
-                // Save updated counts
-                this.savePlayCounts(counts);
-                
-                console.log(`Incremented play count for ${gameId}: ${counts[gameId]}`);
-                
-                return counts[gameId];
-            },
-            
-            /**
-             * Get play count for a specific game
-             * @param {string} gameId ID of the game
-             * @returns {number} Play count
-             */
-            getPlayCount: function(gameId) {
-                if (!gameId) return 0;
-                
-                const counts = this.getPlayCounts();
-                return counts[gameId] || 0;
-            },
-            
-            /**
-             * Get the top N most played games
-             * @param {number} limit Maximum number of games to return
-             * @returns {Array} Array of game IDs sorted by play count
-             */
-            getTopGames: function(limit = 5) {
-                const counts = this.getPlayCounts();
-                
-                // Convert to array of [id, count] pairs
-                const countArray = Object.entries(counts);
-                
-                // Sort by count in descending order
-                countArray.sort((a, b) => b[1] - a[1]);
-                
-                // Return just the game IDs, limited to requested amount
-                return countArray.slice(0, limit).map(pair => pair[0]);
-            }
-        };
-
-        /**
-         * Game Database - Predefined game information
-         */
+        // Database of predefined games used for suggestions and lookup
         const GameDB = {
-            // Database of game information
+            // Map game IDs to info objects
             games: {
                 'minecraft': {
                     id: 'minecraft',
@@ -696,7 +925,7 @@
                 'paperio': {
                     id: 'paperio',
                     title: "Paper.io",
-                    imgSrc: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQE-P-VY4J5_xdb0xYMUqd0fNgKF-QQYsC-vA&s",
+                    imgSrc: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTeGt92Nzm67gG6yFzpKfxCoK5q7gJDhUHwTw&s",
                     link: "/uv/service/aHR0cHM6Ly9wYXBlci1pby5jb20v"
                 },
                 'flappybird': {
@@ -707,59 +936,71 @@
                 }
             },
             
+            // Map of URLs to game IDs for reverse lookup
+            urlMap: {},
+            
             /**
-             * Get game information by ID
-             * @param {string} gameId ID of the game
-             * @returns {Object|null} Game object or null if not found
+             * Initialize the URL map
              */
-            getGameById: function(gameId) {
-                return this.games[gameId] || null;
+            initUrlMap: function() {
+                // Build URL to ID mapping
+                for (const gameId in this.games) {
+                    const game = this.games[gameId];
+                    this.urlMap[game.link] = gameId;
+                }
             },
             
             /**
-             * Get game information by URL
-             * @param {string} url URL of the game
+             * Get a game by its URL
+             * @param {string} url URL to look up
              * @returns {Object|null} Game object or null if not found
              */
             getGameByUrl: function(url) {
-                if (!url) return null;
-                
-                // Search for game with matching URL
-                for (const gameId in this.games) {
-                    if (this.games[gameId].link === url) {
-                        return this.games[gameId];
-                    }
+                // Initialize URL map if empty
+                if (Object.keys(this.urlMap).length === 0) {
+                    this.initUrlMap();
                 }
                 
-                return null;
+                // Look up game ID by URL
+                const gameId = this.urlMap[url];
+                if (!gameId) return null;
+                
+                // Return game object
+                return this.games[gameId];
             },
             
             /**
-             * Get a list of random games, excluding the current game
-             * @param {string} currentGameUrl URL of the current game to exclude
+             * Get random games, excluding current game
+             * @param {string} currentUrl URL of current game to exclude
              * @param {number} count Number of games to return
              * @returns {Array} Array of game objects
              */
-            getRandomGames: function(currentGameUrl, count = 3) {
+            getRandomGames: function(currentUrl, count = 3) {
+                // Initialize URL map if empty
+                if (Object.keys(this.urlMap).length === 0) {
+                    this.initUrlMap();
+                }
+                
                 // Convert games object to array
                 const gamesList = Object.values(this.games);
                 
-                // Filter out the current game
-                const availableGames = gamesList.filter(game => game.link !== currentGameUrl);
+                // Filter out current game if specified
+                const availableGames = currentUrl
+                    ? gamesList.filter(game => game.link !== currentUrl)
+                    : gamesList;
                 
-                // Randomly select the specified number of games
-                return this.getRandomItems(availableGames, count);
+                // Shuffle and take requested number
+                return this.shuffleArray(availableGames)
+                    .slice(0, Math.min(count, availableGames.length));
             },
             
             /**
-             * Get random items from an array
-             * @param {Array} array Array to select from
-             * @param {number} count Number of items to select
-             * @returns {Array} Array of randomly selected items
+             * Shuffle array randomly
+             * @param {Array} array Array to shuffle
+             * @returns {Array} New shuffled array
              */
-            getRandomItems: function(array, count) {
-                const shuffled = [...array].sort(() => 0.5 - Math.random());
-                return shuffled.slice(0, Math.min(count, shuffled.length));
+            shuffleArray: function(array) {
+                return [...array].sort(() => Math.random() - 0.5);
             }
         };
 
@@ -774,13 +1015,13 @@
             const urlParams = new URLSearchParams(window.location.search);
             const currentGameUrl = urlParams.get('game');
             
-            // Get random game suggestions
-            const suggestions = GameDB.getRandomGames(currentGameUrl, 3);
+            // Get random games for suggestions, excluding current game
+            const randomGames = GameDB.getRandomGames(currentGameUrl, 3);
             
             // Clear loading state
             suggestionsElement.innerHTML = '';
             
-            if (suggestions.length === 0) {
+            if (randomGames.length === 0) {
                 suggestionsElement.innerHTML = `
                     <div style="text-align:center; padding:20px; color:#aaa;">
                         No game suggestions available
@@ -789,13 +1030,38 @@
                 return;
             }
             
-            // Add each suggestion
-            suggestions.forEach(game => {
-                const playCount = GameStats.getPlayCount(game.id);
+            // Add each game as a suggestion
+            randomGames.forEach(game => {
+                // Get global play count and trend
+                const playCount = GlobalGameStats.getGlobalPlayCount(game.id);
+                const trend = GlobalGameStats.getGameTrend(game.id);
                 
+                // Create suggestion element
                 const suggestionElement = document.createElement('div');
                 suggestionElement.className = 'suggestion_item';
+                
+                // Build trend indicator HTML
+                let trendHTML = '';
+                if (trend === 'rising') {
+                    trendHTML = `
+                        <div class="trend-indicator trend-rising">
+                            <svg width="10" height="10" viewBox="0 0 24 24">
+                                <path fill="currentColor" d="M7 14l5-5 5 5z"/>
+                            </svg>
+                        </div>
+                    `;
+                } else if (trend === 'falling') {
+                    trendHTML = `
+                        <div class="trend-indicator trend-falling">
+                            <svg width="10" height="10" viewBox="0 0 24 24">
+                                <path fill="currentColor" d="M7 10l5 5 5-5z"/>
+                            </svg>
+                        </div>
+                    `;
+                }
+                
                 suggestionElement.innerHTML = `
+                    ${trendHTML}
                     <div class="suggestion_icon">
                         <img src="${game.imgSrc}" alt="${game.title} icon">
                     </div>
@@ -818,7 +1084,7 @@
                     </div>
                 `;
                 
-                // Add click handler
+                // Add click handler to load the game
                 suggestionElement.addEventListener('click', function() {
                     loadSuggestedGame(game);
                 });
@@ -832,8 +1098,9 @@
          * @param {Object} game Game object with id, title, and link
          */
         function loadSuggestedGame(game) {
-            // Track play count
-            GameStats.incrementPlayCount(game.id);
+            // Record play and update popularity
+            GlobalGameStats.recordUserPlay(game.id);
+            GlobalGameStats.updatePopularityFactor(game.id, 0.5);
             
             // Show loading screen
             gameLoaded = false;
@@ -959,11 +1226,12 @@
                 return;
             }
             
-            // Find game information and track play
+            // Try to find game info and record play
             const gameInfo = GameDB.getGameByUrl(gameUrl);
             if (gameInfo) {
-                // Increment play count
-                GameStats.incrementPlayCount(gameInfo.id);
+                // Record play and update popularity
+                GlobalGameStats.recordUserPlay(gameInfo.id);
+                GlobalGameStats.updatePopularityFactor(gameInfo.id, 0.5);
             }
             
             // Set iframe src to load game
@@ -1095,11 +1363,35 @@
                 }
             });
             
-            // Load game immediately
-            loadGame();
+            // Initialize game database
+            const gameList = Object.values(GameDB.games);
+            GlobalGameStats.initialize(gameList);
             
             // Load game suggestions
             loadGameSuggestions();
+            
+            // Load the main game
+            loadGame();
+            
+            // Set up periodic updates of game suggestions
+            setInterval(() => {
+                const randomBoost = Math.random() < 0.5; // 50% chance
+                if (randomBoost) {
+                    // Get a random game to boost
+                    const gameIds = Object.keys(GameDB.games);
+                    const randomIndex = Math.floor(Math.random() * gameIds.length);
+                    const randomId = gameIds[randomIndex];
+                    
+                    // Small random boost to popularity
+                    const boostAmount = Math.random() * 0.05;
+                    GlobalGameStats.updatePopularityFactor(randomId, boostAmount);
+                    
+                    // Occasionally refresh suggestions (10% chance)
+                    if (Math.random() < 0.1) {
+                        loadGameSuggestions();
+                    }
+                }
+            }, 30000); // Every 30 seconds
         });
     </script>
 
