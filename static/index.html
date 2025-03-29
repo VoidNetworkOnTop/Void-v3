@@ -661,6 +661,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     loadHTML("/assets/html/footer.html", "footer")
 </script>
 <script>
+<script>
   // ADDS
   document.addEventListener('DOMContentLoaded', function() {
     // Video URLs extracted from your VAST response
@@ -669,16 +670,10 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       'https://www.lucky-work.pro/96561/286486/539592_1c56f.mp4'
     ];
     
-    // Click tracking URLs (simplified from your VAST)
-    const trackingUrls = [
-      'https://thusizulu.com/dgmhF.zid_GkVl2mZnW-5p0qPr2sF_kuSvWwQx9-NzTAMB5CN_TEYF0GJHm-FJkKdLnMN_1OYPmQlRk-PTSUZVhWc_2YMZ9aMbi-ZdledfmgV_uidjFkRl5-cnGoUp9qN_SsZtrudvz-1xnyYzWA1_lCJDTEJFD-MHmIZJ1Kd',
-      'https://thusizulu.com/d.m-FxzydzGAV_2CZDWE5F0-PH2IFJkKS_WMQN9ONPT-MR5SNTTUk_yWJXmYFZk-dbncNd1eY_mglhkiPjS-Zlhmcn2oM_9qMrisZtl-dvmwVxuyd_FARB5CcDG'
-    ];
-    
-    // Click through URLs
+    // Full clickthrough URLs from VAST - using the actual ad domain instead of tracking URLs
     const clickThrough = [
-      'https://thusizulu.com/dAmBF.zCd_GEVF2GZHW-5J0KPL2MF_kOSPWQQR9-NTTUMV5WN_TYYZ0aJbm-FdkedfngN_1iYjmkllk-PnSoZphqc_2sMt9uMvi',
-      'https://thusizulu.com/dlm-Fnzod.GpVq2_ZsWt5u0vP-2xFykzSAW_QC9DNETFM-5HNITJkKy_JMmNFOkPd-nRNS1TYUm_lWkXPYSZZ-hbcc2dMe9_MgihZiljd'
+      'https://www.lucky-work.pro',  // Replacing with direct domain since tracking URLs aren't working
+      'https://www.lucky-work.pro'   // Replacing with direct domain since tracking URLs aren't working
     ];
     
     // Function to modify game click handlers
@@ -695,6 +690,14 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             
             gameElement.onclick = function(event) {
               event.preventDefault();
+              
+              // Show loading overlay if it exists
+              const loadingOverlay = document.getElementById('loadingOverlay');
+              if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
+                loadingOverlay.classList.remove('fade-out');
+                document.getElementById('loadingText').textContent = 'Preparing game...';
+                document.getElementById('progressFill').style.width = '0%';
+              }
               
               // 75% chance to show an ad
               if (Math.random() < 0.75) {
@@ -715,7 +718,6 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       // Get a random video source
       const randomIndex = Math.floor(Math.random() * videoSources.length);
       const videoUrl = videoSources[randomIndex];
-      const trackingUrl = trackingUrls[randomIndex];
       const clickUrl = clickThrough[randomIndex];
       
       // Create overlay container
@@ -725,6 +727,11 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       // Create video container
       const videoContainer = document.createElement('div');
       videoContainer.style.cssText = 'width:640px; max-width:95%; height:360px; position:relative; background:#000; cursor:pointer;';
+      
+      // Create "Ad" label
+      const adLabel = document.createElement('div');
+      adLabel.innerText = 'Advertisement';
+      adLabel.style.cssText = 'position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.5); color:#fff; padding:3px 6px; font-size:12px; border-radius:3px; z-index:2;';
       
       // Create actual video element
       const video = document.createElement('video');
@@ -741,20 +748,21 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       skipButton.style.cssText = 'margin-top:15px; padding:10px 20px; background:#333; color:#fff; border:none; border-radius:4px; cursor:not-allowed; opacity:0.7;';
       skipButton.disabled = true;
       
+      // Create visit advertiser button (always active)
+      const visitButton = document.createElement('button');
+      visitButton.innerText = 'Visit Advertiser';
+      visitButton.style.cssText = 'margin-top:10px; padding:8px 16px; background:#3a78ee; color:#fff; border:none; border-radius:4px; cursor:pointer;';
+      
       // Add to DOM
       videoContainer.appendChild(video);
+      videoContainer.appendChild(adLabel);
       overlay.appendChild(videoContainer);
       overlay.appendChild(skipButton);
+      overlay.appendChild(visitButton);
       document.body.appendChild(overlay);
       
-      // Create a hidden tracking pixel
-      const trackingPixel = document.createElement('img');
-      trackingPixel.src = trackingUrl;
-      trackingPixel.style.cssText = 'position:absolute; width:1px; height:1px; opacity:0;';
-      overlay.appendChild(trackingPixel);
-      
-      // Handle skip button countdown - now 25 seconds
-      let countdown = 25; // Changed from 5 to 25 seconds
+      // Handle skip button countdown - 25 seconds
+      let countdown = 25; 
       const countdownTimer = setInterval(() => {
         countdown--;
         if (countdown <= 0) {
@@ -769,8 +777,16 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         }
       }, 1000);
       
-      // Video container click handler (for clickthrough)
+      // Video container click handler
       videoContainer.addEventListener('click', function() {
+        if (Math.random() < 0.5) {
+          // Only open in new tab 50% of the time to reduce accidental clicks
+          window.open(clickUrl, '_blank');
+        }
+      });
+      
+      // Visit advertiser button handler (reliable way to visit advertiser)
+      visitButton.addEventListener('click', function() {
         window.open(clickUrl, '_blank');
       });
       
