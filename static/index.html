@@ -727,20 +727,15 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       }
     });
     
-    // Add the VAST code to the video container
-    const vastScript = document.createElement('script');
-    vastScript.innerHTML = `
-      // Add the following code to your site:
-      var iframe = document.createElement('iframe');
-      iframe.style.cssText = 'width:100%; height:100%; border:none;';
-      iframe.src = 'https://thusizulu.com/dvmnF.zmdjGyNzv/ZnGMUh/ceOmh9Du_ZrUbl/kFPsTSY_yiMDj/QCyuN/j/YJtMNhjmIhycNfDPIR2jN/wc';
-      // This ensures content stays in the same tab for supported browsers
-      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
-      document.getElementById('vastVideoContainer').appendChild(iframe);
-    `;
+    // Create and append the iframe directly
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:100%; height:100%; border:none;';
+    iframe.src = 'https://thusizulu.com/dvmnF.zmdjGyNzv/ZnGMUh/ceOmh9Du_ZrUbl/kFPsTSY_yiMDj/QCyuN/j/YJtMNhjmIhycNfDPIR2jN/wc';
     
-    // Execute the VAST code
-    adElements.videoElement.appendChild(document.createRange().createContextualFragment(vastScript.innerHTML));
+    // For Hilltop ads, remove sandbox to allow proper functioning
+    // iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+    
+    adElements.videoElement.appendChild(iframe);
     
     // Auto close ad after 30 seconds if not skipped
     setTimeout(() => {
@@ -750,6 +745,17 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       }
     }, 30000);
   }
+
+  // Handle visibility change to detect when user returns from redirect
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      const adContainer = document.getElementById('vastAdContainer');
+      if (adContainer) {
+        // User returned from redirect, close the ad container
+        document.body.removeChild(adContainer);
+      }
+    }
+  });
 
   // Wait for the games to load
   document.addEventListener('DOMContentLoaded', () => {
@@ -773,16 +779,6 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
               // Extract game info for navigation
               const titleElement = gameElement.querySelector('.game-title');
               const gameTitle = titleElement ? titleElement.textContent : '';
-              let gameLinkTarget = '';
-              
-              // Try to extract the destination from the original handler
-              if (originalOnClick) {
-                const clickerStr = originalOnClick.toString();
-                const linkMatch = clickerStr.match(/window\.location\.href\s*=\s*['"`]([^'"`]+)['"`]/);
-                if (linkMatch && linkMatch[1]) {
-                  gameLinkTarget = linkMatch[1];
-                }
-              }
               
               // Show loading overlay (same as original code)
               const loadingOverlay = document.getElementById('loadingOverlay');
@@ -803,7 +799,16 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                   progressFill.style.width = '90%';
                 }
                 
-                // Call original click handler after showing ad (75% chance - increased from 40%)
+                // Store the original destination in localStorage before showing ad
+                if (originalOnClick) {
+                  const clickerStr = originalOnClick.toString();
+                  const linkMatch = clickerStr.match(/window\.location\.href\s*=\s*['"`]([^'"`]+)['"`]/);
+                  if (linkMatch && linkMatch[1]) {
+                    localStorage.setItem('lastGameTarget', linkMatch[1]);
+                  }
+                }
+                
+                // Call original click handler after showing ad (75% chance)
                 showAdWithChance(75, () => {
                   if (originalOnClick) {
                     // Call the original handler which will navigate in the same tab
@@ -824,17 +829,17 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       }, 500);
     }
 
-    // Run the function to update click handlers
-    updateGameClickHandlers();
-  });
-
-  // Ensure target="_self" is used for the links we can control
-  document.addEventListener('click', function(e) {
-    // For any links within our controlled area
-    if (e.target.tagName === 'A' && !e.target.hasAttribute('target')) {
-      e.target.setAttribute('target', '_self');
+    // Check if returning from ad redirect
+    const lastTarget = localStorage.getItem('lastGameTarget');
+    if (lastTarget) {
+      // Navigate to the stored target
+      localStorage.removeItem('lastGameTarget');
+      window.location.href = lastTarget;
+    } else {
+      // Normal initialization
+      updateGameClickHandlers();
     }
-  }, true);
+  });
 </script>
 </body>
 </html>
