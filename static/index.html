@@ -660,9 +660,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     loadHTML("/assets/html/header.html", "header"),
     loadHTML("/assets/html/footer.html", "footer")
 </script>
-     <script>
+<script>
   // ADDS
-  // ADDS
+  // VAST Ad setup function
   function setupVastAd() {
     // Create ad container
     const adContainer = document.createElement('div');
@@ -734,6 +734,8 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       var iframe = document.createElement('iframe');
       iframe.style.cssText = 'width:100%; height:100%; border:none;';
       iframe.src = 'https://thusizulu.com/dvmnF.zmdjGyNzv/ZnGMUh/ceOmh9Du_ZrUbl/kFPsTSY_yiMDj/QCyuN/j/YJtMNhjmIhycNfDPIR2jN/wc';
+      // This ensures content stays in the same tab for supported browsers
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
       document.getElementById('vastVideoContainer').appendChild(iframe);
     `;
     
@@ -768,9 +770,19 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             gameElement.onclick = async (event) => {
               event.preventDefault();
               
-              // Extract game link
+              // Extract game info for navigation
               const titleElement = gameElement.querySelector('.game-title');
               const gameTitle = titleElement ? titleElement.textContent : '';
+              let gameLinkTarget = '';
+              
+              // Try to extract the destination from the original handler
+              if (originalOnClick) {
+                const clickerStr = originalOnClick.toString();
+                const linkMatch = clickerStr.match(/window\.location\.href\s*=\s*['"`]([^'"`]+)['"`]/);
+                if (linkMatch && linkMatch[1]) {
+                  gameLinkTarget = linkMatch[1];
+                }
+              }
               
               // Show loading overlay (same as original code)
               const loadingOverlay = document.getElementById('loadingOverlay');
@@ -791,9 +803,10 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
                   progressFill.style.width = '90%';
                 }
                 
-                // Call original click handler after showing ad (40% chance)
-                showAdWithChance(40, () => {
+                // Call original click handler after showing ad (75% chance - increased from 40%)
+                showAdWithChance(75, () => {
                   if (originalOnClick) {
+                    // Call the original handler which will navigate in the same tab
                     originalOnClick.call(gameElement);
                   }
                 });
@@ -814,7 +827,14 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     // Run the function to update click handlers
     updateGameClickHandlers();
   });
-          // ADDS END
+
+  // Ensure target="_self" is used for the links we can control
+  document.addEventListener('click', function(e) {
+    // For any links within our controlled area
+    if (e.target.tagName === 'A' && !e.target.hasAttribute('target')) {
+      e.target.setAttribute('target', '_self');
+    }
+  }, true);
 </script>
 </body>
 </html>
