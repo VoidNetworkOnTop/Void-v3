@@ -209,6 +209,11 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/rkjzxuQkWhYK5W6mrBP-bOvthg4t-o1D2VBMjOeYz6ArcOTVdo51FXF3RKeh4dNXyEP_mtYmcjCe8rAeG7Fll1oCYEJrGpgBhvAPCTwvdaEgG2gMve67IYg_7fQJv0rBQimwMnSLR2Cvv0dzSvvjW4ksBC5I72xvg2WTpC5fDGolUwnAtfVgt8ttab1Vf7g8YyIWYsR2?key=yj4V8pHW144VjA9YlEbf1Q",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.whatbeatsrock.com")
 },
+{
+    title: "Idle Ants", 
+    imgSrc: "https://lh7-us.googleusercontent.com/k0lDpuoPPrYXEh0B92dIGZ5hAQ7bt9vwZXnIq0KbXS1IibSGRWb3azBnI_q3ZhAAcNtfeVUy8o-rThEm-x86CqSXoeHk46da6MmEPUCNZk6J3bv-3alZcDnaj8NPnavcB5OGeUbI0brQkaSmLgV3cjugos8m7ce1MNLCJEZ3oDriA4F0kwuYzuoonnlg6hMN0sR_RQvw?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://idle-ants-y27p.vercel.app")
+},
 
    ];
 export { games2Data }; // Named export
