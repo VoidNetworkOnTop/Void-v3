@@ -660,11 +660,28 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     loadHTML("/assets/html/header.html", "header"),
     loadHTML("/assets/html/footer.html", "footer")
 </script>
-    <!-- VAST Video Ad Implementation - Add this just before the closing </body> tag -->
 <script>
-  // Wait for the DOM to be fully loaded
+ 
   document.addEventListener('DOMContentLoaded', function() {
-    // Modify game click handlers to show ads with 75% chance
+    // Video URLs extracted from your VAST response
+    const videoSources = [
+      'https://www.lucky-work.pro/96561/286479/539564_8e2e2.mp4',
+      'https://www.lucky-work.pro/96561/286486/539592_1c56f.mp4'
+    ];
+    
+    // Click tracking URLs (simplified from your VAST)
+    const trackingUrls = [
+      'https://thusizulu.com/dgmhF.zid_GkVl2mZnW-5p0qPr2sF_kuSvWwQx9-NzTAMB5CN_TEYF0GJHm-FJkKdLnMN_1OYPmQlRk-PTSUZVhWc_2YMZ9aMbi-ZdledfmgV_uidjFkRl5-cnGoUp9qN_SsZtrudvz-1xnyYzWA1_lCJDTEJFD-MHmIZJ1Kd',
+      'https://thusizulu.com/d.m-FxzydzGAV_2CZDWE5F0-PH2IFJkKS_WMQN9ONPT-MR5SNTTUk_yWJXmYFZk-dbncNd1eY_mglhkiPjS-Zlhmcn2oM_9qMrisZtl-dvmwVxuyd_FARB5CcDG'
+    ];
+    
+    // Click through URLs
+    const clickThrough = [
+      'https://thusizulu.com/dAmBF.zCd_GEVF2GZHW-5J0KPL2MF_kOSPWQQR9-NTTUMV5WN_TYYZ0aJbm-FdkedfngN_1iYjmkllk-PnSoZphqc_2sMt9uMvi',
+      'https://thusizulu.com/dlm-Fnzod.GpVq2_ZsWt5u0vP-2xFykzSAW_QC9DNETFM-5HNITJkKy_JMmNFOkPd-nRNS1TYUm_lWkXPYSZZ-hbcc2dMe9_MgihZiljd'
+    ];
+    
+    // Function to modify game click handlers
     function updateGameClickHandlers() {
       // Find all game items once they're loaded
       const checkInterval = setInterval(() => {
@@ -679,29 +696,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             gameElement.onclick = function(event) {
               event.preventDefault();
               
-              // Show loading overlay if it exists
-              const loadingOverlay = document.getElementById('loadingOverlay');
-              if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
-                loadingOverlay.classList.remove('fade-out');
-                document.getElementById('loadingText').textContent = 'Preparing game...';
-                document.getElementById('progressFill').style.width = '0%';
-              }
-              
-              // Animate loading progress
-              const progressFill = document.getElementById('progressFill');
-              if (progressFill) {
-                progressFill.style.width = '30%';
-                setTimeout(() => {
-                  progressFill.style.width = '60%';
-                  setTimeout(() => {
-                    progressFill.style.width = '90%';
-                  }, 100);
-                }, 100);
-              }
-              
               // 75% chance to show an ad
               if (Math.random() < 0.75) {
-                showAd(function() {
+                showVideoAd(function() {
                   if (originalOnClick) originalOnClick.call(gameElement);
                 });
               } else {
@@ -713,16 +710,30 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       }, 500);
     }
     
-    // Function to show the ad
-    function showAd(callback) {
+    // Function to show a video ad
+    function showVideoAd(callback) {
+      // Get a random video source
+      const randomIndex = Math.floor(Math.random() * videoSources.length);
+      const videoUrl = videoSources[randomIndex];
+      const trackingUrl = trackingUrls[randomIndex];
+      const clickUrl = clickThrough[randomIndex];
+      
       // Create overlay container
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:999999; display:flex; flex-direction:column; justify-content:center; align-items:center;';
       
-      // Create ad container
-      const adContainer = document.createElement('div');
-      adContainer.id = 'hilltopAdContainer';
-      adContainer.style.cssText = 'width:640px; max-width:95%; height:360px; background:#000; position:relative;';
+      // Create video container
+      const videoContainer = document.createElement('div');
+      videoContainer.style.cssText = 'width:640px; max-width:95%; height:360px; position:relative; background:#000; cursor:pointer;';
+      
+      // Create actual video element
+      const video = document.createElement('video');
+      video.style.cssText = 'width:100%; height:100%; display:block;';
+      video.src = videoUrl;
+      video.autoplay = true;
+      video.controls = false;
+      video.muted = false;
+      video.playsInline = true;
       
       // Create skip button
       const skipButton = document.createElement('button');
@@ -731,9 +742,16 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       skipButton.disabled = true;
       
       // Add to DOM
-      overlay.appendChild(adContainer);
+      videoContainer.appendChild(video);
+      overlay.appendChild(videoContainer);
       overlay.appendChild(skipButton);
       document.body.appendChild(overlay);
+      
+      // Create a hidden tracking pixel
+      const trackingPixel = document.createElement('img');
+      trackingPixel.src = trackingUrl;
+      trackingPixel.style.cssText = 'position:absolute; width:1px; height:1px; opacity:0;';
+      overlay.appendChild(trackingPixel);
       
       // Handle skip button countdown
       let countdown = 5;
@@ -751,47 +769,39 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         }
       }, 1000);
       
+      // Video container click handler (for clickthrough)
+      videoContainer.addEventListener('click', function() {
+        window.open(clickUrl, '_blank');
+      });
+      
       // Skip button click handler
       skipButton.addEventListener('click', function() {
         if (!skipButton.disabled) {
+          video.pause();
           document.body.removeChild(overlay);
           clearInterval(countdownTimer);
           if (callback) callback();
         }
       });
       
-      // Auto-close after 30 seconds
+      // Video ended handler
+      video.addEventListener('ended', function() {
+        document.body.removeChild(overlay);
+        clearInterval(countdownTimer);
+        if (callback) callback();
+      });
+      
+      // Auto-close after 35 seconds (longer than video to ensure completion)
       setTimeout(() => {
         if (document.body.contains(overlay)) {
           document.body.removeChild(overlay);
           if (callback) callback();
         }
-      }, 30000);
-      
-      // Create iframe using the direct URL from Hilltop Ads
-      const iframe = document.createElement('iframe');
-      iframe.id = 'hilltopAdFrame';
-      iframe.frameBorder = '0';
-      iframe.scrolling = 'no';
-      iframe.style.cssText = 'width:100%; height:100%; border:none;';
-      iframe.src = 'https://thusizulu.com/dvmnF.zmdjGyNzv/ZnGMUh/ceOmh9Du_ZrUbl/kFPsTSY_yiMDj/QCyuN/j/YJtMNhjmIhycNfDPIR2jN/wc';
-      
-      // Add iframe to container
-      adContainer.appendChild(iframe);
+      }, 35000);
     }
     
-    // Initialize the game click handlers
+    // Start the system
     updateGameClickHandlers();
-    
-    // Handle visibility change (for when users return from redirects)
-    document.addEventListener('visibilitychange', function() {
-      if (document.visibilityState === 'visible') {
-        const adOverlay = document.querySelector('#hilltopAdContainer')?.parentNode;
-        if (adOverlay && adOverlay.tagName !== 'BODY') {
-          document.body.removeChild(adOverlay);
-        }
-      }
-    });
   });
 </script>
 </body>
