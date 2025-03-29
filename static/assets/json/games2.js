@@ -92,12 +92,12 @@ const games2Data = [
 {
     title: "Geometrydash Meltdown", 
     imgSrc: "https://lh7-us.googleusercontent.com/2VSrflEy3rxlwUHDLPkDuICjlqthjIkW1bBHNE548hX_uxU6n2wn0qFwl49ufqQowttCUksEdwEU4itmDSK6SFjx9Fgj-H1mQxde_uig6NvIoj1RNoJqzH54IJMAqcb8cw6-Jqz0f8T45Moj1rHKz5yXtZRH7Q",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://turbowarp.org/143663274/embed")
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://geometrydashmeltdown.io")
 },
 {
     title: "Geometrydash SubZero", 
     imgSrc: "https://lh7-us.googleusercontent.com/o-ZnHpcqHAa_1e_GPwUc8XNC0gKFSLry0EoFtYZYwW2sOkWNvumU4KGblA0s_vkslqDiIsK4_tuRg_QKlirNjO6UajJZUIKwNHfxPIM1KZsEE6pd4j2HEVCKbvzt64fW48qA8K1eb3rf_OhoInyvjdmRQy0duw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://turbowarp.org/216343253/embed?autoplay&addons=remove-curved-stage-border")
+    link: __uv$config.prefix + __uv$config.encodeUrl("geometrydashsubzero.io")
 },
 {
     title: "Papa's Cheeseria", 
