@@ -661,155 +661,162 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     loadHTML("/assets/html/footer.html", "footer")
 </script>
 <script>
-<script>
-  // Wait for the page to fully load
-  window.addEventListener('load', function() {
-    // Find and modify all game elements
-    const gameItems = document.querySelectorAll('.game-item');
+  // Add this to your HTML file just before the closing </body> tag
+  document.addEventListener('DOMContentLoaded', function() {
+    // Video URLs extracted from your VAST response
+    const videoSources = [
+      'https://www.lucky-work.pro/96561/286479/539564_8e2e2.mp4',
+      'https://www.lucky-work.pro/96561/286486/539592_1c56f.mp4'
+    ];
     
-    gameItems.forEach(gameElement => {
-      // Store the original click handler
-      const originalOnClick = gameElement.onclick;
-      
-      // Replace with our ad handler
-      gameElement.onclick = function(event) {
-        event.preventDefault();
-        event.stopPropagation();
-        
-        // Force show ad (100% chance for testing)
-        showAd(function() {
-          console.log("Ad completed, continuing to game");
-          // Call original handler when ad completes
-          if (originalOnClick) originalOnClick.call(gameElement);
-        });
-        
-        return false;
-      };
-    });
+    // Full clickthrough URLs from VAST - using the actual ad domain instead of tracking URLs
+    const clickThrough = [
+      'https://www.lucky-work.pro',  // Replacing with direct domain since tracking URLs aren't working
+      'https://www.lucky-work.pro'   // Replacing with direct domain since tracking URLs aren't working
+    ];
     
-    // Simple ad display function
-    function showAd(callback) {
-      console.log("Showing ad");
+    // Function to modify game click handlers
+    function updateGameClickHandlers() {
+      // Find all game items once they're loaded
+      const checkInterval = setInterval(() => {
+        const gameItems = document.querySelectorAll('.game-item');
+        if (gameItems.length > 0) {
+          clearInterval(checkInterval);
+          
+          // Add ad functionality to each game
+          gameItems.forEach(gameElement => {
+            const originalOnClick = gameElement.onclick;
+            
+            gameElement.onclick = function(event) {
+              event.preventDefault();
+              
+              // Show loading overlay if it exists
+              const loadingOverlay = document.getElementById('loadingOverlay');
+              if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
+                loadingOverlay.classList.remove('fade-out');
+                document.getElementById('loadingText').textContent = 'Preparing game...';
+                document.getElementById('progressFill').style.width = '0%';
+              }
+              
+              // 75% chance to show an ad
+              if (Math.random() < 0.75) {
+                showVideoAd(function() {
+                  if (originalOnClick) originalOnClick.call(gameElement);
+                });
+              } else {
+                if (originalOnClick) originalOnClick.call(gameElement);
+              }
+            };
+          });
+        }
+      }, 500);
+    }
+    
+    // Function to show a video ad
+    function showVideoAd(callback) {
+      // Get a random video source
+      const randomIndex = Math.floor(Math.random() * videoSources.length);
+      const videoUrl = videoSources[randomIndex];
+      const clickUrl = clickThrough[randomIndex];
       
-      // Video sources (MP4 only for better compatibility)
-      const videoSources = [
-        'https://www.lucky-work.pro/96561/286479/539564_8e2e2.mp4',
-        'https://www.lucky-work.pro/96561/286486/539592_1c56f.mp4'
-      ];
-      
-      // Create the overlay
+      // Create overlay container
       const overlay = document.createElement('div');
-      overlay.id = 'adOverlay';
-      overlay.style.position = 'fixed';
-      overlay.style.top = '0';
-      overlay.style.left = '0';
-      overlay.style.width = '100%';
-      overlay.style.height = '100%';
-      overlay.style.backgroundColor = 'rgba(0,0,0,0.8)';
-      overlay.style.zIndex = '9999999';
-      overlay.style.display = 'flex';
-      overlay.style.flexDirection = 'column';
-      overlay.style.justifyContent = 'center';
-      overlay.style.alignItems = 'center';
+      overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:999999; display:flex; flex-direction:column; justify-content:center; align-items:center;';
       
-      // Create video element
+      // Create video container
+      const videoContainer = document.createElement('div');
+      videoContainer.style.cssText = 'width:640px; max-width:95%; height:360px; position:relative; background:#000; cursor:pointer;';
+      
+      // Create "Ad" label
+      const adLabel = document.createElement('div');
+      adLabel.innerText = 'Advertisement';
+      adLabel.style.cssText = 'position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.5); color:#fff; padding:3px 6px; font-size:12px; border-radius:3px; z-index:2;';
+      
+      // Create actual video element
       const video = document.createElement('video');
-      video.id = 'adVideo';
-      video.width = 640;
-      video.height = 360;
-      video.style.maxWidth = '95%';
-      video.style.background = '#000';
-      video.controls = false;
+      video.style.cssText = 'width:100%; height:100%; display:block;';
+      video.src = videoUrl;
       video.autoplay = true;
+      video.controls = false;
       video.muted = false;
       video.playsInline = true;
-      video.src = videoSources[Math.floor(Math.random() * videoSources.length)];
       
       // Create skip button
-      const skipBtn = document.createElement('button');
-      skipBtn.id = 'skipButton';
-      skipBtn.textContent = 'Ad will be skippable in 25s';
-      skipBtn.style.marginTop = '15px';
-      skipBtn.style.padding = '10px 20px';
-      skipBtn.style.background = '#333';
-      skipBtn.style.color = '#fff';
-      skipBtn.style.border = 'none';
-      skipBtn.style.borderRadius = '4px';
-      skipBtn.style.cursor = 'not-allowed';
-      skipBtn.style.opacity = '0.7';
-      skipBtn.disabled = true;
+      const skipButton = document.createElement('button');
+      skipButton.innerText = 'Ad will be skippable in 25s';
+      skipButton.style.cssText = 'margin-top:15px; padding:10px 20px; background:#333; color:#fff; border:none; border-radius:4px; cursor:not-allowed; opacity:0.7;';
+      skipButton.disabled = true;
       
-      // Add everything to the document
-      overlay.appendChild(video);
-      overlay.appendChild(skipBtn);
+      // Create visit advertiser button (always active)
+      const visitButton = document.createElement('button');
+      visitButton.innerText = 'Visit Advertiser';
+      visitButton.style.cssText = 'margin-top:10px; padding:8px 16px; background:#3a78ee; color:#fff; border:none; border-radius:4px; cursor:pointer;';
+      
+      // Add to DOM
+      videoContainer.appendChild(video);
+      videoContainer.appendChild(adLabel);
+      overlay.appendChild(videoContainer);
+      overlay.appendChild(skipButton);
+      overlay.appendChild(visitButton);
       document.body.appendChild(overlay);
       
-      // Debug log
-      console.log("Ad elements added to DOM");
-      
-      // Handle video errors
-      video.addEventListener('error', function(e) {
-        console.error("Video error:", e);
-        document.body.removeChild(overlay);
-        if (callback) callback();
-      });
-      
-      // Ensure video starts playing
-      video.play().catch(function(error) {
-        console.error("Video play error:", error);
-        // Try again with muted (autoplay policy may require this)
-        video.muted = true;
-        video.play().catch(function() {
-          // If still fails, just skip to callback
-          document.body.removeChild(overlay);
-          if (callback) callback();
-        });
-      });
-      
-      // Skip button timer
-      let countdown = 25;
-      const timer = setInterval(function() {
+      // Handle skip button countdown - 25 seconds
+      let countdown = 25; 
+      const countdownTimer = setInterval(() => {
         countdown--;
         if (countdown <= 0) {
-          clearInterval(timer);
-          skipBtn.disabled = false;
-          skipBtn.textContent = 'Skip Ad';
-          skipBtn.style.cursor = 'pointer';
-          skipBtn.style.opacity = '1';
-          skipBtn.style.background = '#3a78ee';
+          clearInterval(countdownTimer);
+          skipButton.disabled = false;
+          skipButton.innerText = 'Skip Ad';
+          skipButton.style.cursor = 'pointer';
+          skipButton.style.opacity = '1';
+          skipButton.style.background = '#3a78ee';
         } else {
-          skipBtn.textContent = `Ad will be skippable in ${countdown}s`;
+          skipButton.innerText = `Ad will be skippable in ${countdown}s`;
         }
       }, 1000);
       
+      // Video container click handler
+      videoContainer.addEventListener('click', function() {
+        if (Math.random() < 0.5) {
+          // Only open in new tab 50% of the time to reduce accidental clicks
+          window.open(clickUrl, '_blank');
+        }
+      });
+      
+      // Visit advertiser button handler (reliable way to visit advertiser)
+      visitButton.addEventListener('click', function() {
+        window.open(clickUrl, '_blank');
+      });
+      
       // Skip button click handler
-      skipBtn.addEventListener('click', function() {
-        if (!skipBtn.disabled) {
-          console.log("Ad skipped");
-          clearInterval(timer);
+      skipButton.addEventListener('click', function() {
+        if (!skipButton.disabled) {
+          video.pause();
           document.body.removeChild(overlay);
+          clearInterval(countdownTimer);
           if (callback) callback();
         }
       });
       
       // Video ended handler
       video.addEventListener('ended', function() {
-        console.log("Video ended naturally");
-        clearInterval(timer);
         document.body.removeChild(overlay);
+        clearInterval(countdownTimer);
         if (callback) callback();
       });
       
-      // Failsafe - close after 35 seconds no matter what
-      setTimeout(function() {
+      // Auto-close after 35 seconds (longer than video to ensure completion)
+      setTimeout(() => {
         if (document.body.contains(overlay)) {
-          console.log("Failsafe triggered");
-          clearInterval(timer);
           document.body.removeChild(overlay);
           if (callback) callback();
         }
       }, 35000);
     }
+    
+    // Start the system
+    updateGameClickHandlers();
   });
 </script>
 </body>
