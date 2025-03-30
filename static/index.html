@@ -663,8 +663,11 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
 <script>
   // Add this to your HTML file just before the closing </body> tag
   document.addEventListener('DOMContentLoaded', function() {
-    // The original VAST URL from Hilltop Ads
-    const vastUrl = 'https://thusizulu.com/dvmnF.zmdjGyNzv/ZnGMUh/ceOmh9Du_ZrUbl/kFPsTSY_yiMDj/QCyuN/j/YJtMNhjmIhycNfDPIR2jN/wc';
+    // Direct MP4 video URLs extracted from the VAST response
+    const videoUrls = [
+      'https://www.lucky-work.pro/301305/351376/641280_e5a15.mp4',  // First ad (long format)
+      'https://www.lucky-work.pro/96561/286479/539564_8e2e2.mp4'    // Second ad (square format)
+    ];
     
     // Function to modify game click handlers
     function updateGameClickHandlers() {
@@ -691,7 +694,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
               
               // 75% chance to show an ad
               if (Math.random() < 0.75) {
-                showAdOverlay(function() {
+                showVideoAd(() => {
                   if (originalOnClick) originalOnClick.call(gameElement);
                 });
               } else {
@@ -703,81 +706,124 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       }, 500);
     }
     
-    // Function to show the ad in an overlay with iframe
-    function showAdOverlay(callback) {
-      // Create overlay container
+    // Function to show a direct video ad
+    function showVideoAd(callback) {
+      // Choose a random video
+      const videoUrl = videoUrls[Math.floor(Math.random() * videoUrls.length)];
+      
+      // Create overlay
       const overlay = document.createElement('div');
-      overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:999999; display:flex; flex-direction:column; justify-content:center; align-items:center;';
+      overlay.style.position = 'fixed';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      overlay.style.backgroundColor = 'rgba(0,0,0,0.85)';
+      overlay.style.zIndex = '999999';
+      overlay.style.display = 'flex';
+      overlay.style.flexDirection = 'column';
+      overlay.style.justifyContent = 'center';
+      overlay.style.alignItems = 'center';
       
-      // Create iframe container
-      const iframeContainer = document.createElement('div');
-      iframeContainer.style.cssText = 'width:640px; max-width:95%; height:360px; position:relative; background:#000;';
+      // Create ad label
+      const adLabel = document.createElement('div');
+      adLabel.textContent = 'Advertisement';
+      adLabel.style.color = 'white';
+      adLabel.style.position = 'absolute';
+      adLabel.style.top = '10px';
+      adLabel.style.left = '10px';
+      adLabel.style.background = 'rgba(0,0,0,0.5)';
+      adLabel.style.padding = '4px 8px';
+      adLabel.style.borderRadius = '4px';
+      adLabel.style.fontSize = '12px';
+      adLabel.style.zIndex = '2';
       
-      // Create the iframe for the VAST ad
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = 'width:100%; height:100%; border:none;';
-      iframe.src = vastUrl;
-      iframe.setAttribute('allowfullscreen', 'true');
-      iframe.setAttribute('allow', 'autoplay; fullscreen');
+      // Create video container
+      const videoContainer = document.createElement('div');
+      videoContainer.style.width = '640px';
+      videoContainer.style.height = '360px';
+      videoContainer.style.maxWidth = '90%';
+      videoContainer.style.position = 'relative';
+      videoContainer.style.backgroundColor = '#000';
+      videoContainer.style.boxShadow = '0 0 20px rgba(0,0,0,0.5)';
+      videoContainer.style.borderRadius = '4px';
+      videoContainer.style.overflow = 'hidden';
+      
+      // Create video element
+      const video = document.createElement('video');
+      video.style.width = '100%';
+      video.style.height = '100%';
+      video.style.objectFit = 'contain';
+      video.src = videoUrl;
+      video.controls = false;
+      video.autoplay = true;
+      video.muted = false;
+      video.playsInline = true;
+      
+      // Add ad label to video container
+      videoContainer.appendChild(video);
+      videoContainer.appendChild(adLabel);
       
       // Create skip button
       const skipButton = document.createElement('button');
-      skipButton.innerText = 'Ad will be skippable in 25s';
-      skipButton.style.cssText = 'margin-top:15px; padding:10px 20px; background:#333; color:#fff; border:none; border-radius:4px; cursor:not-allowed; opacity:0.7;';
+      skipButton.textContent = 'Ad will be skippable in 25s';
+      skipButton.style.marginTop = '15px';
+      skipButton.style.padding = '10px 20px';
+      skipButton.style.backgroundColor = '#333';
+      skipButton.style.color = '#fff';
+      skipButton.style.border = 'none';
+      skipButton.style.borderRadius = '4px';
+      skipButton.style.cursor = 'not-allowed';
+      skipButton.style.opacity = '0.7';
       skipButton.disabled = true;
       
-      // Add to DOM
-      iframeContainer.appendChild(iframe);
-      overlay.appendChild(iframeContainer);
+      // Append elements to DOM
+      overlay.appendChild(videoContainer);
       overlay.appendChild(skipButton);
       document.body.appendChild(overlay);
       
-      // Handle skip button countdown - 25 seconds
-      let countdown = 25; 
+      // Timer to enable skip button after 25 seconds
+      let countdown = 25;
       const countdownTimer = setInterval(() => {
         countdown--;
         if (countdown <= 0) {
           clearInterval(countdownTimer);
           skipButton.disabled = false;
-          skipButton.innerText = 'Skip Ad';
+          skipButton.textContent = 'Skip Ad';
           skipButton.style.cursor = 'pointer';
           skipButton.style.opacity = '1';
-          skipButton.style.background = '#3a78ee';
+          skipButton.style.backgroundColor = '#3a78ee';
         } else {
-          skipButton.innerText = `Ad will be skippable in ${countdown}s`;
+          skipButton.textContent = `Ad will be skippable in ${countdown}s`;
         }
       }, 1000);
       
       // Skip button click handler
-      skipButton.addEventListener('click', function() {
+      skipButton.addEventListener('click', () => {
         if (!skipButton.disabled) {
-          document.body.removeChild(overlay);
           clearInterval(countdownTimer);
+          video.pause();
+          document.body.removeChild(overlay);
           if (callback) callback();
         }
       });
       
-      // Auto-close after 40 seconds in case the ad doesn't load or finish properly
+      // Video end handler
+      video.addEventListener('ended', () => {
+        clearInterval(countdownTimer);
+        document.body.removeChild(overlay);
+        if (callback) callback();
+      });
+      
+      // Failsafe - auto close after 35 seconds
       setTimeout(() => {
         if (document.body.contains(overlay)) {
-          document.body.removeChild(overlay);
           clearInterval(countdownTimer);
+          document.body.removeChild(overlay);
           if (callback) callback();
         }
-      }, 40000);
+      }, 35000);
     }
-    
-    // Handle visibility change to handle iframe redirects
-    document.addEventListener('visibilitychange', function() {
-      if (document.visibilityState === 'visible') {
-        const overlays = document.querySelectorAll('div[style*="z-index:999999"]');
-        for (let overlay of overlays) {
-          if (overlay && document.body.contains(overlay)) {
-            document.body.removeChild(overlay);
-          }
-        }
-      }
-    });
     
     // Start the system
     updateGameClickHandlers();
