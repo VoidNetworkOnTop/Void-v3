@@ -668,17 +668,17 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     // Direct video file from the VAST response that we know works
     const videoFile = 'https://www.lucky-work.pro/96561/286486/539589_68306.mp4';
     
-    // Tracking URL from the VAST response
-    const clickTrackingUrl = 'https://thusizulu.com/dvmwF.zxd-GzVA2BZCW_5E0FPG2HF-kJSKWLQM9_NOTPMQ5RN-TTgU5VJWm_FYkZdanbN-1dYemflgk_PiSjZkhlc-2nMo9pMqi_ZsltdumvV-uxdyFzRA5_cCGDUE9FM-yHZIrJdKz_0MyNZOnPV-2RJSTTJUD_MWmXZYzZZ-XbJc2daeW_NglhJiTjJ';
-    
-    // GUARANTEED good fallback URL - Google is always reliable
-    const fallbackDestination = 'https://www.google.com';
+    // Original tracking URL from the VAST response - this should handle the tracking AND redirect
+    const clickThrough = 'https://thusizulu.com/dvmwF.zxd-GzVA2BZCW_5E0FPG2HF-kJSKWLQM9_NOTPMQ5RN-TTgU5VJWm_FYkZdanbN-1dYemflgk_PiSjZkhlc-2nMo9pMqi_ZsltdumvV-uxdyFzRA5_cCGDUE9FM-yHZIrJdKz_0MyNZOnPV-2RJSTTJUD_MWmXZYzZZ-XbJc2daeW_NglhJiTjJ';
     
     // Impression tracking URL 
     const impressionUrl = 'https://thusizulu.com/dsm.FtzudvG-Vx2yZzWA5_0CPD2EFFk-SHWIQJ9KN_TMMN5ONPT-gR5SJTmUF_kWdXnYNZ1-YbmcldkeP_SgZhhicj2-Ml9mMnioZ_lqdrmsVtu-dvFwRx5yc_GAUB9CNDS';
     
     // Video start tracking URL
     const startUrl = 'https://thusizulu.com/dEm_FGzHd.GIVJ2-ZLWM5N0OP_2QFRkSSTW-QV9WNXTYM_5aNbTcgd5-JfmgFhkid_nkNl1mYnm-lpkqPrSsZ_hucv2wMx9-MziAZBlCd';
+    
+    // The real advertiser domain based on video URL
+    const advertiserDomain = 'https://www.lucky-work.pro';
     
     // Initialize once page is loaded
     window.addEventListener('load', initializeAdSystem);
@@ -700,7 +700,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             event.stopPropagation();
             
             // 50% chance to show an ad - CHANGE BACK TO 0.5 for 50%
-            if (Math.random() < 1) { // Always show for testing
+            if (Math.random() < 0.5) { // 50% chance
               console.log('Showing ad before game');
               
               // Game callback
@@ -722,11 +722,8 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       }
     }
     
-    // Function to track an impression or event in a reliable way
+    // Function to track an impression or event
     function trackEvent(url) {
-      // Use both image pixel and fetch for reliability
-      
-      // Method 1: Image pixel (reliable for tracking)
       const pixel = new Image();
       pixel.src = url;
       pixel.style.display = 'none';
@@ -736,33 +733,6 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
           document.body.removeChild(pixel);
         }
       }, 3000);
-      
-      // Method 2: Fetch API with timeout (backup)
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-        
-        fetch(url, { 
-          method: 'GET',
-          mode: 'no-cors',
-          signal: controller.signal
-        }).catch(() => {
-          // Ignore errors - we expect this might fail but tracking still happens
-        }).finally(() => {
-          clearTimeout(timeoutId);
-        });
-      } catch (e) {
-        // Ignore errors - pixel method is primary
-      }
-    }
-    
-    // Function to handle ad clicks with 100% reliable tracking
-    function handleAdClick() {
-      // First track with pixel (most reliable)
-      trackEvent(clickTrackingUrl);
-      
-      // Then definitely go to a working page
-      window.open(fallbackDestination, '_blank');
     }
     
     // Function to show video ad
@@ -825,8 +795,18 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       // Track impression immediately
       trackEvent(impressionUrl);
       
-      // Make container clickable with reliable handler
-      adContainer.addEventListener('click', handleAdClick);
+      // Make container clickable - use advertiser domain directly instead of tracking URL
+      adContainer.addEventListener('click', function() {
+        // Instead of using the tracking URL that gives you a blank page,
+        // We'll directly take the user to the advertiser's site and still
+        // track the click in the background
+        
+        // Track the click (you still get paid this way)
+        trackEvent(clickThrough);
+        
+        // Open the advertiser's domain directly in a new tab
+        window.open(advertiserDomain, '_blank');
+      });
       
       // Prevent spacebar pausing
       const keydownHandler = function(e) {
