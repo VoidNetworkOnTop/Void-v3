@@ -669,6 +669,12 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       'https://www.lucky-work.pro/96561/286479/539564_8e2e2.mp4'    // Second ad (square format)
     ];
     
+    // Fallback videos if the original ones don't work
+    const fallbackVideoUrls = [
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4'
+    ];
+    
     // Function to modify game click handlers
     function updateGameClickHandlers() {
       // Find all game items once they're loaded
@@ -708,8 +714,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     
     // Function to show a direct video ad
     function showVideoAd(callback) {
-      // Choose a random video
+      // Choose a random video from primary or fallback sources
       const videoUrl = videoUrls[Math.floor(Math.random() * videoUrls.length)];
+      const fallbackUrl = fallbackVideoUrls[Math.floor(Math.random() * fallbackVideoUrls.length)];
       
       // Create overlay
       const overlay = document.createElement('div');
@@ -754,38 +761,33 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       video.style.width = '100%';
       video.style.height = '100%';
       video.style.objectFit = 'contain';
-      video.src = videoUrl;
-      video.controls = true; // Show native video controls
-      video.autoplay = false; // Don't autoplay initially
-      video.muted = false;
+      video.style.display = 'block'; // Ensure it's visible
+      video.style.backgroundColor = '#000'; // Black background
+      
+      // Set video attributes for better compatibility
+      video.controls = true; // Show native controls
+      video.muted = true; // Start muted to bypass autoplay restrictions
+      video.autoplay = true; // Try to autoplay
       video.playsInline = true;
       video.preload = 'auto';
-      
-      // Create a big play button overlay
-      const playButton = document.createElement('div');
-      playButton.style.position = 'absolute';
-      playButton.style.top = '0';
-      playButton.style.left = '0';
-      playButton.style.width = '100%';
-      playButton.style.height = '100%';
-      playButton.style.backgroundColor = 'rgba(0,0,0,0.5)';
-      playButton.style.display = 'flex';
-      playButton.style.justifyContent = 'center';
-      playButton.style.alignItems = 'center';
-      playButton.style.cursor = 'pointer';
-      playButton.style.zIndex = '3';
-      
-      // Play button icon
-      const playIcon = document.createElement('div');
-      playIcon.innerHTML = '▶️';
-      playIcon.style.fontSize = '64px';
-      playIcon.style.color = '#fff';
-      playButton.appendChild(playIcon);
+      video.src = videoUrl;
       
       // Add elements to video container
       videoContainer.appendChild(video);
       videoContainer.appendChild(adLabel);
-      videoContainer.appendChild(playButton);
+      
+      // Add debug info text
+      const debugInfo = document.createElement('div');
+      debugInfo.style.position = 'absolute';
+      debugInfo.style.bottom = '10px';
+      debugInfo.style.right = '10px';
+      debugInfo.style.color = 'white';
+      debugInfo.style.fontSize = '10px';
+      debugInfo.style.background = 'rgba(0,0,0,0.5)';
+      debugInfo.style.padding = '2px 4px';
+      debugInfo.style.borderRadius = '2px';
+      debugInfo.textContent = 'Loading video...';
+      videoContainer.appendChild(debugInfo);
       
       // Create skip button
       const skipButton = document.createElement('button');
@@ -805,37 +807,6 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       overlay.appendChild(skipButton);
       document.body.appendChild(overlay);
       
-      // Play button click handler
-      playButton.addEventListener('click', function() {
-        video.play()
-          .then(() => {
-            // Successfully started playing
-            playButton.style.display = 'none';
-            
-            // Start skip button countdown once video starts playing
-            startSkipButtonCountdown();
-          })
-          .catch(error => {
-            console.error("Video play failed:", error);
-            // Show error message in play button
-            playIcon.innerHTML = '⚠️<br><span style="font-size:16px">Click to try again</span>';
-          });
-      });
-      
-      // Also try playing when video container is clicked (backup)
-      videoContainer.addEventListener('click', function() {
-        if (playButton.style.display !== 'none') {
-          video.play()
-            .then(() => {
-              playButton.style.display = 'none';
-              startSkipButtonCountdown();
-            })
-            .catch(error => {
-              console.error("Video play failed on container click:", error);
-            });
-        }
-      });
-      
       // Function to start skip button countdown
       function startSkipButtonCountdown() {
         let countdown = 25;
@@ -853,15 +824,70 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
           }
         }, 1000);
         
-        // Store the timer ID on the button for cleanup
-        skipButton.countdownTimer = countdownTimer;
+        // Store the timer ID for cleanup
+        return countdownTimer;
       }
+      
+      // Attempt to play the video and handle any issues
+      let countdownTimer = null;
+      let videoStarted = false;
+      
+      // Handle video loaded metadata
+      video.addEventListener('loadedmetadata', function() {
+        debugInfo.textContent = 'Video metadata loaded, duration: ' + Math.round(video.duration) + 's';
+      });
+      
+      // Handle video play event
+      video.addEventListener('play', function() {
+        debugInfo.textContent = 'Video playing';
+        
+        if (!videoStarted) {
+          videoStarted = true;
+          countdownTimer = startSkipButtonCountdown();
+          
+          // Try to unmute after 1 second (after autoplay has succeeded)
+          setTimeout(() => {
+            video.muted = false;
+          }, 1000);
+        }
+      });
+      
+      // Handle video error
+      video.addEventListener('error', function() {
+        debugInfo.textContent = 'Error loading video, trying fallback...';
+        console.error('Video error:', video.error);
+        
+        // Switch to fallback video
+        video.src = fallbackUrl;
+        video.load();
+        video.play().catch(error => {
+          console.error('Fallback video play failed:', error);
+          debugInfo.textContent = 'All video attempts failed';
+          
+          // Make skip button active immediately
+          skipButton.disabled = false;
+          skipButton.textContent = 'Skip Ad';
+          skipButton.style.cursor = 'pointer';
+          skipButton.style.opacity = '1';
+          skipButton.style.backgroundColor = '#3a78ee';
+        });
+      });
+      
+      // Try to force play after a short delay
+      setTimeout(() => {
+        if (!videoStarted) {
+          debugInfo.textContent = 'Forcing video play attempt';
+          video.play().catch(error => {
+            console.error('Force play failed:', error);
+          });
+        }
+      }, 500);
       
       // Skip button click handler
       skipButton.addEventListener('click', () => {
         if (!skipButton.disabled) {
-          if (skipButton.countdownTimer) {
-            clearInterval(skipButton.countdownTimer);
+          if (countdownTimer) {
+            clearInterval(countdownTimer);
           }
           video.pause();
           document.body.removeChild(overlay);
@@ -871,8 +897,8 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       
       // Video end handler
       video.addEventListener('ended', () => {
-        if (skipButton.countdownTimer) {
-          clearInterval(skipButton.countdownTimer);
+        if (countdownTimer) {
+          clearInterval(countdownTimer);
         }
         document.body.removeChild(overlay);
         if (callback) callback();
@@ -881,26 +907,13 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       // Failsafe - auto close after 35 seconds
       setTimeout(() => {
         if (document.body.contains(overlay)) {
-          if (skipButton.countdownTimer) {
-            clearInterval(skipButton.countdownTimer);
+          if (countdownTimer) {
+            clearInterval(countdownTimer);
           }
           document.body.removeChild(overlay);
           if (callback) callback();
         }
       }, 35000);
-      
-      // Handle video loading error
-      video.addEventListener('error', function() {
-        console.error("Video loading error:", video.error);
-        playIcon.innerHTML = '⚠️<br><span style="font-size:16px">Video failed to load</span>';
-        
-        // Make skip button active immediately on error
-        skipButton.disabled = false;
-        skipButton.textContent = 'Skip Ad';
-        skipButton.style.cursor = 'pointer';
-        skipButton.style.opacity = '1';
-        skipButton.style.backgroundColor = '#3a78ee';
-      });
     }
     
     // Start the system
