@@ -32,13 +32,13 @@
     // Append canvas to body
     document.body.appendChild(canvas);
     
-    // Particle settings - SIMPLE VERSION THAT WORKS
+    // Particle settings
     const particleCount = 100;
     const particleSize = 3;
     const particleColor = 'rgba(255, 255, 255, 0.8)';
     const lineColor = 'rgba(255, 255, 255, 0.5)';
     const lineDistance = 150;
-    const moveSpeed = 0.2;
+    const moveSpeed = 0.7; // Increased base movement speed
     
     // Array to store particles
     let particles = [];
@@ -116,16 +116,28 @@
           }
         }
         
-        // Apply mild damping to slow down extreme speeds but allow normal movement
-        particle.vx *= 0.98;
-        particle.vy *= 0.98;
+        // Apply very mild damping to maintain momentum
+        particle.vx *= 0.995;
+        particle.vy *= 0.995;
+        
+        // Add tiny random movement to ensure particles always move
+        particle.vx += (Math.random() - 0.5) * 0.03;
+        particle.vy += (Math.random() - 0.5) * 0.03;
+        
+        // Ensure minimum movement speed
+        const minSpeed = 0.1;
+        const currentSpeed = Math.sqrt(particle.vx * particle.vx + particle.vy * particle.vy);
+        if (currentSpeed < minSpeed) {
+          // If moving too slowly, give a small boost in current direction
+          particle.vx = particle.vx === 0 ? (Math.random() - 0.5) * minSpeed : particle.vx * (minSpeed / currentSpeed);
+          particle.vy = particle.vy === 0 ? (Math.random() - 0.5) * minSpeed : particle.vy * (minSpeed / currentSpeed);
+        }
         
         // Strict velocity limiting only for excessive speeds
-        const speed = Math.sqrt(particle.vx * particle.vx + particle.vy * particle.vy);
-        const maxSpeed = 1.2; // Higher max speed
-        if (speed > maxSpeed) {
-          particle.vx = (particle.vx / speed) * maxSpeed;
-          particle.vy = (particle.vy / speed) * maxSpeed;
+        const maxSpeed = 2.0; // Higher max speed
+        if (currentSpeed > maxSpeed) {
+          particle.vx = (particle.vx / currentSpeed) * maxSpeed;
+          particle.vy = (particle.vy / currentSpeed) * maxSpeed;
         }
         
         // Draw particle
