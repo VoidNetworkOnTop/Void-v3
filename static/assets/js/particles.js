@@ -40,6 +40,10 @@
     const lineDistance = 150;
     const moveSpeed = 0.7;
     
+    // Cursor interaction settings
+    const minDistance = 80; // Particles can't get closer than this to cursor
+    const attractRadius = 250; // Maximum attraction distance
+    
     // Array to store particles
     let particles = [];
     
@@ -83,18 +87,35 @@
       // Clear the canvas completely on each frame
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Update and draw each particle
+      // First update all particle positions
+      updateParticles();
+      
+      // Then draw connections
+      drawConnections();
+      
+      // Then draw particles on top
+      for (let i = 0; i < particles.length; i++) {
+        const particle = particles[i];
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+        ctx.fillStyle = particle.color;
+        ctx.fill();
+      }
+      
+      // Request next animation frame
+      requestAnimationFrame(drawParticles);
+    }
+    
+    // Update particle positions and properties
+    function updateParticles() {
       for (let i = 0; i < particles.length; i++) {
         let particle = particles[i];
         
-        // Mouse interaction - simple attraction with minimum distance
+        // Mouse interaction - attraction with minimum distance
         if (mouseX !== null && mouseY !== null) {
           const dx = mouseX - particle.x;
           const dy = mouseY - particle.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          
-          const minDistance = 80; // Larger minimum distance particles can get to cursor
-          const attractRadius = 250; // Slightly larger attraction distance
           
           if (distance < attractRadius) {
             if (distance < minDistance) {
@@ -159,31 +180,19 @@
         if (particle.y < 0 || particle.y > canvas.height) {
           particle.vy = -particle.vy;
         }
+      }
+    }
+    
+    // Draw connections between particles
+    function drawConnections() {
+      for (let i = 0; i < particles.length; i++) {
+        const particle = particles[i];
         
-        // Draw particle
-        ctx.beginPath();
-        ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
-        ctx.fillStyle = particle.color;
-        ctx.fill();
-        
-        // Draw connecting lines
         for (let j = i + 1; j < particles.length; j++) {
-          let otherParticle = particles[j];
-          let dx = particle.x - otherParticle.x;
-          let dy = particle.y - otherParticle.y;
-          let distance = Math.sqrt(dx * dx + dy * dy);
-          
-          // Only skip drawing lines if both particles are close to cursor
-          if (mouseX !== null && mouseY !== null) {
-            const p1ToCursor = Math.sqrt((mouseX - particle.x) ** 2 + (mouseY - particle.y) ** 2);
-            const p2ToCursor = Math.sqrt((mouseX - otherParticle.x) ** 2 + (mouseY - otherParticle.y) ** 2);
-            
-            // Skip lines only if BOTH particles are being strongly influenced by cursor
-            // And they're relatively close to each other (to avoid large empty spaces)
-            if (p1ToCursor < attractRadius * 0.5 && p2ToCursor < attractRadius * 0.5 && distance < attractRadius * 0.3) {
-              continue;
-            }
-          }
+          const otherParticle = particles[j];
+          const dx = particle.x - otherParticle.x;
+          const dy = particle.y - otherParticle.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
           
           if (distance < lineDistance) {
             ctx.beginPath();
@@ -205,9 +214,6 @@
           }
         }
       }
-      
-      // Request next animation frame
-      requestAnimationFrame(drawParticles);
     }
     
     // Run everything
