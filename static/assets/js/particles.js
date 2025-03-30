@@ -105,24 +105,24 @@
           
           if (distance < mouseRadius) {
             // Wave-like effect: particles gently move up and down when cursor is near
-            // Force decreases with distance and is very small
-            const force = 0.01 * (mouseRadius - distance) / mouseRadius;
+            // Force decreases with distance but is strong enough to create visible movement
+            const force = 0.025 * (mouseRadius - distance) / mouseRadius;
             
             // Create a gentle wave-like vertical movement
             particle.vy += Math.sin(Date.now() * 0.002 + particle.x * 0.01) * force;
             
-            // Add very slight horizontal drift
-            particle.vx += (Math.random() - 0.5) * force * 0.2;
+            // Add slight horizontal drift for more interesting movement
+            particle.vx += (Math.random() - 0.5) * force * 0.4;
           }
         }
         
-        // Apply strong damping to ensure particles slow down
-        particle.vx *= 0.95;
-        particle.vy *= 0.95;
+        // Apply mild damping to slow down extreme speeds but allow normal movement
+        particle.vx *= 0.98;
+        particle.vy *= 0.98;
         
-        // Strict velocity limiting
+        // Strict velocity limiting only for excessive speeds
         const speed = Math.sqrt(particle.vx * particle.vx + particle.vy * particle.vy);
-        const maxSpeed = 0.8;
+        const maxSpeed = 1.2; // Higher max speed
         if (speed > maxSpeed) {
           particle.vx = (particle.vx / speed) * maxSpeed;
           particle.vy = (particle.vy / speed) * maxSpeed;
