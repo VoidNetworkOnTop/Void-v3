@@ -663,7 +663,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
 <script>
   // Add this to your HTML file just before the closing </body> tag
   document.addEventListener('DOMContentLoaded', function() {
-    // Direct MP4 video URLs
+    // Direct MP4 video URL
     const videoUrl = 'https://www.lucky-work.pro/96561/286479/539564_8e2e2.mp4';
     
     // Advertiser link URL
@@ -702,17 +702,23 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       const container = document.createElement('div');
       container.style.cssText = 'width:640px; max-width:90%; height:360px; position:relative; background:#000; cursor:pointer; border-radius:4px; overflow:hidden;';
       
-      // Simple video element
+      // Simple video element - no controls to prevent pausing
       const video = document.createElement('video');
       video.style.cssText = 'width:100%; height:100%; display:block; object-fit:contain;';
       video.src = videoUrl;
-      video.controls = true;
+      video.controls = false; // No controls so users can't pause
       video.autoplay = true;
       video.muted = false;
       video.playsInline = true;
       
       // Add video to container
       container.appendChild(video);
+      
+      // Add "Advertisement" label
+      const adLabel = document.createElement('div');
+      adLabel.textContent = 'Advertisement';
+      adLabel.style.cssText = 'position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.5); color:#fff; padding:5px 10px; border-radius:4px; font-size:12px;';
+      container.appendChild(adLabel);
       
       // Add "Click to Learn More" text
       const clickPrompt = document.createElement('div');
@@ -735,6 +741,20 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       container.onclick = function() {
         window.open(clickUrl, '_blank');
       };
+      
+      // Prevent video from pausing if user tries to pause it
+      video.addEventListener('pause', function() {
+        if (!video.ended) {
+          video.play();
+        }
+      });
+      
+      // Prevent spacebar from pausing the video
+      document.addEventListener('keydown', function(e) {
+        if (e.code === 'Space' && document.body.contains(overlay)) {
+          e.preventDefault();
+        }
+      });
       
       // Skip button timer
       let countdown = 25;
@@ -768,6 +788,13 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         if (callback) callback();
       };
       
+      // If video somehow stops, restart it
+      video.addEventListener('timeupdate', function() {
+        if (video.paused && !video.ended) {
+          video.play();
+        }
+      });
+      
       // Fallback - close after 35 seconds
       setTimeout(function() {
         if (document.body.contains(overlay)) {
@@ -785,6 +812,31 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         skipButton.style.opacity = '1';
         skipButton.style.background = '#3a78ee';
       };
+      
+      // Try to make sure video starts playing
+      video.play().catch(function(error) {
+        console.error("Auto-play failed:", error);
+        
+        // Create play button as fallback if autoplay fails
+        const playButton = document.createElement('div');
+        playButton.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; cursor:pointer;';
+        playButton.innerHTML = '<div style="font-size:64px; color:white;">▶️</div>';
+        container.appendChild(playButton);
+        
+        playButton.onclick = function(e) {
+          e.stopPropagation(); // Don't trigger container click
+          video.play().then(function() {
+            container.removeChild(playButton);
+          }).catch(function() {
+            // If play fails again, make skip button active
+            skipButton.disabled = false;
+            skipButton.textContent = 'Skip Ad';
+            skipButton.style.cursor = 'pointer';
+            skipButton.style.opacity = '1';
+            skipButton.style.background = '#3a78ee';
+          });
+        };
+      });
     }
     
     // Check for game items periodically
