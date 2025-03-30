@@ -23,7 +23,7 @@
     canvas.style.left = '0';
     canvas.style.width = '100%';
     canvas.style.height = '100%';
-    canvas.style.zIndex = '1'; // Make sure it's behind everything
+    canvas.style.zIndex = '-10'; // Make sure it's behind everything
     canvas.style.pointerEvents = 'none'; // Allow clicking through canvas
     
     // Add a class for easier debugging
@@ -104,13 +104,28 @@
           const distance = Math.sqrt(dx * dx + dy * dy);
           
           if (distance < mouseRadius) {
-            // Simple circular motion around cursor
-            const angle = Math.atan2(dy, dx) + Math.PI/2;
-            const force = 0.05 * (mouseRadius - distance) / mouseRadius;
+            // Wave-like effect: particles gently move up and down when cursor is near
+            // Force decreases with distance and is very small
+            const force = 0.01 * (mouseRadius - distance) / mouseRadius;
             
-            particle.vx += Math.cos(angle) * force;
-            particle.vy += Math.sin(angle) * force;
+            // Create a gentle wave-like vertical movement
+            particle.vy += Math.sin(Date.now() * 0.002 + particle.x * 0.01) * force;
+            
+            // Add very slight horizontal drift
+            particle.vx += (Math.random() - 0.5) * force * 0.2;
           }
+        }
+        
+        // Apply strong damping to ensure particles slow down
+        particle.vx *= 0.95;
+        particle.vy *= 0.95;
+        
+        // Strict velocity limiting
+        const speed = Math.sqrt(particle.vx * particle.vx + particle.vy * particle.vy);
+        const maxSpeed = 0.8;
+        if (speed > maxSpeed) {
+          particle.vx = (particle.vx / speed) * maxSpeed;
+          particle.vy = (particle.vy / speed) * maxSpeed;
         }
         
         // Draw particle
