@@ -665,7 +665,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
   document.addEventListener('DOMContentLoaded', function() {
     // Load the IMA SDK script
     loadScript('//imasdk.googleapis.com/js/sdkloader/ima3.js', function() {
-      // Once IMA SDK is loaded, initialize the game clicks
+      console.log('IMA SDK loaded successfully');
       initializeGameClicks();
     });
     
@@ -675,181 +675,338 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       script.src = src;
       script.async = true;
       script.onload = callback;
+      script.onerror = function() {
+        console.error('Failed to load script:', src);
+      };
       document.head.appendChild(script);
     }
     
     // Initialize game click handlers
     function initializeGameClicks() {
-      // Check for game items periodically
-      const checkInterval = setInterval(function() {
-        const gameItems = document.querySelectorAll('.game-item');
-        if (gameItems.length > 0) {
-          clearInterval(checkInterval);
+      const gameItems = document.querySelectorAll('.game-item');
+      gameItems.forEach(gameElement => {
+        const originalOnClick = gameElement.onclick;
+        
+        gameElement.onclick = function(event) {
+          event.preventDefault();
+          event.stopPropagation();
           
-          // Add ad functionality to each game
-          gameItems.forEach(gameElement => {
-            const originalOnClick = gameElement.onclick;
-            
-            gameElement.onclick = function(event) {
-              event.preventDefault();
-              
-              // 50% chance to show an ad
-              if (Math.random() < 0.5) {
-                showAdWithIMA(() => {
-                  if (originalOnClick) originalOnClick.call(gameElement);
-                });
-              } else {
-                if (originalOnClick) originalOnClick.call(gameElement);
-              }
+          // 50% chance to show an ad
+          if (Math.random() < 0.5) {
+            console.log('Showing ad before game');
+            // Store the original click function so we can call it later
+            const gameCallback = function() {
+              console.log('Ad completed, navigating to game');
+              if (originalOnClick) originalOnClick.call(gameElement);
             };
-          });
-        }
-      }, 1000);
+            
+            // Show the loading overlay if it exists
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
+              loadingOverlay.classList.remove('fade-out');
+              document.getElementById('loadingText').textContent = 'Preparing game...';
+              document.getElementById('progressFill').style.width = '0%';
+            }
+            
+            // Show the ad with the game callback
+            showAdWithIMA(gameCallback);
+          } else {
+            console.log('Skipping ad, going directly to game');
+            if (originalOnClick) originalOnClick.call(gameElement);
+          }
+        };
+      });
     }
     
-    // Show ad using IMA SDK
+    // Show ad using IMA SDK with improved handling
     function showAdWithIMA(callback) {
       // Create ad container
       const adContainer = document.createElement('div');
-      adContainer.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:999999; display:flex; flex-direction:column; align-items:center; justify-content:center;';
+      adContainer.id = 'adContainer';
+      adContainer.style.position = 'fixed';
+      adContainer.style.top = '0';
+      adContainer.style.left = '0';
+      adContainer.style.width = '100%';
+      adContainer.style.height = '100%';
+      adContainer.style.backgroundColor = 'rgba(0,0,0,0.9)';
+      adContainer.style.zIndex = '999999';
+      adContainer.style.display = 'flex';
+      adContainer.style.flexDirection = 'column';
+      adContainer.style.alignItems = 'center';
+      adContainer.style.justifyContent = 'center';
       document.body.appendChild(adContainer);
       
       // Create video container
       const videoContainer = document.createElement('div');
-      videoContainer.style.cssText = 'width:640px; max-width:95%; height:360px; position:relative; background:#000;';
+      videoContainer.id = 'videoContainer';
+      videoContainer.style.width = '640px';
+      videoContainer.style.maxWidth = '95%';
+      videoContainer.style.height = '360px';
+      videoContainer.style.position = 'relative';
+      videoContainer.style.backgroundColor = '#000';
       adContainer.appendChild(videoContainer);
       
       // Create video element
       const videoElement = document.createElement('video');
-      videoElement.style.cssText = 'width:100%; height:100%;';
+      videoElement.id = 'adVideo';
+      videoElement.style.width = '100%';
+      videoElement.style.height = '100%';
       videoElement.setAttribute('playsinline', '');
-      videoElement.setAttribute('muted', '');
       videoContainer.appendChild(videoElement);
       
-      // Create ad display container (required by IMA)
-      const adDisplayContainer = new google.ima.AdDisplayContainer(videoContainer, videoElement);
+      // Create status message element for debugging
+      const statusMessage = document.createElement('div');
+      statusMessage.style.position = 'absolute';
+      statusMessage.style.bottom = '10px';
+      statusMessage.style.left = '10px';
+      statusMessage.style.color = 'white';
+      statusMessage.style.backgroundColor = 'rgba(0,0,0,0.7)';
+      statusMessage.style.padding = '5px 10px';
+      statusMessage.style.borderRadius = '4px';
+      statusMessage.style.fontSize = '12px';
+      statusMessage.textContent = 'Loading ad...';
+      videoContainer.appendChild(statusMessage);
       
-      // Initialize the ad display container
-      adDisplayContainer.initialize();
-      
-      // Create ads loader
-      const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
-      
-      // Add event listeners
-      adsLoader.addEventListener(
-        google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
-        onAdsManagerLoaded,
-        false
-      );
-      
-      adsLoader.addEventListener(
-        google.ima.AdErrorEvent.Type.AD_ERROR,
-        onAdError,
-        false
-      );
-      
-      // Create ads request
-      const adsRequest = new google.ima.AdsRequest();
-      
-      // Your VAST tag URL - this is what you got from Hilltop
-      adsRequest.adTagUrl = 'https://thusizulu.com/dvmnF.zmdjGyNzv/ZnGMUh/ceOmh9Du_ZrUbl/kFPsTSY_yiMDj/QCyuN/j/YJtMNhjmIhycNfDPIR2jN/wc';
-      
-      // Specify ad dimensions
-      adsRequest.linearAdSlotWidth = 640;
-      adsRequest.linearAdSlotHeight = 360;
-      adsRequest.nonLinearAdSlotWidth = 640;
-      adsRequest.nonLinearAdSlotHeight = 150;
-      
-      // Request ads
-      adsLoader.requestAds(adsRequest);
-      
-      // Create a skip button
+      // Create skip button
       const skipButton = document.createElement('button');
       skipButton.textContent = 'Ad will be skippable in 25s';
-      skipButton.style.cssText = 'margin-top:15px; padding:10px 20px; background:#333; color:#fff; border:none; border-radius:4px; cursor:not-allowed; opacity:0.7;';
+      skipButton.style.marginTop = '15px';
+      skipButton.style.padding = '10px 20px';
+      skipButton.style.backgroundColor = '#333';
+      skipButton.style.color = '#fff';
+      skipButton.style.border = 'none';
+      skipButton.style.borderRadius = '4px';
+      skipButton.style.cursor = 'not-allowed';
+      skipButton.style.opacity = '0.7';
       skipButton.disabled = true;
       adContainer.appendChild(skipButton);
       
-      // Handle skip button countdown
-      let countdown = 25;
-      const countdownTimer = setInterval(() => {
-        countdown--;
-        if (countdown <= 0) {
-          clearInterval(countdownTimer);
+      // Make sure IMA SDK is loaded
+      if (typeof google === 'undefined' || !google.ima) {
+        statusMessage.textContent = 'Error: IMA SDK not loaded';
+        skipButton.disabled = false;
+        skipButton.textContent = 'Skip Ad';
+        skipButton.style.cursor = 'pointer';
+        skipButton.style.opacity = '1';
+        skipButton.style.backgroundColor = '#3a78ee';
+        
+        skipButton.onclick = function() {
+          document.body.removeChild(adContainer);
+          if (callback) callback();
+        };
+        
+        return;
+      }
+      
+      let adsManager = null;
+      let adDisplayContainer = null;
+      let adsLoader = null;
+      let callbackExecuted = false;
+      
+      // Function to execute the callback only once
+      function executeCallback() {
+        if (!callbackExecuted) {
+          callbackExecuted = true;
+          
+          // Slight delay before navigation to ensure ad cleanup
+          setTimeout(function() {
+            if (callback) callback();
+          }, 500);
+        }
+      }
+      
+      // Function to clean up the ad
+      function cleanupAd() {
+        console.log('Cleaning up ad');
+        
+        // Clear timers
+        clearInterval(countdownTimer);
+        clearTimeout(autoCloseTimer);
+        
+        // Destroy the ads manager
+        if (adsManager) {
+          try {
+            adsManager.destroy();
+          } catch (e) {
+            console.error('Error destroying ads manager:', e);
+          }
+        }
+        
+        // Destroy the ads loader
+        if (adsLoader) {
+          try {
+            adsLoader.destroy();
+          } catch (e) {
+            console.error('Error destroying ads loader:', e);
+          }
+        }
+        
+        // Remove the ad container
+        if (document.body.contains(adContainer)) {
+          document.body.removeChild(adContainer);
+        }
+        
+        // Execute the callback
+        executeCallback();
+      }
+      
+      try {
+        // Create the ad display container
+        adDisplayContainer = new google.ima.AdDisplayContainer(videoContainer, videoElement);
+        
+        // Initialize the ad display container
+        adDisplayContainer.initialize();
+        
+        // Create an ads loader
+        adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+        
+        // Add event listeners
+        adsLoader.addEventListener(
+          google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+          onAdsManagerLoaded,
+          false
+        );
+        
+        adsLoader.addEventListener(
+          google.ima.AdErrorEvent.Type.AD_ERROR,
+          onAdError,
+          false
+        );
+        
+        // Create an ads request
+        const adsRequest = new google.ima.AdsRequest();
+        
+        // Your VAST tag URL from Hilltop
+        adsRequest.adTagUrl = 'https://thusizulu.com/dvmnF.zmdjGyNzv/ZnGMUh/ceOmh9Du_ZrUbl/kFPsTSY_yiMDj/QCyuN/j/YJtMNhjmIhycNfDPIR2jN/wc';
+        
+        // Specify ad dimensions
+        adsRequest.linearAdSlotWidth = 640;
+        adsRequest.linearAdSlotHeight = 360;
+        adsRequest.nonLinearAdSlotWidth = 640;
+        adsRequest.nonLinearAdSlotHeight = 150;
+        
+        // Request ads
+        statusMessage.textContent = 'Requesting ad...';
+        adsLoader.requestAds(adsRequest);
+        
+        // Handle skip button countdown
+        let countdown = 25;
+        const countdownTimer = setInterval(() => {
+          countdown--;
+          if (countdown <= 0) {
+            clearInterval(countdownTimer);
+            skipButton.disabled = false;
+            skipButton.textContent = 'Skip Ad';
+            skipButton.style.cursor = 'pointer';
+            skipButton.style.opacity = '1';
+            skipButton.style.backgroundColor = '#3a78ee';
+          } else {
+            skipButton.textContent = `Ad will be skippable in ${countdown}s`;
+          }
+        }, 1000);
+        
+        // Skip button click handler
+        skipButton.addEventListener('click', () => {
+          if (!skipButton.disabled) {
+            cleanupAd();
+          }
+        });
+        
+        // Auto-close fallback (after 35 seconds)
+        const autoCloseTimer = setTimeout(() => {
+          statusMessage.textContent = 'Fallback: auto-closing ad';
+          cleanupAd();
+        }, 35000);
+        
+        // Ads manager loaded handler
+        function onAdsManagerLoaded(adsManagerLoadedEvent) {
+          statusMessage.textContent = 'Ad manager loaded, starting ad...';
+          
+          // Get the ads manager
+          adsManager = adsManagerLoadedEvent.getAdsManager(videoElement);
+          
+          // Add event listeners
+          adsManager.addEventListener(google.ima.AdEvent.Type.LOADED, () => {
+            statusMessage.textContent = 'Ad loaded and playing';
+          });
+          
+          adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () => {
+            statusMessage.textContent = 'Ad started playing';
+          });
+          
+          adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () => {
+            statusMessage.textContent = 'Ad playback complete';
+            cleanupAd();
+          });
+          
+          adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, () => {
+            statusMessage.textContent = 'All ads completed';
+            cleanupAd();
+          });
+          
+          adsManager.addEventListener(google.ima.AdEvent.Type.USER_CLOSE, () => {
+            statusMessage.textContent = 'Ad closed by user';
+            cleanupAd();
+          });
+          
+          adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
+          
+          try {
+            // Initialize and start ads
+            adsManager.init(640, 360, google.ima.ViewMode.NORMAL);
+            adsManager.start();
+          } catch (adError) {
+            // If there's an error, call the cleanup function
+            statusMessage.textContent = 'Error starting ad: ' + adError.message;
+            console.error('AdsManager error:', adError);
+            
+            // Make skip button active immediately
+            skipButton.disabled = false;
+            skipButton.textContent = 'Skip Ad';
+            skipButton.style.cursor = 'pointer';
+            skipButton.style.opacity = '1';
+            skipButton.style.backgroundColor = '#3a78ee';
+          }
+        }
+        
+        // Ad error handler
+        function onAdError(adErrorEvent) {
+          const error = adErrorEvent.getError();
+          statusMessage.textContent = 'Ad error: ' + error.getMessage();
+          console.error('Ad Error:', error);
+          
+          // Make skip button active immediately
           skipButton.disabled = false;
           skipButton.textContent = 'Skip Ad';
           skipButton.style.cursor = 'pointer';
           skipButton.style.opacity = '1';
           skipButton.style.backgroundColor = '#3a78ee';
-        } else {
-          skipButton.textContent = `Ad will be skippable in ${countdown}s`;
-        }
-      }, 1000);
-      
-      // Skip button click handler
-      skipButton.addEventListener('click', () => {
-        if (!skipButton.disabled) {
-          cleanupAd();
-        }
-      });
-      
-      // Auto-close fallback
-      const autoCloseTimer = setTimeout(() => {
-        cleanupAd();
-      }, 35000);
-      
-      // Function to cleanup ad
-      function cleanupAd() {
-        clearInterval(countdownTimer);
-        clearTimeout(autoCloseTimer);
-        
-        // Release ad resources
-        if (window.adsManager) {
-          try {
-            window.adsManager.destroy();
-          } catch (e) {
-            console.error("Error destroying ads manager:", e);
-          }
         }
         
-        // Remove ad container
-        if (document.body.contains(adContainer)) {
-          document.body.removeChild(adContainer);
-        }
+      } catch (e) {
+        console.error('Error setting up IMA:', e);
+        statusMessage.textContent = 'Error setting up ad: ' + e.message;
         
-        // Call completion callback
-        if (callback) callback();
-      }
-      
-      // Ads manager loaded handler
-      function onAdsManagerLoaded(adsManagerLoadedEvent) {
-        // Get the ads manager
-        const adsManager = adsManagerLoadedEvent.getAdsManager(videoElement);
-        window.adsManager = adsManager; // Store in window for cleanup
-        
-        // Add event listeners
-        adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () => cleanupAd());
-        adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, () => cleanupAd());
-        adsManager.addEventListener(google.ima.AdEvent.Type.USER_CLOSE, () => cleanupAd());
-        adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
-        
-        try {
-          // Initialize and start ads
-          adsManager.init(640, 360, google.ima.ViewMode.NORMAL);
-          adsManager.start();
-        } catch (adError) {
-          // If there's an error, call the cleanup function
-          console.error("AdsManager error:", adError);
-          cleanupAd();
-        }
-      }
-      
-      // Ad error handler
-      function onAdError(adErrorEvent) {
-        console.error("Ad Error:", adErrorEvent.getError());
-        cleanupAd();
+        // Make skip button active immediately
+        skipButton.disabled = false;
+        skipButton.textContent = 'Skip Ad';
+        skipButton.style.cursor = 'pointer';
+        skipButton.style.opacity = '1';
+        skipButton.style.backgroundColor = '#3a78ee';
       }
     }
+    
+    // Start initializing game clicks once the document is ready
+    const checkInterval = setInterval(function() {
+      const gameItems = document.querySelectorAll('.game-item');
+      if (gameItems.length > 0) {
+        clearInterval(checkInterval);
+        console.log('Found game items, ready to initialize');
+        if (typeof google !== 'undefined' && google.ima) {
+          initializeGameClicks();
+        }
+      }
+    }, 1000);
   });
 </script>
 </body>
