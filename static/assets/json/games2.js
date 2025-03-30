@@ -214,6 +214,12 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/k0lDpuoPPrYXEh0B92dIGZ5hAQ7bt9vwZXnIq0KbXS1IibSGRWb3azBnI_q3ZhAAcNtfeVUy8o-rThEm-x86CqSXoeHk46da6MmEPUCNZk6J3bv-3alZcDnaj8NPnavcB5OGeUbI0brQkaSmLgV3cjugos8m7ce1MNLCJEZ3oDriA4F0kwuYzuoonnlg6hMN0sR_RQvw?key=yj4V8pHW144VjA9YlEbf1Q",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://idle-ants-y27p.vercel.app")
 },
+{
+    title: "Ragdoll Hit", 
+    imgSrc: "https://lh7-us.googleusercontent.com/fMYsrt3Lp6FlRyA8pbx7xwJjLXmDXn34b-OAhBulIDVrrdqV8d3WADtoGJABgu9iTv_dTWZNICKUw_uzGyvJjOoQfu4FVmi6sMkHeP58PpraePdNwXRyNnCP6L_gwWD7UQO1TvCKR-5Z5MvZ_39RmIfgJClczi7rBkaMJk68FnUX4tXBN9_wBOJXvHasRcjv2I0-",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://freetoplayz.github.io/ragdoll-hit/")
+},
 
+    
    ];
 export { games2Data }; // Named export
