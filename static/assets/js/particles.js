@@ -55,10 +55,12 @@
       particles = [];
       
       for (let i = 0; i < particleCount; i++) {
+        const radius = Math.random() * particleSize + 1.5; // Slightly larger minimum size
         particles.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          radius: Math.random() * particleSize + 1.5, // Slightly larger minimum size
+          radius: radius,
+          originalRadius: radius, // Store original radius for scaling effects
           vx: Math.random() * moveSpeed * 2 - moveSpeed,
           vy: Math.random() * moveSpeed * 2 - moveSpeed
         });
@@ -142,24 +144,30 @@
         const distance = Math.sqrt(dx * dx + dy * dy);
         
         if (distance < mouseRadius) {
-          // New cursor interaction: particles move in a circular pattern around cursor
-          // Calculate angle and create circular motion
-          const angle = Math.atan2(dy, dx) + Math.PI/2; // Perpendicular to the cursor direction
+          // Repulsion effect: particles flee from cursor
           const force = (mouseRadius - distance) / mouseRadius;
           
-          // Apply circular motion
-          particle.vx += Math.cos(angle) * force * 0.2;
-          particle.vy += Math.sin(angle) * force * 0.2;
+          // Push particles away with more force when closer to cursor
+          particle.vx -= dx * force * 0.1;
+          particle.vy -= dy * force * 0.1;
           
-          // Add slight attraction to keep particles near cursor
-          particle.vx += dx * force * 0.001;
-          particle.vy += dy * force * 0.001;
+          // Add a bit of randomness for a more organic feel
+          particle.vx += (Math.random() - 0.5) * 0.3 * force;
+          particle.vy += (Math.random() - 0.5) * 0.3 * force;
+          
+          // Briefly increase particle size when affected
+          particle.radius = Math.min(particle.radius + 0.5 * force, particle.radius * 1.5);
           
           // Limit velocity
           const speed = Math.sqrt(particle.vx * particle.vx + particle.vy * particle.vy);
-          if (speed > 2) {
-            particle.vx = (particle.vx / speed) * 2;
-            particle.vy = (particle.vy / speed) * 2;
+          if (speed > 3) {
+            particle.vx = (particle.vx / speed) * 3;
+            particle.vy = (particle.vy / speed) * 3;
+          }
+        } else {
+          // Slowly return to original size
+          if (particle.radius > particle.originalRadius) {
+            particle.radius = Math.max(particle.originalRadius, particle.radius - 0.1);
           }
         }
       });
