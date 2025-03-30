@@ -755,14 +755,37 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       video.style.height = '100%';
       video.style.objectFit = 'contain';
       video.src = videoUrl;
-      video.controls = false;
-      video.autoplay = true;
+      video.controls = true; // Show native video controls
+      video.autoplay = false; // Don't autoplay initially
       video.muted = false;
       video.playsInline = true;
+      video.preload = 'auto';
       
-      // Add ad label to video container
+      // Create a big play button overlay
+      const playButton = document.createElement('div');
+      playButton.style.position = 'absolute';
+      playButton.style.top = '0';
+      playButton.style.left = '0';
+      playButton.style.width = '100%';
+      playButton.style.height = '100%';
+      playButton.style.backgroundColor = 'rgba(0,0,0,0.5)';
+      playButton.style.display = 'flex';
+      playButton.style.justifyContent = 'center';
+      playButton.style.alignItems = 'center';
+      playButton.style.cursor = 'pointer';
+      playButton.style.zIndex = '3';
+      
+      // Play button icon
+      const playIcon = document.createElement('div');
+      playIcon.innerHTML = '▶️';
+      playIcon.style.fontSize = '64px';
+      playIcon.style.color = '#fff';
+      playButton.appendChild(playIcon);
+      
+      // Add elements to video container
       videoContainer.appendChild(video);
       videoContainer.appendChild(adLabel);
+      videoContainer.appendChild(playButton);
       
       // Create skip button
       const skipButton = document.createElement('button');
@@ -782,26 +805,64 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       overlay.appendChild(skipButton);
       document.body.appendChild(overlay);
       
-      // Timer to enable skip button after 25 seconds
-      let countdown = 25;
-      const countdownTimer = setInterval(() => {
-        countdown--;
-        if (countdown <= 0) {
-          clearInterval(countdownTimer);
-          skipButton.disabled = false;
-          skipButton.textContent = 'Skip Ad';
-          skipButton.style.cursor = 'pointer';
-          skipButton.style.opacity = '1';
-          skipButton.style.backgroundColor = '#3a78ee';
-        } else {
-          skipButton.textContent = `Ad will be skippable in ${countdown}s`;
+      // Play button click handler
+      playButton.addEventListener('click', function() {
+        video.play()
+          .then(() => {
+            // Successfully started playing
+            playButton.style.display = 'none';
+            
+            // Start skip button countdown once video starts playing
+            startSkipButtonCountdown();
+          })
+          .catch(error => {
+            console.error("Video play failed:", error);
+            // Show error message in play button
+            playIcon.innerHTML = '⚠️<br><span style="font-size:16px">Click to try again</span>';
+          });
+      });
+      
+      // Also try playing when video container is clicked (backup)
+      videoContainer.addEventListener('click', function() {
+        if (playButton.style.display !== 'none') {
+          video.play()
+            .then(() => {
+              playButton.style.display = 'none';
+              startSkipButtonCountdown();
+            })
+            .catch(error => {
+              console.error("Video play failed on container click:", error);
+            });
         }
-      }, 1000);
+      });
+      
+      // Function to start skip button countdown
+      function startSkipButtonCountdown() {
+        let countdown = 25;
+        const countdownTimer = setInterval(() => {
+          countdown--;
+          if (countdown <= 0) {
+            clearInterval(countdownTimer);
+            skipButton.disabled = false;
+            skipButton.textContent = 'Skip Ad';
+            skipButton.style.cursor = 'pointer';
+            skipButton.style.opacity = '1';
+            skipButton.style.backgroundColor = '#3a78ee';
+          } else {
+            skipButton.textContent = `Ad will be skippable in ${countdown}s`;
+          }
+        }, 1000);
+        
+        // Store the timer ID on the button for cleanup
+        skipButton.countdownTimer = countdownTimer;
+      }
       
       // Skip button click handler
       skipButton.addEventListener('click', () => {
         if (!skipButton.disabled) {
-          clearInterval(countdownTimer);
+          if (skipButton.countdownTimer) {
+            clearInterval(skipButton.countdownTimer);
+          }
           video.pause();
           document.body.removeChild(overlay);
           if (callback) callback();
@@ -810,7 +871,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       
       // Video end handler
       video.addEventListener('ended', () => {
-        clearInterval(countdownTimer);
+        if (skipButton.countdownTimer) {
+          clearInterval(skipButton.countdownTimer);
+        }
         document.body.removeChild(overlay);
         if (callback) callback();
       });
@@ -818,11 +881,26 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       // Failsafe - auto close after 35 seconds
       setTimeout(() => {
         if (document.body.contains(overlay)) {
-          clearInterval(countdownTimer);
+          if (skipButton.countdownTimer) {
+            clearInterval(skipButton.countdownTimer);
+          }
           document.body.removeChild(overlay);
           if (callback) callback();
         }
       }, 35000);
+      
+      // Handle video loading error
+      video.addEventListener('error', function() {
+        console.error("Video loading error:", video.error);
+        playIcon.innerHTML = '⚠️<br><span style="font-size:16px">Video failed to load</span>';
+        
+        // Make skip button active immediately on error
+        skipButton.disabled = false;
+        skipButton.textContent = 'Skip Ad';
+        skipButton.style.cursor = 'pointer';
+        skipButton.style.opacity = '1';
+        skipButton.style.backgroundColor = '#3a78ee';
+      });
     }
     
     // Start the system
