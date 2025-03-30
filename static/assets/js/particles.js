@@ -36,9 +36,9 @@
     const particleCount = 100;
     const particleSize = 3; // Increased size for better visibility
     const particleColor = 'rgba(255, 255, 255, 0.8)'; // More opacity
-    const lineColor = 'rgba(255, 255, 255, 0.3)'; // More opacity for lines
+    const lineColor = 'rgba(255, 255, 255, 0.5)'; // Brighter connecting lines
     const lineDistance = 150;
-    const moveSpeed = 0.8; // Slightly faster movement
+    const moveSpeed = 0.3; // Slower movement
     
     // Array to store particles
     let particles = [];
@@ -103,10 +103,20 @@
           if (distance < lineDistance) {
             ctx.beginPath();
             ctx.strokeStyle = lineColor;
-            ctx.lineWidth = 1 * (1 - distance / lineDistance); // Thicker lines
+            ctx.lineWidth = 1.2 * (1 - distance / lineDistance); // Thicker and brighter lines
             ctx.moveTo(particle.x, particle.y);
             ctx.lineTo(otherParticle.x, otherParticle.y);
             ctx.stroke();
+            
+            // Add a small glow effect to the connections
+            if (distance < lineDistance * 0.5) {
+              ctx.beginPath();
+              ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+              ctx.lineWidth = 2.5 * (1 - distance / lineDistance);
+              ctx.moveTo(particle.x, particle.y);
+              ctx.lineTo(otherParticle.x, otherParticle.y);
+              ctx.stroke();
+            }
           }
         }
       }
@@ -118,7 +128,7 @@
     // Mouse interaction
     let mouseX = null;
     let mouseY = null;
-    const mouseRadius = 150;
+    const mouseRadius = 200; // Larger interaction radius
     
     function handleMouseMove(e) {
       mouseX = e.clientX;
@@ -132,15 +142,24 @@
         const distance = Math.sqrt(dx * dx + dy * dy);
         
         if (distance < mouseRadius) {
+          // New cursor interaction: particles move in a circular pattern around cursor
+          // Calculate angle and create circular motion
+          const angle = Math.atan2(dy, dx) + Math.PI/2; // Perpendicular to the cursor direction
           const force = (mouseRadius - distance) / mouseRadius;
-          particle.vx += dx * force * 0.03; // Stronger effect
-          particle.vy += dy * force * 0.03;
+          
+          // Apply circular motion
+          particle.vx += Math.cos(angle) * force * 0.2;
+          particle.vy += Math.sin(angle) * force * 0.2;
+          
+          // Add slight attraction to keep particles near cursor
+          particle.vx += dx * force * 0.001;
+          particle.vy += dy * force * 0.001;
           
           // Limit velocity
           const speed = Math.sqrt(particle.vx * particle.vx + particle.vy * particle.vy);
-          if (speed > 3) {
-            particle.vx = (particle.vx / speed) * 3;
-            particle.vy = (particle.vy / speed) * 3;
+          if (speed > 2) {
+            particle.vx = (particle.vx / speed) * 2;
+            particle.vy = (particle.vy / speed) * 2;
           }
         }
       });
