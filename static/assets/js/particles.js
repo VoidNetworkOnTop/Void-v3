@@ -122,9 +122,10 @@
               particle.vx = -Math.cos(angle) * force;
               particle.vy = -Math.sin(angle) * force;
               
-              // Make particles glow red when being strongly repelled
-              particle.color = `rgba(255, 160, 160, ${0.7 + 0.3 * Math.min(force/2, 1)})`;
-            } else {
+              // Make particles glow brighter white when being strongly repelled
+              particle.color = `rgba(255, 255, 255, ${Math.min(0.9 + force/3, 1)})`;
+              // Increase size slightly for more visible glow effect
+              particle.radius = particle.originalRadius * (1 + Math.min(force/5, 0.8));            } else {
               // Outside umbrella but within influence - milder repulsion
               force = 0.08 * (mouseRadius - distance) / (mouseRadius - umbrellaRadius);
               
@@ -134,8 +135,9 @@
               particle.vy -= Math.sin(angle) * force;
               
               // Particles in the outer zone turn light blue
-              particle.color = `rgba(180, 230, 255, ${0.7 + 0.3 * force})`;
-            }
+              particle.color = `rgba(220, 240, 255, ${0.7 + 0.3 * force})`;
+              // Return to normal size
+              particle.radius = particle.originalRadius;            }
             
             // Track that this particle was affected by cursor
             particle.wasAffected = 10; // Will persist for 10 frames
