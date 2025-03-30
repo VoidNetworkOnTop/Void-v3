@@ -2,21 +2,30 @@
 // Add this script to any webpage to create a nice white particles background
 
 (function() {
-  // Create canvas element
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
+  // Wait for the DOM to be fully loaded before initializing
+  document.addEventListener('DOMContentLoaded', initParticlesBackground);
   
-  // Set canvas to cover the entire background
-  canvas.style.position = 'fixed';
-  canvas.style.top = '0';
-  canvas.style.left = '0';
-  canvas.style.width = '100%';
-  canvas.style.height = '100%';
-  canvas.style.zIndex = '-1';
-  canvas.style.pointerEvents = 'none'; // Allow clicking through canvas
+  // If the DOM is already loaded, run initialization immediately
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(initParticlesBackground, 1);
+  }
   
-  // Append canvas to body
-  document.body.appendChild(canvas);
+  function initParticlesBackground() {
+    // Create canvas element  
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Set canvas to cover the entire background
+    canvas.style.position = 'fixed';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.zIndex = '-1';
+    canvas.style.pointerEvents = 'none'; // Allow clicking through canvas
+    
+    // Append canvas to body
+    document.body.appendChild(canvas);
   
   // Particle settings
   const particleCount = 100;
@@ -123,15 +132,16 @@
     });
   }
   
-  // Initialize
-  window.addEventListener('resize', function() {
+    // Initialize
+    window.addEventListener('resize', function() {
+      resizeCanvas();
+      initParticles();
+    });
+    
+    window.addEventListener('mousemove', handleMouseMove);
+    
     resizeCanvas();
     initParticles();
-  });
-  
-  window.addEventListener('mousemove', handleMouseMove);
-  
-  resizeCanvas();
-  initParticles();
-  drawParticles();
+    drawParticles();
+  }
 })();
