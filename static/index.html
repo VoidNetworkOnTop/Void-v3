@@ -663,6 +663,8 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
 <script>
   // Add this to your HTML file just before the closing </body> tag
   document.addEventListener('DOMContentLoaded', function() {
+    console.log('Ad system initializing...');
+    
     // Direct video file from the VAST response
     const videoFile = 'https://www.lucky-work.pro/96561/286486/539589_68306.mp4';
     
@@ -675,41 +677,76 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     // Video start tracking URL from the VAST response
     const startUrl = 'https://thusizulu.com/dEm_FGzHd.GIVJ2-ZLWM5N0OP_2QFRkSSTW-QV9WNXTYM_5aNbTcgd5-JfmgFhkid_nkNl1mYnm-lpkqPrSsZ_hucv2wMx9-MziAZBlCd';
     
-    // Function to modify game click handlers
-    function updateGameClickHandlers() {
+    // Wait for the page to be fully loaded
+    window.addEventListener('load', function() {
+      console.log('Page fully loaded, looking for game items...');
+      
+      // Try to find game items after a short delay to ensure everything is loaded
+      setTimeout(function() {
+        initializeAdSystem();
+      }, 500);
+    });
+    
+    // Initialize the ad system
+    function initializeAdSystem() {
       const gameItems = document.querySelectorAll('.game-item');
+      console.log('Found ' + gameItems.length + ' game items');
+      
       if (gameItems.length > 0) {
-        gameItems.forEach(gameElement => {
+        // Add ad functionality to each game item
+        gameItems.forEach(function(gameElement, index) {
+          console.log('Setting up ad on game item #' + (index + 1));
+          
+          // Store the original click handler
           const originalOnClick = gameElement.onclick;
           
+          // Replace the click handler with our own
           gameElement.onclick = function(event) {
+            // Prevent default action and stop event propagation
             event.preventDefault();
             event.stopPropagation();
             
-            // 50% chance to show an ad
-            if (Math.random() < 0.5) {
-              console.log('Showing video ad');
+            console.log('Game item clicked, preparing to show ad...');
+            
+            // TESTING: Always show an ad (100% chance)
+            if (true) { // Change to Math.random() < 0.5 for 50% chance
+              console.log('Showing ad before game');
               
-              // Store original click handler to call later
+              // Create a callback function to navigate to the game after the ad
               const gameCallback = function() {
-                console.log('Ad finished, continuing to game');
-                if (originalOnClick) originalOnClick.call(gameElement);
+                console.log('Ad completed, now navigating to game');
+                
+                // Execute the original click handler with a delay to ensure ad cleanup
+                setTimeout(function() {
+                  if (originalOnClick) {
+                    originalOnClick.call(gameElement);
+                  }
+                }, 200);
               };
               
-              // Show video ad
+              // Show the ad
               showVideoAd(gameCallback);
             } else {
-              console.log('Skipping ad, going to game directly');
+              console.log('Skipping ad, going directly to game');
               if (originalOnClick) originalOnClick.call(gameElement);
             }
+            
+            // Explicitly return false to prevent default behavior
+            return false;
           };
         });
+        
+        console.log('Ad system successfully initialized!');
+      } else {
+        console.error('No game items found to attach ads to!');
       }
     }
     
     // Function to track an impression or event
     function trackEvent(url) {
       try {
+        console.log('Tracking event: ' + url.substring(0, 50) + '...');
+        
         const pixel = new Image();
         pixel.src = url;
         pixel.style.display = 'none';
@@ -726,6 +763,8 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     
     // Function to show video ad
     function showVideoAd(callback) {
+      console.log('Setting up video ad overlay...');
+      
       // Variables declared in function scope to avoid reference errors
       let countdownTimer = null;
       let autoCloseTimer = null;
@@ -735,20 +774,24 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       function runCallback() {
         if (!callbackExecuted) {
           callbackExecuted = true;
+          console.log('Executing callback...');
           if (callback) callback();
         }
       }
       
       // Create overlay
       const adOverlay = document.createElement('div');
+      adOverlay.id = 'adOverlay';
       adOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:999999; display:flex; flex-direction:column; align-items:center; justify-content:center;';
       
       // Create ad container (will be clickable)
       const adContainer = document.createElement('div');
+      adContainer.id = 'adContainer';
       adContainer.style.cssText = 'width:360px; max-width:95%; height:640px; position:relative; background:#000; border-radius:4px; overflow:hidden; cursor:pointer;';
       
       // Create video element - NO CONTROLS
       const video = document.createElement('video');
+      video.id = 'adVideo';
       video.style.cssText = 'width:100%; height:100%; display:block; object-fit:contain;';
       video.src = videoFile;
       video.autoplay = true;
@@ -772,7 +815,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       skipButton.style.cssText = 'margin-top:15px; padding:8px 16px; background:#333; color:#fff; border:none; border-radius:4px; cursor:not-allowed; opacity:0.7;';
       skipButton.disabled = true;
       
-      // Add to DOM
+      // Add elements to DOM in the correct order
       adContainer.appendChild(video);
       adContainer.appendChild(adLabel);
       adContainer.appendChild(clickPrompt);
@@ -780,11 +823,14 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       adOverlay.appendChild(skipButton);
       document.body.appendChild(adOverlay);
       
+      console.log('Ad overlay added to DOM');
+      
       // Track impression
       trackEvent(impressionUrl);
       
       // Make container clickable
       adContainer.addEventListener('click', function() {
+        console.log('Ad clicked, opening advertiser URL');
         window.open(clickThrough, '_blank');
       });
       
@@ -799,12 +845,14 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       // Prevent video from pausing
       video.addEventListener('pause', function() {
         if (!video.ended) {
+          console.log('Video paused, restarting playback');
           video.play();
         }
       });
       
       // Track video start
       video.addEventListener('playing', function() {
+        console.log('Video started playing');
         if (!video.hasTrackedStart) {
           trackEvent(startUrl);
           video.hasTrackedStart = true;
@@ -813,7 +861,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       
       // Function to clean up everything
       function cleanupAd() {
-        console.log('Cleaning up ad');
+        console.log('Cleaning up ad overlay');
         
         // Clear timers
         if (countdownTimer) clearInterval(countdownTimer);
@@ -825,10 +873,11 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         // Remove ad overlay
         if (document.body.contains(adOverlay)) {
           document.body.removeChild(adOverlay);
+          console.log('Ad overlay removed from DOM');
         }
         
         // Run callback with slight delay
-        setTimeout(runCallback, 100);
+        setTimeout(runCallback, 200);
       }
       
       // Skip button countdown
@@ -841,6 +890,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
           skipButton.style.cursor = 'pointer';
           skipButton.style.opacity = '1';
           skipButton.style.backgroundColor = '#3a78ee';
+          console.log('Skip button enabled');
         } else {
           skipButton.textContent = `Ad will be skippable in ${remaining}s`;
         }
@@ -849,12 +899,14 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       // Skip button click handler
       skipButton.addEventListener('click', function() {
         if (!skipButton.disabled) {
+          console.log('Skip button clicked');
           cleanupAd();
         }
       });
       
       // Video ended handler
       video.addEventListener('ended', function() {
+        console.log('Video playback completed');
         cleanupAd();
       });
       
@@ -879,25 +931,18 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       });
       
       // Force play video
-      video.play().catch(function(error) {
+      video.play().then(function() {
+        console.log('Video playback started successfully');
+      }).catch(function(error) {
         console.error('Video autoplay failed:', error);
       });
       
       // Auto-close fallback
       autoCloseTimer = setTimeout(function() {
+        console.log('Auto-close fallback triggered');
         cleanupAd();
       }, 35000);
     }
-    
-    // Initialize when document is ready and games are loaded
-    const checkInterval = setInterval(function() {
-      const gameItems = document.querySelectorAll('.game-item');
-      if (gameItems.length > 0) {
-        clearInterval(checkInterval);
-        console.log('Game items found, initializing ad system');
-        updateGameClickHandlers();
-      }
-    }, 1000);
   });
 </script>
 </body>
