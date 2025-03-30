@@ -663,17 +663,8 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
 <script>
   // Add this to your HTML file just before the closing </body> tag
   document.addEventListener('DOMContentLoaded', function() {
-    // Video URLs extracted from your VAST response
-    const videoSources = [
-      'https://www.lucky-work.pro/96561/286479/539564_8e2e2.mp4',
-      'https://www.lucky-work.pro/96561/286486/539592_1c56f.mp4'
-    ];
-    
-    // Full clickthrough URLs from VAST - using the actual ad domain instead of tracking URLs
-    const clickThrough = [
-      'https://www.lucky-work.pro',  // Replacing with direct domain since tracking URLs aren't working
-      'https://www.lucky-work.pro'   // Replacing with direct domain since tracking URLs aren't working
-    ];
+    // The original VAST URL from Hilltop Ads
+    const vastUrl = 'https://thusizulu.com/dvmnF.zmdjGyNzv/ZnGMUh/ceOmh9Du_ZrUbl/kFPsTSY_yiMDj/QCyuN/j/YJtMNhjmIhycNfDPIR2jN/wc';
     
     // Function to modify game click handlers
     function updateGameClickHandlers() {
@@ -700,7 +691,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
               
               // 75% chance to show an ad
               if (Math.random() < 0.75) {
-                showVideoAd(function() {
+                showAdOverlay(function() {
                   if (originalOnClick) originalOnClick.call(gameElement);
                 });
               } else {
@@ -712,34 +703,22 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       }, 500);
     }
     
-    // Function to show a video ad
-    function showVideoAd(callback) {
-      // Get a random video source
-      const randomIndex = Math.floor(Math.random() * videoSources.length);
-      const videoUrl = videoSources[randomIndex];
-      const clickUrl = clickThrough[randomIndex];
-      
+    // Function to show the ad in an overlay with iframe
+    function showAdOverlay(callback) {
       // Create overlay container
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:999999; display:flex; flex-direction:column; justify-content:center; align-items:center;';
       
-      // Create video container
-      const videoContainer = document.createElement('div');
-      videoContainer.style.cssText = 'width:640px; max-width:95%; height:360px; position:relative; background:#000; cursor:pointer;';
+      // Create iframe container
+      const iframeContainer = document.createElement('div');
+      iframeContainer.style.cssText = 'width:640px; max-width:95%; height:360px; position:relative; background:#000;';
       
-      // Create "Ad" label
-      const adLabel = document.createElement('div');
-      adLabel.innerText = 'Advertisement';
-      adLabel.style.cssText = 'position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.5); color:#fff; padding:3px 6px; font-size:12px; border-radius:3px; z-index:2;';
-      
-      // Create actual video element
-      const video = document.createElement('video');
-      video.style.cssText = 'width:100%; height:100%; display:block;';
-      video.src = videoUrl;
-      video.autoplay = true;
-      video.controls = false;
-      video.muted = false;
-      video.playsInline = true;
+      // Create the iframe for the VAST ad
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'width:100%; height:100%; border:none;';
+      iframe.src = vastUrl;
+      iframe.setAttribute('allowfullscreen', 'true');
+      iframe.setAttribute('allow', 'autoplay; fullscreen');
       
       // Create skip button
       const skipButton = document.createElement('button');
@@ -747,17 +726,10 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       skipButton.style.cssText = 'margin-top:15px; padding:10px 20px; background:#333; color:#fff; border:none; border-radius:4px; cursor:not-allowed; opacity:0.7;';
       skipButton.disabled = true;
       
-      // Create visit advertiser button (always active)
-      const visitButton = document.createElement('button');
-      visitButton.innerText = 'Visit Advertiser';
-      visitButton.style.cssText = 'margin-top:10px; padding:8px 16px; background:#3a78ee; color:#fff; border:none; border-radius:4px; cursor:pointer;';
-      
       // Add to DOM
-      videoContainer.appendChild(video);
-      videoContainer.appendChild(adLabel);
-      overlay.appendChild(videoContainer);
+      iframeContainer.appendChild(iframe);
+      overlay.appendChild(iframeContainer);
       overlay.appendChild(skipButton);
-      overlay.appendChild(visitButton);
       document.body.appendChild(overlay);
       
       // Handle skip button countdown - 25 seconds
@@ -776,44 +748,36 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         }
       }, 1000);
       
-      // Video container click handler
-      videoContainer.addEventListener('click', function() {
-        if (Math.random() < 0.5) {
-          // Only open in new tab 50% of the time to reduce accidental clicks
-          window.open(clickUrl, '_blank');
-        }
-      });
-      
-      // Visit advertiser button handler (reliable way to visit advertiser)
-      visitButton.addEventListener('click', function() {
-        window.open(clickUrl, '_blank');
-      });
-      
       // Skip button click handler
       skipButton.addEventListener('click', function() {
         if (!skipButton.disabled) {
-          video.pause();
           document.body.removeChild(overlay);
           clearInterval(countdownTimer);
           if (callback) callback();
         }
       });
       
-      // Video ended handler
-      video.addEventListener('ended', function() {
-        document.body.removeChild(overlay);
-        clearInterval(countdownTimer);
-        if (callback) callback();
-      });
-      
-      // Auto-close after 35 seconds (longer than video to ensure completion)
+      // Auto-close after 40 seconds in case the ad doesn't load or finish properly
       setTimeout(() => {
         if (document.body.contains(overlay)) {
           document.body.removeChild(overlay);
+          clearInterval(countdownTimer);
           if (callback) callback();
         }
-      }, 35000);
+      }, 40000);
     }
+    
+    // Handle visibility change to handle iframe redirects
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') {
+        const overlays = document.querySelectorAll('div[style*="z-index:999999"]');
+        for (let overlay of overlays) {
+          if (overlay && document.body.contains(overlay)) {
+            document.body.removeChild(overlay);
+          }
+        }
+      }
+    });
     
     // Start the system
     updateGameClickHandlers();
