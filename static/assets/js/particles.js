@@ -23,7 +23,7 @@
     canvas.style.left = '0';
     canvas.style.width = '100%';
     canvas.style.height = '100%';
-    canvas.style.zIndex = '0'; // Make sure it's behind everything
+    canvas.style.zIndex = '-1'; // Make sure it's behind everything
     canvas.style.pointerEvents = 'none'; // Allow clicking through canvas
     
     // Add a class for easier debugging
