@@ -93,8 +93,8 @@
           const dy = mouseY - particle.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
           
-          const minDistance = 50; // Minimum distance particles can get to cursor
-          const attractRadius = 200; // Maximum attraction distance
+          const minDistance = 80; // Larger minimum distance particles can get to cursor
+          const attractRadius = 250; // Slightly larger attraction distance
           
           if (distance < attractRadius) {
             if (distance < minDistance) {
@@ -172,6 +172,17 @@
           let dx = particle.x - otherParticle.x;
           let dy = particle.y - otherParticle.y;
           let distance = Math.sqrt(dx * dx + dy * dy);
+          
+          // Skip drawing lines if either particle is being influenced by cursor
+          if (mouseX !== null && mouseY !== null) {
+            const p1ToCursor = Math.sqrt((mouseX - particle.x) ** 2 + (mouseY - particle.y) ** 2);
+            const p2ToCursor = Math.sqrt((mouseX - otherParticle.x) ** 2 + (mouseY - otherParticle.y) ** 2);
+            
+            // If either particle is within the attraction radius, don't draw the line
+            if (p1ToCursor < attractRadius || p2ToCursor < attractRadius) {
+              continue;
+            }
+          }
           
           if (distance < lineDistance) {
             ctx.beginPath();
