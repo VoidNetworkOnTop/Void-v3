@@ -55,12 +55,16 @@
       particles = [];
       
       for (let i = 0; i < particleCount; i++) {
+        const radius = Math.random() * particleSize + 1.5;
         particles.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          radius: Math.random() * particleSize + 1.5,
+          radius: radius,
+          originalRadius: radius, // Store original radius for scaling effects
           vx: Math.random() * moveSpeed * 2 - moveSpeed,
-          vy: Math.random() * moveSpeed * 2 - moveSpeed
+          vy: Math.random() * moveSpeed * 2 - moveSpeed,
+          color: particleColor,
+          wasAffected: 0 // For tracking cursor interaction state
         });
       }
       console.log("Particles.js: Created", particles.length, "particles");
@@ -97,22 +101,55 @@
           particle.vy = -particle.vy;
         }
         
-        // Mouse interaction - simple version
+        // Mouse interaction - more noticeable animation
         if (mouseX !== null && mouseY !== null) {
           const dx = mouseX - particle.x;
           const dy = mouseY - particle.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
           
           if (distance < mouseRadius) {
-            // Wave-like effect: particles gently move up and down when cursor is near
-            // Force decreases with distance but is strong enough to create visible movement
-            const force = 0.025 * (mouseRadius - distance) / mouseRadius;
+            // Calculate force based on distance (stronger when closer)
+            const force = 0.15 * (mouseRadius - distance) / mouseRadius;
             
-            // Create a gentle wave-like vertical movement
-            particle.vy += Math.sin(Date.now() * 0.002 + particle.x * 0.01) * force;
+            // Pulse effect: alternates between attraction and repulsion
+            const time = Date.now() * 0.001; // slower time scale
+            const pulseWave = Math.sin(time * 3); // 3 cycles per second
             
-            // Add slight horizontal drift for more interesting movement
-            particle.vx += (Math.random() - 0.5) * force * 0.4;
+            if (pulseWave > 0) {
+              // Attraction phase - particles move toward cursor
+              particle.vx += dx * force * 0.05;
+              particle.vy += dy * force * 0.05;
+              
+              // Change color during attraction (blue tint)
+              particle.color = `rgba(180, 230, 255, ${0.7 + 0.3 * force})`;
+              
+              // Temporarily grow particles during attraction
+              particle.radius = particle.originalRadius * (1 + force);
+            } else {
+              // Repulsion phase - particles pushed away from cursor
+              particle.vx -= dx * force * 0.08;
+              particle.vy -= dy * force * 0.08;
+              
+              // Change color during repulsion (pink tint)
+              particle.color = `rgba(255, 180, 230, ${0.7 + 0.3 * force})`;
+              
+              // Temporarily shrink particles during repulsion
+              particle.radius = particle.originalRadius * Math.max(0.6, 1 - force * 0.5);
+            }
+            
+            // Track that this particle was affected by cursor
+            particle.wasAffected = 10; // Will persist for 10 frames
+          } else {
+            // If particle was recently affected but now isn't
+            if (particle.wasAffected > 0) {
+              particle.wasAffected--;
+              
+              // Gradually fade back to original color and size
+              if (particle.wasAffected === 0) {
+                particle.color = particleColor;
+                particle.radius = particle.originalRadius;
+              }
+            }
           }
         }
         
@@ -143,7 +180,7 @@
         // Draw particle
         ctx.beginPath();
         ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
-        ctx.fillStyle = particleColor;
+        ctx.fillStyle = particle.color || particleColor;
         ctx.fill();
         
         // Draw connecting lines
