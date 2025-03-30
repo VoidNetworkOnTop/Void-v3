@@ -101,40 +101,40 @@
           particle.vy = -particle.vy;
         }
         
-        // Mouse interaction - more noticeable animation
+        // Mouse interaction - umbrella effect (keeps particles away from cursor)
         if (mouseX !== null && mouseY !== null) {
           const dx = mouseX - particle.x;
           const dy = mouseY - particle.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
+          const umbrellaRadius = 80; // Size of the "empty" space around cursor
           
           if (distance < mouseRadius) {
-            // Calculate force based on distance (stronger when closer)
-            const force = 0.15 * (mouseRadius - distance) / mouseRadius;
+            // Strong repulsion when inside the cursor's influence zone
+            // Force is strongest when close to the umbrella boundary
+            let force;
             
-            // Pulse effect: alternates between attraction and repulsion
-            const time = Date.now() * 0.001; // slower time scale
-            const pulseWave = Math.sin(time * 3); // 3 cycles per second
-            
-            if (pulseWave > 0) {
-              // Attraction phase - particles move toward cursor
-              particle.vx += dx * force * 0.05;
-              particle.vy += dy * force * 0.05;
+            if (distance < umbrellaRadius) {
+              // Inside the umbrella - very strong force pushing outward
+              force = 0.3 * (umbrellaRadius / (distance + 5)); // +5 prevents division by zero
               
-              // Change color during attraction (blue tint)
-              particle.color = `rgba(180, 230, 255, ${0.7 + 0.3 * force})`;
+              // Push particle away from cursor
+              const angle = Math.atan2(dy, dx);
+              particle.vx = -Math.cos(angle) * force;
+              particle.vy = -Math.sin(angle) * force;
               
-              // Temporarily grow particles during attraction
-              particle.radius = particle.originalRadius * (1 + force);
+              // Make particles glow red when being strongly repelled
+              particle.color = `rgba(255, 160, 160, ${0.7 + 0.3 * Math.min(force/2, 1)})`;
             } else {
-              // Repulsion phase - particles pushed away from cursor
-              particle.vx -= dx * force * 0.08;
-              particle.vy -= dy * force * 0.08;
+              // Outside umbrella but within influence - milder repulsion
+              force = 0.08 * (mouseRadius - distance) / (mouseRadius - umbrellaRadius);
               
-              // Change color during repulsion (pink tint)
-              particle.color = `rgba(255, 180, 230, ${0.7 + 0.3 * force})`;
+              // Push particle away from cursor, but less strongly
+              const angle = Math.atan2(dy, dx);
+              particle.vx -= Math.cos(angle) * force;
+              particle.vy -= Math.sin(angle) * force;
               
-              // Temporarily shrink particles during repulsion
-              particle.radius = particle.originalRadius * Math.max(0.6, 1 - force * 0.5);
+              // Particles in the outer zone turn light blue
+              particle.color = `rgba(180, 230, 255, ${0.7 + 0.3 * force})`;
             }
             
             // Track that this particle was affected by cursor
@@ -144,10 +144,10 @@
             if (particle.wasAffected > 0) {
               particle.wasAffected--;
               
-              // Gradually fade back to original color and size
+              // Gradually fade back to original color
               if (particle.wasAffected === 0) {
                 particle.color = particleColor;
-                particle.radius = particle.originalRadius;
+                particle.radius = particle.originalRadius; // Reset radius just in case
               }
             }
           }
