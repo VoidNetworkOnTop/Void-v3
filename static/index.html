@@ -661,7 +661,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     loadHTML("/assets/html/footer.html", "footer")
 </script>
 <script>
-  // ADD
+  // Add this to your HTML file just before the closing </body> tag
   document.addEventListener('DOMContentLoaded', function() {
     // Direct MP4 video URLs extracted from the VAST response
     const videoUrls = [
@@ -733,6 +733,18 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       overlay.style.justifyContent = 'center';
       overlay.style.alignItems = 'center';
       
+      // Create clickable container (this is what monetizes)
+      const clickableContainer = document.createElement('div');
+      clickableContainer.style.width = '640px';
+      clickableContainer.style.height = '360px';
+      clickableContainer.style.maxWidth = '90%';
+      clickableContainer.style.position = 'relative';
+      clickableContainer.style.backgroundColor = '#000';
+      clickableContainer.style.boxShadow = '0 0 20px rgba(0,0,0,0.5)';
+      clickableContainer.style.borderRadius = '4px';
+      clickableContainer.style.overflow = 'hidden';
+      clickableContainer.style.cursor = 'pointer'; // Show pointer cursor
+      
       // Create ad label
       const adLabel = document.createElement('div');
       adLabel.textContent = 'Advertisement';
@@ -745,52 +757,97 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       adLabel.style.borderRadius = '4px';
       adLabel.style.fontSize = '12px';
       adLabel.style.zIndex = '2';
+      clickableContainer.appendChild(adLabel);
       
-      // Create video container - this will be clickable
-      const videoContainer = document.createElement('div');
-      videoContainer.style.width = '640px';
-      videoContainer.style.height = '360px';
-      videoContainer.style.maxWidth = '90%';
-      videoContainer.style.position = 'relative';
-      videoContainer.style.backgroundColor = '#000';
-      videoContainer.style.boxShadow = '0 0 20px rgba(0,0,0,0.5)';
-      videoContainer.style.borderRadius = '4px';
-      videoContainer.style.overflow = 'hidden';
-      videoContainer.style.cursor = 'pointer'; // Show pointer cursor to indicate clickability
-      
-      // Create "Learn More" overlay
+      // Create "Click to Learn More" indicator
       const learnMore = document.createElement('div');
-      learnMore.textContent = 'Click to learn more';
+      learnMore.textContent = 'Click to Learn More';
       learnMore.style.position = 'absolute';
-      learnMore.style.bottom = '10px';
+      learnMore.style.bottom = '40px';
       learnMore.style.right = '10px';
-      learnMore.style.background = 'rgba(0,0,0,0.5)';
+      learnMore.style.background = 'rgba(58, 120, 238, 0.7)';
       learnMore.style.color = 'white';
-      learnMore.style.padding = '4px 8px';
+      learnMore.style.padding = '6px 12px';
       learnMore.style.borderRadius = '4px';
-      learnMore.style.fontSize = '12px';
-      learnMore.style.zIndex = '2';
+      learnMore.style.fontSize = '14px';
+      learnMore.style.fontWeight = 'bold';
+      learnMore.style.zIndex = '3';
+      clickableContainer.appendChild(learnMore);
       
-      // Create video element
-      const video = document.createElement('video');
-      video.style.width = '100%';
-      video.style.height = '100%';
-      video.style.objectFit = 'contain';
-      video.style.display = 'block';
-      video.style.backgroundColor = '#000';
+      // Create iframe to display video (more reliable than video element)
+      // We'll create an HTML page with the video embedded
+      const iframe = document.createElement('iframe');
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.border = 'none';
+      iframe.style.position = 'absolute';
+      iframe.style.top = '0';
+      iframe.style.left = '0';
+      iframe.style.zIndex = '1';
+      iframe.allow = 'autoplay';
       
-      // Set video attributes
-      video.controls = true; // Show native controls
-      video.muted = true; // Start muted to bypass autoplay restrictions
-      video.autoplay = true; // Try to autoplay
-      video.playsInline = true;
-      video.preload = 'auto';
-      video.src = videoUrl;
+      // Create HTML content for the iframe
+      const iframeHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body, html { 
+              margin: 0; 
+              padding: 0; 
+              width: 100%; 
+              height: 100%; 
+              overflow: hidden;
+              background-color: #000;
+            }
+            video {
+              width: 100%;
+              height: 100%;
+              object-fit: contain;
+              display: block;
+            }
+          </style>
+        </head>
+        <body>
+          <video 
+            id="adVideo" 
+            autoplay 
+            muted 
+            controls 
+            src="${videoUrl}" 
+            playsinline
+          ></video>
+          
+          <script>
+            const video = document.getElementById('adVideo');
+            
+            // Make sure video starts playing
+            video.play().then(() => {
+              // Unmute after 1 second
+              setTimeout(() => {
+                video.muted = false;
+              }, 1000);
+            }).catch(err => {
+              console.error("Video play failed:", err);
+            });
+            
+            // Tell parent when video ends
+            video.addEventListener('ended', () => {
+              window.parent.postMessage('video-ended', '*');
+            });
+            
+            // Tell parent when there's an error
+            video.addEventListener('error', () => {
+              window.parent.postMessage('video-error', '*');
+            });
+          </script>
+        </body>
+        </html>
+      `;
       
-      // Add elements to video container
-      videoContainer.appendChild(video);
-      videoContainer.appendChild(adLabel);
-      videoContainer.appendChild(learnMore);
+      // Set iframe source to data URL with our HTML
+      iframe.srcdoc = iframeHTML;
+      clickableContainer.appendChild(iframe);
       
       // Create skip button
       const skipButton = document.createElement('button');
@@ -805,39 +862,32 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       skipButton.style.opacity = '0.7';
       skipButton.disabled = true;
       
-      // Create "Visit Advertiser" button to ensure clicking option is always available
-      const visitButton = document.createElement('button');
-      visitButton.textContent = 'Visit Advertiser';
-      visitButton.style.marginTop = '10px';
-      visitButton.style.padding = '8px 16px';
-      visitButton.style.backgroundColor = '#3a78ee';
-      visitButton.style.color = '#fff';
-      visitButton.style.border = 'none';
-      visitButton.style.borderRadius = '4px';
-      visitButton.style.cursor = 'pointer';
-      
       // Append elements to DOM
-      overlay.appendChild(videoContainer);
-      overlay.appendChild(visitButton);
+      overlay.appendChild(clickableContainer);
       overlay.appendChild(skipButton);
       document.body.appendChild(overlay);
       
-      // IMPORTANT: Make video container click go to advertiser page (this is how you get paid)
-      videoContainer.addEventListener('click', function(e) {
-        // Prevent this from interfering with video controls
-        if (e.target === video && video.controls) {
-          return; // Let the video control clicks work normally
-        }
-        
+      // IMPORTANT: Make clickable container go to advertiser page (this is how you get paid)
+      clickableContainer.addEventListener('click', function(e) {
         // Open advertiser page in new tab
         window.open(clickUrl, '_blank');
-        
-        // Note: don't stop video playback, allow it to continue in background
       });
       
-      // Visit advertiser button click handler
-      visitButton.addEventListener('click', function() {
-        window.open(clickUrl, '_blank');
+      // Listen for messages from iframe
+      window.addEventListener('message', function(event) {
+        if (event.data === 'video-ended') {
+          if (document.body.contains(overlay)) {
+            document.body.removeChild(overlay);
+            if (callback) callback();
+          }
+        } else if (event.data === 'video-error') {
+          // Make skip button active immediately on error
+          skipButton.disabled = false;
+          skipButton.textContent = 'Skip Ad';
+          skipButton.style.cursor = 'pointer';
+          skipButton.style.opacity = '1';
+          skipButton.style.backgroundColor = '#3a78ee';
+        }
       });
       
       // Function to start skip button countdown
@@ -859,27 +909,8 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         }, 1000);
       }
       
-      // Video play event
-      video.addEventListener('play', function() {
-        // Start countdown when video starts playing
-        if (!countdownTimer) {
-          startSkipButtonCountdown();
-          
-          // Try to unmute after 1 second
-          setTimeout(() => {
-            video.muted = false;
-          }, 1000);
-        }
-      });
-      
-      // Try to force play after a short delay
-      setTimeout(() => {
-        if (video.paused) {
-          video.play().catch(error => {
-            console.error('Force play failed:', error);
-          });
-        }
-      }, 500);
+      // Start countdown immediately
+      startSkipButtonCountdown();
       
       // Skip button click handler
       skipButton.addEventListener('click', () => {
@@ -887,19 +918,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
           if (countdownTimer) {
             clearInterval(countdownTimer);
           }
-          video.pause();
           document.body.removeChild(overlay);
           if (callback) callback();
         }
-      });
-      
-      // Video end handler
-      video.addEventListener('ended', () => {
-        if (countdownTimer) {
-          clearInterval(countdownTimer);
-        }
-        document.body.removeChild(overlay);
-        if (callback) callback();
       });
       
       // Failsafe - auto close after 35 seconds
