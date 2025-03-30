@@ -661,15 +661,17 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     loadHTML("/assets/html/footer.html", "footer")
 </script>
 <script>
-  // ADDS
+  // Add this to your HTML file just before the closing </body> tag
   document.addEventListener('DOMContentLoaded', function() {
     // Direct MP4 video URL
     const videoUrl = 'https://www.lucky-work.pro/96561/286479/539564_8e2e2.mp4';
     
-    // Tracking URLs from VAST - these are important for monetization
+    // For monetization - FIXED clickthrough URL that should work reliably
+    const clickUrl = 'https://www.lucky-work.pro'; // Direct to ad domain as fallback
+    
+    // Original tracking URLs from VAST
     const impressionUrl = 'https://thusizulu.com/dambF-z.ddGeVf2gZ_Wi5j0kPl2-FnkoSpWqQ_9sNtjuQvx-NxTyQz0AJ_mCFDkEdFn-NH1IYJmKl_kMPNSOZPh-cR2SMT9UM_iWZXlYdZm-VbucddFeR_5gchGiUj9-NlSmZnrod_zq1r2sbt2-lvkwJxTyJ_DAcBmCFDk-aFWG8HlIM_kKNLhMbNS-ZPwQYRXSl_vUdVXWQX9-MZCaZbycZ_XeZflgbhn-VjlkPlTmA_mocpnqJrp-ZtDu0vywY_jyQz3ANBD-kD5ENFTGU_zIMJjKlLm';
     const videoStartUrl = 'https://thusizulu.com/d.m-FLzMdNGOV_2QZRWS5T0-PV2WFXkYS_WaQb9cNdT-Mf5gNhTik_ykJlmmFnk-dpnqNr1sY_mulvkwPxS-ZzhAcB2CM_9EMFiGZHl-dJmKVLuMd_FORP5QcRG-UT9UMViWZ_rYdZza1bn-YdWe1flgJ_TiJjDkMlm';
-    const clickUrl = 'https://thusizulu.com/dAmBF.zCd_GEVF2GZHW-5J0KPL2MF_kOSPWQQR9-NTTUMV5WN_TYYZ0aJbm-FdkedfngN';
     
     // Function to modify game click handlers
     function updateGameClickHandlers() {
@@ -681,8 +683,8 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
           gameElement.onclick = function(event) {
             event.preventDefault();
             
-            // 65% chance to show an ad
-            if (Math.random() < 0.65) {
+            // 50% chance to show an ad (changed from 75%)
+            if (Math.random() < 0.5) {
               showSimpleAd(() => {
                 if (originalOnClick) originalOnClick.call(gameElement);
               });
@@ -694,7 +696,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       }
     }
     
-    // Function to track impression/view - this is how you get paid for views
+    // Function to track impression/view
     function trackAdEvent(url) {
       const img = new Image();
       img.src = url;
@@ -734,14 +736,19 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       // Add "Advertisement" label
       const adLabel = document.createElement('div');
       adLabel.textContent = 'Advertisement';
-      adLabel.style.cssText = 'position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.5); color:#fff; padding:5px 10px; border-radius:4px; font-size:12px;';
+      adLabel.style.cssText = 'position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.5); color:#fff; padding:5px 10px; border-radius:4px; font-size:12px; z-index:2;';
       container.appendChild(adLabel);
       
-      // Add "Click to Learn More" text
+      // Add "Click to Learn More" text - make it more noticeable
       const clickPrompt = document.createElement('div');
       clickPrompt.textContent = 'Click to Learn More';
-      clickPrompt.style.cssText = 'position:absolute; bottom:10px; right:10px; background:rgba(58,120,238,0.8); color:#fff; padding:5px 10px; border-radius:4px; font-size:14px;';
+      clickPrompt.style.cssText = 'position:absolute; bottom:10px; right:10px; background:rgba(58,120,238,0.8); color:#fff; padding:5px 10px; border-radius:4px; font-size:14px; font-weight:bold; z-index:2;';
       container.appendChild(clickPrompt);
+      
+      // Add a completely separate clickable overlay to ensure clicks work
+      const clickOverlay = document.createElement('div');
+      clickOverlay.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; cursor:pointer; z-index:1;';
+      container.appendChild(clickOverlay);
       
       // Add skip button
       const skipButton = document.createElement('button');
@@ -754,22 +761,25 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       overlay.appendChild(skipButton);
       document.body.appendChild(overlay);
       
-      // IMPORTANT: Track impression immediately when ad is shown (you get paid for this)
+      // Track impression immediately when ad is shown
       trackAdEvent(impressionUrl);
       
-      // Make container clickable
-      container.onclick = function() {
-        window.open(clickUrl, '_blank');
-      };
-      
-      // Prevent video from pausing if user tries to pause it
-      video.addEventListener('pause', function() {
-        if (!video.ended) {
-          video.play();
+      // Make container and overlay clickable - FIXED
+      clickOverlay.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Open the ad URL in a new tab
+        const newWindow = window.open(clickUrl, '_blank');
+        if (newWindow) {
+          newWindow.focus();
+        } else {
+          // If popup blocked, try location change
+          window.location.href = clickUrl;
         }
       });
       
-      // Track video start when it begins playing (you get paid for this too)
+      // Track video start when it begins playing
       video.addEventListener('playing', function() {
         // Only track start once
         if (!video.hasTrackedStart) {
@@ -778,12 +788,20 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         }
       });
       
+      // Prevent video from pausing
+      video.addEventListener('pause', function() {
+        if (!video.ended) {
+          video.play();
+        }
+      });
+      
       // Prevent spacebar from pausing the video
-      document.addEventListener('keydown', function(e) {
+      const keydownHandler = function(e) {
         if (e.code === 'Space' && document.body.contains(overlay)) {
           e.preventDefault();
         }
-      });
+      };
+      document.addEventListener('keydown', keydownHandler);
       
       // Skip button timer
       let countdown = 25;
@@ -805,6 +823,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       skipButton.addEventListener('click', function() {
         if (!skipButton.disabled) {
           clearInterval(timer);
+          document.removeEventListener('keydown', keydownHandler);
           document.body.removeChild(overlay);
           if (callback) callback();
         }
@@ -813,6 +832,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       // Video end handler
       video.addEventListener('ended', function() {
         clearInterval(timer);
+        document.removeEventListener('keydown', keydownHandler);
         document.body.removeChild(overlay);
         if (callback) callback();
       });
@@ -824,51 +844,15 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         }
       });
       
-      // Track video progress at intervals
-      let progressTracker = setInterval(function() {
-        if (video.currentTime > 0) {
-          // Video is definitely playing if time is advancing
-          if (!video.hasTrackedStart) {
-            trackAdEvent(videoStartUrl);
-            video.hasTrackedStart = true;
-          }
-          
-          // Calculate percentage watched
-          const percentWatched = (video.currentTime / video.duration) * 100;
-          
-          // You could add additional tracking points here
-          // e.g., if(percentWatched > 50 && !video.hasTrackedMidpoint) { ... }
-        }
-        
-        if (!document.body.contains(overlay)) {
-          clearInterval(progressTracker);
-        }
-      }, 1000);
-      
       // Fallback - close after 35 seconds
       setTimeout(function() {
         if (document.body.contains(overlay)) {
           clearInterval(timer);
-          clearInterval(progressTracker);
+          document.removeEventListener('keydown', keydownHandler);
           document.body.removeChild(overlay);
           if (callback) callback();
         }
       }, 35000);
-      
-      // Handle video loading error
-      video.addEventListener('error', function() {
-        // Still count as an impression even if video fails
-        if (!video.hasTrackedStart) {
-          trackAdEvent(videoStartUrl);
-          video.hasTrackedStart = true;
-        }
-        
-        skipButton.disabled = false;
-        skipButton.textContent = 'Skip Ad';
-        skipButton.style.cursor = 'pointer';
-        skipButton.style.opacity = '1';
-        skipButton.style.background = '#3a78ee';
-      });
       
       // Try to make sure video starts playing
       video.play().catch(function(error) {
@@ -876,7 +860,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         
         // Create play button as fallback if autoplay fails
         const playButton = document.createElement('div');
-        playButton.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; cursor:pointer;';
+        playButton.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; cursor:pointer; z-index:3;';
         playButton.innerHTML = '<div style="font-size:64px; color:white;">▶️</div>';
         container.appendChild(playButton);
         
