@@ -38,7 +38,7 @@
     const particleColor = 'rgba(255, 255, 255, 0.8)';
     const lineColor = 'rgba(255, 255, 255, 0.5)';
     const lineDistance = 150;
-    const moveSpeed = 0.7; // Increased base movement speed
+    const moveSpeed = 0.7;
     
     // Array to store particles
     let particles = [];
@@ -60,11 +60,10 @@
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
           radius: radius,
-          originalRadius: radius, // Store original radius for scaling effects
+          originalRadius: radius,
           vx: Math.random() * moveSpeed * 2 - moveSpeed,
           vy: Math.random() * moveSpeed * 2 - moveSpeed,
-          color: particleColor,
-          wasAffected: 0 // For tracking cursor interaction state
+          color: particleColor
         });
       }
       console.log("Particles.js: Created", particles.length, "particles");
@@ -73,7 +72,6 @@
     // Mouse interaction
     let mouseX = null;
     let mouseY = null;
-    const mouseRadius = 200;
     
     function handleMouseMove(e) {
       mouseX = e.clientX;
@@ -89,9 +87,70 @@
       for (let i = 0; i < particles.length; i++) {
         let particle = particles[i];
         
+        // Mouse interaction - simple attraction with minimum distance
+        if (mouseX !== null && mouseY !== null) {
+          const dx = mouseX - particle.x;
+          const dy = mouseY - particle.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          const minDistance = 50; // Minimum distance particles can get to cursor
+          const attractRadius = 200; // Maximum attraction distance
+          
+          if (distance < attractRadius) {
+            if (distance < minDistance) {
+              // Too close - push away to maintain minimum distance
+              const pushStrength = 0.5 * (1 - distance / minDistance);
+              const angle = Math.atan2(dy, dx);
+              particle.vx -= Math.cos(angle) * pushStrength;
+              particle.vy -= Math.sin(angle) * pushStrength;
+              
+              // Make particles brighter
+              particle.color = 'rgba(255, 255, 255, 1.0)';
+              particle.radius = particle.originalRadius * 1.5;
+            } else {
+              // Pull towards cursor
+              const pullStrength = 0.2 * (1 - distance / attractRadius);
+              particle.vx += dx * pullStrength * 0.01;
+              particle.vy += dy * pullStrength * 0.01;
+              
+              // Make particles slightly brighter
+              const brightness = 0.8 + 0.2 * (1 - distance / attractRadius);
+              particle.color = `rgba(255, 255, 255, ${brightness})`;
+              particle.radius = particle.originalRadius * (1 + 0.5 * (1 - distance / attractRadius));
+            }
+          } else {
+            // Reset color and size if not affected
+            particle.color = particleColor;
+            particle.radius = particle.originalRadius;
+          }
+        }
+        
         // Move particle
         particle.x += particle.vx;
         particle.y += particle.vy;
+        
+        // Add tiny random movement
+        particle.vx += (Math.random() - 0.5) * 0.03;
+        particle.vy += (Math.random() - 0.5) * 0.03;
+        
+        // Apply very mild friction
+        particle.vx *= 0.99;
+        particle.vy *= 0.99;
+        
+        // Ensure minimum movement speed
+        const minSpeed = 0.1;
+        const currentSpeed = Math.sqrt(particle.vx * particle.vx + particle.vy * particle.vy);
+        if (currentSpeed < minSpeed) {
+          particle.vx = particle.vx === 0 ? (Math.random() - 0.5) * minSpeed : particle.vx * (minSpeed / currentSpeed);
+          particle.vy = particle.vy === 0 ? (Math.random() - 0.5) * minSpeed : particle.vy * (minSpeed / currentSpeed);
+        }
+        
+        // Maximum speed limit
+        const maxSpeed = 3.0;
+        if (currentSpeed > maxSpeed) {
+          particle.vx = (particle.vx / currentSpeed) * maxSpeed;
+          particle.vy = (particle.vy / currentSpeed) * maxSpeed;
+        }
         
         // Bounce off edges
         if (particle.x < 0 || particle.x > canvas.width) {
@@ -101,88 +160,10 @@
           particle.vy = -particle.vy;
         }
         
-        // Mouse interaction - umbrella effect (keeps particles away from cursor)
-        if (mouseX !== null && mouseY !== null) {
-          const dx = mouseX - particle.x;
-          const dy = mouseY - particle.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          const umbrellaRadius = 80; // Size of the "empty" space around cursor
-          
-          if (distance < mouseRadius) {
-            // Strong repulsion when inside the cursor's influence zone
-            // Force is strongest when close to the umbrella boundary
-            let force;
-            
-            if (distance < umbrellaRadius) {
-              // Inside the umbrella - very strong force pushing outward
-              force = 0.3 * (umbrellaRadius / (distance + 5)); // +5 prevents division by zero
-              
-              // Push particle away from cursor
-              const angle = Math.atan2(dy, dx);
-              particle.vx = -Math.cos(angle) * force;
-              particle.vy = -Math.sin(angle) * force;
-              
-              // Make particles glow brighter white when being strongly repelled
-              particle.color = `rgba(255, 255, 255, ${Math.min(0.9 + force/3, 1)})`;
-              // Increase size slightly for more visible glow effect
-              particle.radius = particle.originalRadius * (1 + Math.min(force/5, 0.8));            } else {
-              // Outside umbrella but within influence - milder repulsion
-              force = 0.08 * (mouseRadius - distance) / (mouseRadius - umbrellaRadius);
-              
-              // Push particle away from cursor, but less strongly
-              const angle = Math.atan2(dy, dx);
-              particle.vx -= Math.cos(angle) * force;
-              particle.vy -= Math.sin(angle) * force;
-              
-              // Particles in the outer zone turn light blue
-              particle.color = `rgba(220, 240, 255, ${0.7 + 0.3 * force})`;
-              // Return to normal size
-              particle.radius = particle.originalRadius;            }
-            
-            // Track that this particle was affected by cursor
-            particle.wasAffected = 10; // Will persist for 10 frames
-          } else {
-            // If particle was recently affected but now isn't
-            if (particle.wasAffected > 0) {
-              particle.wasAffected--;
-              
-              // Gradually fade back to original color
-              if (particle.wasAffected === 0) {
-                particle.color = particleColor;
-                particle.radius = particle.originalRadius; // Reset radius just in case
-              }
-            }
-          }
-        }
-        
-        // Apply very mild damping to maintain momentum
-        particle.vx *= 0.995;
-        particle.vy *= 0.995;
-        
-        // Add tiny random movement to ensure particles always move
-        particle.vx += (Math.random() - 0.5) * 0.03;
-        particle.vy += (Math.random() - 0.5) * 0.03;
-        
-        // Ensure minimum movement speed
-        const minSpeed = 0.1;
-        const currentSpeed = Math.sqrt(particle.vx * particle.vx + particle.vy * particle.vy);
-        if (currentSpeed < minSpeed) {
-          // If moving too slowly, give a small boost in current direction
-          particle.vx = particle.vx === 0 ? (Math.random() - 0.5) * minSpeed : particle.vx * (minSpeed / currentSpeed);
-          particle.vy = particle.vy === 0 ? (Math.random() - 0.5) * minSpeed : particle.vy * (minSpeed / currentSpeed);
-        }
-        
-        // Strict velocity limiting only for excessive speeds
-        const maxSpeed = 2.0; // Higher max speed
-        if (currentSpeed > maxSpeed) {
-          particle.vx = (particle.vx / currentSpeed) * maxSpeed;
-          particle.vy = (particle.vy / currentSpeed) * maxSpeed;
-        }
-        
         // Draw particle
         ctx.beginPath();
         ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
-        ctx.fillStyle = particle.color || particleColor;
+        ctx.fillStyle = particle.color;
         ctx.fill();
         
         // Draw connecting lines
