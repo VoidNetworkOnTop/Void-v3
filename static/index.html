@@ -666,7 +666,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
     // Direct MP4 video URL
     const videoUrl = 'https://www.lucky-work.pro/96561/286479/539564_8e2e2.mp4';
     
-    // Advertiser link URL
+    // Tracking URLs from VAST - these are important for monetization
+    const impressionUrl = 'https://thusizulu.com/dambF-z.ddGeVf2gZ_Wi5j0kPl2-FnkoSpWqQ_9sNtjuQvx-NxTyQz0AJ_mCFDkEdFn-NH1IYJmKl_kMPNSOZPh-cR2SMT9UM_iWZXlYdZm-VbucddFeR_5gchGiUj9-NlSmZnrod_zq1r2sbt2-lvkwJxTyJ_DAcBmCFDk-aFWG8HlIM_kKNLhMbNS-ZPwQYRXSl_vUdVXWQX9-MZCaZbycZ_XeZflgbhn-VjlkPlTmA_mocpnqJrp-ZtDu0vywY_jyQz3ANBD-kD5ENFTGU_zIMJjKlLm';
+    const videoStartUrl = 'https://thusizulu.com/d.m-FLzMdNGOV_2QZRWS5T0-PV2WFXkYS_WaQb9cNdT-Mf5gNhTik_ykJlmmFnk-dpnqNr1sY_mulvkwPxS-ZzhAcB2CM_9EMFiGZHl-dJmKVLuMd_FORP5QcRG-UT9UMViWZ_rYdZza1bn-YdWe1flgJ_TiJjDkMlm';
     const clickUrl = 'https://thusizulu.com/dAmBF.zCd_GEVF2GZHW-5J0KPL2MF_kOSPWQQR9-NTTUMV5WN_TYYZ0aJbm-FdkedfngN';
     
     // Function to modify game click handlers
@@ -690,6 +692,21 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
           };
         });
       }
+    }
+    
+    // Function to track impression/view - this is how you get paid for views
+    function trackAdEvent(url) {
+      const img = new Image();
+      img.src = url;
+      img.style.display = 'none';
+      document.body.appendChild(img);
+      
+      // Remove the tracking pixel after a delay
+      setTimeout(() => {
+        if (document.body.contains(img)) {
+          document.body.removeChild(img);
+        }
+      }, 10000);
     }
     
     // Simple ad function
@@ -737,6 +754,9 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       overlay.appendChild(skipButton);
       document.body.appendChild(overlay);
       
+      // IMPORTANT: Track impression immediately when ad is shown (you get paid for this)
+      trackAdEvent(impressionUrl);
+      
       // Make container clickable
       container.onclick = function() {
         window.open(clickUrl, '_blank');
@@ -746,6 +766,15 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       video.addEventListener('pause', function() {
         if (!video.ended) {
           video.play();
+        }
+      });
+      
+      // Track video start when it begins playing (you get paid for this too)
+      video.addEventListener('playing', function() {
+        // Only track start once
+        if (!video.hasTrackedStart) {
+          trackAdEvent(videoStartUrl);
+          video.hasTrackedStart = true;
         }
       });
       
@@ -773,20 +802,20 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
       }, 1000);
       
       // Skip button click
-      skipButton.onclick = function() {
+      skipButton.addEventListener('click', function() {
         if (!skipButton.disabled) {
           clearInterval(timer);
           document.body.removeChild(overlay);
           if (callback) callback();
         }
-      };
+      });
       
       // Video end handler
-      video.onended = function() {
+      video.addEventListener('ended', function() {
         clearInterval(timer);
         document.body.removeChild(overlay);
         if (callback) callback();
-      };
+      });
       
       // If video somehow stops, restart it
       video.addEventListener('timeupdate', function() {
@@ -795,23 +824,51 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         }
       });
       
+      // Track video progress at intervals
+      let progressTracker = setInterval(function() {
+        if (video.currentTime > 0) {
+          // Video is definitely playing if time is advancing
+          if (!video.hasTrackedStart) {
+            trackAdEvent(videoStartUrl);
+            video.hasTrackedStart = true;
+          }
+          
+          // Calculate percentage watched
+          const percentWatched = (video.currentTime / video.duration) * 100;
+          
+          // You could add additional tracking points here
+          // e.g., if(percentWatched > 50 && !video.hasTrackedMidpoint) { ... }
+        }
+        
+        if (!document.body.contains(overlay)) {
+          clearInterval(progressTracker);
+        }
+      }, 1000);
+      
       // Fallback - close after 35 seconds
       setTimeout(function() {
         if (document.body.contains(overlay)) {
           clearInterval(timer);
+          clearInterval(progressTracker);
           document.body.removeChild(overlay);
           if (callback) callback();
         }
       }, 35000);
       
-      // Fallback - if video fails to display
-      video.onerror = function() {
+      // Handle video loading error
+      video.addEventListener('error', function() {
+        // Still count as an impression even if video fails
+        if (!video.hasTrackedStart) {
+          trackAdEvent(videoStartUrl);
+          video.hasTrackedStart = true;
+        }
+        
         skipButton.disabled = false;
         skipButton.textContent = 'Skip Ad';
         skipButton.style.cursor = 'pointer';
         skipButton.style.opacity = '1';
         skipButton.style.background = '#3a78ee';
-      };
+      });
       
       // Try to make sure video starts playing
       video.play().catch(function(error) {
@@ -823,7 +880,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
         playButton.innerHTML = '<div style="font-size:64px; color:white;">▶️</div>';
         container.appendChild(playButton);
         
-        playButton.onclick = function(e) {
+        playButton.addEventListener('click', function(e) {
           e.stopPropagation(); // Don't trigger container click
           video.play().then(function() {
             container.removeChild(playButton);
@@ -835,7 +892,7 @@ window.onload=function(){const e=localStorage.getItem("popupLastShown"),t=Date.n
             skipButton.style.opacity = '1';
             skipButton.style.background = '#3a78ee';
           });
-        };
+        });
       });
     }
     
