@@ -224,11 +224,6 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/nD_XHR5JAnRq3EjZFcU8RkV87cHg3bxkdJYaBJQ657OIWPIR1SzBtBJgNvHrZb5uWgA5fQawDFs_d8S5zOJ8Mc0sHPkQNBEuZGq--aL7ea6hb0bW5BvoJK9jwnbOjK5caRY55rCHnK4nAsR2zb_J-x0AaxgcGLZvvKMkflbGAOKfL2YUwbJBhHJLVtgekL_TETKA",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://territorial.io")
 },
-{
-    title: "territorial.io", 
-    imgSrc: "https://lh7-us.googleusercontent.com/nD_XHR5JAnRq3EjZFcU8RkV87cHg3bxkdJYaBJQ657OIWPIR1SzBtBJgNvHrZb5uWgA5fQawDFs_d8S5zOJ8Mc0sHPkQNBEuZGq--aL7ea6hb0bW5BvoJK9jwnbOjK5caRY55rCHnK4nAsR2zb_J-x0AaxgcGLZvvKMkflbGAOKfL2YUwbJBhHJLVtgekL_TETKA",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://territorial.io")
-},
 
     
    ];
