@@ -368,39 +368,45 @@
         let loadStartTime = 0;
         const maxRetries = 3;
         
-        // Function to focus the game
+        // Focus game function with null checks
         function focusGame() {
             if (!iframe) {
                 iframe = document.getElementById('gframe');
+                if (!iframe) {
+                    console.error("Cannot focus game: iframe not found");
+                    return;
+                }
             }
             
-            if (iframe) {
-                iframe.focus();
+            iframe.focus();
+            
+            // Visual feedback only if game container exists
+            const gameContainer = document.querySelector('.game_container');
+            if (!gameContainer) return;
+            
+            // Visual feedback
+            const tempHighlight = document.createElement('div');
+            tempHighlight.style.position = 'absolute';
+            tempHighlight.style.top = '0';
+            tempHighlight.style.left = '0';
+            tempHighlight.style.width = '100%';
+            tempHighlight.style.height = 'calc(100% - 40px)';
+            tempHighlight.style.border = '2px solid rgba(100, 180, 255, 0.8)';
+            tempHighlight.style.borderRadius = '22px 22px 0 0';
+            tempHighlight.style.boxShadow = 'inset 0 0 20px rgba(100, 180, 255, 0.3)';
+            tempHighlight.style.pointerEvents = 'none';
+            tempHighlight.style.zIndex = '4';
+            gameContainer.appendChild(tempHighlight);
+            
+            // Remove the highlight after a short delay
+            setTimeout(function() {
+                tempHighlight.style.opacity = '0';
+                tempHighlight.style.transition = 'opacity 0.5s ease';
                 
-                // Visual feedback
-                const tempHighlight = document.createElement('div');
-                tempHighlight.style.position = 'absolute';
-                tempHighlight.style.top = '0';
-                tempHighlight.style.left = '0';
-                tempHighlight.style.width = '100%';
-                tempHighlight.style.height = 'calc(100% - 40px)';
-                tempHighlight.style.border = '2px solid rgba(100, 180, 255, 0.8)';
-                tempHighlight.style.borderRadius = '22px 22px 0 0';
-                tempHighlight.style.boxShadow = 'inset 0 0 20px rgba(100, 180, 255, 0.3)';
-                tempHighlight.style.pointerEvents = 'none';
-                tempHighlight.style.zIndex = '4';
-                document.querySelector('.game_container').appendChild(tempHighlight);
-                
-                // Remove the highlight after a short delay
                 setTimeout(function() {
-                    tempHighlight.style.opacity = '0';
-                    tempHighlight.style.transition = 'opacity 0.5s ease';
-                    
-                    setTimeout(function() {
-                        tempHighlight.remove();
-                    }, 500);
-                }, 300);
-            }
+                    tempHighlight.remove();
+                }, 500);
+            }, 300);
         }
         
         // Add debug information during loading
@@ -489,15 +495,12 @@
             }
         }
         
-        /**
-         * Attempt game retry when loading fails
-         * This function implements the retry mechanism with progressive strategies
-         */
+        // Attempt game retry when loading fails (with null checks)
         function attemptGameRetry() {
             if (retryCount >= maxRetries) {
                 updateDebugInfo("❌ Max retries reached. Showing failure modal.");
                 
-                // Show black screen modal with options
+                // Show black screen modal with options if it exists
                 if (blackScreenModal) {
                     blackScreenModal.style.display = 'flex';
                 }
@@ -509,13 +512,28 @@
             retryCount++;
             
             // Update UI
-            loadingScreen.style.display = 'flex';
-            showGameBtn.style.display = 'none';
+            if (loadingScreen) {
+                loadingScreen.style.display = 'flex';
+            }
+            
+            if (showGameBtn) {
+                showGameBtn.style.display = 'none';
+            }
+            
             gameLoaded = false;
             
             // Update loading text to indicate retry
-            loadingText.textContent = `Retry attempt ${retryCount} of ${maxRetries}...`;
+            if (loadingText) {
+                loadingText.textContent = `Retry attempt ${retryCount} of ${maxRetries}...`;
+            }
             updateDebugInfo(`🔄 Retry attempt ${retryCount} of ${maxRetries}`);
+            
+            // Check if iframe exists
+            if (!iframe) {
+                console.error("Cannot retry: iframe not found");
+                updateDebugInfo("❌ Cannot retry: iframe not found");
+                return;
+            }
             
             // Clear iframe
             iframe.src = 'about:blank';
@@ -523,6 +541,12 @@
             // Get the game URL
             const urlParams = new URLSearchParams(window.location.search);
             let gameUrl = urlParams.get('game');
+            
+            if (!gameUrl) {
+                console.error("Cannot retry: no game URL");
+                updateDebugInfo("❌ Cannot retry: no game URL");
+                return;
+            }
             
             // Update debug info
             updateDebugInfo(`🔗 Original game URL: ${gameUrl}`);
@@ -576,7 +600,11 @@
             // Set iframe src to load game
             setTimeout(() => {
                 updateDebugInfo(`🔗 Loading URL: ${gameUrl}`);
-                iframe.src = gameUrl;
+                try {
+                    iframe.src = gameUrl;
+                } catch (e) {
+                    updateDebugInfo(`❌ Error setting iframe src: ${e.message}`);
+                }
                 
                 // Use a longer timeout for retries
                 const retryTimeout = 12000 + (retryCount * 3000); // Progressively longer
@@ -594,9 +622,15 @@
             }, 500);
         }
         
-        // Load game function
+        // Load game function with null checks and error handling
         function loadGame() {
             updateDebugInfo("🎮 Loading game...");
+            
+            if (!iframe) {
+                console.error("Cannot load game: iframe not found");
+                updateDebugInfo("❌ Cannot load game: iframe not found");
+                return;
+            }
             
             const urlParams = new URLSearchParams(window.location.search);
             const gameUrl = urlParams.get('game');
@@ -612,43 +646,69 @@
             updateDebugInfo(`⏱️ Load start time: ${new Date(loadStartTime).toLocaleTimeString()}`);
             updateDebugInfo(`🔗 Game URL: ${gameUrl}`);
             
-            // Try to find game info and record play
-            if (window.GameDB && window.GlobalGameStats) {
-                const gameInfo = GameDB.getGameByUrl(gameUrl);
-                if (gameInfo) {
-                    // Record play and update popularity
-                    GlobalGameStats.recordUserPlay(gameInfo.id);
-                    GlobalGameStats.updatePopularityFactor(gameInfo.id, 0.5);
-                    updateDebugInfo(`ℹ️ Loaded game: ${gameInfo.title}`);
+            // Try to find game info and record play (with null checks)
+            try {
+                if (window.GameDB && window.GlobalGameStats) {
+                    const gameInfo = GameDB.getGameByUrl(gameUrl);
+                    if (gameInfo) {
+                        // Record play and update popularity
+                        GlobalGameStats.recordUserPlay(gameInfo.id);
+                        GlobalGameStats.updatePopularityFactor(gameInfo.id, 0.5);
+                        updateDebugInfo(`ℹ️ Loaded game: ${gameInfo.title}`);
+                    } else {
+                        updateDebugInfo("⚠️ Game not found in GameDB");
+                    }
                 } else {
-                    updateDebugInfo("⚠️ Game not found in GameDB");
+                    updateDebugInfo("⚠️ GameDB or GlobalGameStats not available");
                 }
-            } else {
-                updateDebugInfo("⚠️ GameDB or GlobalGameStats not available");
+            } catch (e) {
+                updateDebugInfo(`❌ Error accessing game database: ${e.message}`);
             }
             
             // Set iframe src to load game
-            iframe.src = gameUrl;
+            try {
+                iframe.src = gameUrl;
+            } catch (e) {
+                updateDebugInfo(`❌ Error setting iframe src: ${e.message}`);
+                // Try again with a delay
+                setTimeout(() => {
+                    try {
+                        iframe.src = gameUrl;
+                    } catch (retryErr) {
+                        updateDebugInfo(`❌ Failed to set iframe src even after retry`);
+                    }
+                }, 500);
+            }
             
-            // Show "Show Game" button after 5 seconds
-            setTimeout(function() {
-                showGameBtn.style.display = 'block';
-            }, 5000);
+            // Show "Show Game" button after 5 seconds if it exists
+            if (showGameBtn) {
+                setTimeout(function() {
+                    showGameBtn.style.display = 'block';
+                }, 5000);
+            }
             
             // Start checking for visible content
             startVisibilityCheck();
         }
         
-        // Start visibility check
+        // Start visibility check with null checks
         function startVisibilityCheck() {
             // Clear any existing interval
             clearInterval(checkVisibilityInterval);
+            
+            if (!iframe) {
+                console.error("Cannot start visibility check: iframe not found");
+                updateDebugInfo("❌ Cannot start visibility check: iframe not found");
+                return;
+            }
             
             updateDebugInfo("👁️ Starting visibility checks");
             
             // Only start checking after an initial delay
             setTimeout(function() {
-                loadingText.textContent = "Waiting for game to appear...";
+                if (loadingText) {
+                    loadingText.textContent = "Waiting for game to appear...";
+                }
                 updateDebugInfo("⏱️ Initial delay complete, actively checking visibility");
                 
                 // Set 500ms interval to check for content
@@ -663,7 +723,9 @@
                     if (!gameLoaded) {
                         updateDebugInfo(`⏱️ Max wait time (${maxWaitTime}ms) reached - forcing game display`);
                         hideLoadingScreen();
-                        loadingText.textContent = "Game may still be loading...";
+                        if (loadingText) {
+                            loadingText.textContent = "Game may still be loading...";
+                        }
                     }
                 }, maxWaitTime);
             }, 1500);
@@ -799,20 +861,37 @@
         document.addEventListener('DOMContentLoaded', function() {
             console.log("🎮 Game loader initializing...");
             
-            // Get DOM elements
+            // Check if we're on a game page by looking for the game URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const gameUrl = urlParams.get('game');
+            
+            if (!gameUrl) {
+                console.warn("No game URL found - page may not be a game page");
+                return; // Exit early if this isn't a game page
+            }
+            
+            // Get DOM elements with null checks
             iframe = document.getElementById('gframe');
             loadingScreen = document.getElementById('loadingScreen');
-            loadingText = document.getElementById('loadingText');
+            loadingText = loadingScreen ? loadingScreen.querySelector('.loading-text') : null;
             showGameBtn = document.getElementById('showGameBtn');
             focusButton = document.getElementById('focusButton');
             
-            // Create debug info panel
+            // Check if critical elements exist
+            if (!iframe) {
+                console.error("Critical element missing: iframe (gframe)");
+                return; // Can't continue without an iframe
+            }
+            
+            // Create debug info panel if loading screen exists
             debugInfo = document.createElement('div');
             debugInfo.className = 'debug-info';
             if (loadingScreen) {
                 loadingScreen.appendChild(debugInfo);
             } else {
                 console.error("Loading screen element not found");
+                // Attach debug info to body as fallback
+                document.body.appendChild(debugInfo);
             }
             
             // Create retry button for black screen cases
@@ -820,6 +899,7 @@
             retryButton.className = 'retry-button';
             retryButton.textContent = 'Game not loading? Click to retry';
             retryButton.onclick = function() {
+                console.log("➡️ Retry button clicked");
                 updateDebugInfo("➡️ Retry button clicked");
                 // Reset retry count when manually clicked
                 retryCount = 0;
@@ -848,8 +928,30 @@
                 gameContainer.appendChild(blackScreenModal);
             } else {
                 console.error("Game container element not found");
+                // Create an emergency game container if none exists
+                const emergencyContainer = document.createElement('div');
+                emergencyContainer.className = 'game_container';
+                emergencyContainer.style.cssText = 'width:80%; margin:20px auto; position:relative;';
+                document.body.appendChild(emergencyContainer);
+                
+                // Now attach our elements to this emergency container
+                emergencyContainer.appendChild(retryButton);
+                
+                // Create black screen modal for critical failures
+                blackScreenModal = document.createElement('div');
+                blackScreenModal.className = 'black-screen-modal';
+                blackScreenModal.innerHTML = `
+                    <h3>Game Loading Issue</h3>
+                    <p>We're having trouble loading this game. This could be due to recent changes on the game's server or your browser settings.</p>
+                    <div>
+                        <button onclick="reloadGame()">Try Again</button>
+                        <button onclick="window.location='/'">Back to Home</button>
+                    </div>
+                `;
+                emergencyContainer.appendChild(blackScreenModal);
             }
             
+            console.log("🎮 Game loader initialized");
             updateDebugInfo("🎮 Game loader initialized");
             updateDebugInfo(`📱 Device: ${navigator.userAgent.substring(0, 50)}...`);
             
@@ -867,55 +969,79 @@
          * Set up all event listeners
          */
         function initializeEventListeners() {
+            console.log("🔧 Setting up event listeners");
             updateDebugInfo("🔧 Setting up event listeners");
             
-            // Handle iframe load event
-            iframe.addEventListener('load', function() {
-                // Store load time
-                iframe.dataset.loadTime = new Date().getTime();
-                updateDebugInfo("✅ Iframe load event fired");
+            // Handle iframe load event (if iframe exists)
+            if (iframe) {
+                iframe.addEventListener('load', function() {
+                    // Store load time
+                    iframe.dataset.loadTime = new Date().getTime();
+                    updateDebugInfo("✅ Iframe load event fired");
+                    
+                    // Extra wait after load event to give the game more time to render
+                    setTimeout(function() {
+                        if (!gameLoaded) {
+                            if (loadingText) {
+                                loadingText.textContent = "Almost ready...";
+                            }
+                            updateDebugInfo("⌛ Post-load waiting period");
+                        }
+                    }, 1500);
+                });
                 
-                // Extra wait after load event to give the game more time to render
-                setTimeout(function() {
-                    if (!gameLoaded) {
-                        loadingText.textContent = "Almost ready...";
-                        updateDebugInfo("⌛ Post-load waiting period");
-                    }
-                }, 1500);
-            });
+                // Error handling for iframe
+                iframe.onerror = function(e) {
+                    updateDebugInfo(`❌ Iframe error: ${e.message || 'Unknown error'}`);
+                };
+            } else {
+                console.error("Iframe element not found");
+                updateDebugInfo("❌ Iframe element not found");
+            }
             
-            // Show Game button click handler
-            showGameBtn.addEventListener('click', function() {
-                updateDebugInfo("👆 Show Game button clicked");
-                hideLoadingScreen();
-            });
+            // Show Game button click handler (if button exists)
+            if (showGameBtn) {
+                showGameBtn.addEventListener('click', function() {
+                    updateDebugInfo("👆 Show Game button clicked");
+                    hideLoadingScreen();
+                });
+            } else {
+                console.error("Show game button not found");
+                updateDebugInfo("❌ Show game button not found");
+            }
             
-            // Focus button click handler
-            focusButton.addEventListener('click', function() {
-                updateDebugInfo("👆 Focus button clicked");
-                focusGame();
-            });
-            
-            // Global event listener for clicks in the game container
-            document.querySelector('.game_container').addEventListener('click', function(e) {
-                // Don't auto-focus if clicking buttons or other interactive elements
-                if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'IMG') {
+            // Focus button click handler (if button exists)
+            if (focusButton) {
+                focusButton.addEventListener('click', function() {
+                    updateDebugInfo("👆 Focus button clicked");
                     focusGame();
-                }
-            });
+                });
+            } else {
+                console.error("Focus button not found");
+                updateDebugInfo("❌ Focus button not found");
+            }
+            
+            // Global event listener for clicks in the game container (if container exists)
+            const gameContainer = document.querySelector('.game_container');
+            if (gameContainer) {
+                gameContainer.addEventListener('click', function(e) {
+                    // Don't auto-focus if clicking buttons or other interactive elements
+                    if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'IMG') {
+                        focusGame();
+                    }
+                });
+            } else {
+                console.error("Game container not found for click listener");
+                updateDebugInfo("❌ Game container not found for click listener");
+            }
             
             // Add keyboard listener to refocus iframe if keyboard used while not focused
             document.addEventListener('keydown', function(e) {
                 // If a key is pressed and the iframe is not focused, focus it
-                if (document.activeElement !== iframe) {
+                if (iframe && document.activeElement !== iframe) {
                     focusGame();
                 }
             });
-            
-            // Error handling for iframe
-            iframe.onerror = function(e) {
-                updateDebugInfo(`❌ Iframe error: ${e.message || 'Unknown error'}`);
-            };
             
             updateDebugInfo("✅ Event listeners initialized");
         }
