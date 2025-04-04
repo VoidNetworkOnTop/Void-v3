@@ -405,24 +405,33 @@
         
         // Add debug information during loading
         function updateDebugInfo(message) {
-            if (!debugInfo) return;
-            
-            const timestamp = new Date().toLocaleTimeString();
-            const logEntry = document.createElement('div');
-            logEntry.innerHTML = `${timestamp}: ${message}`;
-            
-            debugInfo.appendChild(logEntry);
-            
-            // Keep only the last 15 messages
-            const lines = debugInfo.querySelectorAll('div');
-            if (lines.length > 15) {
-                for (let i = 0; i < lines.length - 15; i++) {
-                    lines[i].remove();
-                }
+            if (!debugInfo) {
+                // Safe fallback - log to console if debugInfo isn't available
+                console.log(`Debug: ${message}`);
+                return;
             }
             
-            // Auto-scroll to bottom
-            debugInfo.scrollTop = debugInfo.scrollHeight;
+            try {
+                const timestamp = new Date().toLocaleTimeString();
+                const logEntry = document.createElement('div');
+                logEntry.innerHTML = `${timestamp}: ${message}`;
+                
+                debugInfo.appendChild(logEntry);
+                
+                // Keep only the last 15 messages
+                const lines = debugInfo.querySelectorAll('div');
+                if (lines.length > 15) {
+                    for (let i = 0; i < lines.length - 15; i++) {
+                        lines[i].remove();
+                    }
+                }
+                
+                // Auto-scroll to bottom
+                debugInfo.scrollTop = debugInfo.scrollHeight;
+            } catch (e) {
+                // If anything fails, log to console
+                console.log(`Debug (console fallback): ${message}`);
+            }
         }
         
         // Reload game function with debug info
@@ -739,38 +748,49 @@
             updateDebugInfo("🎉 Hiding loading screen");
             
             gameLoaded = true;
-            loadingScreen.style.display = 'none';
+            
+            // Make sure loadingScreen exists before trying to hide it
+            if (loadingScreen) {
+                loadingScreen.style.display = 'none';
+            }
+            
             clearInterval(checkVisibilityInterval);
             
             // Focus the iframe after the game appears
             setTimeout(focusGame, 500);
             
-            // Show the focus button briefly
-            focusButton.style.display = 'block';
+            // Show the focus button briefly if it exists
+            if (focusButton) {
+                focusButton.style.display = 'block';
+            }
             
             // Add a black screen detection check
             setTimeout(function() {
                 try {
-                    // Show the retry button as a fallback
-                    retryButton.style.display = 'block';
-                    updateDebugInfo("ℹ️ Showing retry button as precaution");
-                    
-                    // Auto-hide after 20 seconds but keep it accessible if clicked
-                    setTimeout(() => {
-                        if (retryButton.style.display !== 'none') {
-                            retryButton.style.opacity = '0.6';
-                            retryButton.style.transition = 'opacity 0.5s ease';
-                        }
-                    }, 20000);
+                    // Show the retry button as a fallback if it exists
+                    if (retryButton) {
+                        retryButton.style.display = 'block';
+                        updateDebugInfo("ℹ️ Showing retry button as precaution");
+                        
+                        // Auto-hide after 20 seconds but keep it accessible if clicked
+                        setTimeout(() => {
+                            if (retryButton && retryButton.style.display !== 'none') {
+                                retryButton.style.opacity = '0.6';
+                                retryButton.style.transition = 'opacity 0.5s ease';
+                            }
+                        }, 20000);
+                    }
                 } catch(e) {
                     updateDebugInfo(`❌ Error showing retry button: ${e.message}`);
                 }
             }, 3000);
             
             // Hide focus button after delay
-            setTimeout(function() {
-                focusButton.style.display = 'none';
-            }, 5000);
+            if (focusButton) {
+                setTimeout(function() {
+                    focusButton.style.display = 'none';
+                }, 5000);
+            }
         }
         
         /**
@@ -789,7 +809,11 @@
             // Create debug info panel
             debugInfo = document.createElement('div');
             debugInfo.className = 'debug-info';
-            loadingScreen.appendChild(debugInfo);
+            if (loadingScreen) {
+                loadingScreen.appendChild(debugInfo);
+            } else {
+                console.error("Loading screen element not found");
+            }
             
             // Create retry button for black screen cases
             retryButton = document.createElement('button');
@@ -801,23 +825,30 @@
                 retryCount = 0;
                 attemptGameRetry();
             };
-            document.querySelector('.game_container').appendChild(retryButton);
             
-            // Create black screen modal for critical failures
-            blackScreenModal = document.createElement('div');
-            blackScreenModal.className = 'black-screen-modal';
-            blackScreenModal.innerHTML = `
-                <h3>Game Loading Issue</h3>
-                <p>We're having trouble loading this game. This could be due to recent changes on the game's server or your browser settings.</p>
-                <div>
-                    <button onclick="reloadGame()">Try Again</button>
-                    <button onclick="window.location='/'">Back to Home</button>
-                </div>
-                <p style="font-size:12px; margin-top:20px; opacity:0.7;">
-                    Tip: This issue started happening recently and we're working on a fix.
-                </p>
-            `;
-            document.querySelector('.game_container').appendChild(blackScreenModal);
+            // Get game container with a safety check
+            const gameContainer = document.querySelector('.game_container');
+            if (gameContainer) {
+                gameContainer.appendChild(retryButton);
+                
+                // Create black screen modal for critical failures
+                blackScreenModal = document.createElement('div');
+                blackScreenModal.className = 'black-screen-modal';
+                blackScreenModal.innerHTML = `
+                    <h3>Game Loading Issue</h3>
+                    <p>We're having trouble loading this game. This could be due to recent changes on the game's server or your browser settings.</p>
+                    <div>
+                        <button onclick="reloadGame()">Try Again</button>
+                        <button onclick="window.location='/'">Back to Home</button>
+                    </div>
+                    <p style="font-size:12px; margin-top:20px; opacity:0.7;">
+                        Tip: This issue started happening recently and we're working on a fix.
+                    </p>
+                `;
+                gameContainer.appendChild(blackScreenModal);
+            } else {
+                console.error("Game container element not found");
+            }
             
             updateDebugInfo("🎮 Game loader initialized");
             updateDebugInfo(`📱 Device: ${navigator.userAgent.substring(0, 50)}...`);
