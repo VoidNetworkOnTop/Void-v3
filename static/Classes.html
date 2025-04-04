@@ -1361,6 +1361,7 @@
         let gameLoaded = false;
         let retryCount = 0;
         let loadStartTime = 0;
+        let originalGameUrl = null; // Store the original game URL
         const maxRetries = 3;
         const debugMode = true; // Enable console logging
         
@@ -1462,109 +1463,6 @@
             }
         }
         
-        // Retry game function - tries different strategies
-        function retryGame() {
-            if (retryCount >= maxRetries) {
-                logDebug("❌ Max retries reached");
-                alert("Game could not be loaded after multiple attempts. Please try a different game or reload the page.");
-                return;
-            }
-            
-            // Increment retry counter
-            retryCount++;
-            
-            // Update UI
-            loadingScreen.style.display = 'flex';
-            showGameBtn.style.display = 'none';
-            gameLoaded = false;
-            
-            // Update loading text to indicate retry
-            loadingText.textContent = `Retry attempt ${retryCount} of ${maxRetries}...`;
-            logDebug(`🔄 Retry attempt ${retryCount} of ${maxRetries}`);
-            
-            // Clear iframe
-            iframe.src = 'about:blank';
-            
-            // Get the game URL
-            const urlParams = new URLSearchParams(window.location.search);
-            let gameUrl = urlParams.get('game');
-            
-            // Update debug info
-            logDebug(`🔗 Original game URL: ${gameUrl}`);
-            
-            // Apply different strategies based on retry count
-            if (retryCount === 1) {
-                // First retry: Add cache buster to URL
-                if (gameUrl.includes('/uv/service/')) {
-                    const cacheBuster = Date.now();
-                    gameUrl += (gameUrl.includes('?') ? '&' : '?') + '_cb=' + cacheBuster;
-                    logDebug(`🔄 Adding cache buster: ${cacheBuster}`);
-                }
-            } else if (retryCount === 2) {
-                // Second retry: Try a special mode
-                logDebug("🔄 Using alternative loading approach");
-                
-                // Store original loading approach info
-                iframe.dataset.originalUrl = gameUrl;
-                
-                // Check if this is a UV URL and try to extract & modify
-                if (gameUrl.includes('/uv/service/')) {
-                    try {
-                        // Extract the base64 encoded part
-                        const encodedPart = gameUrl.split('/uv/service/')[1];
-                        // Try a different prefix
-                        gameUrl = '/service/uv/' + encodedPart;
-                        logDebug(`🔄 Using alternative UV path: ${gameUrl}`);
-                    } catch (e) {
-                        logDebug(`⚠️ Error parsing UV URL: ${e.message}`);
-                    }
-                }
-            } else if (retryCount === 3) {
-                // Third retry: Add a forced delay before showing
-                logDebug("🔄 Using extended loading time approach");
-                
-                // Reset to original URL if available
-                if (iframe.dataset.originalUrl) {
-                    gameUrl = iframe.dataset.originalUrl;
-                    logDebug("🔙 Reverted to original URL");
-                }
-                
-                // Add a cache buster regardless
-                const cacheBuster = Date.now();
-                gameUrl += (gameUrl.includes('?') ? '&' : '?') + '_cb=' + cacheBuster;
-            }
-            
-            // Record new load start time
-            loadStartTime = Date.now();
-            logDebug(`⏱️ Load start time: ${new Date(loadStartTime).toLocaleTimeString()}`);
-            
-            // Set iframe src to load game
-            setTimeout(() => {
-                logDebug(`🔗 Loading URL: ${gameUrl}`);
-                iframe.src = gameUrl;
-                
-                // Use a longer timeout for retries
-                const retryTimeout = 12000 + (retryCount * 3000); // Progressively longer
-                logDebug(`⏱️ Setting ${retryTimeout}ms timeout for retry ${retryCount}`);
-                
-                setTimeout(() => {
-                    if (!gameLoaded) {
-                        logDebug(`⏱️ Retry ${retryCount} timeout reached - showing game anyway`);
-                        hideLoadingScreen();
-                    }
-                }, retryTimeout);
-                
-                // Start checking for visible content
-                startVisibilityCheck();
-            }, 500);
-            
-            // Hide retry button if visible
-            const retryBtn = document.querySelector('.retry-button');
-            if (retryBtn) {
-                retryBtn.style.display = 'none';
-            }
-        }
-        
         // Load game function
         function loadGame() {
             logDebug("🎮 Loading game...");
@@ -1577,6 +1475,10 @@
                 window.location.href = '/';
                 return;
             }
+            
+            // Store the original game URL
+            originalGameUrl = gameUrl;
+            logDebug(`📝 Original game URL stored: ${originalGameUrl}`);
             
             // Record load start time
             loadStartTime = Date.now();
@@ -1711,7 +1613,7 @@
             }
         }
         
-        // Hide loading screen
+        // Hide loading screen with improved retry button
         function hideLoadingScreen() {
             if (gameLoaded) return;
             
@@ -1729,26 +1631,55 @@
             
             // Create or show retry button after a delay
             setTimeout(() => {
-                // First check if retry button already exists
-                let retryBtn = document.querySelector('.retry-button');
-                
-                if (!retryBtn) {
-                    // Create retry button if it doesn't exist
-                    retryBtn = document.createElement('button');
-                    retryBtn.className = 'retry-button';
-                    retryBtn.textContent = 'Game not loading? Click to retry';
-                    retryBtn.onclick = function() {
-                        logDebug("➡️ Retry button clicked");
-                        // Reset retry count when manually clicked
-                        retryCount = 0;
-                        retryGame();
-                    };
-                    document.body.appendChild(retryBtn);
+                // Remove any existing retry button
+                const existingBtn = document.querySelector('.retry-button');
+                if (existingBtn) {
+                    existingBtn.remove();
                 }
                 
-                // Show the retry button
+                // Create new retry button with direct link to original URL
+                const retryBtn = document.createElement('button');
+                retryBtn.className = 'retry-button';
+                retryBtn.textContent = 'Game not loading? Click to retry';
                 retryBtn.style.display = 'block';
-                logDebug("ℹ️ Showing retry button as precaution");
+                
+                // Direct reload with the original URL
+                retryBtn.onclick = function() {
+                    logDebug(`🔄 Retry button clicked - reloading original URL: ${originalGameUrl}`);
+                    
+                    // Show loading screen
+                    loadingScreen.style.display = 'flex';
+                    showGameBtn.style.display = 'none';
+                    loadingText.textContent = "Reloading Game...";
+                    gameLoaded = false;
+                    
+                    // Clear and reload iframe with original URL
+                    iframe.src = 'about:blank';
+                    
+                    // Hide this retry button
+                    retryBtn.style.display = 'none';
+                    
+                    // Use setTimeout to ensure the blank page loads first
+                    setTimeout(() => {
+                        iframe.src = originalGameUrl;
+                        startVisibilityCheck();
+                    }, 500);
+                };
+                
+                // Add hover effect
+                retryBtn.addEventListener('mouseover', function() {
+                    this.style.background = 'rgba(100,100,100,0.95)';
+                    this.style.transform = 'scale(1.05)';
+                });
+                
+                retryBtn.addEventListener('mouseout', function() {
+                    this.style.background = 'rgba(80,80,80,0.85)';
+                    this.style.transform = 'scale(1)';
+                });
+                
+                // Add to body
+                document.body.appendChild(retryBtn);
+                logDebug("ℹ️ Added fixed retry button (uses original URL)");
                 
                 // Auto-fade after 20 seconds
                 setTimeout(() => {
@@ -1868,6 +1799,9 @@
             
             // Use setTimeout to ensure the loading screen appears before navigating
             setTimeout(function() {
+                // Update original game URL to the new game
+                originalGameUrl = game.link;
+                
                 iframe.src = game.link;
                 
                 // Update URL without page reload
@@ -1901,6 +1835,11 @@
                 console.error("Critical element missing: iframe (gframe)");
                 return; // Can't continue without an iframe
             }
+            
+            // Store the original game URL right at initialization
+            const urlParams = new URLSearchParams(window.location.search);
+            originalGameUrl = urlParams.get('game');
+            logDebug(`📝 Original game URL stored at initialization: ${originalGameUrl}`);
             
             logDebug("✅ Found critical page elements");
             logDebug(`📱 Device: ${navigator.userAgent.substring(0, 50)}...`);
