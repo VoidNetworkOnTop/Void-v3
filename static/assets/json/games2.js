@@ -224,6 +224,11 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/nD_XHR5JAnRq3EjZFcU8RkV87cHg3bxkdJYaBJQ657OIWPIR1SzBtBJgNvHrZb5uWgA5fQawDFs_d8S5zOJ8Mc0sHPkQNBEuZGq--aL7ea6hb0bW5BvoJK9jwnbOjK5caRY55rCHnK4nAsR2zb_J-x0AaxgcGLZvvKMkflbGAOKfL2YUwbJBhHJLVtgekL_TETKA",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://territorial.io")
 },
+{
+    title: "Toca Boca", 
+    imgSrc: "https://lh7-us.googleusercontent.com/whajsW8QHRHJuZKmWDKbPrkUOAFlVJLXChj4CrF6zGdIioggeSUci2y__SnraoVHWukyToxvrls9MjgSnXWcubZsDw2JX3a6wExLBWwKhy_9QRtefl1z7aFl7nKJ7qRjADCW5KiO08HFGqVzi5Tf4SeSYi4Wx2Ssgr8ptH2nSPihuYVwg29RrgtK9C2eXdj2uU0ME4Vq?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://kdata1.com/5000/2024/toca_life_everything_unlocked/")
+},
 
     
    ];
