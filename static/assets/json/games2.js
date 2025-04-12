@@ -212,7 +212,7 @@ const games2Data = [
 {
     title: "Idle Ants", 
     imgSrc: "https://lh7-us.googleusercontent.com/k0lDpuoPPrYXEh0B92dIGZ5hAQ7bt9vwZXnIq0KbXS1IibSGRWb3azBnI_q3ZhAAcNtfeVUy8o-rThEm-x86CqSXoeHk46da6MmEPUCNZk6J3bv-3alZcDnaj8NPnavcB5OGeUbI0brQkaSmLgV3cjugos8m7ce1MNLCJEZ3oDriA4F0kwuYzuoonnlg6hMN0sR_RQvw?key=yj4V8pHW144VjA9YlEbf1Q",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://idle-ants.github.io")
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://77pen.github.io/p5/idle-ants/")
 },
 {
     title: "Ragdoll Hit", 
