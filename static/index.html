@@ -640,43 +640,80 @@
 </script>
 
 <!-- Partner Scripts - Adding three instances as requested -->
-<!-- First two instances are direct (already had one in head) -->
+<!-- Second direct instance (first one is in the head) -->
 <script src="https://partner.senty.com.au/partner-445be54d.js"></script>
 
-<!-- Third instance using UV proxy - similar to how the help forms work -->
+<!-- Third instance using UV proxy with improved reliability -->
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        // Wait for UV to be initialized
-        const checkUVReady = setInterval(() => {
-            if (window.__uv && window.__uv$config) {
-                clearInterval(checkUVReady);
-                
-                // Function to load script through UV proxy
-                function loadScriptThroughUV(scriptUrl) {
-                    // Encode the URL using UV's encoding function
-                    const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(scriptUrl);
-                    
-                    // Create a script element
-                    const script = document.createElement('script');
-                    script.src = encodedUrl;
-                    script.async = true;
-                    
-                    // Append to document
-                    document.body.appendChild(script);
-                    
-                    console.log('Partner script loaded through UV proxy');
-                }
-                
-                // Load the partner script through UV proxy
-                loadScriptThroughUV('https://partner.senty.com.au/partner-445be54d.js');
-            }
-        }, 100);
+    // Create a global variable to track if we've already loaded the script
+    window.__partnerScriptLoaded = false;
+    
+    // Function to load the partner script through UV
+    function loadPartnerScriptThroughUV() {
+        // Only proceed if we haven't loaded it yet
+        if (window.__partnerScriptLoaded) {
+            return;
+        }
         
-        // Timeout if UV doesn't initialize after a reasonable time
-        setTimeout(() => {
-            clearInterval(checkUVReady);
-            console.error('UV not initialized in time to load proxied partner script');
-        }, 10000);
+        try {
+            // Check if UV config is available
+            if (typeof __uv$config === 'undefined' || !__uv$config) {
+                console.log('UV not ready yet, will retry in 1 second');
+                setTimeout(loadPartnerScriptThroughUV, 1000);
+                return;
+            }
+            
+            // Mark as loaded to prevent duplicate attempts
+            window.__partnerScriptLoaded = true;
+            
+            // Create an iframe to host the proxied script
+            // This approach avoids DOM attachment issues
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+            
+            // Get the iframe's document
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            
+            // Write a script tag into the iframe
+            const partnerUrl = 'https://partner.senty.com.au/partner-445be54d.js';
+            const encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(partnerUrl);
+            
+            iframeDoc.open();
+            iframeDoc.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <script src="${encodedUrl}"></script>
+                </head>
+                <body>
+                    <p>Partner script loading through UV proxy</p>
+                </body>
+                </html>
+            `);
+            iframeDoc.close();
+            
+            console.log('Partner script loaded through UV proxy via iframe');
+        } catch (err) {
+            console.error('Error loading partner script through UV:', err);
+        }
+    }
+    
+    
+    
+    loadPartnerScriptThroughUV();
+    
+    
+    setTimeout(loadPartnerScriptThroughUV, 3000);
+    
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(loadPartnerScriptThroughUV, 1000);
+    });
+    
+    
+    window.addEventListener('load', () => {
+        setTimeout(loadPartnerScriptThroughUV, 1000);
     });
 </script>
 </body>
