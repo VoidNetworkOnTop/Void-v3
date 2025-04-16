@@ -1,7 +1,7 @@
 const htmlConfig = {
     creditsPath: "/credits",
     homePagePath: "/index.html",
-    searchPath: "/ta",
+    searchPath: "/learn",
     settingsPath: "/settings",
     appsPath: "/app",
     termPath: "/terminal.html",
