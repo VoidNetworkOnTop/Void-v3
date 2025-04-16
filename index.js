@@ -17,7 +17,7 @@ app.get("/ga", function (req, res) {
 app.get("/rga", function(req, res) {
 res.sendFile(path.join(__dirname, "static/rga.html"))
 })
-app.get("/ta", function (req, res) {
+app.get("/learn", function (req, res) {
   res.sendFile(path.join(__dirname, "static/proxy.html"));
 })
 app.get("/app", function (req, res) {
