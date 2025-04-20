@@ -259,5 +259,162 @@ const voidItemHelpers = {
 window.voidItems = voidItems;
 window.voidItemHelpers = voidItemHelpers;
 
+// Function to render avatars in the shop
+function renderAvatarsSection() {
+    // Get the avatars section container
+    const avatarsSection = document.querySelector('.section-avatars');
+    if (!avatarsSection) {
+        console.error('Avatars section not found in the DOM');
+        return;
+    }
+    
+    // Clear existing content
+    avatarsSection.innerHTML = '';
+    
+    // Define avatar rarities and their display names
+    const rarities = [
+        { id: 'legendary', name: 'Legendary Avatars' },
+        { id: 'epic', name: 'Epic Avatars' },
+        { id: 'common', name: 'Common Avatars' }
+    ];
+    
+    // Loop through rarities and create sections
+    rarities.forEach(rarity => {
+        // Get avatars of this rarity
+        const avatars = voidItemHelpers.getAvatarsByRarity(rarity.id);
+        
+        if (avatars.length === 0) return; // Skip if no avatars of this rarity
+        
+        // Create category header
+        const categoryHeader = document.createElement('div');
+        categoryHeader.className = 'shop-category';
+        categoryHeader.textContent = rarity.name;
+        avatarsSection.appendChild(categoryHeader);
+        
+        // Create items container
+        const itemsContainer = document.createElement('div');
+        itemsContainer.className = 'shop-items';
+        avatarsSection.appendChild(itemsContainer);
+        
+        // Add each avatar to the container
+        avatars.forEach(avatar => {
+            // Create shop item element
+            const shopItem = document.createElement('div');
+            shopItem.className = 'shop-item';
+            shopItem.dataset.itemId = avatar.id;
+            shopItem.dataset.price = avatar.price;
+            shopItem.dataset.type = 'avatar';
+            
+            // Add legendary badge if needed
+            if (rarity.id === 'legendary') {
+                const legendaryBadge = document.createElement('div');
+                legendaryBadge.className = 'legendary-badge';
+                legendaryBadge.textContent = 'LEGENDARY';
+                shopItem.appendChild(legendaryBadge);
+            }
+            
+            // Create item image
+            const imageDiv = document.createElement('div');
+            imageDiv.className = 'shop-item-image';
+            const img = document.createElement('img');
+            img.src = avatar.url;
+            img.alt = avatar.name;
+            imageDiv.appendChild(img);
+            shopItem.appendChild(imageDiv);
+            
+            // Create item details container
+            const detailsDiv = document.createElement('div');
+            detailsDiv.className = 'shop-item-details';
+            
+            // Add title
+            const title = document.createElement('h3');
+            title.className = 'shop-item-title';
+            title.textContent = avatar.name;
+            detailsDiv.appendChild(title);
+            
+            // Add description
+            const description = document.createElement('p');
+            description.className = 'shop-item-description';
+            description.textContent = avatar.description;
+            detailsDiv.appendChild(description);
+            
+            // Add price and buy button
+            const priceDiv = document.createElement('div');
+            priceDiv.className = 'shop-item-price';
+            
+            const priceAmount = document.createElement('span');
+            priceAmount.className = 'price-amount';
+            priceAmount.textContent = new Intl.NumberFormat().format(avatar.price) + ' coins';
+            priceDiv.appendChild(priceAmount);
+            
+            const buyButton = document.createElement('button');
+            buyButton.className = 'buy-button';
+            buyButton.dataset.itemId = avatar.id;
+            buyButton.dataset.type = 'avatar';
+            buyButton.textContent = 'Buy';
+            priceDiv.appendChild(buyButton);
+            
+            detailsDiv.appendChild(priceDiv);
+            shopItem.appendChild(detailsDiv);
+            
+            // Add completed shop item to container
+            itemsContainer.appendChild(shopItem);
+        });
+    });
+}
+
+// Initialize avatars when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Render avatars in the shop
+    renderAvatarsSection();
+    
+    // Update avatar items owned status when user data is loaded
+    document.addEventListener('userDataLoaded', function(e) {
+        updateAvatarOwnedStatus();
+    });
+    
+    console.log('Avatar section rendering initialized');
+});
+
+// Function to update owned/equipped status of avatars
+function updateAvatarOwnedStatus() {
+    // This function would be called after user data is loaded
+    // It would mark avatars as owned/equipped based on user data
+    
+    // Example implementation (assuming user data is available globally)
+    if (window.currentUser && window.currentUser.ownedItems) {
+        const avatarItems = document.querySelectorAll('.shop-item[data-type="avatar"]');
+        
+        avatarItems.forEach(item => {
+            const itemId = item.dataset.itemId;
+            
+            // Check if item is owned
+            if (window.currentUser.ownedItems.includes(itemId)) {
+                item.classList.add('owned');
+                
+                // Update button text
+                const buyButton = item.querySelector('.buy-button');
+                if (buyButton) {
+                    buyButton.textContent = 'Equip';
+                    buyButton.classList.add('equip');
+                }
+                
+                // Check if item is equipped
+                if (window.currentUser.equippedItems && 
+                    window.currentUser.equippedItems[item.dataset.type] === itemId) {
+                    item.classList.add('equipped');
+                    
+                    // Update button for equipped items
+                    if (buyButton) {
+                        buyButton.textContent = 'Unequip';
+                        buyButton.classList.remove('equip');
+                        buyButton.classList.add('unequip');
+                    }
+                }
+            }
+        });
+    }
+}
+
 // Notify when this module is loaded
 console.log('Avatar and theme data loaded');
