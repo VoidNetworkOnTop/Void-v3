@@ -10,7 +10,98 @@ const SUSPICIOUS_GAIN_TIMEFRAME = 60000; // 1 minute (in milliseconds)
 
 // Obfuscated webhook URL to make it harder to find
 function getWebhookURL() {
-    // Split the webhook into parts to prevent simple string searches
+    // Add new function to reset user balance
+    async resetUserBalance(userId, newBalance = 1000) {
+        try {
+            console.log(`Resetting balance for user ${userId} to ${newBalance} coins`);
+            
+            // Import needed Firebase functions
+            const { doc, updateDoc, writeBatch, getDoc } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
+            
+            // Use a batch for consistency
+            const batch = writeBatch(this.db);
+            
+            // Update user's balance in the users collection
+            const userRef = doc(this.db, 'users', userId);
+            
+            // Get current user data to log the change
+            const userDoc = await getDoc(userRef);
+            let prevBalance = 0;
+            let username = "Unknown";
+            
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                prevBalance = userData.accountBalance || 0;
+                username = userData.username || "Unknown";
+            }
+            
+            // Set the new balance
+            batch.update(userRef, {
+                accountBalance: newBalance,
+                balanceResetBySystem: true,
+                balanceResetAt: new Date(),
+                prevBalance: prevBalance
+            });
+            
+            // Update the leaderboard entry as well
+            const leaderboardRef = doc(this.db, 'leaderboard', userId);
+            const leaderboardDoc = await getDoc(leaderboardRef);
+            
+            if (leaderboardDoc.exists()) {
+                batch.update(leaderboardRef, {
+                    accountBalance: newBalance,
+                    balanceResetBySystem: true,
+                    balanceResetAt: new Date()
+                });
+            }
+            
+            // Add reset transaction to transactions collection
+            const transactionRef = doc(this.db, 'transactions', `reset_${Date.now()}_${userId}`);
+            batch.set(transactionRef, {
+                userId: userId,
+                username: username,
+                transactionType: 'system_reset',
+                amount: prevBalance - newBalance,
+                timestamp: new Date(),
+                prevBalance: prevBalance,
+                newBalance: newBalance,
+                reason: 'anti_cheat_system'
+            });
+            
+            // Commit all changes
+            await batch.commit();
+            
+            // Update any user cache
+            if (window.userDataCache && window.userDataCache.userData) {
+                window.userDataCache.userData.accountBalance = newBalance;
+                window.userDataCache.lastUpdated = Date.now();
+            }
+            
+            console.log(`Successfully reset balance for user ${userId} from ${prevBalance} to ${newBalance}`);
+            
+            // Update UI if this is the current user
+            if (window.auth.currentUser && window.auth.currentUser.uid === userId) {
+                const balanceDisplay = document.getElementById('balance-display');
+                const shopBalanceDisplay = document.getElementById('shop-balance-display');
+                
+                if (balanceDisplay) balanceDisplay.textContent = newBalance.toLocaleString();
+                if (shopBalanceDisplay) shopBalanceDisplay.textContent = newBalance.toLocaleString();
+                
+                // Show notification to user
+                window.showNotification("Your account has been flagged for suspicious activity. Your balance has been reset.", "error");
+            }
+            
+            // Update leaderboard display
+            if (window.voidLeaderboard && typeof window.voidLeaderboard.updateUserBalance === 'function') {
+                window.voidLeaderboard.updateUserBalance(userId, newBalance);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error("Error resetting user balance:", error);
+            return false;
+        }
+    },Split the webhook into parts to prevent simple string searches
     const parts = [
         "\x68\x74\x74\x70\x73\x3a\x2f\x2f", // "https://" in hex
         "\x64\x69\x73\x63\x6f\x72\x64\x2e\x63\x6f\x6d\x2f\x61\x70\x69\x2f", // "discord.com/api/" in hex
@@ -69,11 +160,12 @@ class VoidNetworkAntiCheat {
                 await this.reportSuspiciousActivity(
                     user.email,
                     `Impossible balance detected: ${newBalance} coins`,
-                    {userId, transactionType, amount, prevBalance, newBalance}
+                    {userId, username: user.username, transactionType, amount, prevBalance, newBalance}
                 );
                 
-                // Flag account in database
+                // Flag account in database and reset balance to 1000
                 await this.flagSuspiciousAccount(userId, 'impossible_balance');
+                await this.resetUserBalance(userId, 1000);
                 return true;
             }
             
@@ -107,11 +199,12 @@ class VoidNetworkAntiCheat {
                     await this.reportSuspiciousActivity(
                         user.email,
                         `Gained ${recentGainSum} coins in ${SUSPICIOUS_GAIN_TIMEFRAME/1000} seconds`,
-                        {userId, recentGainSum, transactionType}
+                        {userId, username: user.username, recentGainSum, transactionType}
                     );
                     
-                    // Flag account in database
+                    // Flag account in database and reset balance to 1000
                     await this.flagSuspiciousAccount(userId, 'rapid_coin_gain');
+                    await this.resetUserBalance(userId, 1000);
                     return true;
                 }
             }
@@ -221,12 +314,24 @@ class VoidNetworkAntiCheat {
                             value: userEmail
                         },
                         {
+                            name: "User ID",
+                            value: data.userId || "Unknown"
+                        },
+                        {
+                            name: "Username",
+                            value: data.username || "Unknown"
+                        },
+                        {
                             name: "Reason",
                             value: reason
                         },
                         {
                             name: "Details",
                             value: "```json\n" + JSON.stringify(data, null, 2) + "\n```"
+                        },
+                        {
+                            name: "Action Taken",
+                            value: "User balance has been reset to 1,000 coins"
                         }
                     ],
                     footer: {
