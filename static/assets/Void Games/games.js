@@ -146,13 +146,10 @@ class VoidLeaderboard {
         }
         
         try {
-            // Import needed Firebase functions
-            const { collection, query, orderBy, limit, getDocs, doc, getDoc, writeBatch } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
-            
             // Get top users from leaderboard first
-            const leaderboardRef = collection(this.db, 'leaderboard');
-            const q = query(leaderboardRef, orderBy('accountBalance', 'desc'), limit(50));
-            const leaderboardSnapshot = await getDocs(q);
+            const leaderboardRef = firebase.firestore().collection('leaderboard');
+            const leaderboardQuery = leaderboardRef.orderBy('accountBalance', 'desc').limit(50);
+            const leaderboardSnapshot = await leaderboardQuery.get();
             
             if (leaderboardSnapshot.empty) {
                 console.log("No users in leaderboard to update");
@@ -160,13 +157,13 @@ class VoidLeaderboard {
             }
             
             // Create batch for updates
-            const batch = writeBatch(this.db);
+            const batch = firebase.firestore().batch();
             let updateCount = 0;
             const updates = [];
             
             // For each leaderboard entry, get the actual user data and update
             for (const docSnapshot of leaderboardSnapshot.docs) {
-                if (!docSnapshot.exists()) continue;
+                if (!docSnapshot.exists) continue;
                 
                 const userId = docSnapshot.id;
                 const leaderboardData = docSnapshot.data();
@@ -181,10 +178,10 @@ class VoidLeaderboard {
                 
                 try {
                     // Get user data from users collection
-                    const userRef = doc(this.db, 'users', userId);
-                    const userDoc = await getDoc(userRef);
+                    const userRef = firebase.firestore().collection('users').doc(userId);
+                    const userDoc = await userRef.get();
                     
-                    if (userDoc.exists()) {
+                    if (userDoc.exists) {
                         const userData = userDoc.data();
                         const userBalance = userData.accountBalance || 0;
                         
@@ -192,7 +189,7 @@ class VoidLeaderboard {
                         if (Math.abs(userBalance - (leaderboardData.accountBalance || 0)) > 1) {
                             console.log(`Updating balance for ${leaderboardData.username || 'Unknown'}: ${leaderboardData.accountBalance} -> ${userBalance}`);
                             
-                            batch.update(doc(this.db, 'leaderboard', userId), {
+                            batch.update(firebase.firestore().collection('leaderboard').doc(userId), {
                                 accountBalance: userBalance,
                                 lastSynced: new Date()
                             });
@@ -266,11 +263,8 @@ class VoidLeaderboard {
                 return;
             }
             
-            // Import needed Firebase functions
-            const { collection, getDocs } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
-            
             // Get all banned users from the banned_users collection
-            const bannedUsersSnapshot = await getDocs(collection(this.db, 'banned_users'));
+            const bannedUsersSnapshot = await firebase.firestore().collection('banned_users').get();
             
             bannedUsersSnapshot.forEach(doc => {
                 this.bannedUserCache.set(doc.id, true);
@@ -301,14 +295,11 @@ class VoidLeaderboard {
             return false; // If offline, assume not banned if not in cache
         }
         
-        // Import needed Firebase functions
-        const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
-        
         // If not in cache, check directly from the banned_users collection
         // This is a fallback in case the cache hasn't been updated
         try {
-            const bannedDoc = await getDoc(doc(this.db, 'banned_users', userId));
-            if (bannedDoc.exists()) {
+            const bannedDoc = await firebase.firestore().collection('banned_users').doc(userId).get();
+            if (bannedDoc.exists) {
                 // Update our cache
                 this.bannedUserCache.set(userId, true);
                 return true;
@@ -366,16 +357,13 @@ class VoidLeaderboard {
             
             console.log("Starting leaderboard updates with improved real-time handling");
             
-            // Import needed Firebase functions
-            const { collection, query, orderBy, limit, onSnapshot } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
-            
             // Get more users to ensure we have enough non-banned users
-            const leaderboardRef = collection(this.db, 'leaderboard');
+            const leaderboardRef = firebase.firestore().collection('leaderboard');
             let q;
             
             try {
                 // Increase limit to 40 to ensure we have enough non-banned users
-                q = query(leaderboardRef, orderBy('accountBalance', 'desc'), limit(40));
+                q = leaderboardRef.orderBy('accountBalance', 'desc').limit(40);
             } catch (error) {
                 console.error("Error creating leaderboard query:", error);
                 this.showErrorState("Error loading leaderboard");
@@ -384,7 +372,7 @@ class VoidLeaderboard {
             
             // Set up real-time listener with improved error handling
             try {
-                this.unsubscribe = onSnapshot(q, 
+                this.unsubscribe = q.onSnapshot(
                     {
                         includeMetadataChanges: true
                     },
@@ -468,17 +456,14 @@ class VoidLeaderboard {
         if (Date.now() - this.lastUpdateTime < 30000 || !window.isOnline) return;
         
         try {
-            // Import needed Firebase functions
-            const { doc, getDoc, updateDoc } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
-            
             console.log("Syncing leaderboard balances");
             const updatePromises = [];
-            const updateBatch = writeBatch(this.db);
+            const updateBatch = firebase.firestore().batch();
             let updateCount = 0;
             
             // For each leaderboard entry, check if the user balance needs updating
             querySnapshot.forEach(async (docSnapshot) => {
-                if (docSnapshot.exists()) {
+                if (docSnapshot.exists) {
                     const leaderboardData = docSnapshot.data();
                     const userId = docSnapshot.id;
                     
@@ -491,9 +476,9 @@ class VoidLeaderboard {
                     }
                     
                     // Process all users for better real-time updates
-                    const userPromise = getDoc(doc(this.db, 'users', userId))
+                    const userPromise = firebase.firestore().collection('users').doc(userId).get()
                         .then(userDoc => {
-                            if (userDoc.exists()) {
+                            if (userDoc.exists) {
                                 const userData = userDoc.data();
                                 const userBalance = userData.accountBalance || 0;
                                 
@@ -502,7 +487,7 @@ class VoidLeaderboard {
                                     console.log(`Updating leaderboard balance for ${leaderboardData.username || 'Unknown'}: ${leaderboardData.accountBalance} -> ${userBalance}`);
                                     
                                     // Add update to batch instead of individual update
-                                    updateBatch.update(doc(this.db, 'leaderboard', userId), {
+                                    updateBatch.update(firebase.firestore().collection('leaderboard').doc(userId), {
                                         accountBalance: userBalance,
                                         lastSynced: new Date()
                                     });
@@ -564,7 +549,7 @@ class VoidLeaderboard {
         
         // Read data from leaderboard entries with avatars
         querySnapshot.forEach((docSnapshot) => {
-            if (docSnapshot.exists()) {
+            if (docSnapshot.exists) {
                 const userData = docSnapshot.data();
                 const userId = docSnapshot.id;
                 
@@ -578,8 +563,7 @@ class VoidLeaderboard {
                         if (!userData.banned) {
                             window.queueOperation(async () => {
                                 try {
-                                    const { updateDoc, doc } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
-                                    await updateDoc(doc(this.db, 'leaderboard', userId), {
+                                    await firebase.firestore().collection('leaderboard').doc(userId).update({
                                         banned: true,
                                         banSyncedAt: new Date()
                                     });
