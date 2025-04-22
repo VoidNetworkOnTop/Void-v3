@@ -8,6 +8,7 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
 const CACHE_LIFETIME = 300000; // 5 minutes for cache lifetime
 const REQUEST_COOLDOWN = 500; // 500ms cooldown between firebase requests
+const MAX_USERNAME_LENGTH = 10; // Added username character limit
 
 // Operation queue and rate limiting
 let isProcessingQueue = false;
@@ -209,17 +210,26 @@ window.showNotification = function(message, type = 'success') {
  */
 class VoidNetworkAccounting {
     constructor() {
+        // Make sure Firebase is initialized before using it
+        if (!window.auth || !window.db) {
+            console.error("Firebase auth or db not properly initialized");
+        }
         this.auth = window.auth;
         this.db = window.db;
         console.log("VoidNetworkAccounting initialized with improved handling");
     }
 
-    // User Registration - with enhanced security
+    // User Registration - with enhanced security and username length validation
     async registerUser(email, password, username) {
         try {
             // Validate inputs
             if (!email || !password || !username) {
                 throw new Error('Email, password, and username are required');
+            }
+            
+            // Add username length validation
+            if (username.length > MAX_USERNAME_LENGTH) {
+                throw new Error(`Username must be ${MAX_USERNAME_LENGTH} characters or less`);
             }
             
             if (password.length < 6) {
@@ -230,36 +240,41 @@ class VoidNetworkAccounting {
                 throw new Error('You need to be online to register');
             }
             
-            // Import needed Firebase functions
-            const { createUserWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js");
-            const { collection, query, where, getDocs, doc, writeBatch } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
+            // Make sure Firebase is initialized
+            if (!this.auth || !this.db) {
+                throw new Error('Firebase services not properly initialized');
+            }
+            
+            // Import the Firebase modules directly - no dynamic imports
+            // This change uses the global Firebase objects instead of dynamic imports
             
             // Check if username already exists
-            const usersRef = collection(this.db, 'users');
-            const q = query(usersRef, where('username', '==', username));
-            const querySnapshot = await getDocs(q);
+            const usersCollection = firebase.firestore().collection('users');
+            const usernameQuery = await usersCollection.where('username', '==', username).get();
             
-            if (!querySnapshot.empty) {
+            if (!usernameQuery.empty) {
                 throw new Error('Username already exists. Please choose a different username.');
             }
             
             // Create user in Firebase Auth
-            const userCredential = await createUserWithEmailAndPassword(this.auth, email, password);
+            const userCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
             const user = userCredential.user;
 
-            // Create user profile with batch operation
-            const batch = writeBatch(this.db);
+            // Create batch for user document operations
+            const batch = firebase.firestore().batch();
             
-            // User document
-            batch.set(doc(this.db, 'users', user.uid), {
+            // Create user document
+            const userDocRef = firebase.firestore().collection('users').doc(user.uid);
+            batch.set(userDocRef, {
                 username: username,
                 createdAt: new Date(),
                 accountBalance: 1000, // Starting balance
                 totalGamesPlayed: 0
             });
             
-            // Leaderboard entry
-            batch.set(doc(this.db, 'leaderboard', user.uid), {
+            // Create leaderboard entry
+            const leaderboardRef = firebase.firestore().collection('leaderboard').doc(user.uid);
+            batch.set(leaderboardRef, {
                 username: username,
                 accountBalance: 1000, // Starting balance
                 joinDate: new Date()
@@ -288,10 +303,13 @@ class VoidNetworkAccounting {
             
             console.log("Logging in user:", email);
             
-            // Import needed Firebase function
-            const { signInWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js");
+            // Make sure Firebase is initialized
+            if (!this.auth) {
+                throw new Error('Firebase auth not properly initialized');
+            }
             
-            const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
+            // Use Firebase auth directly instead of dynamic import
+            const userCredential = await firebase.auth().signInWithEmailAndPassword(email, password);
             
             // Clear cache on login - force fresh data
             userDataCache.clearCache();
@@ -317,7 +335,7 @@ class VoidNetworkAccounting {
                 window.voidLeaderboard.stopLeaderboardUpdates();
             }
             
-            await this.auth.signOut();
+            await firebase.auth().signOut();
             console.log("User logged out successfully");
         } catch (error) {
             console.error("Logout Error:", error);
@@ -353,9 +371,6 @@ class VoidNetworkAccounting {
             
             console.log("Getting account details for user:", userId);
             
-            // Import needed Firebase function
-            const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
-            
             // Security check: Only allow user to get their own details
             if (this.auth.currentUser && userId !== this.auth.currentUser.uid) {
                 console.warn("User trying to access another user's details - denied");
@@ -364,10 +379,10 @@ class VoidNetworkAccounting {
             
             // Get user data with retries
             try {
-                const userRef = doc(this.db, 'users', userId);
-                const userDoc = await getDoc(userRef);
+                // Use Firebase directly
+                const userDoc = await firebase.firestore().collection('users').doc(userId).get();
                 
-                if (!userDoc.exists()) {
+                if (!userDoc.exists) {
                     throw new Error('User not found');
                 }
                 
@@ -418,9 +433,6 @@ class VoidNetworkAccounting {
                 };
             }
             
-            // Import needed Firebase functions
-            const { doc, getDoc, collection, writeBatch } = await import("https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js");
-            
             // Security check: Only allow user to create transactions for themselves
             if (this.auth.currentUser && userId !== this.auth.currentUser.uid) {
                 console.warn("User trying to create transaction for another user - denied");
@@ -431,13 +443,13 @@ class VoidNetworkAccounting {
             let userData, currentBalance, newBalance;
             
             // Use a batch for better consistency
-            const batch = writeBatch(this.db);
+            const batch = firebase.firestore().batch();
             
             try {
-                const userRef = doc(this.db, 'users', userId);
-                const userDoc = await getDoc(userRef);
+                const userRef = firebase.firestore().collection('users').doc(userId);
+                const userDoc = await userRef.get();
                 
-                if (!userDoc.exists()) {
+                if (!userDoc.exists) {
                     throw new Error('User document not found');
                 }
                 
@@ -458,10 +470,10 @@ class VoidNetworkAccounting {
                     });
                     
                     // Update leaderboard entry (for display purposes)
-                    const leaderboardRef = doc(this.db, 'leaderboard', userId);
-                    const leaderboardDoc = await getDoc(leaderboardRef);
+                    const leaderboardRef = firebase.firestore().collection('leaderboard').doc(userId);
+                    const leaderboardDoc = await leaderboardRef.get();
                     
-                    if (leaderboardDoc.exists()) {
+                    if (leaderboardDoc.exists) {
                         // Check if user is banned before updating
                         const leaderboardData = leaderboardDoc.data();
                         if (leaderboardData.banned !== true) {
@@ -479,7 +491,7 @@ class VoidNetworkAccounting {
                     }
                     
                     // Add transaction record to batch
-                    const transactionRef = doc(collection(this.db, 'transactions'));
+                    const transactionRef = firebase.firestore().collection('transactions').doc();
                     batch.set(transactionRef, {
                         userId: userId,
                         gameId: gameId,
@@ -491,7 +503,7 @@ class VoidNetworkAccounting {
                     });
                 } else {
                     // Just record the game play without changing balance
-                    const transactionRef = doc(collection(this.db, 'transactions'));
+                    const transactionRef = firebase.firestore().collection('transactions').doc();
                     batch.set(transactionRef, {
                         userId: userId,
                         gameId: gameId,
@@ -737,6 +749,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (!username || !email || !password) {
                 showNotification('Please fill in all fields', 'error');
+                return;
+            }
+            
+            // Added username length validation
+            if (username.length > MAX_USERNAME_LENGTH) {
+                showNotification(`Username must be ${MAX_USERNAME_LENGTH} characters or less`, 'error');
                 return;
             }
             
