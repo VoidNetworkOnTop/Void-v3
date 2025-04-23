@@ -229,6 +229,11 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/whajsW8QHRHJuZKmWDKbPrkUOAFlVJLXChj4CrF6zGdIioggeSUci2y__SnraoVHWukyToxvrls9MjgSnXWcubZsDw2JX3a6wExLBWwKhy_9QRtefl1z7aFl7nKJ7qRjADCW5KiO08HFGqVzi5Tf4SeSYi4Wx2Ssgr8ptH2nSPihuYVwg29RrgtK9C2eXdj2uU0ME4Vq?key=yj4V8pHW144VjA9YlEbf1Q",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://kdata1.com/5000/2024/toca_life_everything_unlocked/")
 },
+{
+    title: "Crazy Caddle 3D", 
+    imgSrc: "https://lh7-us.googleusercontent.com/A2kcwkSl4mGLLMtOm6YiuSrgezQ0KxKi9k92Ju_4z8IEvQHeXYtW6KamntKutGZJES4Fa1vUH2itvpptMC4MrOywXKHkm6aFNYnX-XWo5z2V9C7OzFEjdhZlwHX8Uwca8SmG4ceF82e3Al0QyBHqwWw5UqAjhyAPf_Wl75-dkZ7_tv8hjoI7PpPHWaIVtA146y_Y0iRs?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://yujiandemo.com")
+}, 
 
     
    ];
