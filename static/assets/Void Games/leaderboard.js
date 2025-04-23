@@ -1,6 +1,6 @@
 /**
- * leaderboard.js - Unlimited Leaderboard functionality for Void Network
- * NO LIMITS, NO FILTERS (except banned users)
+ * leaderboard.js - Fixed Connectivity Leaderboard
+ * Retrieves ALL users without limits and ignores offline checks
  */
 
 /**
@@ -25,7 +25,7 @@ class VoidLeaderboard {
         this.isUpdating = false; // Flag to prevent multiple concurrent updates
         this.allUsers = []; // Store all users for easy access
         
-        console.log("VoidLeaderboard initialized - UNLIMITED VERSION");
+        console.log("VoidLeaderboard initialized - FIXED CONNECTIVITY VERSION");
         
         // Set up minimize/maximize toggle
         const toggleBtn = document.getElementById('leaderboardToggle');
@@ -65,7 +65,7 @@ class VoidLeaderboard {
                 this.unsubscribe = null;
             }
             
-            // Get ALL users first
+            // Get ALL users first - IGNORING OFFLINE CHECK
             await this.getAllUsers();
             
             // Update the leaderboard with our comprehensive data
@@ -74,10 +74,10 @@ class VoidLeaderboard {
             window.showNotification("Leaderboard refreshed successfully with ALL users", "success");
         } catch (error) {
             console.error("Error during forced leaderboard refresh:", error);
-            window.showNotification("Error refreshing leaderboard. Please try again.", "error");
+            window.showNotification("Error refreshing leaderboard: " + error.message, "error");
             
             // Show error state
-            this.showErrorState("Error getting all users. Please try again.");
+            this.showErrorState("Error getting all users: " + error.message);
         } finally {
             this.isUpdating = false;
         }
@@ -87,17 +87,25 @@ class VoidLeaderboard {
     async getAllUsers() {
         console.log("Getting ALL users from database without limits");
         
-        if (!window.isOnline) {
-            console.log("Device is offline, cannot get users");
-            return;
-        }
+        // REMOVED OFFLINE CHECK - assume we're always online
         
         try {
+            console.log("Checking Firestore connection status...");
+            
+            // Check if Firebase is initialized
+            if (!firebase || !firebase.firestore) {
+                throw new Error("Firebase not initialized properly");
+            }
+            
+            console.log("Firebase initialized correctly - continuing");
+            
             // First refresh banned cache
             await this.refreshBannedUsersCache();
             
             // Get ALL users from users collection - NO LIMIT
             const usersRef = firebase.firestore().collection('users');
+            
+            console.log("Fetching ALL users from database...");
             
             // We need to get a snapshot of all users without a limit
             const allUsersSnapshot = await usersRef.get();
@@ -137,6 +145,13 @@ class VoidLeaderboard {
             
             console.log(`Processed ${allUsersData.length} valid users (${bannedCount} banned)`);
             
+            // Log top 10 users by balance for debugging
+            const top10 = [...allUsersData].sort((a, b) => b.accountBalance - a.accountBalance).slice(0, 10);
+            console.log("Top 10 users by balance:");
+            top10.forEach((user, index) => {
+                console.log(`${index + 1}. ${user.username}: ${user.accountBalance.toLocaleString()}`);
+            });
+            
             // Save all user data
             this.allUsers = allUsersData;
             
@@ -148,8 +163,11 @@ class VoidLeaderboard {
             let batch = firebase.firestore().batch();
             let updateCount = 0;
             
-            // Update each in a batch - focus on top 500 to avoid too many writes
-            for (let i = 0; i < Math.min(500, this.allUsers.length); i++) {
+            // Update each in a batch - focus on top 100 to avoid too many writes
+            const topUsersToUpdate = Math.min(100, this.allUsers.length);
+            console.log(`Updating top ${topUsersToUpdate} users in leaderboard collection`);
+            
+            for (let i = 0; i < topUsersToUpdate; i++) {
                 const user = this.allUsers[i];
                 const leaderboardRef = firebase.firestore().collection('leaderboard').doc(user.id);
                 
@@ -179,7 +197,7 @@ class VoidLeaderboard {
                 console.log(`Committed final batch of ${updateCount} leaderboard updates`);
             }
             
-            // Get avatar data from leaderboard
+            // Get avatar data from leaderboard - this part is optional
             try {
                 // Get leaderboard data to get avatars
                 const leaderboardRef = firebase.firestore().collection('leaderboard');
@@ -220,7 +238,12 @@ class VoidLeaderboard {
     
     // Render leaderboard with our all users data
     renderLeaderboard() {
-        if (!this.leaderboardElement || this.allUsers.length === 0) {
+        if (!this.leaderboardElement) {
+            console.error("Leaderboard element not found");
+            return;
+        }
+        
+        if (this.allUsers.length === 0) {
             this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players available</div>';
             return;
         }
@@ -316,16 +339,11 @@ class VoidLeaderboard {
         this.highlightSpecialUsers();
     }
     
-    // Load banned users into cache - SIMPLIFIED to only use banned_users collection
+    // Simplified banned users cache refresh - NO OFFLINE CHECK
     async refreshBannedUsersCache() {
         try {
             console.log("Refreshing banned users cache");
             this.bannedUserCache.clear();
-            
-            if (!window.isOnline) {
-                console.log("Device is offline, skipping banned users refresh");
-                return;
-            }
             
             // Get all banned users from the banned_users collection
             const bannedUsersSnapshot = await firebase.firestore().collection('banned_users').get();
@@ -338,6 +356,7 @@ class VoidLeaderboard {
             console.log(`Loaded ${this.bannedUserCache.size} banned users into cache`);
         } catch (error) {
             console.error("Error refreshing banned users cache:", error);
+            // Continue without banned cache rather than failing
         }
     }
     
@@ -472,11 +491,7 @@ let leaderboardRefreshInterval;
 window.refreshLeaderboard = function() {
     console.log("Manual leaderboard refresh requested");
     
-    // Don't attempt refresh if offline
-    if (!window.isOnline) {
-        console.log("Device is offline, skipping leaderboard refresh");
-        return;
-    }
+    // Skip offline check completely
     
     // If leaderboard exists, force a complete refresh
     if (window.voidLeaderboard) {
@@ -490,7 +505,7 @@ function startLeaderboardRefreshInterval() {
         clearInterval(leaderboardRefreshInterval);
     }
     
-    // Set up new interval - refresh more often (every 30 seconds)
+    // Set up new interval - refresh every 30 seconds
     leaderboardRefreshInterval = setInterval(window.refreshLeaderboard, 30000);
     window.leaderboardRefreshInterval = leaderboardRefreshInterval;
 }
@@ -500,32 +515,33 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize Leaderboard
     window.voidLeaderboard = new VoidLeaderboard(window.db);
     
-    // Immediately get all users and render the leaderboard
-    window.voidLeaderboard.getAllUsers().then(() => {
-        window.voidLeaderboard.renderLeaderboard();
-        
-        // Start periodic leaderboard refresh
-        startLeaderboardRefreshInterval();
-    }).catch(error => {
-        console.error("Error during initial leaderboard setup:", error);
-        // Show error state
-        window.voidLeaderboard.showErrorState("Error loading leaderboard. Please try the refresh button.");
-    });
+    console.log("Fixed Connectivity Leaderboard initialized");
     
-    console.log("Unlimited Leaderboard system initialized");
+    // Immediately get all users and render the leaderboard
+    setTimeout(() => {
+        window.voidLeaderboard.getAllUsers().then(() => {
+            window.voidLeaderboard.renderLeaderboard();
+            
+            // Start periodic leaderboard refresh
+            startLeaderboardRefreshInterval();
+        }).catch(error => {
+            console.error("Error during initial leaderboard setup:", error);
+            // Show error state
+            window.voidLeaderboard.showErrorState("Error loading leaderboard: " + error.message);
+        });
+    }, 1000); // Short delay to ensure Firebase is fully initialized
 });
 
 // Core ready event
 document.addEventListener('core-ready', function() {
+    console.log("Core ready event received - will refresh leaderboard");
+    
     // Make sure leaderboard is initialized
     if (!window.voidLeaderboard) {
         window.voidLeaderboard = new VoidLeaderboard(window.db);
-        window.voidLeaderboard.getAllUsers().then(() => {
-            window.voidLeaderboard.renderLeaderboard();
-        });
     }
     
-    // Force a refresh
+    // Force a refresh after a short delay
     setTimeout(() => {
         window.refreshLeaderboard();
     }, 2000);
@@ -542,4 +558,4 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
-console.log('Unlimited Leaderboard system loaded');
+console.log('Fixed Connectivity Leaderboard system loaded');
