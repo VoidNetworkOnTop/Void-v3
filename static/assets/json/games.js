@@ -423,7 +423,7 @@ const gamesData = [
 {
     title: "Drift Hunters", 
     imgSrc: "gameimg/drifthunters.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://unblocked-games.s3.amazonaws.com/games/2023/unity3/drift-hunters/index.html")
+    link: "/local games/Drift Hunters/Drift Hunters.html"
 },
 {
     title: "Ngon", 
