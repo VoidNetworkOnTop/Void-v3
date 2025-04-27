@@ -239,6 +239,17 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/ZK7L3EpsxQikVjyXMO7RqCCbgjr4plbAG5bvfIXjDVs0Mouuj9R5Szri2PtJmGTMd82LRqtqiUXmzunbSz09uChQynw-XPJY6slh-cmc9HiT-yxsQ0kjjfT7MGOZxkcpyNCh8YdDCA76dwolWZFIuZWospvEypCD3ASCb-rFOTyxP2DJQ_C2g4E9OJthQb2y5IaLbY-v?key=yj4V8pHW144VjA9YlEbf1Q",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://50292110217768924.playables.usercontent.goog/v/assets/index.html#origin=https%3A%2F%2Fwww.youtube.com")
 }, 
+{
+    title: "Dig Deep", 
+    imgSrc: "https://lh7-us.googleusercontent.com/aywgcTIusi7_m_INGuSvChS4Rj5L32Cd5wL52fJdV6xqbOnaKzvhety5RDbgjg_Is823plqZ4mPvZRl9626HN4CJ6eXpADyEqhYxNhz6C9SlD33n2U7WmbEecCl5URNu3CewMQPmKv01enR5JZSNKC_SsPAlV--mJqqPTrljpV0pZ1imjwmB_sT4fZ851hzHxHeAtwCU?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://13048384079309874137.playables.usercontent.goog/v/assets/index.html#origin=https%3A%2F%2Fwww.youtube.com")
+}, 
+{
+    title: "Thief Puzzle", 
+    imgSrc: "https://lh7-us.googleusercontent.com/VDqD_rampz9kIawrlpFm9Pcfqe7_MJQZLHBEi706jhcHPqdmol_mGqcKO6H01Q7TQYMdGzv4I-IZKf-SnSYZH8kGuz4S94ENDfmk3DhMtGszZy7cMU5V3mWFwn-0Qg-BPNN3szW9ThpfgT9M7EcV_dDMcJnEpOyDI_Ei0_A0JMdppxY9Caa_nHnKiFqGt6B5ipP9uHF4?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://18287767285065051352.playables.usercontent.goog/v/assets/index.html#origin=https%3A%2F%2Fwww.youtube.com")
+}, 
+
 
     
    ];
