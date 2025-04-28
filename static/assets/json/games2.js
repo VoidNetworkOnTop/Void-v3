@@ -250,11 +250,6 @@ const games2Data = [
     link: __uv$config.prefix + __uv$config.encodeUrl("https://18287767285065051352.playables.usercontent.goog/v/assets/index.html#origin=https%3A%2F%2Fwww.youtube.com")
 }, 
 {
-    title: "Thief Puzzle", 
-    imgSrc: "https://lh7-us.googleusercontent.com/VDqD_rampz9kIawrlpFm9Pcfqe7_MJQZLHBEi706jhcHPqdmol_mGqcKO6H01Q7TQYMdGzv4I-IZKf-SnSYZH8kGuz4S94ENDfmk3DhMtGszZy7cMU5V3mWFwn-0Qg-BPNN3szW9ThpfgT9M7EcV_dDMcJnEpOyDI_Ei0_A0JMdppxY9Caa_nHnKiFqGt6B5ipP9uHF4?key=yj4V8pHW144VjA9YlEbf1Q",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://18287767285065051352.playables.usercontent.goog/v/assets/index.html#origin=https%3A%2F%2Fwww.youtube.com")
-}, 
-{
     title: "Bump Bump", 
     imgSrc: "https://lh7-us.googleusercontent.com/a4OC1UJmYgrHYKyBUscqXVcjeiejkwMhWH0jfAbU8XmoclXMPp_0PayCnqzGDKba4rsCo5MayVnomEuJyuu7Z0aaox_lP-4H8M6k_OagTyDdzcxQ5B_DOuHDq9zt3aevNubBIhTAX5MHk_yyvIjsEuh8kGRTJYtCFWJF9B3sCz1qG46vyne4JHYi_X2Uww8dGPRAe0g4?key=yj4V8pHW144VjA9YlEbf1Q",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/23057/")
