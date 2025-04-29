@@ -673,20 +673,56 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 </script>
 
-<!-- FIXED Service Worker Registration - Very Simple Version -->
+<!-- FIXED Service Worker Registration -->
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const stockSW = "/uv/sw.js";
+        // IMPORTANT: Use the allowed scope instead of root scope
         const swScope = "/uv/"; 
+        const swAllowedHostnames = ["localhost", "127.0.0.1"];
         
-        // Register service worker in a non-blocking way
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register(stockSW, { 
-                scope: swScope
-            }).catch(err => {
-                console.error('Service worker registration failed:', err);
-            });
+        // Function to preload and register the service worker with correct scope
+        async function preloadServiceWorker() {
+            // Check if service workers are supported
+            if (!('serviceWorker' in navigator)) {
+                console.error("Service workers are not supported in this browser");
+                return false;
+            }
+            
+            // Check if we're on HTTPS or allowed development hostnames
+            if (location.protocol !== 'https:' && !swAllowedHostnames.includes(location.hostname)) {
+                console.warn("Service workers require HTTPS (except on localhost/127.0.0.1)");
+                return false;
+            }
+            
+            try {
+                console.log('Registering UV service worker with scope:', swScope);
+                
+                // Register the service worker with the CORRECT scope
+                const registration = await navigator.serviceWorker.register(stockSW, { 
+                    scope: swScope,
+                    updateViaCache: 'none'
+                });
+                
+                // Wait for the service worker to be ready
+                await navigator.serviceWorker.ready;
+                
+                // If we have an active service worker, send it a message to skip waiting
+                if (registration.active) {
+                    registration.active.postMessage({ type: 'SKIP_WAITING' });
+                }
+                
+                console.log('UV service worker successfully registered with scope:', registration.scope);
+                window.__uv$serviceWorkerRegistered = true;
+                return true;
+            } catch (error) {
+                console.error('UV service worker registration failed:', error);
+                return false;
+            }
         }
+        
+        // Start preloading the service worker immediately
+        preloadServiceWorker();
     });
 </script>
 
