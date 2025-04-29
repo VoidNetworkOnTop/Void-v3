@@ -9,11 +9,18 @@
     <meta http-equiv="Page-Speed" content="High">
     <meta name="priority" content="high">
     
+    <!-- Preload critical resources -->
+    <link rel="preload" href="/uv/uv.bundle.js" as="script">
+    <link rel="preload" href="/uv/uv.config.js" as="script">
+    <link rel="preload" href="/global.js" as="script">
+    
+    <!-- Import Inter font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
     <!-- Inline critical styles -->
     <style>
-        /* Import Inter font */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
-
         body, html {
             margin: 0;
             padding: 0;
@@ -205,6 +212,14 @@
             text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
         }
         
+        .loading-status {
+            margin-top: 10px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            max-width: 80%;
+            text-align: center;
+        }
+        
         .show-game-btn {
             display: none;
             margin-top: 30px;
@@ -275,13 +290,56 @@
             cursor: pointer;
             display: none;
             transition: all 0.2s ease;
-            font-family: sans-serif;
+            font-family: 'Inter', sans-serif;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
         
         .retry-button:hover {
             background: rgba(100,100,100,0.95);
             transform: scale(1.05);
+        }
+
+        /* Emergency reload button - more prominent */
+        .emergency-reload {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(220, 53, 69, 0.85);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            z-index: 9999;
+            cursor: pointer;
+            display: none;
+            transition: all 0.3s ease;
+            font-family: 'Inter', sans-serif;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        
+        .emergency-reload:hover {
+            background: rgba(220, 53, 69, 0.95);
+            transform: scale(1.05);
+        }
+
+        /* Progress bar for loading */
+        .loading-progress {
+            width: 200px;
+            height: 4px;
+            background: rgba(50,50,50,0.3);
+            margin: 20px auto 0;
+            border-radius: 2px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .loading-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(to right, #4a6ed3, #5a7ee5);
+            position: absolute;
+            transition: width 0.3s ease-out;
         }
 
         /* Suggestions styles - properly centered and styled */
@@ -411,6 +469,48 @@
 
         .suggestions_content::-webkit-scrollbar-thumb:hover {
             background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Status message box */
+        #gameStatusMessage {
+            position: fixed;
+            bottom: 15px;
+            left: 15px;
+            background: rgba(40, 40, 40, 0.85);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            z-index: 9999;
+            display: none;
+            transition: opacity 0.3s ease;
+            max-width: 300px;
+        }
+        
+        #gameStatusMessage.error {
+            background: rgba(220, 53, 69, 0.85);
+        }
+        
+        #gameStatusMessage.success {
+            background: rgba(40, 167, 69, 0.85);
+        }
+        
+        #gameStatusMessage.warning {
+            background: rgba(255, 193, 7, 0.85);
+            color: #212529;
+        }
+
+        /* Loader animation */
+        .loader-dots:after {
+            content: '.';
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+        
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60% { content: '...'; }
+            80%, 100% { content: ''; }
         }
 
         /* Responsive design */
@@ -798,20 +898,20 @@
                 const primaryPaths = [
                     // These paths will be tried first
                     '/assets/json/games2.js',
-                    '/assets/json/games2.js'
+                    '/assets/json/games.js'
                 ];
                 
                 // Fallback paths to try if the primary paths fail
                 const fallbackPaths = [
                     // Static prefixed paths
                     '/static/assets/json/games2.js',
-                    '/static/assets/json/games2.js',
+                    '/static/assets/json/games.js',
                     // Root directory paths (these were being found in the logs)
                     '/games.js',
                     '/games2.js',
                     // Relative paths
                     './assets/json/games2.js',
-                    './assets/json/games2.js',
+                    './assets/json/games.js',
                     './games.js',
                     './games2.js'
                 ];
@@ -1305,15 +1405,19 @@
     <div class="page_content">
         <!-- Main game container - completely separate -->
         <div class="game_container">
-            <!-- Loading screen -->
+            <!-- Loading screen with enhanced features -->
             <div class="loading-screen" id="loadingScreen">
                 <div class="loading-spinner"></div>
                 <div class="loading-text" id="loadingText">Loading Game...</div>
+                <div class="loading-status" id="loadingStatus">Preparing service worker</div>
+                <div class="loading-progress">
+                    <div class="loading-progress-fill" id="loadingProgress"></div>
+                </div>
                 <button class="show-game-btn" id="showGameBtn">Show Game Now</button>
             </div>
             
             <!-- Game iframe with tabindex -->
-            <iframe id="gframe" allowfullscreen="true" allow="autoplay" tabindex="1"></iframe>
+            <iframe id="gframe" allowfullscreen="true" allow="autoplay; fullscreen" tabindex="1"></iframe>
             
             <!-- Focus button -->
             <button class="focus-button" id="focusButton">Click to enable keyboard</button>
@@ -1349,19 +1453,33 @@
         </div>
     </div>
 
-    <!-- Game Loading and handling script -->
+    <!-- Status message -->
+    <div id="gameStatusMessage"></div>
+    
+    <!-- Emergency reload button -->
+    <button class="emergency-reload" id="emergencyReload">Game Stuck? Click to Fix</button>
+
+    <!-- Game Loading and handling script - Enhanced version -->
     <script>
         // Define our variables in global scope first
         let iframe;
         let loadingScreen;
         let loadingText;
+        let loadingStatus;
+        let loadingProgress;
         let showGameBtn;
         let focusButton;
+        let statusMessage;
+        let emergencyReload;
         let checkVisibilityInterval;
+        let healthCheckInterval;
         let gameLoaded = false;
         let retryCount = 0;
         let loadStartTime = 0;
         let originalGameUrl = null; // Store the original game URL
+        let gameTitle = ""; // Store game title when available
+        let directUrlMode = false; // Flag for direct URL mode
+        let monitorMode = false; // Flag for enhanced monitoring
         const maxRetries = 3;
         const debugMode = true; // Enable console logging
         
@@ -1371,6 +1489,127 @@
             console.log(`%c[Game Debug] %c${message}`, 
                 'color: #4a6ed3; font-weight: bold;', 
                 'color: #333;');
+        }
+        
+        // Show status message to user
+        function showStatus(message, type = '', duration = 5000) {
+            if (!statusMessage) return;
+            
+            // Clear existing classes and set new type
+            statusMessage.className = '';
+            if (type) statusMessage.classList.add(type);
+            
+            statusMessage.textContent = message;
+            statusMessage.style.display = 'block';
+            
+            // Clear any existing timeout
+            if (statusMessage.hideTimeout) {
+                clearTimeout(statusMessage.hideTimeout);
+            }
+            
+            // Set timeout to hide message
+            if (duration > 0) {
+                statusMessage.hideTimeout = setTimeout(() => {
+                    statusMessage.style.opacity = '0';
+                    setTimeout(() => {
+                        statusMessage.style.display = 'none';
+                        statusMessage.style.opacity = '1';
+                    }, 300);
+                }, duration);
+            }
+        }
+        
+        // Update loading progress
+        function updateProgress(percent, statusText) {
+            if (loadingProgress) {
+                loadingProgress.style.width = `${percent}%`;
+            }
+            
+            if (statusText && loadingStatus) {
+                loadingStatus.textContent = statusText;
+            }
+        }
+        
+        // Check service worker status
+        async function checkServiceWorker() {
+            try {
+                // Check if service worker is registered
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                const uvWorker = registrations.find(r => r.scope.includes('/uv/'));
+                
+                if (!uvWorker) {
+                    logDebug("❌ UV service worker not registered");
+                    updateProgress(10, "Service worker not registered - trying to fix");
+                    
+                    // Try to register from this page
+                    try {
+                        await registerServiceWorker();
+                        logDebug("✅ Successfully registered UV service worker");
+                        updateProgress(30, "Service worker registered successfully");
+                        return true;
+                    } catch (regError) {
+                        logDebug(`❌ Failed to register service worker: ${regError.message}`);
+                        updateProgress(5, "Service worker registration failed");
+                        showStatus("Error setting up game proxy. Try refreshing the page.", "error");
+                        return false;
+                    }
+                } else {
+                    logDebug("✅ UV service worker found");
+                    
+                    // Check service worker state
+                    const swState = uvWorker.active ? uvWorker.active.state : 'unknown';
+                    logDebug(`ℹ️ Service worker state: ${swState}`);
+                    
+                    // If not activated, wait for it
+                    if (swState !== 'activated') {
+                        logDebug("⏳ Waiting for service worker to activate");
+                        updateProgress(20, "Waiting for service worker to activate");
+                        
+                        // Wait for activation (with timeout)
+                        const activated = await Promise.race([
+                            new Promise(resolve => {
+                                navigator.serviceWorker.ready.then(() => resolve(true));
+                            }),
+                            new Promise(resolve => setTimeout(() => resolve(false), 5000))
+                        ]);
+                        
+                        if (!activated) {
+                            logDebug("⚠️ Service worker activation timeout");
+                            updateProgress(25, "Service worker not responding - trying fallback");
+                            return false;
+                        }
+                    }
+                    
+                    updateProgress(40, "Service worker ready");
+                    return true;
+                }
+            } catch (error) {
+                logDebug(`❌ Error checking service worker: ${error.message}`);
+                updateProgress(15, "Error checking service worker - using fallback");
+                return false;
+            }
+        }
+        
+        // Register service worker directly
+        async function registerServiceWorker() {
+            try {
+                // Simple registration with basic error handling
+                const stockSW = "/uv/sw.js";
+                const swScope = "/uv/";
+                
+                const registration = await navigator.serviceWorker.register(stockSW, { 
+                    scope: swScope,
+                    updateViaCache: 'none'
+                });
+                
+                // Wait for it to activate
+                await navigator.serviceWorker.ready;
+                
+                return registration;
+            } catch (error) {
+                logDebug(`❌ Direct service worker registration failed: ${error.message}`);
+                throw error;
+            }
         }
         
         // Function to focus the game
@@ -1408,14 +1647,19 @@
             }
         }
         
-        // Reload game function with retry reset
+        // Reload game function with retry reset and enhanced error handling
         function reloadGame() {
             logDebug("🔄 Manually reloading game...");
+            
+            // Show status message
+            showStatus("Reloading game...", "info", 3000);
             
             gameLoaded = false;
             loadingScreen.style.display = 'flex';
             showGameBtn.style.display = 'none';
             loadingText.textContent = "Loading Game...";
+            loadingStatus.textContent = "Preparing to reload";
+            updateProgress(0);
             focusButton.style.display = 'none';
             
             // Reset retry counter
@@ -1427,6 +1671,25 @@
                 retryBtn.style.display = 'none';
             }
             
+            // Hide emergency reload button
+            if (emergencyReload) {
+                emergencyReload.style.display = 'none';
+            }
+            
+            // Clear service worker cache for this URL
+            try {
+                if (navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({
+                        type: 'CLEAR_GAME_CACHE',
+                        gameUrl: originalGameUrl
+                    });
+                    logDebug("🧹 Sent cache clear request to service worker");
+                    updateProgress(15, "Clearing cache");
+                }
+            } catch (e) {
+                logDebug(`⚠️ Error sending cache clear message: ${e.message}`);
+            }
+            
             // Reset iframe
             iframe.src = 'about:blank';
             
@@ -1434,7 +1697,14 @@
             loadStartTime = Date.now();
             
             // Load game after short delay
-            setTimeout(loadGame, 100);
+            setTimeout(async function() {
+                // Try checking service worker first
+                await checkServiceWorker();
+                updateProgress(50, "Loading game content");
+                
+                // Load the game
+                loadGame();
+            }, 500);
         }
         
         // Toggle fullscreen function
@@ -1463,8 +1733,8 @@
             }
         }
         
-        // Load game function
-        function loadGame() {
+        // Enhanced load game function
+        async function loadGame() {
             logDebug("🎮 Loading game...");
             
             const urlParams = new URLSearchParams(window.location.search);
@@ -1472,13 +1742,20 @@
             
             if (!gameUrl) {
                 logDebug("❌ No game URL found - redirecting to home");
-                window.location.href = '/';
+                showStatus("No game URL provided", "error", 3000);
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
                 return;
             }
             
             // Store the original game URL
             originalGameUrl = gameUrl;
             logDebug(`📝 Original game URL stored: ${originalGameUrl}`);
+            
+            // Update loading UI
+            loadingText.textContent = "Loading Game...";
+            updateProgress(60, "Starting game");
             
             // Record load start time
             loadStartTime = Date.now();
@@ -1492,7 +1769,9 @@
                     // Record play and update popularity
                     GlobalGameStats.recordUserPlay(gameInfo.id);
                     GlobalGameStats.updatePopularityFactor(gameInfo.id, 0.5);
+                    gameTitle = gameInfo.title;
                     logDebug(`ℹ️ Loaded game: ${gameInfo.title}`);
+                    loadingText.textContent = `Loading ${gameInfo.title}`;
                 } else {
                     logDebug("⚠️ Game not found in GameDB");
                 }
@@ -1500,16 +1779,186 @@
                 logDebug("⚠️ GameDB or GlobalGameStats not available");
             }
             
-            // Set iframe src to load game
-            iframe.src = gameUrl;
+            try {
+                // Check if we're using a direct URL (non-proxy)
+                directUrlMode = !gameUrl.includes('/uv/service/');
+                if (directUrlMode) {
+                    logDebug("📝 Using direct URL mode (no proxy)");
+                }
+                
+                // Set iframe src to load game with error handling
+                updateProgress(80, "Loading game content");
+                iframe.src = gameUrl;
+                
+                // Show "Show Game" button after 5 seconds if not loaded
+                setTimeout(function() {
+                    if (!gameLoaded) {
+                        showGameBtn.style.display = 'block';
+                        updateProgress(90, "Game is taking longer than usual");
+                    }
+                }, 5000);
+                
+                // Start checking for visible content
+                startVisibilityCheck();
+                
+                // Set up health monitoring
+                initHealthMonitoring();
+            } catch (error) {
+                logDebug(`❌ Error loading game: ${error.message}`);
+                showStatus(`Error loading game: ${error.message}`, "error");
+                
+                // Still try to show the game after a delay
+                setTimeout(function() {
+                    hideLoadingScreen();
+                }, 5000);
+            }
+        }
+        
+        // Initialize health monitoring
+        function initHealthMonitoring() {
+            // Clear any existing interval
+            if (healthCheckInterval) {
+                clearInterval(healthCheckInterval);
+            }
             
-            // Show "Show Game" button after 5 seconds
-            setTimeout(function() {
-                showGameBtn.style.display = 'block';
-            }, 5000);
+            // Start new health check interval
+            healthCheckInterval = setInterval(function() {
+                if (!gameLoaded) return; // Skip if still loading
+                
+                const visibleTime = Date.now() - (Number(loadingScreen.dataset.hiddenTime) || loadStartTime);
+                
+                // If the game has been "visible" for more than 30 seconds but is possibly stuck
+                if (visibleTime > 30000 && !document.getElementById('emergencyReload').dataset.shown) {
+                    // Check for interaction
+                    if (!iframe.dataset.interacted) {
+                        logDebug("⚠️ No interaction detected with game for 30+ seconds");
+                        
+                        // Try to detect if iframe has content through non-invasive methods
+                        try {
+                            if (iframe.contentWindow && iframe.contentWindow.document) {
+                                // Successfully accessed document - likely not CORS issue
+                                const iframeDoc = iframe.contentWindow.document;
+                                
+                                // Check if document appears empty/stuck
+                                if (iframeDoc.body && 
+                                    (iframeDoc.body.innerHTML.length < 50 || 
+                                     iframeDoc.body.textContent.trim().length === 0)) {
+                                    logDebug("⚠️ Game appears to be empty or stuck");
+                                    showEmergencyReload();
+                                }
+                            }
+                        } catch (e) {
+                            // CORS error expected - can't directly check content
+                            // Instead, show emergency button based on time alone
+                            if (visibleTime > 60000) { // 1 minute with no interaction
+                                logDebug("⚠️ Possible CORS issue with no interaction for 60+ seconds");
+                                showEmergencyReload();
+                            }
+                        }
+                    }
+                }
+            }, 5000); // Check every 5 seconds
             
-            // Start checking for visible content
-            startVisibilityCheck();
+            // Track interactions with iframe to know if user is playing
+            iframe.addEventListener('mousedown', function() {
+                iframe.dataset.interacted = Date.now();
+            });
+            
+            iframe.addEventListener('keydown', function() {
+                iframe.dataset.interacted = Date.now();
+            });
+        }
+        
+        // Show emergency reload button
+        function showEmergencyReload() {
+            if (!emergencyReload || emergencyReload.dataset.shown === 'true') return;
+            
+            emergencyReload.style.display = 'block';
+            emergencyReload.dataset.shown = 'true';
+            
+            // Add click handler if not already added
+            if (!emergencyReload.dataset.handlerAdded) {
+                emergencyReload.dataset.handlerAdded = 'true';
+                
+                emergencyReload.addEventListener('click', function() {
+                    logDebug("🚨 Emergency reload triggered by user");
+                    
+                    // Show status message
+                    showStatus("Performing emergency reload...", "warning");
+                    
+                    // Hide button
+                    emergencyReload.style.display = 'none';
+                    
+                    // Deep cleanup
+                    performDeepCleanup();
+                });
+            }
+        }
+        
+        // Perform deep cleanup and reload
+        async function performDeepCleanup() {
+            logDebug("🧹 Performing deep cleanup");
+            
+            // Show loading screen
+            gameLoaded = false;
+            loadingScreen.style.display = 'flex';
+            loadingText.textContent = "Emergency Reload";
+            loadingStatus.textContent = "Clearing caches...";
+            updateProgress(10);
+            
+            try {
+                // 1. Clear service worker caches
+                if ('caches' in window) {
+                    updateProgress(20, "Clearing browser caches");
+                    try {
+                        const cacheNames = await caches.keys();
+                        await Promise.all(
+                            cacheNames.map(name => caches.delete(name))
+                        );
+                        logDebug("✅ Successfully cleared all caches");
+                    } catch (e) {
+                        logDebug(`⚠️ Error clearing caches: ${e.message}`);
+                    }
+                }
+                
+                // 2. Try to reset service worker
+                updateProgress(40, "Resetting service worker");
+                try {
+                    if (navigator.serviceWorker.controller) {
+                        navigator.serviceWorker.controller.postMessage({
+                            type: 'CLEAR_CACHE',
+                            timestamp: Date.now()
+                        });
+                    }
+                    
+                    // Get all registrations
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (const registration of registrations) {
+                        await registration.unregister();
+                        logDebug(`✅ Unregistered service worker: ${registration.scope}`);
+                    }
+                } catch (e) {
+                    logDebug(`⚠️ Error with service worker reset: ${e.message}`);
+                }
+                
+                // 3. Clear iframe
+                updateProgress(60, "Resetting game frame");
+                iframe.src = 'about:blank';
+                
+                // 4. Wait a bit to ensure cleanup is complete
+                updateProgress(80, "Finalizing cleanup");
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // 5. Reload the page completely
+                updateProgress(100, "Reloading page");
+                logDebug("🔄 Performing hard reload");
+                window.location.reload(true);
+            } catch (error) {
+                logDebug(`❌ Error during deep cleanup: ${error.message}`);
+                
+                // If cleanup fails, still try to reload
+                window.location.reload(true);
+            }
         }
         
         // Start visibility check
@@ -1521,22 +1970,23 @@
             
             // Only start checking after an initial delay
             setTimeout(function() {
-                loadingText.textContent = "Waiting for game to appear...";
+                loadingText.textContent = gameTitle ? `Loading ${gameTitle}` : "Loading Game";
+                loadingStatus.textContent = "Waiting for game to appear...";
                 logDebug("⏱️ Initial delay complete, actively checking visibility");
                 
-                // Set 500ms interval to check for content
+                // Set interval to check for content
                 checkVisibilityInterval = setInterval(function() {
                     checkIframeVisibility();
                 }, 500);
                 
-                // Set max wait time - after 15 seconds, show game regardless
-                const maxWaitTime = 15000 + (retryCount * 5000); // Longer for retries
+                // Set max wait time - after 20 seconds, show game regardless
+                const maxWaitTime = 20000 + (retryCount * 5000); // Longer for retries
                 
                 setTimeout(function() {
                     if (!gameLoaded) {
                         logDebug(`⏱️ Max wait time (${maxWaitTime}ms) reached - forcing game display`);
                         hideLoadingScreen();
-                        loadingText.textContent = "Game may still be loading...";
+                        loadingStatus.textContent = "Game may still be loading...";
                     }
                 }, maxWaitTime);
             }, 1500);
@@ -1553,7 +2003,7 @@
                 // Calculate time elapsed since loading started
                 const timeElapsed = Date.now() - loadStartTime;
                 
-                // Method 1: Check if iframe reported as "complete"
+                // Method 1: Check if iframe reported as "complete" (may fail due to CORS)
                 try {
                     if (iframe.contentWindow && iframe.contentWindow.document.readyState === 'complete') {
                         logDebug(`✅ Document complete after ${Math.floor(timeElapsed/1000)}s`);
@@ -1588,7 +2038,12 @@
                 
                 // Method 2: Enhanced time-based detection with progressive timeouts
                 const loadTime = iframe.dataset.loadTime ? parseInt(iframe.dataset.loadTime) : 0;
-                if (!loadTime) return;
+                if (!loadTime) {
+                    // Update progress periodically while waiting for load event
+                    const progressPercent = Math.min(80 + (timeElapsed / 10000) * 20, 95);
+                    updateProgress(progressPercent);
+                    return;
+                }
                 
                 const timeElapsedSinceLoad = Date.now() - loadTime;
                 
@@ -1597,12 +2052,21 @@
                     logDebug(`⏱️ Time elapsed since load event: ${Math.floor(timeElapsedSinceLoad/1000)}s`);
                 }
                 
-                // Progressive timeouts based on device performance
+                // Update progress based on time elapsed since load event
+                const loadProgress = Math.min(95, 80 + (timeElapsedSinceLoad / 5000) * 20);
+                updateProgress(loadProgress);
+                
+                // Progressive timeouts based on device performance and special modes
                 const isSlowDevice = window.navigator.hardwareConcurrency < 4 || 
                                      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
                 
-                // Adjust min wait time based on device and retry count
-                const minWaitTime = (isSlowDevice ? 10000 : 8000) + (retryCount * 2000);
+                // Adjust min wait time based on device, retry count and direct URL mode
+                let minWaitTime = (isSlowDevice ? 8000 : 6000) + (retryCount * 2000);
+                
+                // Direct URLs can show faster, proxy URLs need more time
+                if (directUrlMode) {
+                    minWaitTime = Math.max(3000, minWaitTime / 2);
+                }
                 
                 if (timeElapsedSinceLoad > minWaitTime) {
                     logDebug(`⌛ Time-based detection triggered after ${Math.floor(timeElapsedSinceLoad/1000)}s`);
@@ -1610,10 +2074,17 @@
                 }
             } catch (e) {
                 logDebug(`❌ Error checking visibility: ${e.message}`);
+                
+                // On error, still show the game after a certain timeout
+                const errorTimeout = 10000 + (retryCount * 2000);
+                if (Date.now() - loadStartTime > errorTimeout) {
+                    logDebug(`⏱️ Error timeout (${errorTimeout}ms) reached - showing game anyway`);
+                    hideLoadingScreen();
+                }
             }
         }
         
-        // Hide loading screen with improved retry button
+        // Hide loading screen with improved retry and monitoring
         function hideLoadingScreen() {
             if (gameLoaded) return;
             
@@ -1621,6 +2092,8 @@
             
             gameLoaded = true;
             loadingScreen.style.display = 'none';
+            // Record when the loading screen was hidden
+            loadingScreen.dataset.hiddenTime = Date.now().toString();
             clearInterval(checkVisibilityInterval);
             
             // Focus the iframe after the game appears
@@ -1645,41 +2118,21 @@
                 
                 // Direct reload with the original URL
                 retryBtn.onclick = function() {
-                    logDebug(`🔄 Retry button clicked - reloading original URL: ${originalGameUrl}`);
+                    logDebug(`🔄 Retry button clicked - reloading`);
                     
-                    // Show loading screen
-                    loadingScreen.style.display = 'flex';
-                    showGameBtn.style.display = 'none';
-                    loadingText.textContent = "Reloading Game...";
-                    gameLoaded = false;
+                    // Track this retry
+                    retryCount++;
                     
-                    // Clear and reload iframe with original URL
-                    iframe.src = 'about:blank';
+                    // Show status
+                    showStatus(`Retrying... (Attempt ${retryCount})`, "info");
                     
-                    // Hide this retry button
-                    retryBtn.style.display = 'none';
-                    
-                    // Use setTimeout to ensure the blank page loads first
-                    setTimeout(() => {
-                        iframe.src = originalGameUrl;
-                        startVisibilityCheck();
-                    }, 500);
+                    // Reload the game
+                    reloadGame();
                 };
-                
-                // Add hover effect
-                retryBtn.addEventListener('mouseover', function() {
-                    this.style.background = 'rgba(100,100,100,0.95)';
-                    this.style.transform = 'scale(1.05)';
-                });
-                
-                retryBtn.addEventListener('mouseout', function() {
-                    this.style.background = 'rgba(80,80,80,0.85)';
-                    this.style.transform = 'scale(1)';
-                });
                 
                 // Add to body
                 document.body.appendChild(retryBtn);
-                logDebug("ℹ️ Added fixed retry button (uses original URL)");
+                logDebug("ℹ️ Added retry button");
                 
                 // Auto-fade after 20 seconds
                 setTimeout(() => {
@@ -1694,6 +2147,9 @@
             setTimeout(function() {
                 focusButton.style.display = 'none';
             }, 5000);
+            
+            // Enable monitor mode after a successful load
+            monitorMode = true;
         }
         
         /**
@@ -1778,12 +2234,20 @@
             GlobalGameStats.recordUserPlay(game.id);
             GlobalGameStats.updatePopularityFactor(game.id, 0.5);
             
+            // Show status
+            showStatus(`Loading ${game.title}`, "info", 3000);
+            
             // Show loading screen
             gameLoaded = false;
             loadingScreen.style.display = 'flex';
             showGameBtn.style.display = 'none';
-            loadingText.textContent = "Loading Game...";
+            loadingText.textContent = `Loading ${game.title}`;
+            loadingStatus.textContent = "Preparing game";
+            updateProgress(10);
             focusButton.style.display = 'none';
+            
+            // Store game title
+            gameTitle = game.title;
             
             // Reset retry counter
             retryCount = 0;
@@ -1794,28 +2258,58 @@
                 retryBtn.style.display = 'none';
             }
             
+            // Hide emergency reload button
+            if (emergencyReload) {
+                emergencyReload.style.display = 'none';
+                emergencyReload.dataset.shown = 'false';
+            }
+            
+            // Clear active health check
+            if (healthCheckInterval) {
+                clearInterval(healthCheckInterval);
+            }
+            
             // Set iframe src to new game URL
             iframe.src = 'about:blank';
             
-            // Use setTimeout to ensure the loading screen appears before navigating
-            setTimeout(function() {
-                // Update original game URL to the new game
-                originalGameUrl = game.link;
+            // Clear CORS flags and interaction tracking
+            iframe.dataset.interacted = '';
+            monitorMode = false;
+            
+            // Check if this is a direct URL or proxy URL
+            directUrlMode = !game.link.includes('/uv/service/');
+            
+            // Update service worker before loading
+            checkServiceWorker().then(result => {
+                updateProgress(40, result ? "Service worker ready" : "Using fallback mode");
                 
-                iframe.src = game.link;
-                
-                // Update URL without page reload
-                const urlParams = new URLSearchParams(window.location.search);
-                urlParams.set('game', game.link);
-                const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
-                window.history.pushState({ path: newUrl }, '', newUrl);
-                
-                // Refresh game suggestions
-                setTimeout(loadGameSuggestions, 500);
-                
-                // Start checking for visible content
-                startVisibilityCheck();
-            }, 100);
+                // Use setTimeout to ensure the loading screen appears before navigating
+                setTimeout(function() {
+                    // Update original game URL to the new game
+                    originalGameUrl = game.link;
+                    
+                    // Load the game
+                    iframe.src = game.link;
+                    
+                    // Update URL without page reload
+                    const urlParams = new URLSearchParams(window.location.search);
+                    urlParams.set('game', game.link);
+                    const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
+                    window.history.pushState({ path: newUrl }, '', newUrl);
+                    
+                    // Refresh game suggestions
+                    setTimeout(loadGameSuggestions, 500);
+                    
+                    // Record load start time
+                    loadStartTime = Date.now();
+                    
+                    // Start checking for visible content
+                    startVisibilityCheck();
+                    
+                    // Initialize health monitoring for the new game
+                    initHealthMonitoring();
+                }, 300);
+            });
         }
         
         /**
@@ -1828,8 +2322,12 @@
             iframe = document.getElementById('gframe');
             loadingScreen = document.getElementById('loadingScreen');
             loadingText = document.getElementById('loadingText');
+            loadingStatus = document.getElementById('loadingStatus');
+            loadingProgress = document.getElementById('loadingProgress');
             showGameBtn = document.getElementById('showGameBtn');
             focusButton = document.getElementById('focusButton');
+            statusMessage = document.getElementById('gameStatusMessage');
+            emergencyReload = document.getElementById('emergencyReload');
             
             if (!iframe) {
                 console.error("Critical element missing: iframe (gframe)");
@@ -1844,13 +2342,26 @@
             logDebug("✅ Found critical page elements");
             logDebug(`📱 Device: ${navigator.userAgent.substring(0, 50)}...`);
             
-            // Initialize UI first for better UX
+// Initialize UI first for better UX
             initializeEventListeners();
             
             // Record load start time
             loadStartTime = Date.now();
             
+            // Start loading animation
+            updateProgress(5, "Initializing...");
+            
             try {
+                // Verify service worker is ready
+                const swReady = await checkServiceWorker();
+                if (swReady) {
+                    logDebug("✅ Service worker is ready");
+                    updateProgress(40, "Service worker ready");
+                } else {
+                    logDebug("⚠️ Service worker not ready, proceeding with fallback mode");
+                    updateProgress(25, "Using fallback mode");
+                }
+                
                 // Set a hard timeout for game data loading to prevent blocking
                 const MAX_LOAD_TIME = 5000; // 5 seconds
                 
@@ -1873,13 +2384,22 @@
                 const gameList = Object.values(GameDB.games);
                 GlobalGameStats.initialize(gameList);
                 
+                // Update loading progress
+                updateProgress(60, "Loading suggestions");
+                
                 // Load game suggestions
                 loadGameSuggestions();
+                
+                // Update loading progress
+                updateProgress(80, "Loading main game");
                 
                 // Load the main game
                 loadGame();
             } catch (error) {
                 logDebug(`❌ Failed to initialize game system: ${error.message}`);
+                
+                // Show error status
+                showStatus("Error initializing game system. Trying fallback mode.", "error");
                 
                 // Use fallback games in case of error
                 GameDB.processGameData(GameDB.fallbackGames);
@@ -1903,13 +2423,14 @@
             // Handle iframe load event
             iframe.addEventListener('load', function() {
                 // Store load time
-                iframe.dataset.loadTime = new Date().getTime();
+                iframe.dataset.loadTime = Date.now().toString();
                 logDebug("✅ Iframe load event fired");
                 
                 // Extra wait after load event to give the game more time to render
                 setTimeout(function() {
                     if (!gameLoaded) {
-                        loadingText.textContent = "Almost ready...";
+                        loadingStatus.textContent = "Almost ready...";
+                        updateProgress(95);
                         logDebug("⌛ Post-load waiting period");
                     }
                 }, 1500);
@@ -1925,6 +2446,12 @@
             focusButton.addEventListener('click', function() {
                 logDebug("👆 Focus button clicked");
                 focusGame();
+            });
+            
+            // Emergency reload button handler
+            emergencyReload.addEventListener('click', function() {
+                logDebug("🚨 Emergency reload clicked");
+                performDeepCleanup();
             });
             
             // Global event listener for clicks in the game container
@@ -1946,7 +2473,51 @@
             // Error handling for iframe
             iframe.onerror = function(e) {
                 logDebug(`❌ Iframe error: ${e.message || 'Unknown error'}`);
+                showStatus("Game frame error. Try refreshing.", "error");
             };
+            
+            // Listen for visibility changes to pause/resume health monitoring
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'hidden') {
+                    // Page is hidden, clear health check to save resources
+                    if (healthCheckInterval) {
+                        clearInterval(healthCheckInterval);
+                        healthCheckInterval = null;
+                    }
+                } else {
+                    // Page is visible again, resume health check if game is loaded
+                    if (gameLoaded && !healthCheckInterval) {
+                        initHealthMonitoring();
+                    }
+                }
+            });
+            
+            // Listen for messages from service worker
+            navigator.serviceWorker.addEventListener('message', function(event) {
+                if (event.data && event.data.type) {
+                    // Handle different message types
+                    switch (event.data.type) {
+                        case 'CACHE_CLEARED':
+                            logDebug("✅ Service worker cleared cache successfully");
+                            break;
+                            
+                        case 'SW_ACTIVATED':
+                            logDebug("✅ Service worker activated");
+                            break;
+                            
+                        case 'GAME_CACHE_CLEARED':
+                            logDebug(`✅ Cache cleared for game: ${event.data.gameUrl}`);
+                            break;
+                    }
+                }
+            });
+            
+            // Add unload handler to clean up
+            window.addEventListener('beforeunload', function() {
+                // Clear intervals to prevent memory leaks
+                if (checkVisibilityInterval) clearInterval(checkVisibilityInterval);
+                if (healthCheckInterval) clearInterval(healthCheckInterval);
+            });
             
             logDebug("✅ Event listeners initialized");
         }
