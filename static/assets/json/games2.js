@@ -230,7 +230,7 @@ const games2Data = [
     link: __uv$config.prefix + __uv$config.encodeUrl("https://kdata1.com/5000/2024/toca_life_everything_unlocked/")
 },
 {
-    title: "Crazy Caddle 3D", 
+    title: "Crazy Cattle 3D", 
     imgSrc: "https://lh7-us.googleusercontent.com/A2kcwkSl4mGLLMtOm6YiuSrgezQ0KxKi9k92Ju_4z8IEvQHeXYtW6KamntKutGZJES4Fa1vUH2itvpptMC4MrOywXKHkm6aFNYnX-XWo5z2V9C7OzFEjdhZlwHX8Uwca8SmG4ceF82e3Al0QyBHqwWw5UqAjhyAPf_Wl75-dkZ7_tv8hjoI7PpPHWaIVtA146y_Y0iRs?key=yj4V8pHW144VjA9YlEbf1Q",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://yujiandemo.com")
 }, 
