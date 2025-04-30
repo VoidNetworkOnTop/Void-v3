@@ -50,21 +50,13 @@ class VoidLeaderboard {
             return;
         }
         
-        console.log("Forcing leaderboard refresh via Cloud Function");
+        console.log("Forcing COMPLETE leaderboard refresh");
         this.isUpdating = true;
         
         try {
             // Show loading spinner
             if (this.leaderboardElement) {
-                this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Updating leaderboard...</div>';
-            }
-            
-            // Check if user is logged in
-            if (!firebase.auth().currentUser) {
-                console.log("User must be logged in to refresh leaderboard");
-                window.showNotification("Please log in to refresh the leaderboard", "error");
-                this.showErrorState("You must be logged in to refresh the leaderboard");
-                return;
+                this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Refreshing leaderboard (getting ALL users)...</div>';
             }
             
             // Stop current subscription
@@ -73,27 +65,50 @@ class VoidLeaderboard {
                 this.unsubscribe = null;
             }
             
-            // Get the Firebase Functions instance
-            const functions = firebase.functions();
-            const triggerLeaderboardUpdate = functions.httpsCallable('triggerLeaderboardUpdate');
+            // Check if Firebase Functions is available
+            if (typeof firebase.functions === 'function') {
+                // Use Cloud Function if available
+                try {
+                    console.log("Using Cloud Function for leaderboard update");
+                    
+                    // Check if user is logged in
+                    if (!firebase.auth().currentUser) {
+                        console.log("User must be logged in to refresh leaderboard");
+                        window.showNotification("Please log in to refresh the leaderboard", "error");
+                        this.showErrorState("You must be logged in to refresh the leaderboard");
+                        this.isUpdating = false;
+                        return;
+                    }
+                    
+                    // Get the Firebase Functions instance
+                    const functions = firebase.functions();
+                    const triggerLeaderboardUpdate = functions.httpsCallable('triggerLeaderboardUpdate');
+                    
+                    // Call the cloud function to update the leaderboard
+                    const result = await triggerLeaderboardUpdate();
+                    console.log("Leaderboard update succeeded via Cloud Function:", result.data);
+                    window.showNotification(`Leaderboard updated via Cloud Function! Updated ${result.data.count} users.`, "success");
+                } catch (functionError) {
+                    console.error("Error with Cloud Function, falling back to direct method:", functionError);
+                    // Fall back to direct method
+                }
+            } else {
+                console.log("Firebase Functions not available, using direct method");
+            }
             
-            // Call the cloud function to update the leaderboard
-            const result = await triggerLeaderboardUpdate();
-            console.log("Leaderboard update succeeded:", result.data);
-            
-            // Get all users for display
+            // Get ALL users first - IGNORING OFFLINE CHECK
             await this.getAllUsers();
             
-            // Render the updated leaderboard
+            // Update the leaderboard with our comprehensive data
             this.renderLeaderboard();
             
-            window.showNotification(`Leaderboard refreshed successfully! Updated ${result.data.count} users.`, "success");
+            window.showNotification("Leaderboard refreshed successfully with ALL users", "success");
         } catch (error) {
             console.error("Error during forced leaderboard refresh:", error);
-            window.showNotification("Error refreshing leaderboard: " + (error.message || "Unknown error"), "error");
+            window.showNotification("Error refreshing leaderboard: " + error.message, "error");
             
             // Show error state
-            this.showErrorState("Error updating leaderboard: " + (error.message || "Unknown error"));
+            this.showErrorState("Error getting all users: " + error.message);
         } finally {
             this.isUpdating = false;
         }
@@ -173,6 +188,54 @@ class VoidLeaderboard {
             
             // Sort by balance
             this.allUsers.sort((a, b) => b.accountBalance - a.accountBalance);
+            
+            // Check if we have Firebase Functions to avoid direct update
+            if (typeof firebase.functions !== 'function') {
+                // Only update leaderboard directly if Functions isn't available
+                try {
+                    // Now update all leaderboard entries to match our user data
+                    // This ensures the leaderboard is in sync with user data
+                    let batch = firebase.firestore().batch();
+                    let updateCount = 0;
+                    
+                    // Update each in a batch - focus on top 100 to avoid too many writes
+                    const topUsersToUpdate = Math.min(100, this.allUsers.length);
+                    console.log(`Updating top ${topUsersToUpdate} users in leaderboard collection`);
+                    
+                    for (let i = 0; i < topUsersToUpdate; i++) {
+                        const user = this.allUsers[i];
+                        const leaderboardRef = firebase.firestore().collection('leaderboard').doc(user.id);
+                        
+                        // Always set the entry, overwriting if needed
+                        batch.set(leaderboardRef, {
+                            username: user.username,
+                            accountBalance: user.accountBalance,
+                            joinDate: new Date(), // Default in case it doesn't exist
+                            lastSynced: new Date(),
+                            banned: false // Explicitly mark as not banned
+                        }, { merge: true }); // Use merge to keep other fields
+                        
+                        updateCount++;
+                        
+                        // Commit in batches to avoid limits
+                        if (updateCount >= 20) {
+                            await batch.commit();
+                            console.log(`Committed batch of ${updateCount} leaderboard updates`);
+                            batch = firebase.firestore().batch();
+                            updateCount = 0;
+                        }
+                    }
+                    
+                    // Commit any remaining updates
+                    if (updateCount > 0) {
+                        await batch.commit();
+                        console.log(`Committed final batch of ${updateCount} leaderboard updates`);
+                    }
+                } catch (updateError) {
+                    console.error("Error updating leaderboard entries:", updateError);
+                    // Continue without updates if there's an error
+                }
+            }
             
             // Get avatar data from leaderboard - this part is optional
             try {
