@@ -170,7 +170,7 @@
             opacity: 1;
         }
         
-        /* Loading screen styles */
+        /* Loading screen styles - IMPROVED */
         .loading-screen {
             position: absolute;
             top: 0;
@@ -190,10 +190,24 @@
             width: 60px;
             height: 60px;
             border: 4px solid rgba(50,50,50,0.3);
-            border-top: 4px solid #ffffff;
             border-radius: 50%;
             animation: spin 1s linear infinite;
+            position: relative;
             box-shadow: 0 0 15px rgba(255,255,255,0.3);
+        }
+        
+        /* Enhanced spinner with progress indicator */
+        .loading-spinner::after {
+            content: '';
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            right: -4px;
+            bottom: -4px;
+            border-radius: 50%;
+            border: 4px solid transparent;
+            border-top: 4px solid #ffffff;
+            animation: spin 1s linear infinite, pulseGlow 2s ease-in-out infinite;
         }
         
         .loading-text {
@@ -203,6 +217,53 @@
             font-weight: 300;
             letter-spacing: 0.5px;
             text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            position: relative;
+        }
+        
+        /* Add loading dots animation to the text */
+        .loading-text::after {
+            content: '';
+            display: inline-block;
+            width: 0;
+            animation: loadingDots 1.5s infinite;
+            margin-left: 4px;
+        }
+        
+        /* Loading indicator progress bar */
+        .loading-progress {
+            width: 250px;
+            height: 4px;
+            background: rgba(50,50,50,0.3);
+            border-radius: 2px;
+            margin-top: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .loading-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(to right, #4a6ed3, #5a7ee5);
+            border-radius: 2px;
+            transition: width 0.3s ease-in-out;
+            position: relative;
+        }
+        
+        .loading-progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                to right,
+                transparent 0%,
+                rgba(255, 255, 255, 0.5) 50%,
+                transparent 100%
+            );
+            animation: shimmer 1.5s infinite;
+            transform: translateX(-100%);
         }
         
         .show-game-btn {
@@ -219,6 +280,8 @@
             letter-spacing: 0.5px;
             transition: all 0.2s ease;
             box-shadow: 0 0 15px rgba(90, 126, 229, 0.5);
+            position: relative;
+            overflow: hidden;
         }
         
         .show-game-btn:hover {
@@ -227,9 +290,43 @@
             box-shadow: 0 0 20px rgba(90, 126, 229, 0.7);
         }
         
+        /* Add button highlight effect */
+        .show-game-btn::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: rgba(255, 255, 255, 0.1);
+            transform: rotate(45deg);
+            animation: buttonShimmer 2s infinite;
+        }
+        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 5px rgba(255, 255, 255, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(255, 255, 255, 0.6); }
+        }
+        
+        @keyframes loadingDots {
+            0% { content: ''; }
+            25% { content: '.'; }
+            50% { content: '..'; }
+            75% { content: '...'; }
+        }
+        
+        @keyframes shimmer {
+            100% { transform: translateX(100%); }
+        }
+        
+        @keyframes buttonShimmer {
+            0% { transform: rotate(45deg) translateX(-100%); }
+            100% { transform: rotate(45deg) translateX(100%); }
         }
         
         /* Add focus indicator */
@@ -1305,10 +1402,13 @@
     <div class="page_content">
         <!-- Main game container - completely separate -->
         <div class="game_container">
-            <!-- Loading screen -->
+            <!-- Enhanced loading screen with progress bar -->
             <div class="loading-screen" id="loadingScreen">
                 <div class="loading-spinner"></div>
                 <div class="loading-text" id="loadingText">Loading Game...</div>
+                <div class="loading-progress" id="loadingProgress">
+                    <div class="loading-progress-bar" id="loadingProgressBar"></div>
+                </div>
                 <button class="show-game-btn" id="showGameBtn">Show Game Now</button>
             </div>
             
@@ -1463,83 +1563,175 @@
             }
         }
         
-        // Load game function
-        function loadGame() {
-            logDebug("🎮 Loading game...");
+        // Helper function to estimate game size based on URL patterns
+        function getEstimatedGameSize(url) {
+            // Default to medium if we can't determine
+            if (!url) return 'medium';
             
-            const urlParams = new URLSearchParams(window.location.search);
-            const gameUrl = urlParams.get('game');
+            // Check URL for keywords that might indicate size
+            const urlLower = url.toLowerCase();
             
-            if (!gameUrl) {
-                logDebug("❌ No game URL found - redirecting to home");
-                window.location.href = '/';
-                return;
+            // URLs containing indicators of large games
+            if (urlLower.includes('minecraft') || 
+                urlLower.includes('3d') || 
+                urlLower.includes('unity') ||
+                urlLower.includes('webgl') ||
+                urlLower.includes('large')) {
+                return 'large';
             }
             
-            // Store the original game URL
-            originalGameUrl = gameUrl;
-            logDebug(`📝 Original game URL stored: ${originalGameUrl}`);
-            
-            // Record load start time
-            loadStartTime = Date.now();
-            logDebug(`⏱️ Load start time: ${new Date(loadStartTime).toLocaleTimeString()}`);
-            logDebug(`🔗 Game URL: ${gameUrl}`);
-            
-            // Try to find game info and record play
-            if (window.GameDB && window.GlobalGameStats) {
-                const gameInfo = GameDB.getGameByUrl(gameUrl);
-                if (gameInfo) {
-                    // Record play and update popularity
-                    GlobalGameStats.recordUserPlay(gameInfo.id);
-                    GlobalGameStats.updatePopularityFactor(gameInfo.id, 0.5);
-                    logDebug(`ℹ️ Loaded game: ${gameInfo.title}`);
-                } else {
-                    logDebug("⚠️ Game not found in GameDB");
-                }
-            } else {
-                logDebug("⚠️ GameDB or GlobalGameStats not available");
+            // URLs containing indicators of small games
+            if (urlLower.includes('simple') || 
+                urlLower.includes('lite') || 
+                urlLower.includes('basic') ||
+                urlLower.includes('tiny')) {
+                return 'small';
             }
             
-            // Set iframe src to load game
-            iframe.src = gameUrl;
-            
-            // Show "Show Game" button after 5 seconds
-            setTimeout(function() {
-                showGameBtn.style.display = 'block';
-            }, 5000);
-            
-            // Start checking for visible content
-            startVisibilityCheck();
+            // Default to medium for everything else
+            return 'medium';
         }
         
-        // Start visibility check
-        function startVisibilityCheck() {
-            // Clear any existing interval
-            clearInterval(checkVisibilityInterval);
+        // Add preloading function to improve game loading speed
+        function preloadGame(gameUrl) {
+            if (!gameUrl) return;
             
-            logDebug("👁️ Starting visibility checks");
+            logDebug(`🔄 Preloading game: ${gameUrl}`);
             
-            // Only start checking after an initial delay
-            setTimeout(function() {
-                loadingText.textContent = "Waiting for game to appear...";
-                logDebug("⏱️ Initial delay complete, actively checking visibility");
+            // Create a hidden iframe to preload the game
+            const preloadFrame = document.createElement('iframe');
+            preloadFrame.style.display = 'none';
+            preloadFrame.src = gameUrl;
+            
+            // Add to document body
+            document.body.appendChild(preloadFrame);
+            
+            // Remove after a short delay to avoid resource contention
+            setTimeout(() => {
+                if (document.body.contains(preloadFrame)) {
+                    document.body.removeChild(preloadFrame);
+                }
+            }, 5000);
+        }
+        
+        // Add resource prefetching for common game assets
+        function prefetchCommonResources() {
+            const commonResources = [
+                // Common JavaScript libraries
+                'https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.3.0/pixi.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
                 
-                // Set 500ms interval to check for content
-                checkVisibilityInterval = setInterval(function() {
-                    checkIframeVisibility();
-                }, 500);
+                // Common game frameworks
+                'https://cdnjs.cloudflare.com/ajax/libs/phaser/3.55.2/phaser.min.js',
                 
-                // Set max wait time - after 15 seconds, show game regardless
-                const maxWaitTime = 15000 + (retryCount * 5000); // Longer for retries
+                // Common fonts
+                'https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap',
+                'https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap'
+            ];
+            
+            // Create prefetch links
+            commonResources.forEach(resource => {
+                const link = document.createElement('link');
+                link.rel = 'prefetch';
+                link.href = resource;
+                document.head.appendChild(link);
+            });
+            
+            logDebug(`🔄 Prefetched ${commonResources.length} common resources`);
+        }
+        
+        // Add a connection check to adapt loading strategies
+        function checkConnectionSpeed() {
+            const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            let connectionType = 'unknown';
+            let isLowBandwidth = false;
+            
+            if (connection) {
+                connectionType = connection.effectiveType || 'unknown';
+                isLowBandwidth = connectionType === 'slow-2g' || connectionType === '2g' || connectionType === '3g';
                 
-                setTimeout(function() {
-                    if (!gameLoaded) {
-                        logDebug(`⏱️ Max wait time (${maxWaitTime}ms) reached - forcing game display`);
-                        hideLoadingScreen();
-                        loadingText.textContent = "Game may still be loading...";
-                    }
-                }, maxWaitTime);
-            }, 1500);
+                // Listen for connection changes
+                connection.addEventListener('change', () => {
+                    const newType = connection.effectiveType || 'unknown';
+                    logDebug(`🌐 Connection changed from ${connectionType} to ${newType}`);
+                    connectionType = newType;
+                    isLowBandwidth = connectionType === 'slow-2g' || connectionType === '2g' || connectionType === '3g';
+                });
+            }
+            
+            logDebug(`🌐 Connection: ${connectionType}, Low Bandwidth: ${isLowBandwidth}`);
+            return { connectionType, isLowBandwidth };
+        }
+        
+        // Update the loading progress bar with simulated or real progress
+        function updateLoadingProgress() {
+            const progressBar = document.getElementById('loadingProgressBar');
+            if (!progressBar) return;
+            
+            // Calculate elapsed time as percentage of expected load time
+            const timeElapsed = Date.now() - loadStartTime;
+            
+            // Estimate game size for expected load time calculation
+            const gameSize = getEstimatedGameSize(iframe.src);
+            
+            // Base expected load times (in ms) by size
+            let expectedLoadTime = 10000; // Medium: 10 seconds
+            if (gameSize === 'small') expectedLoadTime = 5000;
+            if (gameSize === 'large') expectedLoadTime = 20000;
+            
+            // Adjust for connection and device
+            const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            const isSlowConnection = connection && 
+                                   (connection.effectiveType === 'slow-2g' || 
+                                    connection.effectiveType === '2g' ||
+                                    connection.effectiveType === '3g');
+                                    
+            const isSlowDevice = window.navigator.hardwareConcurrency < 4 || 
+                                 /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            
+            if (isSlowConnection) expectedLoadTime *= 2;
+            if (isSlowDevice) expectedLoadTime *= 1.5;
+            
+            // Calculate progress percentage
+            let progressPercent = Math.min(100, (timeElapsed / expectedLoadTime) * 100);
+            
+            // Make progress non-linear (faster at start, slower near end)
+            // This creates a more natural loading feel
+            progressPercent = Math.pow(progressPercent / 100, 0.7) * 100;
+            
+            // Add randomness for more natural feel
+            const randomFactor = Math.random() * 5 - 2.5; // -2.5 to +2.5
+            progressPercent = Math.max(0, Math.min(99, progressPercent + randomFactor));
+            
+            // Set progress bar width
+            progressBar.style.width = `${progressPercent}%`;
+            
+            // Never reach 100% until game is actually loaded
+            if (progressPercent > 85 && !gameLoaded) {
+                progressBar.style.width = '85%';
+            }
+            
+            // If game loaded, set to 100%
+            if (gameLoaded) {
+                progressBar.style.width = '100%';
+            }
+        }
+        
+        // Start progress bar updates when loading begins
+        function startProgressUpdates() {
+            // Update every 100ms
+            const progressInterval = setInterval(() => {
+                updateLoadingProgress();
+                
+                // Stop updating if game loaded
+                if (gameLoaded) {
+                    clearInterval(progressInterval);
+                    // Final update to 100%
+                    const progressBar = document.getElementById('loadingProgressBar');
+                    if (progressBar) progressBar.style.width = '100%';
+                }
+            }, 100);
         }
         
         // Improved iframe visibility check
@@ -1558,70 +1750,235 @@
                     if (iframe.contentWindow && iframe.contentWindow.document.readyState === 'complete') {
                         logDebug(`✅ Document complete after ${Math.floor(timeElapsed/1000)}s`);
                         
-                        // Try content check
+                        // Enhanced content detection - wait for actual game content
                         try {
                             const iframeDoc = iframe.contentWindow.document;
-                            // Check if iframe has meaningful content (not just empty/black)
-                            const hasContent = iframeDoc.body && 
-                                             (iframeDoc.body.innerHTML.length > 100 || 
-                                              iframeDoc.body.querySelectorAll('canvas, img, svg, video, iframe').length > 0);
-                                              
+                            const hasContent = iframeDoc.body && (
+                                // Check for interactive elements
+                                iframeDoc.body.querySelectorAll('canvas, video, iframe, button, a[href], input').length > 0 ||
+                                // Or check for substantial content
+                                (iframeDoc.body.innerHTML.length > 500 && 
+                                 iframeDoc.body.querySelectorAll('div, img, svg').length > 5)
+                            );
+                            
                             if (hasContent) {
                                 logDebug("✅ Game content detected");
-                                setTimeout(hideLoadingScreen, 500);
-                                return;
+                                
+                                // Additional check: wait for resource loading to complete
+                                if (iframeDoc.readyState === 'complete') {
+                                    const resources = Array.from(iframeDoc.querySelectorAll('img, script, link[rel="stylesheet"]'));
+                                    const loadedResources = resources.filter(resource => {
+                                        if (resource.tagName === 'IMG') return resource.complete;
+                                        if (resource.tagName === 'SCRIPT') return resource.readyState === 'complete' || resource.readyState === undefined;
+                                        if (resource.tagName === 'LINK') return resource.sheet;
+                                        return true;
+                                    });
+                                    
+                                    const resourcesLoaded = resources.length === 0 || 
+                                                           (loadedResources.length / resources.length) > 0.85; // 85% resources loaded
+                                    
+                                    if (resourcesLoaded) {
+                                        logDebug("✅ Most resources loaded");
+                                        setTimeout(hideLoadingScreen, 500);
+                                        return;
+                                    } else {
+                                        logDebug(`⚠️ Waiting for resources: ${loadedResources.length}/${resources.length}`);
+                                    }
+                                }
                             } else {
-                                logDebug("⚠️ Document complete but empty/minimal content");
+                                logDebug("⚠️ Document complete but no interactive content yet");
                             }
                         } catch (contentError) {
                             // CORS error on content check - fallback to other methods
-                            logDebug("⚠️ Could not check content (CORS)");
+                            logDebug("⚠️ Could not check content (CORS): " + contentError.message);
                         }
                         
-                        // Still show after a delay even if content check failed
-                        setTimeout(hideLoadingScreen, 2000);
-                        return;
+                        // Progressive loading determination
+                        // For CORS-protected content that we can't directly inspect
+                        const minWaitAfterComplete = Math.max(2000, 6000 - timeElapsed);
+                        if (timeElapsed > 8000) {
+                            logDebug(`⌛ Document complete and sufficient time elapsed (${Math.floor(timeElapsed/1000)}s)`);
+                            setTimeout(hideLoadingScreen, minWaitAfterComplete);
+                            return;
+                        }
                     }
                 } catch (e) {
                     // CORS error expected for security - don't log
                 }
                 
                 // Method 2: Enhanced time-based detection with progressive timeouts
-                const loadTime = iframe.dataset.loadTime ? parseInt(iframe.dataset.loadTime) : 0;
-                if (!loadTime) return;
-                
-                const timeElapsedSinceLoad = Date.now() - loadTime;
-                
-                // Log every 2 seconds for debugging
-                if (timeElapsedSinceLoad % 2000 < 500) { // Log approximately every 2 seconds
-                    logDebug(`⏱️ Time elapsed since load event: ${Math.floor(timeElapsedSinceLoad/1000)}s`);
+                // Use mutation observer to detect DOM changes in the iframe (if possible)
+                try {
+                    if (!iframe.observer && iframe.contentWindow) {
+                        // Try to set up mutation observer for direct detection of content changes
+                        iframe.observer = new MutationObserver(() => {
+                            iframe.lastMutation = Date.now();
+                        });
+                        
+                        try {
+                            iframe.observer.observe(iframe.contentWindow.document.body, {
+                                childList: true,
+                                subtree: true
+                            });
+                            logDebug("✅ MutationObserver attached to iframe");
+                        } catch (corsError) {
+                            // Expected CORS error
+                        }
+                    }
+                    
+                    // Check if we've detected mutations and they have recently stopped
+                    // (indicating the game has finished rendering)
+                    if (iframe.lastMutation) {
+                        const timeSinceLastMutation = Date.now() - iframe.lastMutation;
+                        if (timeSinceLastMutation > 2000 && timeElapsed > 5000) {
+                            logDebug(`✅ Content stabilized (no mutations for ${Math.floor(timeSinceLastMutation/1000)}s)`);
+                            hideLoadingScreen();
+                            return;
+                        }
+                    }
+                } catch (mutationError) {
+                    // Silent fail for CORS issues
                 }
                 
-                // Progressive timeouts based on device performance
+                // Method 3: Improved adaptive loading detection
+                // More intelligent time-based approach based on device, connection, and game size
+                
+                // Get estimated game size from URL if possible
+                const gameSize = getEstimatedGameSize(iframe.src);
+                
+                // Detect connection speed
+                const connectionSpeed = navigator.connection ? 
+                    navigator.connection.effectiveType : '4g'; // Default to 4g if not available
+                
+                // Calculate adaptive wait time based on all factors
                 const isSlowDevice = window.navigator.hardwareConcurrency < 4 || 
-                                     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                                    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
                 
-                // Adjust min wait time based on device and retry count
-                const minWaitTime = (isSlowDevice ? 10000 : 8000) + (retryCount * 2000);
+                // Base wait time affected by device speed, connection, and game size
+                let baseWaitTime = 8000; // Default 8 seconds
                 
-                if (timeElapsedSinceLoad > minWaitTime) {
-                    logDebug(`⌛ Time-based detection triggered after ${Math.floor(timeElapsedSinceLoad/1000)}s`);
+                // Adjust for device speed
+                if (isSlowDevice) baseWaitTime += 5000;
+                
+                // Adjust for connection type
+                if (connectionSpeed === 'slow-2g' || connectionSpeed === '2g') baseWaitTime += 8000;
+                else if (connectionSpeed === '3g') baseWaitTime += 3000;
+                
+                // Adjust for estimated game size
+                if (gameSize === 'large') baseWaitTime += 5000;
+                else if (gameSize === 'medium') baseWaitTime += 2000;
+                
+                // Adjust for retry count
+                baseWaitTime += (retryCount * 2000);
+                
+                // Progressive timeout: starts with longer wait, shortens over time
+                // as user frustration with waiting increases
+                const adjustedTimeout = Math.max(
+                    5000, // Minimum 5 seconds
+                    baseWaitTime - (timeElapsed / 1000) * 500 // Reduce wait time as total time increases
+                );
+                
+                // After enough time has passed, show the game
+                if (timeElapsed > adjustedTimeout) {
+                    logDebug(`⌛ Adaptive time-based detection triggered after ${Math.floor(timeElapsed/1000)}s`);
+                    logDebug(`   (baseWaitTime: ${Math.floor(baseWaitTime/1000)}s, adjustedTimeout: ${Math.floor(adjustedTimeout/1000)}s)`);
                     hideLoadingScreen();
+                    return;
                 }
+                
+                // Update loading text with more meaningful information
+                if (timeElapsed > 10000 && !gameLoaded) {
+                    loadingText.textContent = `Still loading (${Math.floor(timeElapsed/1000)}s)...`;
+                }
+                
             } catch (e) {
                 logDebug(`❌ Error checking visibility: ${e.message}`);
             }
         }
         
-        // Hide loading screen with improved retry button
+        // Improved start visibility check with adaptive intervals
+        function startVisibilityCheck() {
+            // Clear any existing interval
+            clearInterval(checkVisibilityInterval);
+            
+            logDebug("👁️ Starting visibility checks");
+            
+            // Only start checking after an initial delay
+            setTimeout(function() {
+                loadingText.textContent = "Waiting for game to appear...";
+                logDebug("⏱️ Initial delay complete, actively checking visibility");
+                
+                // Start with fast checks, then gradually reduce frequency
+                let checkInterval = 300; // Start with 300ms checks
+                let checksPerformed = 0;
+                
+                // Set adaptive interval that changes frequency over time
+                checkVisibilityInterval = setInterval(function() {
+                    checksPerformed++;
+                    checkIframeVisibility();
+                    
+                    // After 10 checks, slow down to 500ms
+                    if (checksPerformed === 10 && checkInterval === 300) {
+                        clearInterval(checkVisibilityInterval);
+                        checkInterval = 500;
+                        checkVisibilityInterval = setInterval(checkIframeVisibility, checkInterval);
+                        logDebug("⏱️ Reduced check frequency to 500ms");
+                    }
+                    // After 20 more checks, slow down to 1000ms
+                    else if (checksPerformed === 30 && checkInterval === 500) {
+                        clearInterval(checkVisibilityInterval);
+                        checkInterval = 1000;
+                        checkVisibilityInterval = setInterval(checkIframeVisibility, checkInterval);
+                        logDebug("⏱️ Reduced check frequency to 1000ms");
+                    }
+                }, checkInterval);
+                
+                // Set max wait time - after adaptive time, show game regardless
+                // Base value depends on device and connection
+                const isSlowDevice = window.navigator.hardwareConcurrency < 4 || 
+                                    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                
+                const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                const isSlowConnection = connection && 
+                                        (connection.effectiveType === 'slow-2g' || 
+                                         connection.effectiveType === '2g' ||
+                                         connection.effectiveType === '3g');
+                
+                const maxWaitTime = 15000 + 
+                                  (retryCount * 5000) + 
+                                  (isSlowDevice ? 10000 : 0) + 
+                                  (isSlowConnection ? 10000 : 0);
+                
+                setTimeout(function() {
+                    if (!gameLoaded) {
+                        logDebug(`⏱️ Max wait time (${maxWaitTime}ms) reached - forcing game display`);
+                        hideLoadingScreen();
+                        loadingText.textContent = "Game may still be loading...";
+                    }
+                }, maxWaitTime);
+            }, 1500);
+        }
+        
+        // Improved function to hide loading screen
         function hideLoadingScreen() {
             if (gameLoaded) return;
             
             logDebug("🎉 Hiding loading screen");
             
             gameLoaded = true;
-            loadingScreen.style.display = 'none';
             clearInterval(checkVisibilityInterval);
+            
+            // Fade out loading screen for smoother transition
+            loadingScreen.style.transition = 'opacity 0.5s ease';
+            loadingScreen.style.opacity = '0';
+            
+            // Actually hide the element after the fade completes
+            setTimeout(() => {
+                loadingScreen.style.display = 'none';
+                // Reset opacity for next time
+                loadingScreen.style.opacity = '1';
+                loadingScreen.style.transition = '';
+            }, 500);
             
             // Focus the iframe after the game appears
             setTimeout(focusGame, 500);
@@ -1663,6 +2020,7 @@
                     setTimeout(() => {
                         iframe.src = originalGameUrl;
                         startVisibilityCheck();
+                        startProgressUpdates();
                     }, 500);
                 };
                 
@@ -1694,6 +2052,93 @@
             setTimeout(function() {
                 focusButton.style.display = 'none';
             }, 5000);
+        }
+        
+        // Optimize load game function to use all improvements
+        function loadGame() {
+            logDebug("🎮 Loading game...");
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const gameUrl = urlParams.get('game');
+            
+            if (!gameUrl) {
+                logDebug("❌ No game URL found - redirecting to home");
+                window.location.href = '/';
+                return;
+            }
+            
+            // Store the original game URL
+            originalGameUrl = gameUrl;
+            logDebug(`📝 Original game URL stored: ${originalGameUrl}`);
+            
+            // Check connection speed and adapt loading strategy
+            const { connectionType, isLowBandwidth } = checkConnectionSpeed();
+            
+            // Estimate game size
+            const gameSize = getEstimatedGameSize(gameUrl);
+            logDebug(`📊 Estimated game size: ${gameSize}`);
+            
+            // Update loading text based on conditions
+            if (isLowBandwidth && gameSize === 'large') {
+                loadingText.textContent = "Loading large game on slow connection...";
+            } else if (isLowBandwidth) {
+                loadingText.textContent = "Loading on slow connection...";
+            } else if (gameSize === 'large') {
+                loadingText.textContent = "Loading large game...";
+            }
+            
+            // Record load start time
+            loadStartTime = Date.now();
+            logDebug(`⏱️ Load start time: ${new Date(loadStartTime).toLocaleTimeString()}`);
+            logDebug(`🔗 Game URL: ${gameUrl}`);
+            
+            // Try to find game info and record play
+            if (window.GameDB && window.GlobalGameStats) {
+                const gameInfo = GameDB.getGameByUrl(gameUrl);
+                if (gameInfo) {
+                    // Record play and update popularity
+                    GlobalGameStats.recordUserPlay(gameInfo.id);
+                    GlobalGameStats.updatePopularityFactor(gameInfo.id, 0.5);
+                    logDebug(`ℹ️ Loaded game: ${gameInfo.title}`);
+                } else {
+                    logDebug("⚠️ Game not found in GameDB");
+                }
+            } else {
+                logDebug("⚠️ GameDB or GlobalGameStats not available");
+            }
+            
+            // Prefetch common resources to speed up loading
+            prefetchCommonResources();
+            
+            // Set iframe src to load game
+            iframe.src = gameUrl;
+            
+            // Start progress updates
+            startProgressUpdates();
+            
+            // Show "Show Game" button after a dynamic time based on connection
+            const showButtonDelay = isLowBandwidth ? 3000 : 5000;
+            setTimeout(function() {
+                showGameBtn.style.display = 'block';
+            }, showButtonDelay);
+            
+            // Start checking for visible content
+            startVisibilityCheck();
+            
+            // Intelligent preloading of game suggestions while main game loads
+            setTimeout(() => {
+                if (window.GameDB) {
+                    const suggestions = GameDB.getRandomGames(gameUrl, 3);
+                    if (suggestions && suggestions.length > 0) {
+                        // Preload the first suggestion after a delay
+                        setTimeout(() => {
+                            if (!gameLoaded && suggestions[0] && suggestions[0].link) {
+                                preloadGame(suggestions[0].link);
+                            }
+                        }, 8000);
+                    }
+                }
+            }, 2000);
         }
         
         /**
@@ -1794,7 +2239,7 @@
                 retryBtn.style.display = 'none';
             }
             
-            // Set iframe src to new game URL
+            // Reset iframe
             iframe.src = 'about:blank';
             
             // Use setTimeout to ensure the loading screen appears before navigating
@@ -1809,6 +2254,9 @@
                 urlParams.set('game', game.link);
                 const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
                 window.history.pushState({ path: newUrl }, '', newUrl);
+                
+                // Start progress updates
+                startProgressUpdates();
                 
                 // Refresh game suggestions
                 setTimeout(loadGameSuggestions, 500);
@@ -1847,7 +2295,7 @@
             // Initialize UI first for better UX
             initializeEventListeners();
             
-            // Record load start time
+// Record load start time
             loadStartTime = Date.now();
             
             try {
@@ -1876,6 +2324,9 @@
                 // Load game suggestions
                 loadGameSuggestions();
                 
+                // Start progress updates for loading bar
+                startProgressUpdates();
+                
                 // Load the main game
                 loadGame();
             } catch (error) {
@@ -1890,6 +2341,7 @@
                 
                 // Still try to load suggestions and the game
                 loadGameSuggestions();
+                startProgressUpdates();
                 loadGame();
             }
         });
@@ -1903,7 +2355,7 @@
             // Handle iframe load event
             iframe.addEventListener('load', function() {
                 // Store load time
-                iframe.dataset.loadTime = new Date().getTime();
+                iframe.dataset.loadTime = Date.now();
                 logDebug("✅ Iframe load event fired");
                 
                 // Extra wait after load event to give the game more time to render
