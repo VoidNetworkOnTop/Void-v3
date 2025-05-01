@@ -11,8 +11,8 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 const sw = new UVServiceWorker();
 
 // Configuration
-const FETCH_TIMEOUT = 40000; // 40 seconds timeout for slow connections
-const MIN_HTML_SIZE = 500; // Minimum size for HTML content to be considered valid
+const FETCH_TIMEOUT = 50000; // Increased from 40 to 50 seconds timeout for slow connections
+const MIN_HTML_SIZE = 800; // Increased from 500 to 800 bytes for more reliable content detection
 
 // Log initialization
 console.log('[UV Service Worker] Initializing with scope: /uv/');
@@ -71,6 +71,33 @@ self.addEventListener('fetch', event => {
                 headers: { 'Content-Type': 'text/html' }
               }
             );
+          }
+          
+          // Add a script to notify the parent page when the game is ready
+          if (text.includes('<body') && !text.includes('GAME_READY')) {
+            const modifiedText = text.replace(
+              '<body',
+              `<body><script>
+                try {
+                  // Notify parent when game content is fully loaded
+                  window.addEventListener('load', function() {
+                    // Wait a bit for resources to actually render
+                    setTimeout(function() {
+                      if (window.parent && window.parent !== window) {
+                        window.parent.postMessage({ type: 'GAME_READY' }, '*');
+                      }
+                    }, 1000);
+                  });
+                } catch(e) {
+                  // Silently fail
+                }
+              </script>`
+            );
+            
+            return new Response(modifiedText, {
+              status: 200,
+              headers: response.headers
+            });
           }
         }
         
