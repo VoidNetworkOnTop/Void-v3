@@ -809,7 +809,7 @@
                    Each flight costs as much as you bet to play.<br>
                    Hit money emojis (+500 coins), avoid bombs (-500 coins) and fire (slows you down).<br>
                    Use the boost button (50 coins) to push your plane upward and forward!<br>
-                   Don't hit the ground (-200 coins)!</p>
+                   Don't hit the ground (-500 coins)! Game only ends if you hit the ground.</p>
                    
                    <div class="bet-amount-selector">
                        <div class="bet-amount-display" id="bet-amount-display">Bet Amount: 100 coins</div>
@@ -1292,7 +1292,7 @@
             defaultBet: 100,         // Default bet amount
             bombPenalty: 500,        // Coins lost when hitting a bomb
             moneyReward: 500,        // Coins gained when hitting money
-            groundPenalty: 200       // Coins lost when hitting the ground
+            groundPenalty: 500       // Coins lost when hitting the ground (increased from 200)
         };
         
         // Return an immutable object
@@ -1756,6 +1756,102 @@
         obstacles.sort((a, b) => a.x - b.x);
     }
     
+    // Function to check if we need more obstacles and generate them
+    function checkAndGenerateMoreObstacles() {
+        if (!gameRunning || !paperAirplane.isFlying) return;
+        
+        // Find the furthest obstacle position
+        let furthestX = 0;
+        for (let i = 0; i < obstacles.length; i++) {
+            if (obstacles[i].x > furthestX) {
+                furthestX = obstacles[i].x;
+            }
+        }
+        
+        // If the plane is getting close to the furthest obstacle, generate more
+        const bufferDistance = 2000; // Generate more when within 2000px of the furthest obstacle
+        if (paperAirplane.x + bufferDistance > furthestX) {
+            generateMoreObstacles(furthestX);
+        }
+    }
+    
+    // Function to generate more obstacles beyond the current furthest one
+    function generateMoreObstacles(startX) {
+        const luckFactor = calculateLuckFactor();
+        const newObstacleCount = 15 + Math.floor(luckFactor * 10);
+        const maxDistance = 3000;
+        
+        // Calculate obstacle type distribution based on bet amount
+        let moneyChance, bombChance, fireChance;
+        
+        if (betAmount < 500) {
+            // Low bet - more fire, fewer money
+            moneyChance = 0.15 + (luckFactor * 0.15); // 15% to 45% chance for money
+            bombChance = 0.30 + (luckFactor * 0.05);  // 30% to 40% chance for bombs
+            fireChance = 0.55 - (luckFactor * 0.20);  // 55% to 15% chance for fire
+        } else {
+            // High bet - more money, more bombs, less fire
+            moneyChance = 0.25 + (luckFactor * 0.20); // 25% to 65% chance for money
+            bombChance = 0.35 + (luckFactor * 0.05);  // 35% to 45% chance for bombs
+            fireChance = 0.40 - (luckFactor * 0.25);  // 40% to -10% chance for fire
+        }
+        
+        for (let i = 0; i < newObstacleCount; i++) {
+            const rng = Math.random();
+            let obstacleType;
+            
+            if (rng < moneyChance) {
+                obstacleType = 'money';
+            } else if (rng < moneyChance + bombChance) {
+                obstacleType = 'bomb';
+            } else {
+                obstacleType = 'fire';
+            }
+            
+            const x = startX + 100 + Math.random() * maxDistance; // Start beyond the furthest obstacle
+            const y = 100 + Math.random() * (canvasHeight - 200); // Keep within canvas height
+            
+            obstacles.push({
+                type: obstacleType,
+                x: x,
+                y: y,
+                width: 30,
+                height: 30,
+                hit: false // Track if this obstacle has been hit already
+            });
+        }
+        
+        // Add a pattern of money objects occasionally
+        if (Math.random() < 0.3) { // 30% chance to add a pattern
+            const patternX = startX + 500 + Math.random() * 1000;
+            const patternY = 200 + Math.random() * (canvasHeight - 400);
+            
+            // Create a pattern of money obstacles (vertical line)
+            for (let j = 0; j < 5; j++) {
+                obstacles.push({
+                    type: 'money',
+                    x: patternX + Math.random() * 50,
+                    y: patternY + j * 60,
+                    width: 30,
+                    height: 30,
+                    hit: false
+                });
+            }
+        }
+    }
+    
+    // Function to clean up obstacles that are far behind the player
+    function cleanupOldObstacles() {
+        if (obstacles.length > 500) { // Prevent memory issues by limiting total obstacles
+            // Keep only obstacles that are not too far behind or still ahead
+            const cleanDistance = 2000; // Distance behind player to remove obstacles
+            obstacles = obstacles.filter(obstacle => 
+                obstacle.x > paperAirplane.x - cleanDistance || 
+                !obstacle.hit // Keep unhit obstacles regardless of position
+            );
+        }
+    }
+    
     // Handle collisions with obstacles
     function handleCollisions() {
         const planeLeft = paperAirplane.x - camera.x;
@@ -1763,7 +1859,7 @@
         const planeTop = paperAirplane.y - camera.y;
         const planeBottom = planeTop + paperAirplane.height;
         
-        // Check ground collision
+        // Check ground collision - ONLY way the game ends now
         if (planeBottom >= canvasHeight) {
             // Hit the ground
             if (paperAirplane.isFlying) {
@@ -1850,16 +1946,6 @@
         // Update distance traveled
         distanceTraveled = Math.max(distanceTraveled, paperAirplane.x);
         
-        // Check if horizontal speed is too low (end game)
-        if (paperAirplane.velocity.x < 0.5 && paperAirplane.isFlying) {
-            endGame("stopped");
-        }
-        
-        // Check if airplane went too far down
-        if (paperAirplane.y > canvasHeight + 100) {
-            endGame("crashed");
-        }
-        
         // Check if airplane is offscreen (above viewport)
         const isOffscreen = checkOffscreenPlane();
         
@@ -1876,6 +1962,12 @@
         
         // Check for collisions
         handleCollisions();
+        
+        // Check if we need more obstacles
+        checkAndGenerateMoreObstacles();
+        
+        // Clean up old obstacles (those far behind the player)
+        cleanupOldObstacles();
     }
 
     // End the game
@@ -2133,6 +2225,11 @@
         // Increase boost effectiveness for next time
         boostSpeed += 5;
         boostForward += 3;
+        
+        // Add a minimum speed if the plane is moving too slowly
+        if (paperAirplane.velocity.x < 2) {
+            paperAirplane.velocity.x = 3; // Ensure the plane keeps moving forward
+        }
         
         // Update button text
         updateBoostButtonState();
