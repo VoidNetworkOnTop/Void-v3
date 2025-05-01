@@ -796,8 +796,8 @@
                <div class="offscreen-arrow" id="offscreen-arrow"></div>
                
                <div class="game-actions">
-                   <button id="fly-btn" class="fly-btn" disabled>Fly Airplane (50 coins)</button>
-                   <button id="boost-btn" class="boost-btn" disabled>Boost! (50 coins)</button>
+                   <button id="fly-btn" class="fly-btn" disabled>Fly Airplane</button>
+                   <button id="boost-btn" class="boost-btn" disabled>Boost!</button>
                </div>
            </div>
 
@@ -806,9 +806,9 @@
                <div class="overlay-content">
                    <h2 class="overlay-title">Dot Spin</h2>
                    <p class="overlay-message">Navigate your paper airplane through obstacles!<br>
-                   Each flight costs 50 coins to play.<br>
+                   Each flight costs as much as you bet to play.<br>
                    Hit money emojis (+500 coins), avoid bombs (-500 coins) and fire (slows you down).<br>
-                   Use the boost button (50 coins) to push your plane upward!<br>
+                   Use the boost button (50 coins) to push your plane upward and forward!<br>
                    Don't hit the ground (-200 coins)!</p>
                    
                    <div class="bet-amount-selector">
@@ -1286,26 +1286,24 @@
     // Secure game config with private variables
     const GAME_CONFIG = (function createGameConfig() {
         const _internal = {
-            gameCost: 50,           // Cost to start the game
-            gameId: 'dotspin_game', // ID for Firebase transactions
-            maxWinnings: 1000000,   // Maximum winnings per game
-            defaultBet: 100,        // Default bet amount
-            bombPenalty: 500,       // Coins lost when hitting a bomb
-            moneyReward: 500,       // Coins gained when hitting money
-            groundPenalty: 200,     // Coins lost when hitting the ground
-            boostCost: 50           // Cost to use boost
+            boostCost: 50,           // Cost to use boost
+            gameId: 'dotspin_game',  // ID for Firebase transactions
+            maxWinnings: 1000000,    // Maximum winnings per game
+            defaultBet: 100,         // Default bet amount
+            bombPenalty: 500,        // Coins lost when hitting a bomb
+            moneyReward: 500,        // Coins gained when hitting money
+            groundPenalty: 200       // Coins lost when hitting the ground
         };
         
         // Return an immutable object
         return Object.freeze({
-            get gameCost() { return _internal.gameCost; },
+            get boostCost() { return _internal.boostCost; },
             get gameId() { return _internal.gameId; },
             get maxWinnings() { return _internal.maxWinnings; },
             get defaultBet() { return _internal.defaultBet; },
             get bombPenalty() { return _internal.bombPenalty; },
             get moneyReward() { return _internal.moneyReward; },
-            get groundPenalty() { return _internal.groundPenalty; },
-            get boostCost() { return _internal.boostCost; }
+            get groundPenalty() { return _internal.groundPenalty; }
         });
     })();
 
@@ -1322,6 +1320,7 @@
     let maxBet = 1000; // Will be updated based on actual balance
     let gameIntegrityToken = crypto.randomUUID(); // Unique token for this game session
     let boostSpeed = 10; // Initial boost speed value
+    let boostForward = 5; // Initial forward boost value
     let offscreenIndicator = false; // Track if plane is offscreen
     
     // Game physics variables
@@ -1447,23 +1446,23 @@
             flyBtn.textContent = "Flying...";
         } else {
             flyBtn.classList.remove('insufficient');
-            flyBtn.textContent = `Fly Airplane (${GAME_CONFIG.gameCost} coins)`;
+            flyBtn.textContent = `Fly Airplane (${betAmount} coins)`;
             flyBtn.disabled = false;
         }
     }
     
-// Update the boost button - FIX: Enable the button during gameplay
-function updateBoostButtonState() {
-    if (!boostBtn) return;
-    
-    if (!gameRunning) {
-        boostBtn.style.display = 'none'; // Hide when not playing
-    } else {
-        boostBtn.style.display = 'block'; // Show when playing
-        boostBtn.disabled = false; // FIXED: Enable the button during gameplay
-        boostBtn.textContent = `Boost! (${GAME_CONFIG.boostCost} coins) +${boostSpeed}`;
+    // Update the boost button during gameplay
+    function updateBoostButtonState() {
+        if (!boostBtn) return;
+        
+        if (!gameRunning) {
+            boostBtn.style.display = 'none'; // Hide when not playing
+        } else {
+            boostBtn.style.display = 'block'; // Show when playing
+            boostBtn.disabled = false; // Enable the button during gameplay
+            boostBtn.textContent = `Boost! (${GAME_CONFIG.boostCost} coins) +${boostSpeed}`;
+        }
     }
-}
 
     // Update max bet based on current balance
     function updateMaxBet(currentBalance) {
@@ -1541,6 +1540,7 @@ function updateBoostButtonState() {
         distanceTraveled = 0;
         obstacles = [];
         boostSpeed = 10; // Reset boost speed
+        boostForward = 5; // Reset boost forward
         offscreenIndicator = false;
         
         // Reset paper airplane position
@@ -1628,9 +1628,6 @@ function updateBoostButtonState() {
         // Reset camera
         camera = { x: 0, y: 0 };
         
-        // Deduct the game cost from balance
-        updateCoins(-GAME_CONFIG.gameCost);
-        
         // Hide start screen
         startScreen.classList.remove('visible');
 
@@ -1686,26 +1683,39 @@ function updateBoostButtonState() {
         updateBoostButtonState();
     }
     
-    // Generate obstacles based on luck factor
+    // Generate obstacles based on luck factor and bet amount
     function generateObstacles(luckFactor) {
         // Clear existing obstacles
         obstacles = [];
         
         // Number of obstacles to generate (more with higher luck)
-        const obstacleCount = 20 + Math.floor(luckFactor * 10);
+        const obstacleCount = 25 + Math.floor(luckFactor * 15); // Increased from 20 to 25 base obstacles
         
         // Generate obstacles over a distance
         const maxDistance = 5000;
         
+        // Calculate obstacle type distribution based on bet amount
+        let moneyChance, bombChance, fireChance;
+        
+        if (betAmount < 500) {
+            // Low bet - more fire, fewer money
+            moneyChance = 0.15 + (luckFactor * 0.15); // 15% to 45% chance for money
+            bombChance = 0.30 + (luckFactor * 0.05);  // 30% to 40% chance for bombs
+            fireChance = 0.55 - (luckFactor * 0.20);  // 55% to 15% chance for fire
+        } else {
+            // High bet - more money, more bombs, less fire
+            moneyChance = 0.25 + (luckFactor * 0.20); // 25% to 65% chance for money
+            bombChance = 0.35 + (luckFactor * 0.05);  // 35% to 45% chance for bombs
+            fireChance = 0.40 - (luckFactor * 0.25);  // 40% to -10% chance for fire
+        }
+        
         for (let i = 0; i < obstacleCount; i++) {
-            const type = Math.random();
-            
-            // Higher luck means more money, fewer bombs
+            const rng = Math.random();
             let obstacleType;
             
-            if (type < 0.2 + (luckFactor * 0.2)) { // 20% to 60% chance for money based on luck
+            if (rng < moneyChance) {
                 obstacleType = 'money';
-            } else if (type < 0.7 - (luckFactor * 0.1)) { // 50% to 30% chance for bomb based on luck
+            } else if (rng < moneyChance + bombChance) {
                 obstacleType = 'bomb';
             } else {
                 obstacleType = 'fire';
@@ -1722,6 +1732,24 @@ function updateBoostButtonState() {
                 height: 30,
                 hit: false // Track if this obstacle has been hit already
             });
+        }
+        
+        // Add money obstacles in special patterns
+        for (let i = 0; i < 3; i++) {
+            const patternX = 1000 + i * 1500;
+            const patternY = 200 + Math.random() * (canvasHeight - 400);
+            
+            // Create a pattern of money obstacles (vertical line)
+            for (let j = 0; j < 5; j++) {
+                obstacles.push({
+                    type: 'money',
+                    x: patternX + Math.random() * 50,
+                    y: patternY + j * 60,
+                    width: 30,
+                    height: 30,
+                    hit: false
+                });
+            }
         }
         
         // Sort obstacles by x position
@@ -2028,6 +2056,10 @@ function updateBoostButtonState() {
         const coinText = `Coins: ${totalCoinsCollected >= 0 ? '+' : ''}${totalCoinsCollected}`;
         ctx.fillStyle = totalCoinsCollected >= 0 ? '#4CAF50' : '#f44336';
         ctx.fillText(coinText, 10, 60);
+        
+        // Draw speed
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(`Speed: ${paperAirplane.velocity.x.toFixed(1)}`, 10, 90);
     }
 
     // Draw stars in background
@@ -2083,6 +2115,27 @@ function updateBoostButtonState() {
 
         // Continue game loop
         animationFrame = requestAnimationFrame(gameLoop);
+    }
+
+    // Apply boost to the airplane
+    function boostAirplane() {
+        if (!gameActive || !gameRunning || !paperAirplane.isFlying) {
+            return;
+        }
+        
+        // Deduct cost
+        updateCoins(-GAME_CONFIG.boostCost);
+        
+        // Apply boost - now with both vertical and horizontal boost
+        paperAirplane.velocity.y -= boostSpeed;
+        paperAirplane.velocity.x += boostForward; // Add horizontal boost
+        
+        // Increase boost effectiveness for next time
+        boostSpeed += 5;
+        boostForward += 3;
+        
+        // Update button text
+        updateBoostButtonState();
     }
 
     // Setup event listeners
@@ -2142,25 +2195,6 @@ function updateBoostButtonState() {
             });
         }
         
-        // Add boost function
-        function boostAirplane() {
-            if (!gameActive || !gameRunning || !paperAirplane.isFlying) {
-                return;
-            }
-            
-            // Deduct cost
-            updateCoins(-GAME_CONFIG.boostCost);
-            
-            // Apply boost
-            paperAirplane.velocity.y -= boostSpeed;
-            
-            // Increase boost speed for next time
-            boostSpeed += 10;
-            
-            // Update button text
-            updateBoostButtonState();
-        }
-        
         // Boost button
         if (boostBtn) {
             boostBtn.addEventListener('click', function() {
@@ -2175,6 +2209,7 @@ function updateBoostButtonState() {
             betSlider.addEventListener('input', function() {
                 betAmount = parseInt(betSlider.value);
                 updateBetAmountDisplay();
+                updateFlyButtonState(); // Update fly button text with new bet amount
             });
         }
 
@@ -2185,6 +2220,7 @@ function updateBoostButtonState() {
                     betAmount = Math.max(100, betAmount - 100);
                     if (betSlider) betSlider.value = betAmount;
                     updateBetAmountDisplay();
+                    updateFlyButtonState(); // Update fly button text with new bet amount
                 }
             });
         }
@@ -2195,6 +2231,7 @@ function updateBoostButtonState() {
                     betAmount = Math.min(maxBet, betAmount + 100);
                     if (betSlider) betSlider.value = betAmount;
                     updateBetAmountDisplay();
+                    updateFlyButtonState(); // Update fly button text with new bet amount
                 }
             });
         }
