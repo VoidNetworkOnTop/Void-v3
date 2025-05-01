@@ -651,6 +651,74 @@
            filter: drop-shadow(0 0 5px rgba(255, 152, 0, 0.7));
            animation: pulse 1s infinite alternate;
        }
+       
+       /* Altitude display styles */
+       .altitude-display {
+           position: absolute;
+           top: 20px;
+           right: 20px;
+           background: rgba(10, 20, 40, 0.7);
+           border-radius: 10px;
+           padding: 10px;
+           color: white;
+           z-index: 50;
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           border: 1px solid rgba(77, 124, 255, 0.4);
+           box-shadow: 0 0 10px rgba(77, 124, 255, 0.3);
+           transition: all 0.3s ease;
+       }
+       
+       .altitude-bar-container {
+           width: 40px;
+           height: 200px;
+           background: rgba(0, 0, 0, 0.5);
+           border-radius: 5px;
+           position: relative;
+           overflow: hidden;
+           margin-bottom: 5px;
+           border: 1px solid rgba(255, 255, 255, 0.2);
+       }
+       
+       .altitude-bar {
+           position: absolute;
+           bottom: 0;
+           width: 100%;
+           background: linear-gradient(to top, #f44336, #ffeb3b, #4caf50, #2196f3);
+           height: 0%;
+           transition: height 0.2s ease;
+       }
+       
+       .altitude-text {
+           font-size: 0.9rem;
+           text-align: center;
+           width: 100%;
+           font-weight: bold;
+           text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
+       }
+       
+       .altitude-text.high {
+           color: #2196f3;
+       }
+       
+       .altitude-text.medium {
+           color: #4caf50;
+       }
+       
+       .altitude-text.low {
+           color: #ffeb3b;
+       }
+       
+       .altitude-text.danger {
+           color: #f44336;
+           animation: blink 1s infinite;
+       }
+       
+       @keyframes blink {
+           0%, 100% { opacity: 1; }
+           50% { opacity: 0.5; }
+       }
 
        @keyframes pulse {
            0% { transform: translateX(-50%) scale(1); }
@@ -689,6 +757,66 @@
            0% { filter: drop-shadow(0 0 2px rgba(77, 124, 255, 0.7)); }
            50% { filter: drop-shadow(0 0 10px rgba(77, 124, 255, 0.9)); }
            100% { filter: drop-shadow(0 0 2px rgba(77, 124, 255, 0.7)); }
+       }
+       
+       /* Anti-cheat overlay */
+       #anti-cheat-overlay {
+           position: fixed;
+           top: 0;
+           left: 0;
+           width: 100%;
+           height: 100%;
+           background: rgba(255, 0, 0, 0.9);
+           z-index: 10000;
+           display: flex;
+           flex-direction: column;
+           align-items: center;
+           justify-content: center;
+           opacity: 0;
+           pointer-events: none;
+           transition: opacity 0.5s ease;
+           text-align: center;
+           padding: 20px;
+       }
+       
+       #anti-cheat-overlay.visible {
+           opacity: 1;
+           pointer-events: all;
+       }
+       
+       #anti-cheat-overlay h1 {
+           font-size: 3rem;
+           color: white;
+           margin-bottom: 20px;
+           text-transform: uppercase;
+           letter-spacing: 3px;
+           text-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+       }
+       
+       #anti-cheat-overlay p {
+           font-size: 1.5rem;
+           color: white;
+           max-width: 600px;
+           margin-bottom: 30px;
+           line-height: 1.6;
+       }
+       
+       #anti-cheat-overlay button {
+           padding: 15px 30px;
+           font-size: 1.2rem;
+           background: white;
+           color: red;
+           border: none;
+           border-radius: 30px;
+           cursor: pointer;
+           font-weight: bold;
+           box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+           transition: all 0.3s ease;
+       }
+       
+       #anti-cheat-overlay button:hover {
+           transform: scale(1.05);
+           box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
        }
 
        /* Media queries for better responsiveness */
@@ -795,6 +923,13 @@
                
                <div class="offscreen-arrow" id="offscreen-arrow"></div>
                
+               <div class="altitude-display" id="altitude-display">
+                   <div class="altitude-bar-container">
+                       <div class="altitude-bar" id="altitude-bar"></div>
+                   </div>
+                   <div class="altitude-text" id="altitude-text">Altitude: 0</div>
+               </div>
+               
                <div class="game-actions">
                    <button id="fly-btn" class="fly-btn" disabled>Fly Airplane</button>
                    <button id="boost-btn" class="boost-btn" disabled>Boost!</button>
@@ -853,6 +988,13 @@
            <button id="back-btn" class="restart-btn">Back to The Void Games</button>
        </div>
    </div>
+   
+   <!-- Anti-cheat overlay -->
+   <div id="anti-cheat-overlay">
+       <h1>Cheating Detected!</h1>
+       <p>We have detected unauthorized tampering with the game. Developer tools or consoles have been detected. This activity is not allowed.</p>
+       <button id="reset-game-btn">Reset Game</button>
+   </div>
 
    <!-- Firebase SDK -->
    <script type="module">
@@ -902,6 +1044,12 @@
            let _coinBalance = 0; // Start with 0 until signed in
            let signInRequired = true; // Flag to indicate if sign in is required
            
+           // Anti-cheat variables
+           const antiCheatOverlay = document.getElementById('anti-cheat-overlay');
+           const resetGameBtn = document.getElementById('reset-game-btn');
+           let cheatingDetected = false;
+           let lastCheatDetectionTime = 0;
+           
            // Create secure property for coin balance
            Object.defineProperty(window, 'coinBalance', {
                get: function() {
@@ -916,10 +1064,57 @@
                        _coinBalance = value;
                    } else {
                        console.warn("Attempt to directly modify coin balance detected and blocked");
+                       triggerAntiCheat("Balance tampering detected");
                    }
                },
                configurable: false
            });
+
+           // Function to handle cheating detection
+           function triggerAntiCheat(reason) {
+               if (cheatingDetected) return; // Don't trigger multiple times
+               
+               const now = Date.now();
+               // Limit triggering to once every 5 seconds to avoid spamming
+               if (now - lastCheatDetectionTime < 5000) return;
+               
+               lastCheatDetectionTime = now;
+               
+               console.warn(`Anti-cheat triggered: ${reason}`);
+               
+               // Show the anti-cheat overlay
+               if (antiCheatOverlay) {
+                   antiCheatOverlay.classList.add('visible');
+                   cheatingDetected = true;
+                   
+                   // Disable all game elements
+                   const gameContainer = document.querySelector('.game-container');
+                   if (gameContainer) {
+                       gameContainer.style.opacity = '0.3';
+                       gameContainer.style.pointerEvents = 'none';
+                   }
+                   
+                   // Reset game button handler
+                   if (resetGameBtn) {
+                       resetGameBtn.onclick = function() {
+                           // Hide the overlay
+                           antiCheatOverlay.classList.remove('visible');
+                           
+                           // Re-enable game elements
+                           if (gameContainer) {
+                               gameContainer.style.opacity = '1';
+                               gameContainer.style.pointerEvents = 'auto';
+                           }
+                           
+                           // Reset flag
+                           cheatingDetected = false;
+                           
+                           // Reload page to reset everything
+                           window.location.reload();
+                       };
+                   }
+               }
+           }
 
            // Sign in function
            window.signInToFirebase = function() {
@@ -991,6 +1186,7 @@
                            console.warn("Balance verification failed. Resetting to server value.");
                            _coinBalance = serverBalance;
                            updateCoinDisplay();
+                           triggerAntiCheat("Balance verification failed");
                            return false;
                        }
                        
@@ -1139,6 +1335,7 @@
                            // Perform security check with lastVerifiedBalance
                            if (Math.abs(currentServerBalance - lastVerifiedBalance) > 1) {
                                console.error("Possible balance tampering detected");
+                               triggerAntiCheat("Server balance mismatch");
                                return { error: "Security verification failed" };
                            }
                            
@@ -1236,8 +1433,15 @@
            // Expose necessary functions in a secure way
            window.loadFirebaseCoinBalance = loadFirebaseCoinBalance;
            window.recordGameTransaction = recordGameTransaction;
+           window.triggerAntiCheat = triggerAntiCheat;
            
-           // SECURITY: Anti-debugging protection
+           // =====================
+           // ADVANCED ANTI-CHEAT
+           // =====================
+           
+           // DevTools detection methods
+           
+           // Method 1: Debug using timing attacks
            const antiDebugInterval = setInterval(() => {
                const startTime = performance.now();
                debugger; // This statement gets triggered when DevTools is open
@@ -1245,14 +1449,131 @@
                
                // If debugger statement takes too long to execute, DevTools is likely open
                if (endTime - startTime > 100) {
-                   console.log("%cDeveloper tools detected", "color:red; font-size:20px;");
-                   console.log("%cCheating attempts may result in account penalties.", "color:orange; font-size:16px");
-                   
-                   // Force a verification when developer tools detected
-                   verifyBalance();
+                   triggerAntiCheat("Developer Tools Detected (Timing)");
                }
            }, 2000);
-
+           
+           // Method 2: Check for dev tools resize
+           let windowHeight = window.innerHeight;
+           let windowWidth = window.innerWidth;
+           window.addEventListener('resize', function() {
+               // Check if height changed but width remained the same (typical of DevTools opening)
+               if (window.innerHeight !== windowHeight && window.innerWidth === windowWidth) {
+                   triggerAntiCheat("Developer Tools Detected (Resize)");
+               }
+               windowHeight = window.innerHeight;
+               windowWidth = window.innerWidth;
+           });
+           
+           // Method 3: Override functions that can be used for cheating
+           const originalSetTimeout = window.setTimeout;
+           const originalClearTimeout = window.clearTimeout;
+           const originalSetInterval = window.setInterval;
+           const originalClearInterval = window.clearInterval;
+           const originalDateNow = Date.now;
+           
+           // Create tamper-proof versions
+           window.setTimeout = function(callback, time) {
+               // Check if someone is trying to speed up timers
+               if (time < 10 && typeof callback === 'function' && callback.toString().includes('coin')) {
+                   triggerAntiCheat("Timer Manipulation");
+                   return originalSetTimeout(() => {}, 1000); // Return a dummy timer
+               }
+               return originalSetTimeout(callback, time);
+           };
+           
+           window.Date.now = function() {
+               const realNow = originalDateNow.call(Date);
+               // Create a hidden property to track calls
+               if (!window.Date._lastNowCall) {
+                   Object.defineProperty(window.Date, '_lastNowCall', {
+                       value: realNow,
+                       writable: true,
+                       configurable: false,
+                       enumerable: false
+                   });
+               }
+               
+               // Check for time manipulation
+               const timeDiff = realNow - window.Date._lastNowCall;
+               if (timeDiff < 0 || timeDiff > 10000) {
+                   // Time went backward or jumped too far forward
+                   triggerAntiCheat("Time Manipulation");
+               }
+               
+               window.Date._lastNowCall = realNow;
+               return realNow;
+           };
+           
+           // Method 4: Check for console opening
+           // Various ways browsers expose console API
+           let consoleOpenCount = 0;
+           const antiConsoleInterval = setInterval(() => {
+               // Chrome/Firefox detection - uses firebug
+               if (window.console && window.console.firebug) {
+                   triggerAntiCheat("Console Detection (Firebug)");
+               }
+               
+               // Another detection method for Chrome/Firefox
+               if (window.outerHeight - window.innerHeight > 100 || 
+                   window.outerWidth - window.innerWidth > 100) {
+                   consoleOpenCount++;
+                   if (consoleOpenCount > 2) {
+                       triggerAntiCheat("Console Detection (Window Size)");
+                   }
+               } else {
+                   consoleOpenCount = 0;
+               }
+               
+               // Try to detect if someone is overriding the console
+               try {
+                   const consoleCheckValue = Symbol('consoleCheck');
+                   console.consoleCheckValue = consoleCheckValue;
+                   if (console.consoleCheckValue !== consoleCheckValue) {
+                       triggerAntiCheat("Console Object Modified");
+                   }
+               } catch (e) {
+                   // Console is locked down, which is good
+               }
+           }, 1000);
+           
+           // Method 5: Detect breakpoints and debugger usage
+           let lastFrameTime = performance.now();
+           let suspiciousDelays = 0;
+           const frameCheckInterval = setInterval(() => {
+               const now = performance.now();
+               const timeSinceLastFrame = now - lastFrameTime;
+               
+               // If a long delay occurs (likely due to breakpoint or debugging)
+               if (timeSinceLastFrame > 500) {
+                   suspiciousDelays++;
+                   if (suspiciousDelays > 2) {
+                       triggerAntiCheat("Breakpoint Detection");
+                   }
+               } else {
+                   // Reset counter for occasional network/rendering lags
+                   suspiciousDelays = Math.max(0, suspiciousDelays - 1);
+               }
+               
+               lastFrameTime = now;
+           }, 100);
+           
+           // Method 6: Detect DOM modification tools
+           const domBodyObserver = new MutationObserver((mutations) => {
+               for (const mutation of mutations) {
+                   if (mutation.attributeName === 'style' && mutation.target === document.body) {
+                       // Someone might be using inspector to modify styles
+                       triggerAntiCheat("DOM Manipulation");
+                   }
+               }
+           });
+           
+           domBodyObserver.observe(document.body, { 
+               attributes: true,
+               childList: false,
+               subtree: false 
+           });
+           
            // Override console methods to detect manipulation attempts
            const originalConsoleLog = console.log;
            const originalConsoleError = console.error;
@@ -1265,13 +1586,38 @@
                    message.includes('airplane') || message.includes('firebase')) {
                    // Log attempt but continue
                    originalConsoleWarn.apply(console, ["Security: Possible manipulation attempt detected"]);
+                   // Flag it to anti-cheat system
+                   triggerAntiCheat("Console Manipulation Attempt");
                }
                return originalConsoleLog.apply(console, args);
            };
            
+           // Disable specific right-click actions
+           document.addEventListener('contextmenu', function(e) {
+               // Prevent right-click menu in general
+               e.preventDefault();
+               return false;
+           });
+           
+           // Disable shortcut keys that can open developer tools
+           document.addEventListener('keydown', function(e) {
+               // Prevent F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C
+               if (e.key === 'F12' || 
+                   (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || 
+                                                e.key === 'J' || e.key === 'j' || 
+                                                e.key === 'C' || e.key === 'c'))) {
+                   triggerAntiCheat("DevTools Hotkey Detected");
+                   e.preventDefault();
+                   return false;
+               }
+           });
+           
            // Cleanup on page unload
            window.addEventListener('unload', () => {
                clearInterval(antiDebugInterval);
+               clearInterval(antiConsoleInterval);
+               clearInterval(frameCheckInterval);
+               domBodyObserver.disconnect();
            });
        })();
    </script>
@@ -1282,6 +1628,28 @@
     // =====================
     // SECURE CONFIGURATION
     // =====================
+    
+    // Create random symbols to hide game variables from easy access
+    const GAME_VARS = {
+        STATE: Symbol('gameState'),
+        CONFIG: Symbol('gameConfig'),
+        PHYSICS: Symbol('gamePhysics'),
+        SECURITY: Symbol('gameSecurity')
+    };
+    
+    // Create a protected game state object
+    const gameState = {
+        [GAME_VARS.STATE]: {
+            active: false,
+            running: false,
+            betAmount: 100,
+            totalCoinsCollected: 0,
+            distanceTraveled: 0,
+            cheatingAttempts: 0,
+            integrityChecks: 0,
+            lastVerifiedState: null
+        }
+    };
     
     // Secure game config with private variables
     const GAME_CONFIG = (function createGameConfig() {
@@ -1297,13 +1665,14 @@
         
         // Return an immutable object
         return Object.freeze({
-            get boostCost() { return _internal.boostCost; },
+            get gameCost() { return gameState[GAME_VARS.STATE].betAmount; },
             get gameId() { return _internal.gameId; },
             get maxWinnings() { return _internal.maxWinnings; },
             get defaultBet() { return _internal.defaultBet; },
             get bombPenalty() { return _internal.bombPenalty; },
             get moneyReward() { return _internal.moneyReward; },
-            get groundPenalty() { return _internal.groundPenalty; }
+            get groundPenalty() { return _internal.groundPenalty; },
+            get boostCost() { return _internal.boostCost; }
         });
     })();
 
@@ -1314,42 +1683,95 @@
     let canvas, ctx;
     let canvasWidth, canvasHeight;
     let animationFrame;
-    let gameActive = false;
-    let gameRunning = false;
-    let betAmount = GAME_CONFIG.defaultBet; // Default bet amount
     let maxBet = 1000; // Will be updated based on actual balance
     let gameIntegrityToken = crypto.randomUUID(); // Unique token for this game session
     let boostSpeed = 10; // Initial boost speed value
     let boostForward = 5; // Initial forward boost value
     let offscreenIndicator = false; // Track if plane is offscreen
     
-    // Game physics variables
-    let paperAirplane = {
-        x: 0,
-        y: 0,
-        width: 40,
-        height: 20,
-        velocity: { x: 0, y: 0 },
-        angle: 0,
-        isFlying: false
+    // Game physics variables - hidden with Symbol
+    const gamePhysics = {
+        [GAME_VARS.PHYSICS]: {
+            paperAirplane: {
+                x: 0,
+                y: 0,
+                width: 40,
+                height: 20,
+                velocity: { x: 0, y: 0 },
+                angle: 0,
+                isFlying: false
+            },
+            camera: {
+                x: 0,
+                y: 0
+            },
+            obstacles: []
+        }
     };
     
-    // Camera variables
-    let camera = {
-        x: 0,
-        y: 0
-    };
+    // Create secure accessors
+    function getPaperAirplane() {
+        return gamePhysics[GAME_VARS.PHYSICS].paperAirplane;
+    }
     
-    // Game objects
-    let obstacles = [];
-    let totalCoinsCollected = 0;
-    let distanceTraveled = 0;
+    function getCamera() {
+        return gamePhysics[GAME_VARS.PHYSICS].camera;
+    }
+    
+    function getObstacles() {
+        return gamePhysics[GAME_VARS.PHYSICS].obstacles;
+    }
+    
+    function setObstacles(newObstacles) {
+        gamePhysics[GAME_VARS.PHYSICS].obstacles = newObstacles;
+    }
+    
+    // Secure access to game state
+    function isGameActive() {
+        return gameState[GAME_VARS.STATE].active;
+    }
+    
+    function isGameRunning() {
+        return gameState[GAME_VARS.STATE].running;
+    }
+    
+    function getBetAmount() {
+        return gameState[GAME_VARS.STATE].betAmount;
+    }
+    
+    function setBetAmount(amount) {
+        gameState[GAME_VARS.STATE].betAmount = amount;
+    }
+    
+    function getTotalCoinsCollected() {
+        return gameState[GAME_VARS.STATE].totalCoinsCollected;
+    }
+    
+    function addCoinsCollected(amount) {
+        gameState[GAME_VARS.STATE].totalCoinsCollected += amount;
+    }
+    
+    function getDistanceTraveled() {
+        return gameState[GAME_VARS.STATE].distanceTraveled;
+    }
+    
+    function setDistanceTraveled(distance) {
+        gameState[GAME_VARS.STATE].distanceTraveled = distance;
+    }
+    
+    function setGameActive(active) {
+        gameState[GAME_VARS.STATE].active = active;
+    }
+    
+    function setGameRunning(running) {
+        gameState[GAME_VARS.STATE].running = running;
+    }
     
     // DOM element references
     let coinDisplay, startScreen, resultScreen, signInScreen, startBtn, playAgainBtn, backBtn, 
         signInBtn, flyBtn, boostBtn, paperAirplaneGameContainer, gameInfo, betSlider, 
         betAmountDisplay, rewardDisplay, decreaseBetBtn, increaseBetBtn, resultTitle, 
-        resultMessage, winAmount, offscreenArrow;
+        resultMessage, winAmount, offscreenArrow, altitudeBar, altitudeText;
 
     // =====================
     // UTILITY FUNCTIONS
@@ -1381,14 +1803,14 @@
         const minFactor = 1.0;
         
         // Calculate factor based on bet amount
-        return minFactor + ((betAmount - minBet) / (maxBet - minBet)) * (maxFactor - minFactor);
+        return minFactor + ((getBetAmount() - minBet) / (maxBet - minBet)) * (maxFactor - minFactor);
     }
     
     // Check if the airplane is off screen
     function checkOffscreenPlane() {
-        if (!paperAirplane.isFlying) return false;
+        if (!getPaperAirplane().isFlying) return false;
         
-        const planeScreenY = paperAirplane.y - camera.y;
+        const planeScreenY = getPaperAirplane().y - getCamera().y;
         
         // If plane is above the visible area
         if (planeScreenY < -50) {
@@ -1397,7 +1819,7 @@
         
         return false;
     }
-
+    
     // =====================
     // GAME INITIALIZATION
     // =====================
@@ -1425,29 +1847,43 @@
         resultMessage = document.getElementById('result-message');
         winAmount = document.getElementById('win-amount');
         offscreenArrow = document.getElementById('offscreen-arrow');
+        altitudeBar = document.getElementById('altitude-bar');
+        altitudeText = document.getElementById('altitude-text');
     }
 
-    // Update the start button based on available balance - allow negative balance
+    // Update the start button based on available balance - prevent playing with negative balance
     function updateStartButtonState() {
         if (!startBtn) return;
         
-        // Always allow playing, even with negative balance
-        startBtn.classList.remove('insufficient');
-        startBtn.textContent = "Start Game";
-        startBtn.disabled = false;
+        // Don't allow playing with negative balance
+        if (window.coinBalance < 0) {
+            startBtn.classList.add('insufficient');
+            startBtn.textContent = "Insufficient Coins";
+            startBtn.disabled = true;
+        } else {
+            startBtn.classList.remove('insufficient');
+            startBtn.textContent = "Start Game";
+            startBtn.disabled = false;
+        }
     }
 
-    // Update the fly button based on available balance - allow negative balance
+    // Update the fly button based on available balance - prevent playing with negative balance
     function updateFlyButtonState() {
         if (!flyBtn) return;
         
-        if (gameRunning) {
+        if (isGameRunning()) {
             flyBtn.disabled = true;
             flyBtn.textContent = "Flying...";
         } else {
-            flyBtn.classList.remove('insufficient');
-            flyBtn.textContent = `Fly Airplane (${betAmount} coins)`;
-            flyBtn.disabled = false;
+            if (window.coinBalance < getBetAmount()) {
+                flyBtn.classList.add('insufficient');
+                flyBtn.textContent = `Insufficient Coins`;
+                flyBtn.disabled = true;
+            } else {
+                flyBtn.classList.remove('insufficient');
+                flyBtn.textContent = `Fly Airplane (${getBetAmount()} coins)`;
+                flyBtn.disabled = false;
+            }
         }
     }
     
@@ -1455,11 +1891,17 @@
     function updateBoostButtonState() {
         if (!boostBtn) return;
         
-        if (!gameRunning) {
+        if (!isGameRunning()) {
             boostBtn.style.display = 'none'; // Hide when not playing
         } else {
             boostBtn.style.display = 'block'; // Show when playing
-            boostBtn.disabled = false; // Enable the button during gameplay
+            if (window.coinBalance < GAME_CONFIG.boostCost) {
+                boostBtn.disabled = true;
+                boostBtn.classList.add('insufficient');
+            } else {
+                boostBtn.disabled = false;
+                boostBtn.classList.remove('insufficient');
+            }
             boostBtn.textContent = `Boost! (${GAME_CONFIG.boostCost} coins) +${boostSpeed}`;
         }
     }
@@ -1470,9 +1912,9 @@
         if (betSlider) {
             betSlider.max = maxBet;
             // Also update the current bet if it exceeds the new max
-            if (betAmount > maxBet) {
-                betAmount = maxBet;
-                betSlider.value = betAmount;
+            if (getBetAmount() > maxBet) {
+                setBetAmount(maxBet);
+                betSlider.value = getBetAmount();
                 updateBetAmountDisplay();
             }
         }
@@ -1481,13 +1923,16 @@
     // Update bet amount display
     function updateBetAmountDisplay() {
         if (betAmountDisplay) {
-            betAmountDisplay.textContent = `Bet Amount: ${betAmount.toLocaleString()} coins`;
+            betAmountDisplay.textContent = `Bet Amount: ${getBetAmount().toLocaleString()} coins`;
         }
         
         if (rewardDisplay) {
             const luckFactor = calculateLuckFactor().toFixed(1);
             rewardDisplay.textContent = `Luck Factor: ${luckFactor}x`;
         }
+        
+        // Also update fly button text with new bet amount
+        updateFlyButtonState();
     }
 
     // Update coin balance with server verification
@@ -1497,6 +1942,9 @@
             window.recordGameTransaction(GAME_CONFIG.gameId, amount, amount > 0);
         } else {
             console.error("Transaction recording function not available");
+            if (window.triggerAntiCheat) {
+                window.triggerAntiCheat("Transaction function missing");
+            }
         }
     }
 
@@ -1534,28 +1982,29 @@
     // Complete game reset
     function resetGame() {
         // Reset game state
-        gameActive = false;
-        gameRunning = false;
-        totalCoinsCollected = 0;
-        distanceTraveled = 0;
-        obstacles = [];
+        setGameActive(false);
+        setGameRunning(false);
+        gameState[GAME_VARS.STATE].totalCoinsCollected = 0;
+        gameState[GAME_VARS.STATE].distanceTraveled = 0;
+        setObstacles([]);
         boostSpeed = 10; // Reset boost speed
         boostForward = 5; // Reset boost forward
         offscreenIndicator = false;
         
         // Reset paper airplane position
-        paperAirplane = {
-            x: 100,
-            y: canvasHeight / 2,
-            width: 40,
-            height: 20,
-            velocity: { x: 0, y: 0 },
-            angle: 0,
-            isFlying: false
-        };
+        const paperAirplane = getPaperAirplane();
+        paperAirplane.x = 100;
+        paperAirplane.y = canvasHeight / 2;
+        paperAirplane.width = 40;
+        paperAirplane.height = 20;
+        paperAirplane.velocity = { x: 0, y: 0 };
+        paperAirplane.angle = 0;
+        paperAirplane.isFlying = false;
         
         // Reset camera
-        camera = { x: 0, y: 0 };
+        const camera = getCamera();
+        camera.x = 0;
+        camera.y = 0;
         
         // Generate a new integrity token for each game
         gameIntegrityToken = crypto.randomUUID();
@@ -1582,9 +2031,9 @@
         }
 
         // Reset bet amount
-        betAmount = Math.min(GAME_CONFIG.defaultBet, window.coinBalance);
+        setBetAmount(Math.min(GAME_CONFIG.defaultBet, window.coinBalance));
         if (betSlider) {
-            betSlider.value = betAmount;
+            betSlider.value = getBetAmount();
         }
         updateBetAmountDisplay();
 
@@ -1607,26 +2056,27 @@
     // Initialize game
     function initGame() {
         // Reset for new game
-        gameActive = true;
-        gameRunning = false;
-        totalCoinsCollected = 0;
-        distanceTraveled = 0;
-        obstacles = [];
+        setGameActive(true);
+        setGameRunning(false);
+        gameState[GAME_VARS.STATE].totalCoinsCollected = 0;
+        gameState[GAME_VARS.STATE].distanceTraveled = 0;
+        setObstacles([]);
         offscreenIndicator = false;
         
         // Reset paper airplane position
-        paperAirplane = {
-            x: 100,
-            y: canvasHeight / 2,
-            width: 40,
-            height: 20,
-            velocity: { x: 0, y: 0 },
-            angle: 0,
-            isFlying: false
-        };
+        const paperAirplane = getPaperAirplane();
+        paperAirplane.x = 100;
+        paperAirplane.y = canvasHeight / 2;
+        paperAirplane.width = 40;
+        paperAirplane.height = 20;
+        paperAirplane.velocity = { x: 0, y: 0 };
+        paperAirplane.angle = 0;
+        paperAirplane.isFlying = false;
         
         // Reset camera
-        camera = { x: 0, y: 0 };
+        const camera = getCamera();
+        camera.x = 0;
+        camera.y = 0;
         
         // Hide start screen
         startScreen.classList.remove('visible');
@@ -1652,20 +2102,29 @@
 
     // Launch the paper airplane
     function launchAirplane() {
-        if (!gameActive || gameRunning) {
+        if (!isGameActive() || isGameRunning()) {
+            return;
+        }
+        
+        // Check if user has enough coins
+        if (window.coinBalance < getBetAmount()) {
+            if (gameInfo) {
+                gameInfo.textContent = "Insufficient coins to play!";
+            }
             return;
         }
         
         console.log("Launching paper airplane");
         
         // Set game running flag
-        gameRunning = true;
+        setGameRunning(true);
         
         // Deduct the bet amount
-        updateCoins(-betAmount);
+        updateCoins(-getBetAmount());
         
         // Set initial velocity based on bet amount (higher bet = better starting velocity)
         const luckFactor = calculateLuckFactor();
+        const paperAirplane = getPaperAirplane();
         paperAirplane.velocity.x = 5 + (luckFactor * 2);
         paperAirplane.velocity.y = -2;
         paperAirplane.isFlying = true;
@@ -1686,7 +2145,8 @@
     // Generate obstacles based on luck factor and bet amount
     function generateObstacles(luckFactor) {
         // Clear existing obstacles
-        obstacles = [];
+        setObstacles([]);
+        const obstacles = getObstacles();
         
         // Number of obstacles to generate (more with higher luck)
         const obstacleCount = 25 + Math.floor(luckFactor * 15); // Increased from 20 to 25 base obstacles
@@ -1697,7 +2157,7 @@
         // Calculate obstacle type distribution based on bet amount
         let moneyChance, bombChance, fireChance;
         
-        if (betAmount < 500) {
+        if (getBetAmount() < 500) {
             // Low bet - more fire, fewer money
             moneyChance = 0.15 + (luckFactor * 0.15); // 15% to 45% chance for money
             bombChance = 0.30 + (luckFactor * 0.05);  // 30% to 40% chance for bombs
@@ -1758,9 +2218,11 @@
     
     // Function to check if we need more obstacles and generate them
     function checkAndGenerateMoreObstacles() {
-        if (!gameRunning || !paperAirplane.isFlying) return;
+        if (!isGameRunning() || !getPaperAirplane().isFlying) return;
         
-        // Find the furthest obstacle position
+        const obstacles = getObstacles();
+        
+        // Find the furthest obstacle position horizontally
         let furthestX = 0;
         for (let i = 0; i < obstacles.length; i++) {
             if (obstacles[i].x > furthestX) {
@@ -1770,8 +2232,98 @@
         
         // If the plane is getting close to the furthest obstacle, generate more
         const bufferDistance = 2000; // Generate more when within 2000px of the furthest obstacle
-        if (paperAirplane.x + bufferDistance > furthestX) {
+        if (getPaperAirplane().x + bufferDistance > furthestX) {
             generateMoreObstacles(furthestX);
+        }
+        
+        // Generate obstacles at higher altitudes when the plane goes up
+        const planeY = getPaperAirplane().y;
+        const highestY = Math.min(100, planeY - 300); // 300px above the plane, but not higher than 100px
+        
+        // Find highest and lowest obstacles within a range ahead of the plane
+        let highestObstacleY = highestY;
+        let lowestObstacleY = canvasHeight - 100;
+        
+        // Range to check for existing obstacles ahead of the plane
+        const rangeStart = getPaperAirplane().x;
+        const rangeEnd = getPaperAirplane().x + 1500;
+        
+        // Check if we have obstacles in the area ahead
+        let hasHighObstacles = false;
+        
+        for (let i = 0; i < obstacles.length; i++) {
+            const obs = obstacles[i];
+            if (obs.x > rangeStart && obs.x < rangeEnd) {
+                // Track highest obstacle
+                if (obs.y < highestObstacleY + 200) {
+                    hasHighObstacles = true;
+                }
+                
+                // Update highest and lowest y positions
+                highestObstacleY = Math.min(highestObstacleY, obs.y);
+                lowestObstacleY = Math.max(lowestObstacleY, obs.y);
+            }
+        }
+        
+        // Generate high altitude obstacles if needed
+        if (!hasHighObstacles && planeY < canvasHeight - 300) {
+            generateHighAltitudeObstacles(getPaperAirplane().x, highestY);
+        }
+    }
+    
+    // Function to generate obstacles at high altitudes
+    function generateHighAltitudeObstacles(startX, topY) {
+        const luckFactor = calculateLuckFactor();
+        const newObstacleCount = 5 + Math.floor(luckFactor * 5);
+        const maxDistance = 1500;
+        const obstacles = getObstacles();
+        
+        // Higher chance of money at high altitudes
+        const moneyChance = 0.5 + (luckFactor * 0.2); // 50% to 90% chance for money at high altitudes
+        const bombChance = 0.3 - (luckFactor * 0.1);  // 30% to 10% chance for bombs
+        const fireChance = 0.2 - (luckFactor * 0.1);  // 20% to 0% chance for fire
+        
+        for (let i = 0; i < newObstacleCount; i++) {
+            const rng = Math.random();
+            let obstacleType;
+            
+            if (rng < moneyChance) {
+                obstacleType = 'money';
+            } else if (rng < moneyChance + bombChance) {
+                obstacleType = 'bomb';
+            } else {
+                obstacleType = 'fire';
+            }
+            
+            const x = startX + 300 + Math.random() * maxDistance; // Start beyond the plane
+            const y = topY + Math.random() * 300; // Place within 300px of the top boundary
+            
+            obstacles.push({
+                type: obstacleType,
+                x: x,
+                y: y,
+                width: 30,
+                height: 30,
+                hit: false
+            });
+        }
+        
+        // Sometimes add a pattern of money in the sky
+        if (Math.random() < 0.5) { // 50% chance to add a sky pattern
+            const patternX = startX + 600 + Math.random() * 800;
+            const patternY = topY + 100;
+            
+            // Create a horizontal line of money obstacles in the sky
+            for (let j = 0; j < 7; j++) {
+                obstacles.push({
+                    type: 'money',
+                    x: patternX + j * 60,
+                    y: patternY + Math.random() * 30,
+                    width: 30,
+                    height: 30,
+                    hit: false
+                });
+            }
         }
     }
     
@@ -1780,11 +2332,12 @@
         const luckFactor = calculateLuckFactor();
         const newObstacleCount = 15 + Math.floor(luckFactor * 10);
         const maxDistance = 3000;
+        const obstacles = getObstacles();
         
         // Calculate obstacle type distribution based on bet amount
         let moneyChance, bombChance, fireChance;
         
-        if (betAmount < 500) {
+        if (getBetAmount() < 500) {
             // Low bet - more fire, fewer money
             moneyChance = 0.15 + (luckFactor * 0.15); // 15% to 45% chance for money
             bombChance = 0.30 + (luckFactor * 0.05);  // 30% to 40% chance for bombs
@@ -1842,18 +2395,24 @@
     
     // Function to clean up obstacles that are far behind the player
     function cleanupOldObstacles() {
+        const obstacles = getObstacles();
         if (obstacles.length > 500) { // Prevent memory issues by limiting total obstacles
             // Keep only obstacles that are not too far behind or still ahead
             const cleanDistance = 2000; // Distance behind player to remove obstacles
-            obstacles = obstacles.filter(obstacle => 
-                obstacle.x > paperAirplane.x - cleanDistance || 
+            const newObstacles = obstacles.filter(obstacle => 
+                obstacle.x > getPaperAirplane().x - cleanDistance || 
                 !obstacle.hit // Keep unhit obstacles regardless of position
             );
+            setObstacles(newObstacles);
         }
     }
     
     // Handle collisions with obstacles
     function handleCollisions() {
+        const paperAirplane = getPaperAirplane();
+        const camera = getCamera();
+        const obstacles = getObstacles();
+        
         const planeLeft = paperAirplane.x - camera.x;
         const planeRight = planeLeft + paperAirplane.width;
         const planeTop = paperAirplane.y - camera.y;
@@ -1865,7 +2424,7 @@
             if (paperAirplane.isFlying) {
                 paperAirplane.isFlying = false;
                 updateCoins(-GAME_CONFIG.groundPenalty);
-                totalCoinsCollected -= GAME_CONFIG.groundPenalty;
+                addCoinsCollected(-GAME_CONFIG.groundPenalty);
                 endGame("crashed");
             }
             return;
@@ -1878,7 +2437,7 @@
             // Skip if already hit
             if (obstacle.hit) continue;
             
-            // Calculate obstacle screen position
+// Calculate obstacle screen position
             const obsLeft = obstacle.x - camera.x;
             const obsRight = obsLeft + obstacle.width;
             const obsTop = obstacle.y - camera.y;
@@ -1896,7 +2455,7 @@
                     case 'money':
                         // Collect money
                         updateCoins(GAME_CONFIG.moneyReward);
-                        totalCoinsCollected += GAME_CONFIG.moneyReward;
+                        addCoinsCollected(GAME_CONFIG.moneyReward);
                         
                         // Boost significantly - way faster and higher
                         paperAirplane.velocity.x += 7;
@@ -1906,7 +2465,7 @@
                     case 'bomb':
                         // Hit bomb
                         updateCoins(-GAME_CONFIG.bombPenalty);
-                        totalCoinsCollected -= GAME_CONFIG.bombPenalty;
+                        addCoinsCollected(-GAME_CONFIG.bombPenalty);
                         
                         // Massive boost forward and up with impact
                         paperAirplane.velocity.x += 8;
@@ -1925,7 +2484,10 @@
     // Update game physics
     function updatePhysics() {
         // Only update if the airplane is flying
-        if (!paperAirplane.isFlying) return;
+        if (!getPaperAirplane().isFlying) return;
+        
+        const paperAirplane = getPaperAirplane();
+        const camera = getCamera();
         
         // Update position based on velocity
         paperAirplane.x += paperAirplane.velocity.x;
@@ -1940,11 +2502,21 @@
         // Update angle based on velocity
         paperAirplane.angle = Math.atan2(paperAirplane.velocity.y, paperAirplane.velocity.x);
         
-        // Update camera to follow the airplane
+        // Update camera to follow the airplane both horizontally and vertically
         camera.x = paperAirplane.x - 100; // Keep airplane on left side of screen
         
+        // Vertical camera following - keep plane vertically centered when it goes up
+        const idealCameraY = paperAirplane.y - (canvasHeight / 2); // Center the plane vertically
+        
+        // Only follow upward (not downward) to prevent showing too much ground
+        if (idealCameraY < 0) {
+            camera.y = idealCameraY;
+        } else {
+            camera.y = 0; // Default position when plane is low
+        }
+        
         // Update distance traveled
-        distanceTraveled = Math.max(distanceTraveled, paperAirplane.x);
+        setDistanceTraveled(Math.max(getDistanceTraveled(), paperAirplane.x));
         
         // Check if airplane is offscreen (above viewport)
         const isOffscreen = checkOffscreenPlane();
@@ -1969,13 +2541,45 @@
         // Clean up old obstacles (those far behind the player)
         cleanupOldObstacles();
     }
+    
+    // Update the altitude display to show height from ground
+    function updateAltitudeDisplay() {
+        if (!altitudeBar || !altitudeText || !getPaperAirplane().isFlying) return;
+        
+        // Calculate altitude (distance from bottom of screen)
+        const groundY = canvasHeight;
+        const altitude = groundY - getPaperAirplane().y;
+        
+        // Max altitude for display purposes (800 is about the canvas height)
+        const maxAltitude = 1500;
+        
+        // Calculate percentage for the bar (0-100%)
+        const percentage = Math.min(100, Math.max(0, (altitude / maxAltitude) * 100));
+        
+        // Update the bar height
+        altitudeBar.style.height = percentage + '%';
+        
+        // Update the text
+        altitudeText.textContent = `Altitude: ${Math.floor(altitude)}`;
+        
+        // Add a class for visual feedback on different altitude ranges
+        if (altitude > 1000) {
+            altitudeText.className = 'altitude-text high';
+        } else if (altitude > 500) {
+            altitudeText.className = 'altitude-text medium';
+        } else if (altitude > 200) {
+            altitudeText.className = 'altitude-text low';
+        } else {
+            altitudeText.className = 'altitude-text danger';
+        }
+    }
 
     // End the game
     function endGame(reason) {
         console.log("Game ended:", reason);
         
         // Stop the airplane
-        paperAirplane.isFlying = false;
+        getPaperAirplane().isFlying = false;
         
         // Show the result screen after a short delay
         setTimeout(() => {
@@ -1983,7 +2587,7 @@
         }, 500);
         
         // Game is no longer running
-        gameRunning = false;
+        setGameRunning(false);
         
         // Hide boost button
         updateBoostButtonState();
@@ -2002,7 +2606,7 @@
         }
         
         // Set the result screen content
-        if (totalCoinsCollected > 0) {
+        if (getTotalCoinsCollected() > 0) {
             resultTitle.textContent = "Good Flight!";
             resultTitle.className = "overlay-title win";
         } else {
@@ -2025,11 +2629,11 @@
         }
         
         // Add distance traveled
-        const distance = Math.floor(distanceTraveled);
+        const distance = Math.floor(getDistanceTraveled());
         message += `<br>Distance traveled: ${distance} units<br>`;
         
         // Add coin total
-        message += `Total coins: <span class="${totalCoinsCollected >= 0 ? 'win-amount' : 'lose-amount'}">${totalCoinsCollected}</span>`;
+        message += `Total coins: <span class="${getTotalCoinsCollected() >= 0 ? 'win-amount' : 'lose-amount'}">${getTotalCoinsCollected()}</span>`;
         
         resultMessage.innerHTML = message;
         
@@ -2038,12 +2642,48 @@
         resultScreen.classList.add('visible');
         
         // End the game
-        gameActive = false;
+        setGameActive(false);
+    }
+
+    // Apply boost to the airplane
+    function boostAirplane() {
+        if (!isGameActive() || !isGameRunning() || !getPaperAirplane().isFlying) {
+            return;
+        }
+        
+        // Check if the player has enough coins
+        if (window.coinBalance < GAME_CONFIG.boostCost) {
+            return;
+        }
+        
+        // Deduct cost
+        updateCoins(-GAME_CONFIG.boostCost);
+        
+        const paperAirplane = getPaperAirplane();
+        
+        // Apply boost - now with both vertical and horizontal boost
+        paperAirplane.velocity.y -= boostSpeed;
+        paperAirplane.velocity.x += boostForward; // Add horizontal boost
+        
+        // Increase boost effectiveness for next time
+        boostSpeed += 5;
+        boostForward += 3;
+        
+        // Add a minimum speed if the plane is moving too slowly
+        if (paperAirplane.velocity.x < 2) {
+            paperAirplane.velocity.x = 3; // Ensure the plane keeps moving forward
+        }
+        
+        // Update button text
+        updateBoostButtonState();
     }
 
     // Draw the paper airplane
     function drawPaperAirplane() {
         if (!ctx) return;
+        
+        const paperAirplane = getPaperAirplane();
+        const camera = getCamera();
         
         // Save context for rotation
         ctx.save();
@@ -2079,6 +2719,9 @@
     // Draw obstacles
     function drawObstacles() {
         if (!ctx) return;
+        
+        const obstacles = getObstacles();
+        const camera = getCamera();
         
         for (let i = 0; i < obstacles.length; i++) {
             const obstacle = obstacles[i];
@@ -2142,16 +2785,16 @@
         ctx.textAlign = 'left';
         
         // Draw distance
-        ctx.fillText(`Distance: ${Math.floor(distanceTraveled)}`, 10, 30);
+        ctx.fillText(`Distance: ${Math.floor(getDistanceTraveled())}`, 10, 30);
         
         // Draw coins collected
-        const coinText = `Coins: ${totalCoinsCollected >= 0 ? '+' : ''}${totalCoinsCollected}`;
-        ctx.fillStyle = totalCoinsCollected >= 0 ? '#4CAF50' : '#f44336';
+        const coinText = `Coins: ${getTotalCoinsCollected() >= 0 ? '+' : ''}${getTotalCoinsCollected()}`;
+        ctx.fillStyle = getTotalCoinsCollected() >= 0 ? '#4CAF50' : '#f44336';
         ctx.fillText(coinText, 10, 60);
         
         // Draw speed
         ctx.fillStyle = '#FFFFFF';
-        ctx.fillText(`Speed: ${paperAirplane.velocity.x.toFixed(1)}`, 10, 90);
+        ctx.fillText(`Speed: ${getPaperAirplane().velocity.x.toFixed(1)}`, 10, 90);
     }
 
     // Draw stars in background
@@ -2192,8 +2835,11 @@
         drawGround();
         
         // Update physics if game is running
-        if (gameRunning) {
+        if (isGameRunning()) {
             updatePhysics();
+            
+            // Update altitude display
+            updateAltitudeDisplay();
         }
         
         // Draw obstacles
@@ -2207,32 +2853,6 @@
 
         // Continue game loop
         animationFrame = requestAnimationFrame(gameLoop);
-    }
-
-    // Apply boost to the airplane
-    function boostAirplane() {
-        if (!gameActive || !gameRunning || !paperAirplane.isFlying) {
-            return;
-        }
-        
-        // Deduct cost
-        updateCoins(-GAME_CONFIG.boostCost);
-        
-        // Apply boost - now with both vertical and horizontal boost
-        paperAirplane.velocity.y -= boostSpeed;
-        paperAirplane.velocity.x += boostForward; // Add horizontal boost
-        
-        // Increase boost effectiveness for next time
-        boostSpeed += 5;
-        boostForward += 3;
-        
-        // Add a minimum speed if the plane is moving too slowly
-        if (paperAirplane.velocity.x < 2) {
-            paperAirplane.velocity.x = 3; // Ensure the plane keeps moving forward
-        }
-        
-        // Update button text
-        updateBoostButtonState();
     }
 
     // Setup event listeners
@@ -2286,7 +2906,7 @@
         // Fly button
         if (flyBtn) {
             flyBtn.addEventListener('click', function() {
-                if (gameActive && !gameRunning) {
+                if (isGameActive() && !isGameRunning()) {
                     launchAirplane();
                 }
             });
@@ -2295,7 +2915,7 @@
         // Boost button
         if (boostBtn) {
             boostBtn.addEventListener('click', function() {
-                if (gameActive && gameRunning && paperAirplane.isFlying) {
+                if (isGameActive() && isGameRunning() && getPaperAirplane().isFlying) {
                     boostAirplane();
                 }
             });
@@ -2304,7 +2924,7 @@
         // Bet slider
         if (betSlider) {
             betSlider.addEventListener('input', function() {
-                betAmount = parseInt(betSlider.value);
+                setBetAmount(parseInt(betSlider.value));
                 updateBetAmountDisplay();
                 updateFlyButtonState(); // Update fly button text with new bet amount
             });
@@ -2313,9 +2933,9 @@
         // Bet amount buttons
         if (decreaseBetBtn) {
             decreaseBetBtn.addEventListener('click', function() {
-                if (betAmount > 100) {
-                    betAmount = Math.max(100, betAmount - 100);
-                    if (betSlider) betSlider.value = betAmount;
+                if (getBetAmount() > 100) {
+                    setBetAmount(Math.max(100, getBetAmount() - 100));
+                    if (betSlider) betSlider.value = getBetAmount();
                     updateBetAmountDisplay();
                     updateFlyButtonState(); // Update fly button text with new bet amount
                 }
@@ -2324,9 +2944,9 @@
 
         if (increaseBetBtn) {
             increaseBetBtn.addEventListener('click', function() {
-                if (betAmount < maxBet) {
-                    betAmount = Math.min(maxBet, betAmount + 100);
-                    if (betSlider) betSlider.value = betAmount;
+                if (getBetAmount() < maxBet) {
+                    setBetAmount(Math.min(maxBet, getBetAmount() + 100));
+                    if (betSlider) betSlider.value = getBetAmount();
                     updateBetAmountDisplay();
                     updateFlyButtonState(); // Update fly button text with new bet amount
                 }
@@ -2336,24 +2956,24 @@
         // Add resize event listener
         window.addEventListener('resize', function() {
             initCanvas();
-            if (gameActive) {
+            if (isGameActive()) {
                 drawStars();
             }
         });
         
         // Add keyboard controls
         window.addEventListener('keydown', function(e) {
-            if (!gameRunning || !paperAirplane.isFlying) return;
+            if (!isGameRunning() || !getPaperAirplane().isFlying) return;
             
             switch (e.key) {
                 case 'ArrowUp':
                     // Push airplane up
-                    paperAirplane.velocity.y -= 0.5;
+                    getPaperAirplane().velocity.y -= 0.5;
                     break;
                     
                 case 'ArrowDown':
                     // Push airplane down
-                    paperAirplane.velocity.y += 0.3;
+                    getPaperAirplane().velocity.y += 0.3;
                     break;
                 
                 case ' ': // Spacebar for boost
@@ -2361,55 +2981,107 @@
                     break;
             }
         });
+        
+        // Reset game button in anti-cheat overlay
+        const resetGameBtn = document.getElementById('reset-game-btn');
+        if (resetGameBtn) {
+            resetGameBtn.addEventListener('click', function() {
+                // Hide the overlay
+                const antiCheatOverlay = document.getElementById('anti-cheat-overlay');
+                if (antiCheatOverlay) {
+                    antiCheatOverlay.classList.remove('visible');
+                }
+                
+                // Re-enable game elements
+                const gameContainer = document.querySelector('.game-container');
+                if (gameContainer) {
+                    gameContainer.style.opacity = '1';
+                    gameContainer.style.pointerEvents = 'auto';
+                }
+                
+                // Reload page to reset everything
+                window.location.reload();
+            });
+        }
     }
 
     // =====================
     // ANTI-CHEAT MEASURES
     // =====================
     
-    // Monitor for tampering attempts
+    // Additional security monitoring
     function setupSecurityMonitoring() {
-        // Override console methods to hide sensitive information
-        const originalStringify = JSON.stringify;
-        JSON.stringify = function(obj) {
-            // Hide sensitive game state during stringification
-            if (obj && typeof obj === 'object') {
-                // If it looks like game state, obscure it
-                if ((obj.hasOwnProperty('gameActive') || obj.hasOwnProperty('totalCoinsCollected') || 
-                    obj.hasOwnProperty('paperAirplane'))) {
-                    return originalStringify({});
+        // Check integrity every 1 second
+        const securityInterval = setInterval(() => {
+            // Create checksum of critical game values
+            const gameStateCheck = isGameActive() + ':' + isGameRunning() + ':' + getPaperAirplane().isFlying;
+            
+            // Store last known good state for verification
+            if (!gameState[GAME_VARS.STATE].lastVerifiedState) {
+                gameState[GAME_VARS.STATE].lastVerifiedState = gameStateCheck;
+            }
+            
+            // Detect abrupt changes in state (potential memory manipulation)
+            if (gameState[GAME_VARS.STATE].lastVerifiedState !== gameStateCheck) {
+                // Allow legitimate transitions
+                const oldState = gameState[GAME_VARS.STATE].lastVerifiedState;
+                const newState = gameStateCheck;
+                
+                // Check for invalid transitions
+                if (oldState === 'false:false:false' && newState === 'true:true:true') {
+                    // This is an invalid jump from completely inactive to all active
+                    if (window.triggerAntiCheat) {
+                        window.triggerAntiCheat("Game state manipulation detected");
+                    }
+                }
+                
+                // Update verified state
+                gameState[GAME_VARS.STATE].lastVerifiedState = gameStateCheck;
+            }
+            
+            // Check for coin balance manipulation
+            if (window.coinBalance !== undefined) {
+                const balance = window.coinBalance;
+                
+                // Detect large sudden increases in balance
+                if (balance > 1000000) {
+                    if (window.triggerAntiCheat) {
+                        window.triggerAntiCheat("Suspicious balance detected");
+                    }
                 }
             }
-            return originalStringify.apply(this, arguments);
-        };
-        
-        // Anti-devtools detection
-        const interval = setInterval(function() {
-            const startTime = performance.now();
-            const div = document.createElement('div');
             
-            // Perform some complex DOM operations that are slower when dev tools are open
-            for (let i = 0; i < 50; i++) {
-                div.style.backgroundColor = `rgb(${i}, ${i}, ${i})`;
-                div.style.width = `${10 + i}px`;
-                div.style.height = `${5 + i}px`;
-                const computed = window.getComputedStyle(div).backgroundColor;
-            }
-            
-            const delay = performance.now() - startTime;
-            
-            // If this takes too long, debugger or dev tools might be active
-            if (delay > 50) {
-                // Security measure - if someone's debugging, add some randomness to game physics
-                if (gameActive && gameRunning && paperAirplane.isFlying) {
-                    paperAirplane.velocity.y += (Math.random() - 0.5) * 0.1;
+            // Monitor for suspicious obstacle modifications
+            const obstacles = getObstacles();
+            if (obstacles.length > 0) {
+                // Check if all obstacles turned to money (cheating)
+                let moneyCount = 0;
+                let otherCount = 0;
+                
+                for (let i = 0; i < Math.min(obstacles.length, 20); i++) {
+                    if (obstacles[i].type === 'money') {
+                        moneyCount++;
+                    } else {
+                        otherCount++;
+                    }
+                }
+                
+                // If all obstacles are money with no variation (suspicious)
+                if (moneyCount > 15 && otherCount === 0) {
+                    gameState[GAME_VARS.STATE].cheatingAttempts++;
+                    
+                    if (gameState[GAME_VARS.STATE].cheatingAttempts > 2) {
+                        if (window.triggerAntiCheat) {
+                            window.triggerAntiCheat("Obstacle manipulation detected");
+                        }
+                    }
                 }
             }
-        }, 2000);
+        }, 1000);
         
         // Return cleanup function
         return function() {
-            clearInterval(interval);
+            clearInterval(securityInterval);
         };
     }
 
@@ -2460,6 +3132,6 @@
         }
     });
 })();
-   </script>
+</script>
 </body>
 </html>
