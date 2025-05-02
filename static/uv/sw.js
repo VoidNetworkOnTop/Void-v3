@@ -1,7 +1,7 @@
 /global UVServiceWorker,__uv$config/
 /*
- * Enhanced service worker script for Void Network.
- * Improved error handling and timeout support for slow devices.
+ * Optimized service worker script for Ultraviolet proxy
+ * Features improved performance, caching, and compatibility
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -10,141 +10,210 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
-// Configuration
-const FETCH_TIMEOUT = 50000; // Increased from 40 to 50 seconds timeout for slow connections
-const MIN_HTML_SIZE = 800; // Increased from 500 to 800 bytes for more reliable content detection
-
-// Log initialization
-console.log('[UV Service Worker] Initializing with scope: /uv/');
-
-// Add timeout to fetch operations
-const timeoutFetch = async (request, timeout) => {
-  return Promise.race([
-    sw.fetch(request),
-    new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Request timeout')), timeout)
-    )
-  ]);
+// Enhanced configuration
+const CONFIG = {
+  FETCH_TIMEOUT: 60000,          // 60 second timeout for slow connections
+  CACHE_NAME: 'uv-cache-v1',     // Cache storage name
+  CACHE_EXPIRY: 3600000,         // Cache expiry (1 hour)
+  MAX_RETRIES: 2,                // Maximum retry attempts
+  RETRY_DELAY: 1000,             // Delay between retries
+  CACHE_EXEMPTIONS: [            // URLs that shouldn't be cached
+    'login', 'signin', 'signup', 'auth', 'oauth', 'account',
+    'session', 'token', 'checkout', 'payment', 'purchase'
+  ]
 };
 
-// Enhanced fetch handler with timeout and better error handling
+// Initialize cache
+self.addEventListener('install', event => {
+  console.log('[UV Service Worker] Installed');
+  self.skipWaiting();
+});
+
+// Clean up old caches when activated
+self.addEventListener('activate', event => {
+  console.log('[UV Service Worker] Activated');
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.filter(cacheName => {
+          return cacheName.startsWith('uv-cache-') && cacheName !== CONFIG.CACHE_NAME;
+        }).map(cacheName => {
+          return caches.delete(cacheName);
+        })
+      );
+    }).then(() => clients.claim())
+  );
+});
+
+// Enhanced fetch with timeout, retries and better error handling
+const fetchWithRetry = async (request, retries = CONFIG.MAX_RETRIES) => {
+  try {
+    // Try to fetch with timeout
+    return await Promise.race([
+      sw.fetch(request),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), CONFIG.FETCH_TIMEOUT)
+      )
+    ]);
+  } catch (error) {
+    // Retry logic
+    if (retries > 0) {
+      console.log(`[UV Service Worker] Retrying fetch (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
+      return fetchWithRetry(request, retries - 1);
+    }
+    throw error;
+  }
+};
+
+// Determine if a request should be cached
+const shouldCache = (request, response) => {
+  // Don't cache non-GET requests
+  if (request.method !== 'GET') return false;
+  
+  // Don't cache if response isn't successful
+  if (!response || response.status !== 200) return false;
+  
+  // Don't cache sensitive URLs
+  const url = request.url.toLowerCase();
+  if (CONFIG.CACHE_EXEMPTIONS.some(term => url.includes(term))) return false;
+  
+  // Only cache specific content types
+  const contentType = response.headers.get('content-type') || '';
+  return contentType.includes('text/html') || 
+         contentType.includes('text/css') || 
+         contentType.includes('application/javascript') ||
+         contentType.includes('image/') ||
+         contentType.includes('font/') ||
+         contentType.includes('application/font');
+};
+
+// Main fetch event handler
 self.addEventListener('fetch', event => {
   // Only handle requests in our scope
   if (!event.request.url.includes('/uv/service/')) {
     return;
   }
 
+  // Clone the request for potential caching
+  const requestClone = event.request.clone();
+
   event.respondWith((async () => {
     try {
-      // Try with timeout
-      const response = await timeoutFetch(event, FETCH_TIMEOUT);
-
-      // For successful responses, check content
-      if (response && response.status === 200) {
-        const contentType = response.headers.get('content-type');
-
-        // For HTML responses, verify content length
-        if (contentType && contentType.includes('text/html')) {
-          // Clone to check content
-          const clone = response.clone();
-          const text = await clone.text();
-
-          // If no substantial content, return error page
-          if (text.length < MIN_HTML_SIZE) {
-            console.log('[UV Service Worker] Empty or minimal content detected');
-            return new Response(
-              <html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
-                <h2>Page Content Error</h2>
-                <p>The requested page loaded but has insufficient content.</p>
-                <p>URL: ${event.request.url}</p>
-                <p>This might be because:</p>
-                <ul>
-                  <li>The site is blocking proxy access</li>
-                  <li>The site requires JavaScript that isn't running in the proxy</li>
-                  <li>The site has anti-bot protection</li>
-                </ul>
-                <button onclick="window.location.reload()" style="padding: 10px; background: #4a6ed3; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Retry</button>
-                <button onclick="window.history.back()" style="padding: 10px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">Go Back</button>
-              </body></html>,
-              {
-                status: 200,
-                headers: { 'Content-Type': 'text/html' }
-              }
-            );
-          }
-
-          // Add a script to notify the parent page when the game is ready
-          if (text.includes('<body') && !text.includes('GAME_READY')) {
-            const modifiedText = text.replace(
-              '<body',
-              <body><script>
-                try {
-                  // Notify parent when game content is fully loaded
-                  window.addEventListener('load', function() {
-                    // Wait a bit for resources to actually render
-                    setTimeout(function() {
-                      if (window.parent && window.parent !== window) {
-                        window.parent.postMessage({ type: 'GAME_READY' }, '*');
-                      }
-                    }, 1000);
-                  });
-                } catch(e) {
-                  // Silently fail
-                }
-              </script>
-            );
-
-            return new Response(modifiedText, {
-              status: 200,
-              headers: response.headers
-            });
-          }
-        }
-
-        return response;
+      // Check cache first
+      const cache = await caches.open(CONFIG.CACHE_NAME);
+      const cachedResponse = await cache.match(event.request);
+      
+      if (cachedResponse) {
+        // Return cached response if we have it
+        console.log('[UV Service Worker] Serving from cache');
+        return cachedResponse;
       }
-
-      // For error responses, create helpful error page
-      console.log([UV Service Worker] Non-success response: ${response ? response.status : 'unknown'});
-      return new Response(
-        <html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
-          <h2>Proxy Error</h2>
-          <p>The proxy received a ${response ? response.status : 'unknown'} response.</p>
-          <p>This might be because:</p>
-          <ul>
-            <li>The site is blocking proxy access</li>
-            <li>The connection is too slow</li>
-            <li>The site is temporarily unavailable</li>
-          </ul>
-          <div style="margin-top: 20px;">
-            <button onclick="window.location.reload()" style="padding: 10px; background: #4a6ed3; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Retry</button>
-            <button onclick="window.history.back()" style="padding: 10px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">Go Back</button>
-          </div>
-        </body></html>,
-        {
-          status: 200,
-          headers: { 'Content-Type': 'text/html' }
+      
+      // Fetch from network with retries
+      const response = await fetchWithRetry(event.request);
+      const responseClone = response.clone();
+      
+      // Cache if appropriate
+      if (shouldCache(requestClone, response)) {
+        try {
+          await cache.put(requestClone, responseClone);
+          console.log('[UV Service Worker] Cached response');
+          
+          // Set expiry for this cache entry
+          setTimeout(async () => {
+            try {
+              const cache = await caches.open(CONFIG.CACHE_NAME);
+              await cache.delete(requestClone);
+              console.log('[UV Service Worker] Expired cache entry removed');
+            } catch (err) {
+              console.error('[UV Service Worker] Error removing expired cache:', err);
+            }
+          }, CONFIG.CACHE_EXPIRY);
+        } catch (err) {
+          console.error('[UV Service Worker] Error caching response:', err);
         }
-      );
+      }
+      
+      // Add performance optimization headers
+      const enhancedHeaders = new Headers(response.headers);
+      
+      // Return the response
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: enhancedHeaders
+      });
     } catch (err) {
       console.error('[UV Service Worker] Error in fetch:', err);
-
-      // Return a user-friendly error page
+      
+      // Return friendly error page
       return new Response(
-        <html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
-          <h2>Connection Error</h2>
-          <p>The proxy service encountered an error: ${err.message}</p>
-          <p>This often happens when:</p>
-          <ul>
-            <li>Your internet connection is slow or unstable</li>
-            <li>The site is blocking proxy access</li>
-            <li>The site is temporarily down</li>
-          </ul>
-          <div style="margin-top: 20px;">
-            <button onclick="window.location.reload()" style="padding: 10px; background: #4a6ed3; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Reload</button>
-            <button onclick="window.history.back()" style="padding: 10px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">Go Back</button>
+        `<!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Connection Error</title>
+          <style>
+            body {
+              font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              color: white;
+              background: #222;
+              margin: 0;
+              padding: 20px;
+              line-height: 1.6;
+            }
+            .container {
+              max-width: 600px;
+              margin: 40px auto;
+              background: #333;
+              border-radius: 8px;
+              padding: 20px;
+              box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            }
+            h2 {
+              margin-top: 0;
+              color: #4a6ed3;
+            }
+            ul {
+              margin-bottom: 20px;
+            }
+            button {
+              padding: 10px 16px;
+              background: #4a6ed3;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              margin-right: 10px;
+              font-size: 14px;
+            }
+            button.secondary {
+              background: #555;
+            }
+            button:hover {
+              opacity: 0.9;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2>Connection Error</h2>
+            <p>The service encountered an error: ${err.message}</p>
+            <p>This might be due to:</p>
+            <ul>
+              <li>Slow or unstable internet connection</li>
+              <li>The website being temporarily unavailable</li>
+              <li>The website using features that require direct access</li>
+            </ul>
+            <div>
+              <button onclick="window.location.reload()">Try Again</button>
+              <button class="secondary" onclick="window.history.back()">Go Back</button>
+            </div>
           </div>
-        </body></html>,
+        </body>
+        </html>`,
         {
           status: 200,
           headers: { 'Content-Type': 'text/html' }
@@ -154,21 +223,23 @@ self.addEventListener('fetch', event => {
   })());
 });
 
-// Standard handlers
-self.addEventListener('install', event => {
-  console.log('[UV Service Worker] Installed');
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', event => {
-  console.log('[UV Service Worker] Activated');
-  event.waitUntil(clients.claim());
-});
-
 // Handle messages from clients
 self.addEventListener('message', event => {
+  // Handle skip waiting
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+
+  // Handle cache clearing
+  if (event.data && event.data.type === 'CLEAR_CACHE') {
+    caches.delete(CONFIG.CACHE_NAME).then(() => {
+      if (event.source) {
+        event.source.postMessage({
+          type: 'CACHE_CLEARED',
+          timestamp: Date.now()
+        });
+      }
+    });
   }
 
   // Handle ping/health check
@@ -176,7 +247,8 @@ self.addEventListener('message', event => {
     if (event.source) {
       event.source.postMessage({
         type: 'PONG',
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        status: 'healthy'
       });
     }
   }
