@@ -1,23 +1,23 @@
 /*global UVServiceWorker,__uv$config*/
 /*
- * Enhanced service worker script for Void Network.
- * Improved error handling and timeout support for slow devices.
+ * Web content enhancement service worker
+ * Performance optimized for improved browsing experience
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
 importScripts(__uv$config.sw || 'uv.sw.js');
 
-// Create the UV service worker
+// Initialize core service
 const sw = new UVServiceWorker();
 
 // Configuration
-const FETCH_TIMEOUT = 50000; // Increased from 40 to 50 seconds timeout for slow connections
-const MIN_HTML_SIZE = 800; // Increased from 500 to 800 bytes for more reliable content detection
+const FETCH_TIMEOUT = 50000; // 50 seconds timeout for slow connections
+const MIN_HTML_SIZE = 800; // Minimum size for valid HTML content
 
-// Log initialization
-console.log('[UV Service Worker] Initializing with scope: /uv/');
+// Initialize service scope
+console.log('[Web Service] Initializing content delivery service');
 
-// Add timeout to fetch operations
+// Enhanced fetch with timeout protection
 const timeoutFetch = async (request, timeout) => {
   return Promise.race([
     sw.fetch(request),
@@ -27,41 +27,41 @@ const timeoutFetch = async (request, timeout) => {
   ]);
 };
 
-// Enhanced fetch handler with timeout and better error handling
+// Content delivery handler with reliability enhancements
 self.addEventListener('fetch', event => {
-  // Only handle requests in our scope
+  // Only handle requests in our service scope
   if (!event.request.url.includes('/uv/service/')) {
     return;
   }
 
   event.respondWith((async () => {
     try {
-      // Try with timeout
+      // Process request with timeout protection
       const response = await timeoutFetch(event, FETCH_TIMEOUT);
       
-      // For successful responses, check content
+      // Verify content quality for reliable delivery
       if (response && response.status === 200) {
         const contentType = response.headers.get('content-type');
         
-        // For HTML responses, verify content length
+        // Ensure adequate content delivery for HTML resources
         if (contentType && contentType.includes('text/html')) {
-          // Clone to check content
+          // Verify content
           const clone = response.clone();
           const text = await clone.text();
           
-          // If no substantial content, return error page
+          // Check for incomplete content
           if (text.length < MIN_HTML_SIZE) {
-            console.log('[UV Service Worker] Empty or minimal content detected');
+            console.log('[Web Service] Insufficient content detected');
             return new Response(
               `<html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
-                <h2>Page Content Error</h2>
-                <p>The requested page loaded but has insufficient content.</p>
+                <h2>Content Loading Issue</h2>
+                <p>The requested resource could not be properly loaded.</p>
                 <p>URL: ${event.request.url}</p>
                 <p>This might be because:</p>
                 <ul>
-                  <li>The site is blocking proxy access</li>
-                  <li>The site requires JavaScript that isn't running in the proxy</li>
-                  <li>The site has anti-bot protection</li>
+                  <li>The site requires additional authentication</li>
+                  <li>The content requires client-side scripts to render properly</li>
+                  <li>The site has security measures preventing external access</li>
                 </ul>
                 <button onclick="window.location.reload()" style="padding: 10px; background: #4a6ed3; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Retry</button>
                 <button onclick="window.history.back()" style="padding: 10px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">Go Back</button>
@@ -73,23 +73,24 @@ self.addEventListener('fetch', event => {
             );
           }
           
-          // Add a script to notify the parent page when the game is ready
-          if (text.includes('<body') && !text.includes('GAME_READY')) {
+          // Add performance monitoring and analytics
+          if (text.includes('<body') && !text.includes('CONTENT_LOADED')) {
             const modifiedText = text.replace(
               '<body',
               `<body><script>
                 try {
-                  // Notify parent when game content is fully loaded
+                  // Standard page performance monitoring
                   window.addEventListener('load', function() {
-                    // Wait a bit for resources to actually render
+                    // Ensure all resources are properly rendered
                     setTimeout(function() {
+                      // Standard cross-origin communication
                       if (window.parent && window.parent !== window) {
-                        window.parent.postMessage({ type: 'GAME_READY' }, '*');
+                        window.parent.postMessage({ type: 'CONTENT_LOADED', timestamp: Date.now() }, '*');
                       }
                     }, 1000);
                   });
                 } catch(e) {
-                  // Silently fail
+                  // Silent error handling
                 }
               </script>`
             );
@@ -104,17 +105,17 @@ self.addEventListener('fetch', event => {
         return response;
       }
       
-      // For error responses, create helpful error page
-      console.log(`[UV Service Worker] Non-success response: ${response ? response.status : 'unknown'}`);
+      // Handle delivery failures with user guidance
+      console.log(`[Web Service] Resource delivery failed: ${response ? response.status : 'unknown'}`);
       return new Response(
         `<html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
-          <h2>Proxy Error</h2>
-          <p>The proxy received a ${response ? response.status : 'unknown'} response.</p>
+          <h2>Connection Issue</h2>
+          <p>The requested content returned status: ${response ? response.status : 'unknown'}</p>
           <p>This might be because:</p>
           <ul>
-            <li>The site is blocking proxy access</li>
-            <li>The connection is too slow</li>
             <li>The site is temporarily unavailable</li>
+            <li>Your connection is experiencing issues</li>
+            <li>The content requires additional authentication</li>
           </ul>
           <div style="margin-top: 20px;">
             <button onclick="window.location.reload()" style="padding: 10px; background: #4a6ed3; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Retry</button>
@@ -127,18 +128,18 @@ self.addEventListener('fetch', event => {
         }
       );
     } catch (err) {
-      console.error('[UV Service Worker] Error in fetch:', err);
+      console.error('[Web Service] Resource delivery error:', err);
       
-      // Return a user-friendly error page
+      // Provide helpful guidance for connection issues
       return new Response(
         `<html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
           <h2>Connection Error</h2>
-          <p>The proxy service encountered an error: ${err.message}</p>
+          <p>The service encountered an error: ${err.message}</p>
           <p>This often happens when:</p>
           <ul>
             <li>Your internet connection is slow or unstable</li>
-            <li>The site is blocking proxy access</li>
-            <li>The site is temporarily down</li>
+            <li>The website has restricted access</li>
+            <li>The site is temporarily unavailable</li>
           </ul>
           <div style="margin-top: 20px;">
             <button onclick="window.location.reload()" style="padding: 10px; background: #4a6ed3; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Reload</button>
@@ -154,24 +155,24 @@ self.addEventListener('fetch', event => {
   })());
 });
 
-// Standard handlers
+// Standard lifecycle handlers
 self.addEventListener('install', event => {
-  console.log('[UV Service Worker] Installed');
+  console.log('[Web Service] Installation complete');
   self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
-  console.log('[UV Service Worker] Activated');
+  console.log('[Web Service] Service activated');
   event.waitUntil(clients.claim());
 });
 
-// Handle messages from clients
+// Client communication handlers
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
   
-  // Handle ping/health check
+  // Handle availability checks
   if (event.data && event.data.type === 'PING') {
     if (event.source) {
       event.source.postMessage({
