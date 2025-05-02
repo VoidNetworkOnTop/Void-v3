@@ -1,7 +1,7 @@
 /global UVServiceWorker,__uv$config/
 /*
  * Enhanced service worker script for Ultraviolet proxy
- * With improved game compatibility and fixed __uv$bareData issues
+ * With specific fixes for WebGL games and yujiandemo.com
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -12,31 +12,50 @@ const sw = new UVServiceWorker();
 
 // Configuration with extended timeouts
 const CONFIG = {
-  FETCH_TIMEOUT: 180000,        // 3 minute timeout for slow sites
-  MAX_RETRIES: 3,               // Number of retry attempts
-  RETRY_DELAY: 800,             // Delay between retries in ms
-  LOG_LEVEL: 'debug'            // Set to 'info' to reduce logging
+  FETCH_TIMEOUT: 240000,  // 4 minute timeout for slow sites
+  MAX_RETRIES: 3,         // Number of retry attempts
+  RETRY_DELAY: 800,       // Delay between retries in ms
+  LOG_LEVEL: 'debug'      // Set to 'info' to reduce logging
 };
 
 // Log initialization
-console.log('[UV Service Worker] Initializing with bareData fix...');
+console.log('[UV Service Worker] Initializing with WebGL game fixes...');
 
 // Enhanced fetch with timeout and retries
 const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
   try {
     // Get URL information
     const url = new URL(event.request.url);
+    const reqUrl = url.toString();
     
-    // Special handling for game URLs - CRITICAL: DON'T MODIFY THESE RESPONSES
+    // Special handling for known problem sites
+    const isSpecialSite = 
+      reqUrl.includes('yujiandemo.com') || 
+      reqUrl.includes('yujian');
+      
+    if (isSpecialSite) {
+      console.log(`[UV Service Worker] Handling special site: ${reqUrl.substring(0, 100)}...`);
+      
+      // Use direct fetch with no timeout for this site
+      const response = await sw.fetch(event);
+      
+      // Check if this is an HTML response that might need WebGL fixes
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('text/html')) {
+        return await addWebGLFixes(response, reqUrl);
+      }
+      
+      return response;
+    }
+    
+    // Special handling for all game URLs
     const isGameUrl = 
       url.pathname.includes('/uv/service/') || 
       url.pathname.includes('/service/') ||
       url.search.includes('game=');
       
     if (isGameUrl) {
-      console.log(`[UV Service Worker] Handling game URL: ${url.toString().substring(0, 100)}...`);
-      
-      // IMPORTANT: Don't apply any special handling to the game URL, just let UV handle it
+      console.log(`[UV Service Worker] Handling game URL: ${reqUrl.substring(0, 100)}...`);
       return await sw.fetch(event);
     }
     
@@ -60,14 +79,9 @@ const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
   }
 };
 
-// Fix HTML content issues
-const cleanHtml = async (response, url) => {
-  // Skip processing for UV service URLs and game content
-  if (url.includes('/uv/service/') || url.includes('/service/') || url.search.includes('game=')) {
-    return response;
-  }
-  
-  // Check if this is HTML content
+// Add WebGL fixes for specific sites
+const addWebGLFixes = async (response, url) => {
+  // Only process HTML responses
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('text/html')) {
     return response;
@@ -77,102 +91,163 @@ const cleanHtml = async (response, url) => {
   try {
     let text = await clone.text();
     
-    // Check if text contains bareData (which should never be visible to user)
+    // Skip if it's UV configuration data
     if (text.includes('__uv$bareData') || text.includes('__uv$cookies')) {
       console.error('[UV Service Worker] Detected UV configuration in response body!');
-      console.log('[UV Service Worker] URL with bareData issue:', url);
+      return response; // Return the original response
+    }
+    
+    // Add WebGL compatibility script for yujiandemo.com
+    if (url.includes('yujiandemo.com') || url.includes('yujian')) {
+      console.log('[UV Service Worker] Adding WebGL fixes for yujiandemo.com');
       
-      // This indicates a processing error - we'll try to fetch directly without modifications
-      return await sw.fetch(event);
-    }
-    
-    // Normal HTML processing for non-game content
-    let modified = false;
-
-    // Fix common HTML syntax issues
-    if (text.includes('class="">')) {
-      text = text.replace(/class=["']>/g, 'class="">');
-      modified = true;
-    }
-    
-    // Remove stray closing tags
-    if (text.match(/^\s*>/)) {
-      text = text.replace(/^\s*>/, '');
-      modified = true;
-    }
-    
-    // Find and fix unclosed or mismatched tags
-    const findStrayClosingTags = () => {
-      // Find standalone ">" that aren't part of a tag
-      let matches = text.match(/([^<]|^)>([^>]|$)/g);
-      if (matches) {
-        // Replace standalone ">" with nothing
-        text = text.replace(/([^<]|^)>([^>]|$)/g, '$1$2');
-        return true;
-      }
-      return false;
-    };
-    
-    // Run the stray tag finder and fix
-    if (findStrayClosingTags()) {
-      modified = true;
-    }
-    
-    // Add our compatibility scripts only to non-game content
-    if (!text.includes('uv-html-fix')) {
-      // Insert at the beginning of head safely
-      const headPos = text.indexOf('<head');
+      // Check if <head> exists
+      const headPos = text.indexOf('</head>');
       if (headPos !== -1) {
-        // Find where the head tag ends
-        const headEndPos = text.indexOf('>', headPos);
-        if (headEndPos !== -1) {
-          // Insert after the head opening tag
-          text = text.substring(0, headEndPos + 1) + 
-                 `\n<!-- UV HTML Fix -->\n<script data-id="uv-html-fix">
-                  (function() {
-                    // Fix HTML rendering issues
-                    document.addEventListener('DOMContentLoaded', function() {
-                      // Remove any stray ">" characters
-                      const walker = document.createTreeWalker(
-                        document.body, 
-                        NodeFilter.SHOW_TEXT
-                      );
+        // Insert WebGL compatibility scripts before head closes
+        text = text.substring(0, headPos) + 
+              `
+              <!-- WebGL Compatibility Fix -->
+              <script>
+                // Fix WebGL context creation
+                (function() {
+                  console.log("[UV WebGL Fix] Initializing WebGL compatibility layer");
+                  
+                  // Override HTMLCanvasElement.prototype.getContext to fix WebGL
+                  const originalGetContext = HTMLCanvasElement.prototype.getContext;
+                  HTMLCanvasElement.prototype.getContext = function(contextType, contextAttributes) {
+                    console.log("[UV WebGL Fix] getContext called with:", contextType);
+                    
+                    if (contextType === 'webgl' || contextType === 'experimental-webgl' || contextType === 'webgl2') {
+                      // Fix WebGL context attributes
+                      contextAttributes = contextAttributes || {};
                       
-                      let node;
-                      const nodesToFix = [];
-                      while(node = walker.nextNode()) {
-                        if (node.textContent.includes('>') && 
-                            node.parentNode.nodeName !== 'SCRIPT' && 
-                            node.parentNode.nodeName !== 'STYLE') {
-                          nodesToFix.push(node);
+                      // Force attributes that help with compatibility
+                      contextAttributes.preserveDrawingBuffer = true;
+                      contextAttributes.failIfMajorPerformanceCaveat = false;
+                      contextAttributes.powerPreference = 'high-performance';
+                      
+                      console.log("[UV WebGL Fix] Using fixed WebGL context attributes:", contextAttributes);
+                      
+                      try {
+                        // First try with the requested type
+                        const ctx = originalGetContext.call(this, contextType, contextAttributes);
+                        if (ctx) {
+                          console.log("[UV WebGL Fix] Successfully created WebGL context");
+                          
+                          // Patch for yujiandemo.com - add missing properties
+                          if (!ctx.getShaderPrecisionFormat) {
+                            ctx.getShaderPrecisionFormat = function() {
+                              return { precision: 23, rangeMin: 127, rangeMax: 127 };
+                            };
+                          }
+                          
+                          // Make sure this canvas is visible and properly sized
+                          setTimeout(() => {
+                            this.style.display = 'block';
+                            this.style.visibility = 'visible';
+                            if (this.width === 0 || this.height === 0) {
+                              this.width = 800;
+                              this.height = 600;
+                            }
+                          }, 100);
+                          
+                          return ctx;
                         }
+                      } catch (e) {
+                        console.warn("[UV WebGL Fix] Error creating WebGL context:", e);
                       }
                       
-                      // Fix the nodes
-                      nodesToFix.forEach(node => {
-                        node.textContent = node.textContent.replace(/>/g, '');
-                      });
+                      // If we're here, the original request failed, try alternatives
+                      const alternatives = ['webgl', 'experimental-webgl', 'webgl2'];
+                      for (const alt of alternatives) {
+                        if (alt !== contextType) {
+                          try {
+                            console.log("[UV WebGL Fix] Trying alternative context:", alt);
+                            const ctx = originalGetContext.call(this, alt, contextAttributes);
+                            if (ctx) {
+                              console.log("[UV WebGL Fix] Successfully created alternative WebGL context:", alt);
+                              return ctx;
+                            }
+                          } catch (e) {
+                            console.warn("[UV WebGL Fix] Error creating alternative context:", e);
+                          }
+                        }
+                      }
+                    }
+                    
+                    // For non-WebGL contexts or if all WebGL attempts failed
+                    return originalGetContext.call(this, contextType, contextAttributes);
+                  };
+                  
+                  // Fix for yujiandemo.com - Make sure Unity loader works
+                  window.addEventListener('DOMContentLoaded', function() {
+                    console.log("[UV WebGL Fix] DOM loaded, checking for Unity container");
+                    
+                    // Force visibility of game container
+                    setTimeout(function checkGameContainer() {
+                      const containers = [
+                        document.getElementById('unity-container'),
+                        document.getElementById('game-container'),
+                        document.getElementById('gameContainer'),
+                        document.getElementById('canvas'),
+                        document.querySelector('canvas'),
+                        document.querySelector('[data-unity-canvas]'),
+                        document.querySelector('[data-game-canvas]')
+                      ].filter(Boolean);
                       
-                      // Fix broken class attributes
-                      document.querySelectorAll('[class=""]').forEach(el => {
-                        el.removeAttribute('class');
-                      });
-                    });
-                  })();
-                 </script>\n` + 
-                 text.substring(headEndPos + 1);
-          modified = true;
-        }
+                      if (containers.length > 0) {
+                        console.log("[UV WebGL Fix] Found game containers:", containers.length);
+                        
+                        containers.forEach(container => {
+                          container.style.display = 'block';
+                          container.style.visibility = 'visible';
+                          container.style.opacity = '1';
+                          
+                          const canvas = container.querySelector('canvas') || container;
+                          if (canvas.tagName === 'CANVAS') {
+                            canvas.style.display = 'block';
+                            canvas.style.visibility = 'visible';
+                            canvas.style.opacity = '1';
+                            console.log("[UV WebGL Fix] Fixed canvas visibility");
+                          }
+                        });
+                      } else {
+                        // Try again in a bit - the Unity container might be created later
+                        setTimeout(checkGameContainer, 500);
+                      }
+                    }, 500);
+                  });
+                  
+                  // Make sure body is visible
+                  window.addEventListener('load', function() {
+                    if (document.body) {
+                      document.body.style.backgroundColor = document.body.style.backgroundColor || '#000';
+                      document.body.style.color = document.body.style.color || '#fff';
+                      document.body.style.display = 'block';
+                      document.body.style.visibility = 'visible';
+                    }
+                  });
+                  
+                  // Provide WebGL availability methods
+                  window.hasWebGL = function() { return true; };
+                  window.isWebGLAvailable = function() { return true; };
+                  if (!window.WebGLRenderingContext) {
+                    window.WebGLRenderingContext = function(){};
+                  }
+                  
+                  console.log("[UV WebGL Fix] WebGL compatibility layer initialized");
+                })();
+              </script>
+              ` + text.substring(headPos);
+              
+        // Return modified response
+        return new Response(text, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers
+        });
       }
-    }
-
-    // Return modified response or original if no changes
-    if (modified) {
-      return new Response(text, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers
-      });
     }
   } catch (error) {
     console.error('[UV Service Worker] Error processing HTML:', error);
@@ -191,14 +266,9 @@ self.addEventListener('fetch', event => {
 
   event.respondWith((async () => {
     try {
-      // Get the URL
-      const url = event.request.url;
-      
       // Get response with enhanced fetch
       const response = await enhancedFetch(event);
-      
-      // Clean HTML (skips game content)
-      return await cleanHtml(response, url);
+      return response;
     } catch (err) {
       console.error('[UV Service Worker] Fatal error:', err);
       
