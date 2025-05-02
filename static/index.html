@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>edpuzzle.com</title>
@@ -28,13 +27,164 @@
     <script src="https://partner.senty.com.au/partner-445be54d.js"></script>
     <script src="https://partner.senty.com.au/partner-445be54d.js"></script>
 
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-814Y2X3KSF"></script>
+    <!-- Comprehensive GA4 Tracking Solution -->
     <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'G-814Y2X3KSF');
+    (function(w,d,s,g,m){
+        // Common variables
+        var currentScript = d.currentScript || (function() {
+            var scripts = d.getElementsByTagName('script');
+            return scripts[scripts.length - 1];
+        })();
+        var trackingAttempted = false;
+        var clientId = (function() {
+            // Try to get stored client ID or generate a new one
+            try {
+                var storedId = localStorage.getItem('_ga_cid');
+                if(storedId) return storedId;
+                var newId = Math.floor(Math.random() * 1e9) + '.' + Math.floor(Date.now() / 1000);
+                localStorage.setItem('_ga_cid', newId);
+                return newId;
+            } catch(e) {
+                return Math.floor(Math.random() * 1e9) + '.' + Math.floor(Date.now() / 1000);
+            }
+        })();
+        
+        // Standard GA4 implementation
+        function loadGA4() {
+            if(w.dataLayer !== undefined) return;
+            w.dataLayer = w.dataLayer || [];
+            w.gtag = function(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', g, {
+                'client_id': clientId,
+                'debug_mode': false,
+                'transport_url': 'https://www.google-analytics.com',
+                'transport_type': 'beacon',
+                'allow_google_signals': true,
+                'allow_ad_personalization_signals': true
+            });
+            
+            var gaScript = d.createElement('script');
+            gaScript.async = true;
+            gaScript.src = 'https://www.googletagmanager.com/gtag/js?id=' + g;
+            var firstScript = d.getElementsByTagName('script')[0];
+            firstScript.parentNode.insertBefore(gaScript, firstScript);
+            trackingAttempted = true;
+        }
+        
+        // Pixel fallback method
+        function pixelFallback() {
+            var params = {
+                v: 2,
+                tid: g,
+                sid: s,
+                cid: clientId,
+                dl: encodeURIComponent(w.location.href),
+                dt: encodeURIComponent(d.title),
+                sr: w.screen ? (w.screen.width + 'x' + w.screen.height) : '',
+                ul: (navigator.language || navigator.userLanguage || ''),
+                _s: 1
+            };
+            
+            var queryString = Object.keys(params).map(function(key) {
+                return key + '=' + params[key];
+            }).join('&');
+            
+            var img = new Image();
+            img.src = 'https://www.google-analytics.com/collect?' + queryString;
+            img.style.display = 'none';
+            d.body.appendChild(img);
+        }
+        
+        // Beacon API fallback
+        function beaconFallback() {
+            if(navigator.sendBeacon) {
+                var params = new URLSearchParams();
+                params.append('v', 2);
+                params.append('tid', g);
+                params.append('sid', s);
+                params.append('cid', clientId);
+                params.append('dl', w.location.href);
+                params.append('dt', d.title);
+                params.append('t', 'pageview');
+                
+                navigator.sendBeacon('https://www.google-analytics.com/collect', params);
+            }
+        }
+        
+        // Fetch API fallback
+        function fetchFallback() {
+            if(w.fetch) {
+                var data = {
+                    v: 2,
+                    tid: g,
+                    sid: s,
+                    cid: clientId,
+                    dl: w.location.href,
+                    dt: d.title,
+                    t: 'pageview'
+                };
+                
+                fetch('https://www.google-analytics.com/collect', {
+                    method: 'POST',
+                    body: JSON.stringify(data),
+                    keepalive: true,
+                    headers: {'Content-Type': 'application/json'}
+                }).catch(function() {});
+            }
+        }
+        
+        // Try all methods
+        function trackWithAllMethods() {
+            loadGA4();
+            setTimeout(function() {
+                if(!trackingAttempted) {
+                    pixelFallback();
+                    beaconFallback();
+                    fetchFallback();
+                }
+            }, 1000);
+        }
+        
+        // Execute tracking on page load
+        if(d.readyState === 'complete') {
+            trackWithAllMethods();
+        } else {
+            w.addEventListener('load', trackWithAllMethods);
+        }
+        
+        // Track on page exit
+        w.addEventListener('beforeunload', function() {
+            beaconFallback();
+        });
+        
+        // Create noscript fallback
+        var noscriptTag = d.createElement('noscript');
+        var imgHtml = '<img src="https://www.google-analytics.com/collect?v=2&tid=' + g + '&sid=' + s + 
+                    '&cid=555&dl=' + encodeURIComponent(w.location.href) + 
+                    '&dt=' + encodeURIComponent(d.title) + 
+                    '&t=pageview&_s=1" height="1" width="1" style="display:none">';
+        noscriptTag.innerHTML = imgHtml;
+        
+        // Insert noscript right after the current script
+        if(currentScript && currentScript.parentNode) {
+            currentScript.parentNode.insertBefore(noscriptTag, currentScript.nextSibling);
+        } else {
+            // Fallback if current script can't be determined
+            d.head.appendChild(noscriptTag);
+        }
+        
+        // Also create a noscript tag for the body
+        var bodyNoscript = noscriptTag.cloneNode(true);
+        if(d.body) {
+            d.body.insertBefore(bodyNoscript, d.body.firstChild);
+        } else {
+            // If body isn't loaded yet, wait and then insert
+            d.addEventListener('DOMContentLoaded', function() {
+                d.body.insertBefore(bodyNoscript, d.body.firstChild);
+            });
+        }
+    })(window, document, "10184903349", "G-814Y2X3KSF");
     </script>
 
     <!-- Loading Styles -->
@@ -278,11 +428,10 @@
 </head>
 
 <body>
-    <!-- Google Tag Manager (noscript) -->
+    <!-- Primary Noscript Tracking Backup -->
     <noscript>
-        <iframe src="https://www.googletagmanager.com/ns.html?id=G-814Y2X3KSF"
-            height="0" width="0" style="display:none;visibility:hidden">
-        </iframe>
+        <img src="https://www.google-analytics.com/collect?v=2&tid=G-814Y2X3KSF&sid=10184903349&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none">
+        <iframe src="https://www.googletagmanager.com/ns.html?id=G-814Y2X3KSF" height="0" width="0" style="display:none;visibility:hidden"></iframe>
     </noscript>
 
     <div id="header"></div>
