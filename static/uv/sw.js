@@ -1,4 +1,4 @@
-/*global UVServiceWorker,__uv$config*/
+/global UVServiceWorker,__uv$config/
 /*
  * Enhanced service worker script for Void Network.
  * Improved error handling and timeout support for slow devices.
@@ -38,22 +38,22 @@ self.addEventListener('fetch', event => {
     try {
       // Try with timeout
       const response = await timeoutFetch(event, FETCH_TIMEOUT);
-      
+
       // For successful responses, check content
       if (response && response.status === 200) {
         const contentType = response.headers.get('content-type');
-        
+
         // For HTML responses, verify content length
         if (contentType && contentType.includes('text/html')) {
           // Clone to check content
           const clone = response.clone();
           const text = await clone.text();
-          
+
           // If no substantial content, return error page
           if (text.length < MIN_HTML_SIZE) {
             console.log('[UV Service Worker] Empty or minimal content detected');
             return new Response(
-              `<html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
+              <html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
                 <h2>Page Content Error</h2>
                 <p>The requested page loaded but has insufficient content.</p>
                 <p>URL: ${event.request.url}</p>
@@ -65,19 +65,19 @@ self.addEventListener('fetch', event => {
                 </ul>
                 <button onclick="window.location.reload()" style="padding: 10px; background: #4a6ed3; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Retry</button>
                 <button onclick="window.history.back()" style="padding: 10px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">Go Back</button>
-              </body></html>`,
+              </body></html>,
               {
                 status: 200,
                 headers: { 'Content-Type': 'text/html' }
               }
             );
           }
-          
+
           // Add a script to notify the parent page when the game is ready
           if (text.includes('<body') && !text.includes('GAME_READY')) {
             const modifiedText = text.replace(
               '<body',
-              `<body><script>
+              <body><script>
                 try {
                   // Notify parent when game content is fully loaded
                   window.addEventListener('load', function() {
@@ -91,23 +91,23 @@ self.addEventListener('fetch', event => {
                 } catch(e) {
                   // Silently fail
                 }
-              </script>`
+              </script>
             );
-            
+
             return new Response(modifiedText, {
               status: 200,
               headers: response.headers
             });
           }
         }
-        
+
         return response;
       }
-      
+
       // For error responses, create helpful error page
-      console.log(`[UV Service Worker] Non-success response: ${response ? response.status : 'unknown'}`);
+      console.log([UV Service Worker] Non-success response: ${response ? response.status : 'unknown'});
       return new Response(
-        `<html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
+        <html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
           <h2>Proxy Error</h2>
           <p>The proxy received a ${response ? response.status : 'unknown'} response.</p>
           <p>This might be because:</p>
@@ -120,7 +120,7 @@ self.addEventListener('fetch', event => {
             <button onclick="window.location.reload()" style="padding: 10px; background: #4a6ed3; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Retry</button>
             <button onclick="window.history.back()" style="padding: 10px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">Go Back</button>
           </div>
-        </body></html>`,
+        </body></html>,
         {
           status: 200,
           headers: { 'Content-Type': 'text/html' }
@@ -128,10 +128,10 @@ self.addEventListener('fetch', event => {
       );
     } catch (err) {
       console.error('[UV Service Worker] Error in fetch:', err);
-      
+
       // Return a user-friendly error page
       return new Response(
-        `<html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
+        <html><body style="font-family: sans-serif; color: white; background: #222; margin: 0; padding: 20px;">
           <h2>Connection Error</h2>
           <p>The proxy service encountered an error: ${err.message}</p>
           <p>This often happens when:</p>
@@ -144,7 +144,7 @@ self.addEventListener('fetch', event => {
             <button onclick="window.location.reload()" style="padding: 10px; background: #4a6ed3; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Reload</button>
             <button onclick="window.history.back()" style="padding: 10px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">Go Back</button>
           </div>
-        </body></html>`,
+        </body></html>,
         {
           status: 200,
           headers: { 'Content-Type': 'text/html' }
@@ -170,7 +170,7 @@ self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-  
+
   // Handle ping/health check
   if (event.data && event.data.type === 'PING') {
     if (event.source) {
