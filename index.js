@@ -9,16 +9,16 @@ const app = express();
 const PORT = 8080;
 const __dirname = process.cwd();
 
-// Create Bare server with improved config for game support
+// Create Bare server with improved configuration for games
 const bare = createBareServer("/bare/", {
-  // Increased timeouts for games and large assets
-  connectTimeout: 30000,
+  // Increased timeouts for game assets
+  connectTimeout: 40000,
   socketTimeout: 90000,
-  // Headers config for better game compatibility
+  // Headers config for better compatibility
   headers: {
     // Remove headers that might cause issues
     blocklist: ["cookie", "origin"],
-    // Set permissive values for potentially problematic headers
+    // Permissive headers for game content
     "content-security-policy": "",
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "*",
@@ -26,11 +26,11 @@ const bare = createBareServer("/bare/", {
   }
 });
 
-// Enhanced Bare server with better error handling and game support
+// Enhanced Bare server with better error handling and improved game compatibility
 const originalRouteRequest = bare.routeRequest;
 bare.routeRequest = async function(req, res) {
   // Set longer timeout for slow connections and games
-  const BARE_TIMEOUT = 90000; // 90 seconds (increased from 60s)
+  const BARE_TIMEOUT = 90000; // 90 seconds
   req.setTimeout(BARE_TIMEOUT);
   res.setTimeout(BARE_TIMEOUT);
   
@@ -43,7 +43,7 @@ bare.routeRequest = async function(req, res) {
     req.url.includes('.js') ||
     req.url.includes('.wasm');
   
-  // Log game-related requests for troubleshooting
+  // Extra logging for game requests to help debugging
   if (isGameRequest) {
     const reqUrlPreview = req.url.length > 100 ? 
       req.url.substring(0, 100) + '...' : req.url;
@@ -53,15 +53,10 @@ bare.routeRequest = async function(req, res) {
   try {
     // Call the original handler
     await originalRouteRequest.call(this, req, res);
-    
-    // Log successful game requests
-    if (isGameRequest) {
-      console.log(`[BARE] Game request completed: ${req.url.substring(0, 50)}...`);
-    }
   } catch (error) {
     console.error('[BARE] Server error:', error.message, req.url.substring(0, 100));
     
-    // Improved error handling based on error type
+    // If headers not sent yet, send friendly error response
     if (!res.headersSent) {
       // Different responses for different error types
       if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
@@ -113,28 +108,51 @@ app.use((req, res, next) => {
   next();
 });
 
-// Static files and routes
+// Add game-specific headers for better compatibility
+app.use((req, res, next) => {
+  // Check if this is likely a game request
+  const isGamePath = 
+    req.url.includes('/game') || 
+    req.url.includes('/games') || 
+    req.url.includes('/ga') || 
+    req.url.includes('/rga') ||
+    req.url.includes('/uv/service');
+  
+  if (isGamePath) {
+    // Set headers for better game compatibility
+    res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cache-Control', 'no-cache');
+  }
+  
+  next();
+});
+
+// Static files and routes - keep your existing routes
 app.use(express.static("img")); // IMGS GET PRIORITY
 
-// Add cache headers for static files
-const staticOptions = {
-  setHeaders: (res, path) => {
-    // Set long cache for images
-    if (path.endsWith('.jpg') || path.endsWith('.png') || path.endsWith('.gif') || path.endsWith('.webp')) {
-      res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
-    }
+// Cache headers for different file types
+const cacheControl = (req, res, next) => {
+  const path = req.path;
+  
+  // Set cache headers based on file type
+  if (path.match(/\.(jpg|jpeg|png|gif|webp|svg|ico)$/i)) {
+    // Cache images for longer
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+  } else if (path.match(/\.(css|js)$/i)) {
+    // Medium cache for scripts and styles
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour
+  } else if (path.match(/\.(html)$/i) || path === '/') {
     // No cache for HTML
-    else if (path.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-cache');
-    }
-    // Medium cache for other assets
-    else {
-      res.setHeader('Cache-Control', 'public, max-age=3600'); // 1 hour
-    }
+    res.setHeader('Cache-Control', 'no-cache');
   }
+  
+  next();
 };
 
-// Game routes with specific handling - keep your existing routes
+// Apply cache headers to static files
+app.use(cacheControl);
+
 app.get("/ga", function (req, res) {
   // Add headers specifically for games
   res.setHeader('Cache-Control', 'no-cache');
@@ -175,7 +193,7 @@ app.get("/chat", function (req, res) {
   res.sendFile(path.join(__dirname, "static/chat.html"));
 });
 
-// Special endpoint to clear service worker cache
+// Simple cache clearer for troubleshooting
 app.get("/clearcache", (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -238,7 +256,7 @@ app.get("/clearcache", (req, res) => {
 });
 
 // Serve static files
-app.use(express.static(path.join(__dirname, "static"), staticOptions));
+app.use(express.static(path.join(__dirname, "static")));
 
 // 404 handler
 app.get('*', function(req, res) {
@@ -248,7 +266,7 @@ app.get('*', function(req, res) {
 // Create HTTP server
 const server = http.createServer();
 
-// Route requests
+// Improved request handling
 server.on("request", (req, res) => {
   try {
     if (bare.shouldRoute(req)) {
