@@ -73,17 +73,65 @@ self.addEventListener('fetch', event => {
             );
           }
           
-          // Add performance monitoring and analytics
-          if (text.includes('<body') && !text.includes('CONTENT_LOADED')) {
-            const modifiedText = text.replace(
+          // Fix style attribute rendering issues and add performance monitoring
+          let modifiedText = text;
+          
+          // Fix the attribute style transformation issues (remove visible __uv-attr tags)
+          modifiedText = modifiedText.replace(/(__uv-attr-[a-zA-Z0-9-]+="[^"]*")/g, '');
+          
+          // Add CSS to hide any remaining transformation artifacts
+          if (modifiedText.includes('<head')) {
+            modifiedText = modifiedText.replace(
+              '<head',
+              `<head><style>
+                [__uv-attr-style], [__uv-attr-class], [__uv-attr-id] {
+                  visibility: hidden !important;
+                  display: none !important;
+                  width: 0 !important;
+                  height: 0 !important;
+                  opacity: 0 !important;
+                }
+              </style>`
+            );
+          }
+          
+          // Add performance monitoring
+          if (modifiedText.includes('<body') && !modifiedText.includes('CONTENT_LOADED')) {
+            modifiedText = modifiedText.replace(
               '<body',
               `<body><script>
                 try {
-                  // Standard page performance monitoring
+                  // Clean up any remaining style artifacts
+                  function cleanupStyleArtifacts() {
+                    const elements = document.querySelectorAll('[__uv-attr-style], [__uv-attr-class], [__uv-attr-id]');
+                    for (const el of elements) {
+                      // Move all attributes that start with __uv-attr- to their proper places
+                      for (const attr of el.attributes) {
+                        if (attr.name.startsWith('__uv-attr-')) {
+                          const realAttrName = attr.name.replace('__uv-attr-', '');
+                          el.setAttribute(realAttrName, attr.value);
+                          el.removeAttribute(attr.name);
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Run cleanup immediately
+                  if (document.readyState === 'complete') {
+                    cleanupStyleArtifacts();
+                  } else {
+                    document.addEventListener('DOMContentLoaded', cleanupStyleArtifacts);
+                  }
+                  
+                  // Run cleanup again after full load and periodically
                   window.addEventListener('load', function() {
-                    // Ensure all resources are properly rendered
+                    cleanupStyleArtifacts();
+                    
+                    // Perform additional cleanups for complex sites
+                    setInterval(cleanupStyleArtifacts, 2000);
+                    
+                    // Standard content monitoring
                     setTimeout(function() {
-                      // Standard cross-origin communication
                       if (window.parent && window.parent !== window) {
                         window.parent.postMessage({ type: 'CONTENT_LOADED', timestamp: Date.now() }, '*');
                       }
@@ -94,12 +142,12 @@ self.addEventListener('fetch', event => {
                 }
               </script>`
             );
-            
-            return new Response(modifiedText, {
-              status: 200,
-              headers: response.headers
-            });
           }
+          
+          return new Response(modifiedText, {
+            status: 200,
+            headers: response.headers
+          });
         }
         
         return response;
