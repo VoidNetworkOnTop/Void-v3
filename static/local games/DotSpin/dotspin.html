@@ -944,7 +944,7 @@
                    Each flight costs as much as you bet to play.<br>
                    Hit money emojis (+200 coins), avoid bombs (-1000 coins) and fire (slows you down).<br>
                    Use the boost button (50 coins) to push your plane upward and forward!<br>
-                   Don't hit the ground (-500 coins)! Game only ends if you hit the ground.</p>
+                   Don't hit the ground (-500 coins)! Game only ends if you hit the ground. Maximum altitude: 10,000.</p>
                    
                    <div class="bet-amount-selector">
                        <div class="bet-amount-display" id="bet-amount-display">Bet Amount: 100 coins</div>
@@ -1682,11 +1682,15 @@
             running: false,
             betAmount: 100,
             totalCoinsCollected: 0,
-            pendingRewards: 0, // NEW: Track rewards separately from penalties
+            pendingRewards: 0, // Track rewards separately from penalties
             distanceTraveled: 0,
             cheatingAttempts: 0,
             integrityChecks: 0,
-            lastVerifiedState: null
+            lastVerifiedState: null,
+            gameStartTime: 0, // Track when the game started
+            forceCrashTimer: null, // Timer to force crash
+            isAboveMaxAltitude: false, // Flag to track if above max altitude
+            crashProbabilityApplied: false // Track if crash probability has been applied
         }
     };
     
@@ -1699,7 +1703,11 @@
             defaultBet: 100,         // Default bet amount
             bombPenalty: 1000,        // Coins lost when hitting a bomb
             moneyReward: 200,        // Coins gained when hitting money
-            groundPenalty: 500       // Coins lost when hitting the ground (increased from 200)
+            groundPenalty: 500,       // Coins lost when hitting the ground
+            maxAltitude: 10000,       // Maximum altitude allowed (new)
+            flyTimeLow: 60000,        // 1 minute for bets under 1000
+            flyTimeMedium: 180000,    // 3 minutes for bets between 1000-5000
+            flyTimeHigh: 1200000      // 20 minutes for bets over 5000
         };
         
         // Return an immutable object
@@ -1711,7 +1719,11 @@
             get bombPenalty() { return _internal.bombPenalty; },
             get moneyReward() { return _internal.moneyReward; },
             get groundPenalty() { return _internal.groundPenalty; },
-            get boostCost() { return _internal.boostCost; }
+            get boostCost() { return _internal.boostCost; },
+            get maxAltitude() { return _internal.maxAltitude; },
+            get flyTimeLow() { return _internal.flyTimeLow; },
+            get flyTimeMedium() { return _internal.flyTimeMedium; },
+            get flyTimeHigh() { return _internal.flyTimeHigh; }
         });
     })();
 
@@ -1790,7 +1802,6 @@
         gameState[GAME_VARS.STATE].totalCoinsCollected += amount;
     }
     
-    // NEW: Functions to manage pending rewards
     function getPendingRewards() {
         return gameState[GAME_VARS.STATE].pendingRewards;
     }
@@ -1817,6 +1828,45 @@
     
     function setGameRunning(running) {
         gameState[GAME_VARS.STATE].running = running;
+    }
+    
+    function getGameStartTime() {
+        return gameState[GAME_VARS.STATE].gameStartTime;
+    }
+    
+    function setGameStartTime(time) {
+        gameState[GAME_VARS.STATE].gameStartTime = time;
+    }
+    
+    function setForceCrashTimer(timer) {
+        gameState[GAME_VARS.STATE].forceCrashTimer = timer;
+    }
+    
+    function getForceCrashTimer() {
+        return gameState[GAME_VARS.STATE].forceCrashTimer;
+    }
+    
+    function clearForceCrashTimer() {
+        if (gameState[GAME_VARS.STATE].forceCrashTimer) {
+            clearTimeout(gameState[GAME_VARS.STATE].forceCrashTimer);
+            gameState[GAME_VARS.STATE].forceCrashTimer = null;
+        }
+    }
+    
+    function isAboveMaxAltitude() {
+        return gameState[GAME_VARS.STATE].isAboveMaxAltitude;
+    }
+    
+    function setIsAboveMaxAltitude(above) {
+        gameState[GAME_VARS.STATE].isAboveMaxAltitude = above;
+    }
+    
+    function isCrashProbabilityApplied() {
+        return gameState[GAME_VARS.STATE].crashProbabilityApplied;
+    }
+    
+    function setCrashProbabilityApplied(applied) {
+        gameState[GAME_VARS.STATE].crashProbabilityApplied = applied;
     }
     
     // DOM element references
@@ -1870,6 +1920,120 @@
         }
         
         return false;
+    }
+    
+    // Function to setup crash probability based on bet amount
+    function setupCrashProbability() {
+        if (isCrashProbabilityApplied()) return; // Already applied
+        
+        const betAmount = getBetAmount();
+        let crashTime;
+        let crashProbability;
+        
+        // Determine crash probability and time based on bet amount
+        if (betAmount < 1000) {
+            // 90% chance to crash after 1 minute for low bets
+            crashProbability = 0.9;
+            crashTime = GAME_CONFIG.flyTimeLow;
+        } else if (betAmount < 5000) {
+            // 70% chance to crash after 3 minutes for medium bets
+            crashProbability = 0.7;
+            crashTime = GAME_CONFIG.flyTimeMedium;
+        } else {
+            // 50% chance to crash after 20 minutes for high bets
+            crashProbability = 0.5;
+            crashTime = GAME_CONFIG.flyTimeHigh;
+        }
+        
+        // Calculate random crash time within the window
+        // For low bets (<1000), most will crash within 45-60 seconds
+        // For medium bets, most will crash within 2-3 minutes
+        // For high bets, most will last longer but still have chance to crash
+        
+        // First decide if crash will happen at all
+        if (Math.random() < crashProbability) {
+            // Calculate a biased random time weighted toward the maximum time
+            // This makes crashes more likely toward the end of the window
+            let randomFactor;
+            
+            if (betAmount < 1000) {
+                // Bias towards end of time period (0.7-1.0 range)
+                randomFactor = 0.7 + (Math.random() * 0.3);
+            } else if (betAmount < 5000) {
+                // Slightly less bias (0.5-1.0 range)
+                randomFactor = 0.5 + (Math.random() * 0.5);
+            } else {
+                // More even distribution (0.2-1.0 range)
+                randomFactor = 0.2 + (Math.random() * 0.8);
+            }
+            
+            const actualCrashTime = crashTime * randomFactor;
+            
+            // Set up the timer to force crash
+            const timer = setTimeout(() => {
+                if (isGameRunning() && getPaperAirplane().isFlying) {
+                    // Force a crash by adding obstacles ahead and below
+                    forceGameEnd();
+                }
+            }, actualCrashTime);
+            
+            setForceCrashTimer(timer);
+        }
+        
+        setCrashProbabilityApplied(true);
+    }
+    
+    // Function to force game to end
+    function forceGameEnd() {
+        // Get plane position
+        const plane = getPaperAirplane();
+        
+        // Add a strong downward force
+        plane.velocity.y = Math.max(plane.velocity.y + 3, 3);
+        
+        // Add obstacles below to ensure crash
+        generateObstaclesBelow(plane.x, plane.y);
+    }
+    
+    // Function to generate obstacles below to force descent
+    function generateObstaclesBelow(x, y) {
+        const obstacles = getObstacles();
+        
+        // Add a series of bombs leading toward the ground
+        for (let i = 0; i < 5; i++) {
+            obstacles.push({
+                type: 'bomb',
+                x: x + 200 + (i * 100),
+                y: y + 100 + (i * 40), // Progressively lower
+                width: 30,
+                height: 30,
+                hit: false
+            });
+        }
+    }
+    
+    // Function to handle max altitude exceeded
+    function handleMaxAltitudeExceeded() {
+        // Get current airplane
+        const plane = getPaperAirplane();
+        
+        // Calculate actual altitude (distance from ground)
+        const altitude = canvasHeight - plane.y;
+        
+        // Check if we're above max altitude
+        if (altitude > GAME_CONFIG.maxAltitude && !isAboveMaxAltitude()) {
+            // Mark as above max altitude
+            setIsAboveMaxAltitude(true);
+            
+            // Apply natural downward force
+            plane.velocity.y += 1.0;
+            
+            // Generate obstacles to guide player down
+            generateHighAltitudeObstacles(plane.x, 0, true);
+        } else if (altitude <= GAME_CONFIG.maxAltitude && isAboveMaxAltitude()) {
+            // No longer above max altitude
+            setIsAboveMaxAltitude(false);
+        }
     }
     
     // =====================
@@ -2037,8 +2201,11 @@
         setGameActive(false);
         setGameRunning(false);
         gameState[GAME_VARS.STATE].totalCoinsCollected = 0;
-        gameState[GAME_VARS.STATE].pendingRewards = 0; // Reset pending rewards
+        gameState[GAME_VARS.STATE].pendingRewards = 0;
         gameState[GAME_VARS.STATE].distanceTraveled = 0;
+        gameState[GAME_VARS.STATE].isAboveMaxAltitude = false;
+        gameState[GAME_VARS.STATE].crashProbabilityApplied = false;
+        clearForceCrashTimer(); // Clear any crash timers
         setObstacles([]);
         boostSpeed = 10; // Reset boost speed
         boostForward = 5; // Reset boost forward
@@ -2112,8 +2279,11 @@
         setGameActive(true);
         setGameRunning(false);
         gameState[GAME_VARS.STATE].totalCoinsCollected = 0;
-        gameState[GAME_VARS.STATE].pendingRewards = 0; // Reset pending rewards
+        gameState[GAME_VARS.STATE].pendingRewards = 0;
         gameState[GAME_VARS.STATE].distanceTraveled = 0;
+        gameState[GAME_VARS.STATE].isAboveMaxAltitude = false;
+        gameState[GAME_VARS.STATE].crashProbabilityApplied = false;
+        clearForceCrashTimer(); // Clear any crash timers
         setObstacles([]);
         offscreenIndicator = false;
         
@@ -2173,6 +2343,12 @@
         // Set game running flag
         setGameRunning(true);
         
+        // Set game start time
+        setGameStartTime(Date.now());
+        
+        // Setup crash probability
+        setupCrashProbability();
+        
         // Deduct the bet amount
         updateCoins(-getBetAmount());
         
@@ -2203,24 +2379,25 @@
         const obstacles = getObstacles();
         
         // Number of obstacles to generate (more with higher luck)
-        const obstacleCount = 25 + Math.floor(luckFactor * 15); // Increased from 20 to 25 base obstacles
+        const obstacleCount = 25 + Math.floor(luckFactor * 15);
         
         // Generate obstacles over a distance
         const maxDistance = 5000;
         
-        // Calculate obstacle type distribution based on bet amount
+        // Calculate obstacle type distribution
+        // Modified to have more bombs than money
         let moneyChance, bombChance, fireChance;
         
         if (getBetAmount() < 500) {
-            // Low bet - more fire, fewer money
-            moneyChance = 0.15 + (luckFactor * 0.15); // 15% to 45% chance for money
-            bombChance = 0.30 + (luckFactor * 0.05);  // 30% to 40% chance for bombs
-            fireChance = 0.55 - (luckFactor * 0.20);  // 55% to 15% chance for fire
+            // Low bet - more bombs, less money
+            moneyChance = 0.10 + (luckFactor * 0.10); // 10% to 30% chance for money
+            bombChance = 0.60 - (luckFactor * 0.10);  // 60% to 40% chance for bombs
+            fireChance = 0.30;                       // 30% chance for fire
         } else {
-            // High bet - more money, more bombs, less fire
-            moneyChance = 0.25 + (luckFactor * 0.20); // 25% to 65% chance for money
-            bombChance = 0.35 + (luckFactor * 0.05);  // 35% to 45% chance for bombs
-            fireChance = 0.40 - (luckFactor * 0.25);  // 40% to -10% chance for fire
+            // High bet - still more bombs, but slightly more money too
+            moneyChance = 0.20 + (luckFactor * 0.15); // 20% to 50% chance for money
+            bombChance = 0.50 - (luckFactor * 0.10);  // 50% to 30% chance for bombs
+            fireChance = 0.30 - (luckFactor * 0.05);  // 30% to 20% chance for fire
         }
         
         for (let i = 0; i < obstacleCount; i++) {
@@ -2248,17 +2425,17 @@
             });
         }
         
-        // Add money obstacles in special patterns
-        for (let i = 0; i < 3; i++) {
+        // Add money obstacles in special patterns, but fewer of them
+        for (let i = 0; i < 2; i++) {
             const patternX = 1000 + i * 1500;
             const patternY = 200 + Math.random() * (canvasHeight - 400);
             
             // Create a pattern of money obstacles (vertical line)
-            for (let j = 0; j < 5; j++) {
+            for (let j = 0; j < 3; j++) { // Reduced from 5 to 3
                 obstacles.push({
                     type: 'money',
                     x: patternX + Math.random() * 50,
-                    y: patternY + j * 60,
+                    y: patternY + j * 100, // Increased spacing
                     width: 30,
                     height: 30,
                     hit: false
@@ -2270,7 +2447,7 @@
         obstacles.sort((a, b) => a.x - b.x);
     }
     
-    // Function to check if we need more obstacles and generate them
+// Function to check if we need more obstacles and generate them
     function checkAndGenerateMoreObstacles() {
         if (!isGameRunning() || !getPaperAirplane().isFlying) return;
         
@@ -2321,21 +2498,34 @@
         
         // Generate high altitude obstacles if needed
         if (!hasHighObstacles && planeY < canvasHeight - 300) {
-            generateHighAltitudeObstacles(getPaperAirplane().x, highestY);
+            generateHighAltitudeObstacles(getPaperAirplane().x, highestY, false);
         }
+        
+        // Check for max altitude exceeded
+        handleMaxAltitudeExceeded();
     }
     
     // Function to generate obstacles at high altitudes
-    function generateHighAltitudeObstacles(startX, topY) {
+    function generateHighAltitudeObstacles(startX, topY, forceDown = false) {
         const luckFactor = calculateLuckFactor();
         const newObstacleCount = 5 + Math.floor(luckFactor * 5);
         const maxDistance = 1500;
         const obstacles = getObstacles();
         
-        // Higher chance of money at high altitudes
-        const moneyChance = 0.5 + (luckFactor * 0.2); // 50% to 90% chance for money at high altitudes
-        const bombChance = 0.3 - (luckFactor * 0.1);  // 30% to 10% chance for bombs
-        const fireChance = 0.2 - (luckFactor * 0.1);  // 20% to 0% chance for fire
+        // Obstacle distribution varies based on whether we're forcing down
+        let moneyChance, bombChance, fireChance;
+        
+        if (forceDown) {
+            // If forcing player down, use more bombs and fire, less money
+            moneyChance = 0.05;  // Very rare money
+            bombChance = 0.60;   // Many bombs
+            fireChance = 0.35;   // Some fire
+        } else {
+            // Normal high altitude distribution, still more bombs than money
+            moneyChance = 0.15 + (luckFactor * 0.15); // 15% to 45% chance for money 
+            bombChance = 0.50 - (luckFactor * 0.10);  // 50% to 30% chance for bombs
+            fireChance = 0.35 - (luckFactor * 0.05);  // 35% to 25% chance for fire
+        }
         
         for (let i = 0; i < newObstacleCount; i++) {
             const rng = Math.random();
@@ -2350,7 +2540,14 @@
             }
             
             const x = startX + 300 + Math.random() * maxDistance; // Start beyond the plane
-            const y = topY + Math.random() * 300; // Place within 300px of the top boundary
+            
+            // If forcing down, place obstacles higher to block upward movement
+            let y;
+            if (forceDown) {
+                y = topY + Math.random() * 150; // Place very high, blocking ascent
+            } else {
+                y = topY + Math.random() * 300; // Normal placement within 300px of top boundary
+            }
             
             obstacles.push({
                 type: obstacleType,
@@ -2362,17 +2559,32 @@
             });
         }
         
-        // Sometimes add a pattern of money in the sky
-        if (Math.random() < 0.5) { // 50% chance to add a sky pattern
+        // Sometimes add a pattern of money, but not when forcing down
+        if (!forceDown && Math.random() < 0.3) { // Reduced from 0.5 to 0.3
             const patternX = startX + 600 + Math.random() * 800;
             const patternY = topY + 100;
             
             // Create a horizontal line of money obstacles in the sky
-            for (let j = 0; j < 7; j++) {
+            for (let j = 0; j < 4; j++) { // Reduced from 7 to 4
                 obstacles.push({
                     type: 'money',
-                    x: patternX + j * 60,
+                    x: patternX + j * 100, // Increased spacing
                     y: patternY + Math.random() * 30,
+                    width: 30,
+                    height: 30,
+                    hit: false
+                });
+            }
+        }
+        
+        // When forcing down, add a pattern of bombs to prevent upward movement
+        if (forceDown) {
+            // Create a horizontal wall of bombs
+            for (let j = 0; j < 8; j++) {
+                obstacles.push({
+                    type: 'bomb',
+                    x: startX + 400 + j * 60,
+                    y: topY - 50 + (j % 3) * 30, // Staggered pattern
                     width: 30,
                     height: 30,
                     hit: false
@@ -2388,19 +2600,19 @@
         const maxDistance = 3000;
         const obstacles = getObstacles();
         
-// Calculate obstacle type distribution based on bet amount
+        // Calculate obstacle type distribution - more bombs than money
         let moneyChance, bombChance, fireChance;
         
         if (getBetAmount() < 500) {
-            // Low bet - more fire, fewer money
-            moneyChance = 0.15 + (luckFactor * 0.15); // 15% to 45% chance for money
-            bombChance = 0.30 + (luckFactor * 0.05);  // 30% to 40% chance for bombs
-            fireChance = 0.55 - (luckFactor * 0.20);  // 55% to 15% chance for fire
+            // Low bet - many bombs, few money
+            moneyChance = 0.10 + (luckFactor * 0.10); // 10% to 30% chance for money
+            bombChance = 0.60 - (luckFactor * 0.10);  // 60% to 40% chance for bombs
+            fireChance = 0.30;                       // 30% chance for fire
         } else {
-            // High bet - more money, more bombs, less fire
-            moneyChance = 0.25 + (luckFactor * 0.20); // 25% to 65% chance for money
-            bombChance = 0.35 + (luckFactor * 0.05);  // 35% to 45% chance for bombs
-            fireChance = 0.40 - (luckFactor * 0.25);  // 40% to -10% chance for fire
+            // High bet - still more bombs than money
+            moneyChance = 0.20 + (luckFactor * 0.15); // 20% to 50% chance for money
+            bombChance = 0.50 - (luckFactor * 0.10);  // 50% to 30% chance for bombs
+            fireChance = 0.30 - (luckFactor * 0.05);  // 30% to 20% chance for fire
         }
         
         for (let i = 0; i < newObstacleCount; i++) {
@@ -2428,17 +2640,17 @@
             });
         }
         
-        // Add a pattern of money objects occasionally
-        if (Math.random() < 0.3) { // 30% chance to add a pattern
+        // Add a pattern of money objects occasionally, but with reduced frequency
+        if (Math.random() < 0.2) { // Reduced from 0.3 to 0.2
             const patternX = startX + 500 + Math.random() * 1000;
             const patternY = 200 + Math.random() * (canvasHeight - 400);
             
             // Create a pattern of money obstacles (vertical line)
-            for (let j = 0; j < 5; j++) {
+            for (let j = 0; j < 3; j++) { // Reduced from 5 to 3
                 obstacles.push({
                     type: 'money',
                     x: patternX + Math.random() * 50,
-                    y: patternY + j * 60,
+                    y: patternY + j * 100, // Increased spacing
                     width: 30,
                     height: 30,
                     hit: false
@@ -2553,6 +2765,25 @@
         // Gradually reduce horizontal speed
         paperAirplane.velocity.x *= 0.995;
         
+        // Calculate altitude (distance from ground)
+        const altitude = canvasHeight - paperAirplane.y;
+        
+        // Apply max altitude restriction
+        if (altitude > GAME_CONFIG.maxAltitude) {
+            // Apply stronger gravity when above max altitude
+            paperAirplane.velocity.y += 0.2;
+            
+            // Display warning to player in game info if visible
+            if (gameInfo && !isAboveMaxAltitude()) {
+                gameInfo.textContent = "Maximum altitude reached! Air is getting thin...";
+                setTimeout(() => {
+                    if (isGameRunning() && gameInfo) {
+                        gameInfo.textContent = "Your paper airplane is flying! Try to collect money and avoid bombs!";
+                    }
+                }, 3000);
+            }
+        }
+        
         // Update angle based on velocity
         paperAirplane.angle = Math.atan2(paperAirplane.velocity.y, paperAirplane.velocity.x);
         
@@ -2604,8 +2835,8 @@
         const groundY = canvasHeight;
         const altitude = groundY - getPaperAirplane().y;
         
-        // Max altitude for display purposes (800 is about the canvas height)
-        const maxAltitude = 1500;
+        // Max altitude for display purposes
+        const maxAltitude = GAME_CONFIG.maxAltitude; 
         
         // Calculate percentage for the bar (0-100%)
         const percentage = Math.min(100, Math.max(0, (altitude / maxAltitude) * 100));
@@ -2617,13 +2848,20 @@
         altitudeText.textContent = `Altitude: ${Math.floor(altitude)}`;
         
         // Add a class for visual feedback on different altitude ranges
-        if (altitude > 1000) {
+        if (altitude > maxAltitude * 0.8) {
+            // Above 80% of max altitude - danger zone
+            altitudeText.className = 'altitude-text danger';
+        } else if (altitude > maxAltitude * 0.6) {
+            // 60-80% of max altitude - high
             altitudeText.className = 'altitude-text high';
-        } else if (altitude > 500) {
+        } else if (altitude > maxAltitude * 0.3) {
+            // 30-60% of max altitude - medium
             altitudeText.className = 'altitude-text medium';
-        } else if (altitude > 200) {
+        } else if (altitude > maxAltitude * 0.1) {
+            // 10-30% of max altitude - low
             altitudeText.className = 'altitude-text low';
         } else {
+            // Below 10% of max altitude - danger (too low)
             altitudeText.className = 'altitude-text danger';
         }
     }
@@ -2649,6 +2887,9 @@
         
         // Game is no longer running
         setGameRunning(false);
+        
+        // Clear any force crash timer
+        clearForceCrashTimer();
         
         // Hide boost button
         updateBoostButtonState();
