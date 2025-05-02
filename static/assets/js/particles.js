@@ -1,5 +1,5 @@
-// Modernized Particles Background Script
-// Redesigned with a crystalline, abstract geometric style
+// Simple Falling Dots Background Script
+// Smooth, gentle downward animation with no connections
 
 (function() {
   // Wait for the DOM to be fully loaded before initializing
@@ -11,7 +11,7 @@
   }
   
   function initParticlesBackground() {
-    console.log("Geometric Particles: Initializing background effect");
+    console.log("Falling Dots: Initializing background effect");
     
     // Create canvas element  
     const canvas = document.createElement('canvas');
@@ -27,58 +27,27 @@
     canvas.style.pointerEvents = 'none'; // Allow clicking through canvas
     
     // Add a class for easier debugging
-    canvas.classList.add('geometric-particles-canvas');
+    canvas.classList.add('falling-dots-canvas');
     
     // Append canvas to body
     document.body.appendChild(canvas);
     
     // Particle settings
-    const particleCount = 70; // Fewer particles for a cleaner look
-    const particleBaseSize = 2;
-    const particleColor = 'rgba(255, 255, 255, 0.5)'; // More transparent by default
-    const lineColor = 'rgba(255, 255, 255, 0.3)'; // More subtle connections
-    const lineDistance = 180; // Longer connection distance
-    const moveSpeed = 0.4; // Slower movement for more elegance
+    const particleCount = 150; // More dots for a fuller effect
+    const minSize = 1.5;
+    const maxSize = 4;
+    const baseOpacity = 0.6; // Base opacity for dots
+    const fallSpeed = 0.3; // Very slow falling speed
+    const horizontalDrift = 0.1; // Slight horizontal movement
     
     // Array to store particles
     let particles = [];
-    
-    // Flow field parameters
-    const flowFieldResolution = 50;
-    let flowField = [];
-    let flowAngle = 0;
     
     // Resize handler
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      generateFlowField(); // Regenerate flow field on resize
-      console.log("Geometric Particles: Canvas resized to", canvas.width, "x", canvas.height);
-    }
-    
-    // Generate a perlin-like flow field for more natural movement
-    function generateFlowField() {
-      flowField = [];
-      const cols = Math.ceil(canvas.width / flowFieldResolution);
-      const rows = Math.ceil(canvas.height / flowFieldResolution);
-      
-      for (let y = 0; y < rows; y++) {
-        for (let x = 0; x < cols; x++) {
-          // Create a vector field with some natural variation
-          const angle = Math.sin(x * 0.1) * Math.cos(y * 0.1) * Math.PI * 2;
-          flowField.push(angle);
-        }
-      }
-    }
-    
-    // Update flow field animation
-    function updateFlowField() {
-      flowAngle += 0.002;
-      for (let i = 0; i < flowField.length; i++) {
-        const row = Math.floor(i / Math.ceil(canvas.width / flowFieldResolution));
-        const col = i % Math.ceil(canvas.width / flowFieldResolution);
-        flowField[i] = Math.sin(col * 0.1 + flowAngle) * Math.cos(row * 0.1 + flowAngle) * Math.PI * 2;
-      }
+      console.log("Falling Dots: Canvas resized to", canvas.width, "x", canvas.height);
     }
     
     // Initialize particles
@@ -86,236 +55,107 @@
       particles = [];
       
       for (let i = 0; i < particleCount; i++) {
-        const size = Math.random() * particleBaseSize + 1;
-        const shapeType = Math.floor(Math.random() * 3); // 0=diamond, 1=line, 2=triangle
+        // Create particles at random positions
+        const size = minSize + Math.random() * (maxSize - minSize);
+        const opacity = baseOpacity * (0.4 + Math.random() * 0.6); // Varied opacity
         
         particles.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
           size: size,
-          originalSize: size,
-          vx: Math.random() * moveSpeed * 2 - moveSpeed,
-          vy: Math.random() * moveSpeed * 2 - moveSpeed,
-          color: particleColor,
-          opacity: 0.3 + Math.random() * 0.5, // Varied opacity
-          rotation: Math.random() * Math.PI * 2, // Random rotation
-          rotationSpeed: (Math.random() * 0.02 - 0.01) * 0.3, // Very slow rotation
-          shapeType: shapeType,
-          pulsePhase: Math.random() * Math.PI * 2, // For pulsing effect
-          wasAffected: 0 // For tracking cursor interaction state
+          opacity: opacity,
+          // Mostly downward movement with slight horizontal drift
+          speedY: fallSpeed * (0.5 + Math.random() * 0.8),
+          speedX: (Math.random() - 0.5) * horizontalDrift,
+          // Each particle gets a slight blur effect for smoother appearance
+          blur: Math.random() * 2
         });
       }
-      console.log("Geometric Particles: Created", particles.length, "particles");
+      console.log("Falling Dots: Created", particles.length, "particles");
     }
     
     // Mouse interaction
     let mouseX = null;
     let mouseY = null;
-    const mouseRadius = 250;
+    const mouseRadius = 120;
     
     function handleMouseMove(e) {
       mouseX = e.clientX;
       mouseY = e.clientY;
     }
     
-    // Draw a diamond shape
-    function drawDiamond(ctx, x, y, size, rotation) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(rotation);
-      
-      ctx.beginPath();
-      ctx.moveTo(0, -size * 2); // Top
-      ctx.lineTo(size, 0);      // Right
-      ctx.lineTo(0, size * 2);  // Bottom
-      ctx.lineTo(-size, 0);     // Left
-      ctx.closePath();
-      
-      ctx.fill();
-      ctx.restore();
-    }
-    
-    // Draw a line with varied thickness
-    function drawLine(ctx, x, y, size, rotation) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(rotation);
-      
-      ctx.beginPath();
-      ctx.moveTo(-size * 3, 0);
-      ctx.lineTo(size * 3, 0);
-      ctx.lineWidth = size / 2;
-      ctx.stroke();
-      
-      ctx.restore();
-    }
-    
-    // Draw a triangle
-    function drawTriangle(ctx, x, y, size, rotation) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(rotation);
-      
-      ctx.beginPath();
-      ctx.moveTo(0, -size * 1.5);
-      ctx.lineTo(size * 1.3, size);
-      ctx.lineTo(-size * 1.3, size);
-      ctx.closePath();
-      
-      ctx.fill();
-      ctx.restore();
-    }
-    
     // Draw particles
     function drawParticles() {
-      // Clear the canvas completely on each frame
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Update the flow field
-      updateFlowField();
+      // Clear the canvas with a very subtle fade effect instead of complete clear
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.03)'; // Subtle trail effect
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       
       // Update and draw each particle
       for (let i = 0; i < particles.length; i++) {
         let particle = particles[i];
         
-        // Get flow field influence
-        const col = Math.floor(particle.x / flowFieldResolution);
-        const row = Math.floor(particle.y / flowFieldResolution);
-        const index = row * Math.ceil(canvas.width / flowFieldResolution) + col;
+        // Move particle
+        particle.y += particle.speedY;
+        particle.x += particle.speedX;
         
-        if (flowField[index] !== undefined) {
-          // Apply subtle flow field influence
-          const flowAngle = flowField[index];
-          const flowForce = 0.05;
-          
-          particle.vx += Math.cos(flowAngle) * flowForce;
-          particle.vy += Math.sin(flowAngle) * flowForce;
+        // Wrap around when particle reaches bottom
+        if (particle.y > canvas.height) {
+          particle.y = 0;
+          particle.x = Math.random() * canvas.width;
         }
         
-        // Move particle
-        particle.x += particle.vx;
-        particle.y += particle.vy;
+        // Wrap around sides too
+        if (particle.x < 0) {
+          particle.x = canvas.width;
+        } else if (particle.x > canvas.width) {
+          particle.x = 0;
+        }
         
-        // Wrap around edges instead of bouncing (creates smoother flow)
-        if (particle.x < 0) particle.x = canvas.width;
-        if (particle.x > canvas.width) particle.x = 0;
-        if (particle.y < 0) particle.y = canvas.height;
-        if (particle.y > canvas.height) particle.y = 0;
-        
-        // Rotate particle (very slowly)
-        particle.rotation += particle.rotationSpeed;
-        
-        // Subtle pulsing effect
-        particle.pulsePhase += 0.01;
-        const pulseFactor = 0.15 * Math.sin(particle.pulsePhase) + 1; // Range between 0.85 and 1.15
-        const currentSize = particle.originalSize * pulseFactor;
-        
-        // Mouse interaction - now creates a gentle attraction effect
+        // Mouse interaction - gentle avoid effect
         if (mouseX !== null && mouseY !== null) {
           const dx = mouseX - particle.x;
           const dy = mouseY - particle.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
           
           if (distance < mouseRadius) {
-            // Create a gentle swirl around cursor
-            const swirl = 0.1;
+            // Create a very gentle avoidance - just enough to create a subtle effect
+            const force = 0.05 * (1 - distance / mouseRadius);
             const angle = Math.atan2(dy, dx);
-            const swirlAngle = angle + Math.PI / 2; // Perpendicular to the radius
             
-            // Add perpendicular force (creates swirling)
-            particle.vx += Math.cos(swirlAngle) * swirl * (mouseRadius - distance) / mouseRadius;
-            particle.vy += Math.sin(swirlAngle) * swirl * (mouseRadius - distance) / mouseRadius;
+            // Move away from cursor, but very gently
+            particle.speedX -= Math.cos(angle) * force;
+            particle.speedY -= Math.sin(angle) * force;
             
-            // Add slight attraction to mouse
-            if (distance > 100) {
-              const pull = 0.02;
-              particle.vx += (dx / distance) * pull;
-              particle.vy += (dy / distance) * pull;
-            }
-            
-            // Brightening effect near mouse
-            const brightnessFactor = 1 + 0.5 * (1 - distance / mouseRadius);
-            particle.color = `rgba(255, 255, 255, ${Math.min(particle.opacity * brightnessFactor, 0.9)})`;
-            
-            particle.wasAffected = 10; // Will persist for 10 frames
+            // Slightly brighten particles near cursor
+            const brightenFactor = 1 + (1 - distance / mouseRadius) * 0.3;
+            ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(particle.opacity * brightenFactor, 0.95)})`;
           } else {
-            // If particle was recently affected but now isn't
-            if (particle.wasAffected > 0) {
-              particle.wasAffected--;
-              
-              // Gradually fade back to original color
-              if (particle.wasAffected === 0) {
-                particle.color = `rgba(255, 255, 255, ${particle.opacity})`;
-              }
-            }
+            ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
           }
+        } else {
+          ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
         }
         
-        // Apply very mild damping to maintain smooth momentum
-        particle.vx *= 0.99;
-        particle.vy *= 0.99;
+        // Limit speeds for smooth movement
+        particle.speedX = Math.max(-horizontalDrift, Math.min(horizontalDrift, particle.speedX));
+        particle.speedY = Math.max(fallSpeed * 0.1, Math.min(fallSpeed * 1.5, particle.speedY));
         
-        // Add tiny random movement for natural effect
-        particle.vx += (Math.random() - 0.5) * 0.01;
-        particle.vy += (Math.random() - 0.5) * 0.01;
+        // Apply subtle damping to horizontal movement
+        particle.speedX *= 0.99;
         
-        // Ensure minimum movement speed
-        const minSpeed = 0.05;
-        const currentSpeed = Math.sqrt(particle.vx * particle.vx + particle.vy * particle.vy);
-        if (currentSpeed < minSpeed) {
-          particle.vx = particle.vx === 0 ? (Math.random() - 0.5) * minSpeed : particle.vx * (minSpeed / currentSpeed);
-          particle.vy = particle.vy === 0 ? (Math.random() - 0.5) * minSpeed : particle.vy * (minSpeed / currentSpeed);
-        }
+        // Draw particle as a soft circle with slight blur for smoothness
+        ctx.beginPath();
         
-        // Strict velocity limiting for smooth movement
-        const maxSpeed = 1.0;
-        if (currentSpeed > maxSpeed) {
-          particle.vx = (particle.vx / currentSpeed) * maxSpeed;
-          particle.vy = (particle.vy / currentSpeed) * maxSpeed;
-        }
+        // Use shadow blur for softer dots
+        ctx.shadowBlur = particle.blur;
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
         
-        // Draw particle based on shape type
-        ctx.fillStyle = particle.color;
-        ctx.strokeStyle = particle.color;
+        // Draw the dot
+        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        ctx.fill();
         
-        switch(particle.shapeType) {
-          case 0: // Diamond
-            drawDiamond(ctx, particle.x, particle.y, currentSize, particle.rotation);
-            break;
-          case 1: // Line
-            drawLine(ctx, particle.x, particle.y, currentSize, particle.rotation);
-            break;
-          case 2: // Triangle
-            drawTriangle(ctx, particle.x, particle.y, currentSize, particle.rotation);
-            break;
-        }
-        
-        // Draw connecting lines more selectively
-        for (let j = i + 1; j < particles.length; j++) {
-          let otherParticle = particles[j];
-          let dx = particle.x - otherParticle.x;
-          let dy = particle.y - otherParticle.y;
-          let distance = Math.sqrt(dx * dx + dy * dy);
-          
-          if (distance < lineDistance) {
-            // Only connect particles that are similar or complementary
-            const connectChance = Math.abs(particle.shapeType - otherParticle.shapeType) <= 1 ? 1 : 0.3;
-            
-            if (Math.random() < connectChance) {
-              const opacity = 0.15 * (1 - distance / lineDistance);
-              ctx.beginPath();
-              ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
-              ctx.lineWidth = 0.5 * (1 - distance / lineDistance);
-              
-              // Draw dashed lines for an elegant effect
-              ctx.setLineDash([5, 5]);
-              ctx.moveTo(particle.x, particle.y);
-              ctx.lineTo(otherParticle.x, otherParticle.y);
-              ctx.stroke();
-              ctx.setLineDash([]); // Reset for next drawing
-            }
-          }
-        }
+        // Reset shadow for better performance
+        ctx.shadowBlur = 0;
       }
       
       // Request next animation frame
@@ -324,7 +164,6 @@
     
     // Run everything
     resizeCanvas();
-    generateFlowField();
     initParticles();
     drawParticles();
     
@@ -336,6 +175,6 @@
     
     window.addEventListener('mousemove', handleMouseMove);
     
-    console.log("Geometric Particles: Animation started");
+    console.log("Falling Dots: Animation started");
   }
 })();
