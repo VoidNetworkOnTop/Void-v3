@@ -1,7 +1,7 @@
 /global UVServiceWorker,__uv$config/
 /*
  * Enhanced service worker script for Ultraviolet proxy
- * With improved HTML parsing and rendering fixes for game compatibility
+ * With improved game compatibility
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -10,46 +10,37 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
-// Configuration with extended timeouts and special domains
+// Configuration
 const CONFIG = {
-  FETCH_TIMEOUT: 180000,        // 3 minute timeout for slow sites (increased)
+  FETCH_TIMEOUT: 180000,        // 3 minute timeout for slow sites
   MAX_RETRIES: 3,               // Number of retry attempts
   RETRY_DELAY: 800,             // Delay between retries in ms
-  SPECIAL_DOMAINS: [            // Sites needing special handling
-    'chat.openai.com',
-    'chatgpt.com',
-    'openai.com',
-    'tiktok.com',
-    'youtube.com',
-    'youtu.be',
-    'snapchat.com',
-    'snap.com'
-  ],
-  // Game-specific domains that need careful handling
-  GAME_DOMAINS: [
+  GAME_DOMAINS: [               // Game-specific domains that need special handling
     'unity',
     'unitycdn',
     'roblox',
-    'yujiandemo',
-    'yujian',
     'game',
+    'games',
     'play',
+    'yujian',
+    'yujiandemo',
     'cdn.jsdelivr.net',
     'jsdelivr',
     'cloudfront.net',
-    'googleusercontent'
+    '3d',
+    'webgl'
   ]
 };
 
 // Log initialization
-console.log('[UV Service Worker] Initializing with game compatibility fixes');
+console.log('[UV Service Worker] Initializing with game compatibility improvements');
 
-// Check if a URL is for a known game platform or resource
+// Check if a URL is for a game resource
 const isGameResource = (url) => {
   if (!url) return false;
   
-  // Always skip content modifications for these file types
-  const skipExtensions = ['.js', '.json', '.wasm', '.data', '.unity3d', '.mem', '.bin', '.svg'];
+  // Skip content modifications for these file types (common game resources)
+  const skipExtensions = ['.js', '.json', '.wasm', '.data', '.unity3d', '.mem', '.bin', '.svg', '.mp3', '.ogg', '.assets'];
   for (const ext of skipExtensions) {
     if (url.endsWith(ext)) return true;
   }
@@ -63,29 +54,32 @@ const isGameResource = (url) => {
   return url.includes('/game') || 
          url.includes('/games') || 
          url.includes('/play') || 
-         url.includes('/assets/');
+         url.includes('/assets/') ||
+         url.includes('unity');
 };
 
 // Enhanced fetch with timeout and retries
 const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
-  const url = new URL(event.request.url).toString();
-  const isGame = isGameResource(url);
-  
-  // Extend timeout for game resources
-  const timeout = isGame ? CONFIG.FETCH_TIMEOUT * 1.5 : CONFIG.FETCH_TIMEOUT;
-  
   try {
-    // For game resources, use direct fetch without content modification
+    // Get the URL for special case handling
+    const url = new URL(event.request.url).toString();
+    
+    // Special handling for game resources - skip timeouts
+    const isGame = isGameResource(url);
     if (isGame) {
-      console.log(`[UV Service Worker] Handling game resource: ${url.slice(0, 100)}...`);
+      // Log game resources but less verbosely to avoid spamming the console
+      const shortUrl = url.length > 80 ? url.substring(0, 80) + '...' : url;
+      console.log(`[UV Service Worker] Game resource: ${shortUrl}`);
+      
+      // Fetch without timeout for game resources
       return await sw.fetch(event);
     }
     
-    // Try to fetch with timeout for non-game resources
+    // Use timeout for non-game resources
     return await Promise.race([
       sw.fetch(event),
       new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), timeout)
+        setTimeout(() => reject(new Error('Request timeout')), CONFIG.FETCH_TIMEOUT)
       )
     ]);
   } catch (error) {
@@ -102,14 +96,12 @@ const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
   }
 };
 
-// Fix HTML content issues - only for non-game content
+// Fix HTML content issues - but only for non-game content
 const cleanHtml = async (response, url) => {
-  // Skip content modifications for game resources
+  // CRITICAL FIX - Skip content modifications for game resources
   if (isGameResource(url)) {
     return response;
   }
-  
-  const clone = response.clone();
   
   // Check if this is HTML content
   const contentType = response.headers.get('content-type');
@@ -117,6 +109,7 @@ const cleanHtml = async (response, url) => {
     return response;
   }
   
+  const clone = response.clone();
   try {
     let text = await clone.text();
     let modified = false;
@@ -133,38 +126,13 @@ const cleanHtml = async (response, url) => {
       modified = true;
     }
     
-    // Find and fix unclosed or mismatched tags - carefully preserve script content
+    // Find and fix unclosed or mismatched tags
     const findStrayClosingTags = () => {
-      // Extract script tags to protect their content
-      const scriptTags = [];
-      const scriptMatches = text.matchAll(/<script[\s\S]*?<\/script>/g);
-      for (const match of scriptMatches) {
-        scriptTags.push({
-          content: match[0],
-          placeholder: `SCRIPT_PLACEHOLDER_${scriptTags.length}`
-        });
-      }
-      
-      // Replace scripts with placeholders
-      let tempText = text;
-      scriptTags.forEach(tag => {
-        tempText = tempText.replace(tag.content, tag.placeholder);
-      });
-      
       // Find standalone ">" that aren't part of a tag
-      let matches = tempText.match(/([^<]|^)>([^>]|$)/g);
+      let matches = text.match(/([^<]|^)>([^>]|$)/g);
       if (matches) {
         // Replace standalone ">" with nothing
-        matches.forEach(match => {
-          tempText = tempText.replace(match, match.replace('>', ''));
-        });
-        
-        // Restore script tags
-        scriptTags.forEach(tag => {
-          tempText = tempText.replace(tag.placeholder, tag.content);
-        });
-        
-        text = tempText;
+        text = text.replace(/([^<]|^)>([^>]|$)/g, '$1$2');
         return true;
       }
       return false;
@@ -185,12 +153,12 @@ const cleanHtml = async (response, url) => {
         if (headEndPos !== -1) {
           // Insert after the head opening tag
           text = text.substring(0, headEndPos + 1) + 
-                 `\n<!-- UV HTML Fix with Game Compatibility -->\n<script data-id="uv-html-fix">
+                 `\n<!-- UV HTML Fix -->\n<script data-id="uv-html-fix">
                   (function() {
-                    // Fix potential rendering issues without breaking games
+                    // Fix HTML rendering issues but avoid breaking games
                     document.addEventListener('DOMContentLoaded', function() {
-                      // Remove any stray ">" characters - avoid scripts and iframes
                       try {
+                        // Remove any stray ">" characters
                         const walker = document.createTreeWalker(
                           document.body, 
                           NodeFilter.SHOW_TEXT
@@ -198,11 +166,10 @@ const cleanHtml = async (response, url) => {
                         
                         let node;
                         const nodesToFix = [];
-                        while(node = walker.nextNode()) {
+                        while((node = walker.nextNode())) {
                           if (node.textContent.includes('>') && 
                               node.parentNode.nodeName !== 'SCRIPT' && 
-                              node.parentNode.nodeName !== 'STYLE' &&
-                              node.parentNode.nodeName !== 'IFRAME') {
+                              node.parentNode.nodeName !== 'STYLE') {
                             nodesToFix.push(node);
                           }
                         }
@@ -211,77 +178,15 @@ const cleanHtml = async (response, url) => {
                         nodesToFix.forEach(node => {
                           node.textContent = node.textContent.replace(/>/g, '');
                         });
-                      } catch(e) {
-                        // Silent fail - don't break anything
-                      }
-                      
-                      // Fix broken class attributes
-                      document.querySelectorAll('[class=""]').forEach(el => {
-                        el.removeAttribute('class');
-                      });
-                    });
-                    
-                    // Game compatibility - fix iframe/canvas focus issues
-                    try {
-                      // Detect if we're in a game
-                      var isGame = (
-                        window.location.pathname.includes('/game') ||
-                        window.location.pathname.includes('/games') ||
-                        window.location.pathname.includes('/play') ||
-                        window.location.hostname.includes('game') ||
-                        window.location.hostname.includes('play') ||
-                        document.title.toLowerCase().includes('game')
-                      );
-                      
-                      if (isGame) {
-                        console.log("[UV-FIX] Game detected, applying compatibility fixes");
                         
-                        // Fix canvas focus and resolution issues
-                        window.addEventListener('load', function() {
-                          setTimeout(function() {
-                            // Look for common game elements
-                            var gameCanvas = 
-                              document.querySelector('canvas#unity-canvas') || 
-                              document.querySelector('canvas.unity-canvas') || 
-                              document.querySelector('canvas#game') || 
-                              document.querySelector('canvas.emscripten') ||
-                              document.querySelector('canvas:not([id])');
-                              
-                            if (gameCanvas) {
-                              console.log('[UV-FIX] Game canvas found, fixing focus');
-                              gameCanvas.tabIndex = 1;
-                              
-                              // Make sure canvas has proper dimensions if they're missing
-                              if (!gameCanvas.style.width || gameCanvas.style.width === '0px') {
-                                gameCanvas.style.width = '100%';
-                              }
-                              if (!gameCanvas.style.height || gameCanvas.style.height === '0px') {
-                                gameCanvas.style.height = '100%';
-                              }
-                              
-                              // Focus the canvas
-                              setTimeout(function() {
-                                gameCanvas.focus();
-                              }, 1000);
-                            }
-                          }, 1500);
+                        // Fix broken class attributes
+                        document.querySelectorAll('[class=""]').forEach(el => {
+                          el.removeAttribute('class');
                         });
-                        
-                        // Create proxies for common game libraries
-                        if (typeof UnityLoader === 'undefined') {
-                          window.UnityLoader = window.UnityLoader || { Error: function(){}, SystemInfo: { mobile: false } };
-                        }
-                        
-                        // Fix for iframe buster scripts
-                        try {
-                          Object.defineProperty(window, 'frameElement', {
-                            get: function() { return null; }
-                          });
-                        } catch(e) {}
+                      } catch(e) {
+                        // Silent fail to avoid breaking anything
                       }
-                    } catch(e) {
-                      console.warn('[UV-FIX] Game compatibility error:', e);
-                    }
+                    });
                     
                     // Handle special cases for interactive websites
                     if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('chat.openai.com')) {
@@ -350,16 +255,16 @@ self.addEventListener('fetch', event => {
       // Get the URL for special case handling
       const url = new URL(event.request.url).toString();
       
-      // Special handling for game resources - log these requests
-      const isGame = isGameResource(url);
-      if (isGame) {
-        console.log(`[UV Service Worker] Game resource detected: ${url.slice(0, 80)}...`);
-      }
-      
       // Get response with enhanced fetch
       const response = await enhancedFetch(event);
       
-      // Clean HTML for rendering issues (skip for game content)
+      // Skip HTML processing for game content
+      if (isGameResource(url)) {
+        // Return unmodified response for game resources
+        return response;
+      }
+      
+      // Clean HTML for non-game content
       return await cleanHtml(response, url);
     } catch (err) {
       console.error('[UV Service Worker] Fatal error:', err);
@@ -491,9 +396,7 @@ self.addEventListener('message', event => {
   if (event.data && event.data.type === 'CLEAR_CACHE') {
     caches.keys().then(cacheNames => {
       return Promise.all(
-        cacheNames.map(cacheName => {
-          return caches.delete(cacheName);
-        })
+        cacheNames.map(cacheName => caches.delete(cacheName))
       );
     }).then(() => {
       console.log('[UV Service Worker] Cache cleared by request');
