@@ -1682,6 +1682,7 @@
             running: false,
             betAmount: 100,
             totalCoinsCollected: 0,
+            pendingRewards: 0, // NEW: Track rewards separately from penalties
             distanceTraveled: 0,
             cheatingAttempts: 0,
             integrityChecks: 0,
@@ -1787,6 +1788,19 @@
     
     function addCoinsCollected(amount) {
         gameState[GAME_VARS.STATE].totalCoinsCollected += amount;
+    }
+    
+    // NEW: Functions to manage pending rewards
+    function getPendingRewards() {
+        return gameState[GAME_VARS.STATE].pendingRewards;
+    }
+    
+    function addPendingRewards(amount) {
+        gameState[GAME_VARS.STATE].pendingRewards += amount;
+    }
+    
+    function resetPendingRewards() {
+        gameState[GAME_VARS.STATE].pendingRewards = 0;
     }
     
     function getDistanceTraveled() {
@@ -2023,6 +2037,7 @@
         setGameActive(false);
         setGameRunning(false);
         gameState[GAME_VARS.STATE].totalCoinsCollected = 0;
+        gameState[GAME_VARS.STATE].pendingRewards = 0; // Reset pending rewards
         gameState[GAME_VARS.STATE].distanceTraveled = 0;
         setObstacles([]);
         boostSpeed = 10; // Reset boost speed
@@ -2097,6 +2112,7 @@
         setGameActive(true);
         setGameRunning(false);
         gameState[GAME_VARS.STATE].totalCoinsCollected = 0;
+        gameState[GAME_VARS.STATE].pendingRewards = 0; // Reset pending rewards
         gameState[GAME_VARS.STATE].distanceTraveled = 0;
         setObstacles([]);
         offscreenIndicator = false;
@@ -2372,7 +2388,7 @@
         const maxDistance = 3000;
         const obstacles = getObstacles();
         
-        // Calculate obstacle type distribution based on bet amount
+// Calculate obstacle type distribution based on bet amount
         let moneyChance, bombChance, fireChance;
         
         if (getBetAmount() < 500) {
@@ -2456,719 +2472,732 @@
         const planeTop = paperAirplane.y - camera.y;
         const planeBottom = planeTop + paperAirplane.height;
         
-// Check ground collision - ONLY way the game ends now
-if (planeBottom >= canvasHeight) {
-    // Hit the ground
-    if (paperAirplane.isFlying) {
-        paperAirplane.isFlying = false;
-        updateCoins(-GAME_CONFIG.groundPenalty);
-        addCoinsCollected(-GAME_CONFIG.groundPenalty);
-        endGame("crashed");
-    }
-    return;
-}
+        // Check ground collision - ONLY way the game ends now
+        if (planeBottom >= canvasHeight) {
+            // Hit the ground
+            if (paperAirplane.isFlying) {
+                paperAirplane.isFlying = false;
+                updateCoins(-GAME_CONFIG.groundPenalty);
+                addCoinsCollected(-GAME_CONFIG.groundPenalty);
+                endGame("crashed");
+            }
+            return;
+        }
 
-// Check obstacle collisions
-for (let i = 0; i < obstacles.length; i++) {
-    const obstacle = obstacles[i];
-    
-    // Skip if already hit
-    if (obstacle.hit) continue;
-    
-    // Calculate obstacle screen position
-    const obsLeft = obstacle.x - camera.x;
-    const obsRight = obsLeft + obstacle.width;
-    const obsTop = obstacle.y - camera.y;
-    const obsBottom = obsTop + obstacle.height;
-    
-    // Check for collision
-    if (planeRight > obsLeft && planeLeft < obsRight && 
-        planeBottom > obsTop && planeTop < obsBottom) {
-        
-        // Mark as hit
-        obstacle.hit = true;
-        
-        // Handle collision based on obstacle type
-        switch (obstacle.type) {
-            case 'money':
-                // Collect money
-                updateCoins(GAME_CONFIG.moneyReward);
-                addCoinsCollected(GAME_CONFIG.moneyReward);
+        // Check obstacle collisions
+        for (let i = 0; i < obstacles.length; i++) {
+            const obstacle = obstacles[i];
+            
+            // Skip if already hit
+            if (obstacle.hit) continue;
+            
+            // Calculate obstacle screen position
+            const obsLeft = obstacle.x - camera.x;
+            const obsRight = obsLeft + obstacle.width;
+            const obsTop = obstacle.y - camera.y;
+            const obsBottom = obsTop + obstacle.height;
+            
+            // Check for collision
+            if (planeRight > obsLeft && planeLeft < obsRight && 
+                planeBottom > obsTop && planeTop < obsBottom) {
                 
-                // Boost significantly - way faster and higher
-                paperAirplane.velocity.x += 7;
-                paperAirplane.velocity.y -= 8; // Strong upward boost
-                break;
+                // Mark as hit
+                obstacle.hit = true;
                 
-            case 'bomb':
-                // Hit bomb
-                updateCoins(-GAME_CONFIG.bombPenalty);
-                addCoinsCollected(-GAME_CONFIG.bombPenalty);
-                
-                // Massive boost forward and up with impact
-                paperAirplane.velocity.x += 8;
-                paperAirplane.velocity.y -= 10; // Even stronger upward boost
-                break;
-                
-            case 'fire':
-                // Hit fire, slow down
-                paperAirplane.velocity.x *= 0.7;
-                break;
+                // Handle collision based on obstacle type
+                switch (obstacle.type) {
+                    case 'money':
+                        // For money, just add to pending rewards and total, but don't update balance yet
+                        addPendingRewards(GAME_CONFIG.moneyReward);
+                        addCoinsCollected(GAME_CONFIG.moneyReward);
+                        
+                        // Boost significantly - way faster and higher
+                        paperAirplane.velocity.x += 7;
+                        paperAirplane.velocity.y -= 8; // Strong upward boost
+                        break;
+                        
+                    case 'bomb':
+                        // Hit bomb - immediately subtract from balance
+                        updateCoins(-GAME_CONFIG.bombPenalty);
+                        addCoinsCollected(-GAME_CONFIG.bombPenalty);
+                        
+                        // Massive boost forward and up with impact
+                        paperAirplane.velocity.x += 8;
+                        paperAirplane.velocity.y -= 10; // Even stronger upward boost
+                        break;
+                        
+                    case 'fire':
+                        // Hit fire, slow down
+                        paperAirplane.velocity.x *= 0.7;
+                        break;
+                }
+            }
         }
     }
-}
-}
 
-// Update game physics
-function updatePhysics() {
-    // Only update if the airplane is flying
-    if (!getPaperAirplane().isFlying) return;
-    
-    const paperAirplane = getPaperAirplane();
-    const camera = getCamera();
-    
-    // Update position based on velocity
-    paperAirplane.x += paperAirplane.velocity.x;
-    paperAirplane.y += paperAirplane.velocity.y;
-    
-    // Apply gravity
-    paperAirplane.velocity.y += 0.05;
-    
-    // Gradually reduce horizontal speed
-    paperAirplane.velocity.x *= 0.995;
-    
-    // Update angle based on velocity
-    paperAirplane.angle = Math.atan2(paperAirplane.velocity.y, paperAirplane.velocity.x);
-    
-    // Update camera to follow the airplane both horizontally and vertically
-    camera.x = paperAirplane.x - 100; // Keep airplane on left side of screen
-    
-    // Vertical camera following - keep plane vertically centered when it goes up
-    const idealCameraY = paperAirplane.y - (canvasHeight / 2); // Center the plane vertically
-    
-    // Only follow upward (not downward) to prevent showing too much ground
-    if (idealCameraY < 0) {
-        camera.y = idealCameraY;
-    } else {
-        camera.y = 0; // Default position when plane is low
-    }
-    
-    // Update distance traveled
-    setDistanceTraveled(Math.max(getDistanceTraveled(), paperAirplane.x));
-    
-    // Check if airplane is offscreen (above viewport)
-    const isOffscreen = checkOffscreenPlane();
-    
-    // Update offscreen indicator
-    if (isOffscreen !== offscreenIndicator) {
-        offscreenIndicator = isOffscreen;
+    // Update game physics
+    function updatePhysics() {
+        // Only update if the airplane is flying
+        if (!getPaperAirplane().isFlying) return;
         
-        if (offscreenArrow && offscreenIndicator) {
-            offscreenArrow.style.display = 'block';
-        } else if (offscreenArrow) {
+        const paperAirplane = getPaperAirplane();
+        const camera = getCamera();
+        
+        // Update position based on velocity
+        paperAirplane.x += paperAirplane.velocity.x;
+        paperAirplane.y += paperAirplane.velocity.y;
+        
+        // Apply gravity
+        paperAirplane.velocity.y += 0.05;
+        
+        // Gradually reduce horizontal speed
+        paperAirplane.velocity.x *= 0.995;
+        
+        // Update angle based on velocity
+        paperAirplane.angle = Math.atan2(paperAirplane.velocity.y, paperAirplane.velocity.x);
+        
+        // Update camera to follow the airplane both horizontally and vertically
+        camera.x = paperAirplane.x - 100; // Keep airplane on left side of screen
+        
+        // Vertical camera following - keep plane vertically centered when it goes up
+        const idealCameraY = paperAirplane.y - (canvasHeight / 2); // Center the plane vertically
+        
+        // Only follow upward (not downward) to prevent showing too much ground
+        if (idealCameraY < 0) {
+            camera.y = idealCameraY;
+        } else {
+            camera.y = 0; // Default position when plane is low
+        }
+        
+        // Update distance traveled
+        setDistanceTraveled(Math.max(getDistanceTraveled(), paperAirplane.x));
+        
+        // Check if airplane is offscreen (above viewport)
+        const isOffscreen = checkOffscreenPlane();
+        
+        // Update offscreen indicator
+        if (isOffscreen !== offscreenIndicator) {
+            offscreenIndicator = isOffscreen;
+            
+            if (offscreenArrow && offscreenIndicator) {
+                offscreenArrow.style.display = 'block';
+            } else if (offscreenArrow) {
+                offscreenArrow.style.display = 'none';
+            }
+        }
+        
+        // Check for collisions
+        handleCollisions();
+        
+        // Check if we need more obstacles
+        checkAndGenerateMoreObstacles();
+        
+        // Clean up old obstacles (those far behind the player)
+        cleanupOldObstacles();
+    }
+
+    // Update the altitude display to show height from ground
+    function updateAltitudeDisplay() {
+        if (!altitudeBar || !altitudeText || !getPaperAirplane().isFlying) return;
+        
+        // Calculate altitude (distance from bottom of screen)
+        const groundY = canvasHeight;
+        const altitude = groundY - getPaperAirplane().y;
+        
+        // Max altitude for display purposes (800 is about the canvas height)
+        const maxAltitude = 1500;
+        
+        // Calculate percentage for the bar (0-100%)
+        const percentage = Math.min(100, Math.max(0, (altitude / maxAltitude) * 100));
+        
+        // Update the bar height
+        altitudeBar.style.height = percentage + '%';
+        
+        // Update the text
+        altitudeText.textContent = `Altitude: ${Math.floor(altitude)}`;
+        
+        // Add a class for visual feedback on different altitude ranges
+        if (altitude > 1000) {
+            altitudeText.className = 'altitude-text high';
+        } else if (altitude > 500) {
+            altitudeText.className = 'altitude-text medium';
+        } else if (altitude > 200) {
+            altitudeText.className = 'altitude-text low';
+        } else {
+            altitudeText.className = 'altitude-text danger';
+        }
+    }
+
+    // End the game
+    function endGame(reason) {
+        console.log("Game ended:", reason);
+        
+        // Stop the airplane
+        getPaperAirplane().isFlying = false;
+        
+        // Award any pending rewards at the end of the game
+        if (getPendingRewards() > 0) {
+            updateCoins(getPendingRewards());
+            console.log(`Awarding ${getPendingRewards()} pending rewards at end of game`);
+            resetPendingRewards(); // Clear the pending rewards after awarding
+        }
+        
+        // Show the result screen after a short delay
+        setTimeout(() => {
+            showResultScreen(reason);
+        }, 500);
+        
+        // Game is no longer running
+        setGameRunning(false);
+        
+        // Hide boost button
+        updateBoostButtonState();
+        
+        // Hide offscreen arrow
+        if (offscreenArrow) {
             offscreenArrow.style.display = 'none';
         }
     }
-    
-    // Check for collisions
-    handleCollisions();
-    
-    // Check if we need more obstacles
-    checkAndGenerateMoreObstacles();
-    
-    // Clean up old obstacles (those far behind the player)
-    cleanupOldObstacles();
-}
 
-// Update the altitude display to show height from ground
-function updateAltitudeDisplay() {
-    if (!altitudeBar || !altitudeText || !getPaperAirplane().isFlying) return;
-    
-    // Calculate altitude (distance from bottom of screen)
-    const groundY = canvasHeight;
-    const altitude = groundY - getPaperAirplane().y;
-    
-    // Max altitude for display purposes (800 is about the canvas height)
-    const maxAltitude = 1500;
-    
-    // Calculate percentage for the bar (0-100%)
-    const percentage = Math.min(100, Math.max(0, (altitude / maxAltitude) * 100));
-    
-    // Update the bar height
-    altitudeBar.style.height = percentage + '%';
-    
-    // Update the text
-    altitudeText.textContent = `Altitude: ${Math.floor(altitude)}`;
-    
-    // Add a class for visual feedback on different altitude ranges
-    if (altitude > 1000) {
-        altitudeText.className = 'altitude-text high';
-    } else if (altitude > 500) {
-        altitudeText.className = 'altitude-text medium';
-    } else if (altitude > 200) {
-        altitudeText.className = 'altitude-text low';
-    } else {
-        altitudeText.className = 'altitude-text danger';
-    }
-}
-
-// End the game
-function endGame(reason) {
-    console.log("Game ended:", reason);
-    
-    // Stop the airplane
-    getPaperAirplane().isFlying = false;
-    
-    // Show the result screen after a short delay
-    setTimeout(() => {
-        showResultScreen(reason);
-    }, 500);
-    
-    // Game is no longer running
-    setGameRunning(false);
-    
-    // Hide boost button
-    updateBoostButtonState();
-    
-    // Hide offscreen arrow
-    if (offscreenArrow) {
-        offscreenArrow.style.display = 'none';
-    }
-}
-
-// Show the result screen with game stats
-function showResultScreen(reason) {
-    if (!resultScreen || !resultTitle || !resultMessage) {
-        console.error("Result screen elements not found!");
-        return;
-    }
-    
-    // Set the result screen content
-    if (getTotalCoinsCollected() > 0) {
-        resultTitle.textContent = "Good Flight!";
-        resultTitle.className = "overlay-title win";
-    } else {
-        resultTitle.textContent = "Game Over!";
-        resultTitle.className = "overlay-title lose";
-    }
-    
-    // Create message based on reason
-    let message = "";
-    
-    switch (reason) {
-        case "crashed":
-            message = "Your paper airplane crashed!";
-            break;
-        case "stopped":
-            message = "Your paper airplane ran out of momentum.";
-            break;
-        default:
-            message = "Your flight has ended.";
-    }
-    
-    // Add distance traveled
-    const distance = Math.floor(getDistanceTraveled());
-    message += `<br>Distance traveled: ${distance} units<br>`;
-    
-    // Add coin total
-    message += `Total coins: <span class="${getTotalCoinsCollected() >= 0 ? 'win-amount' : 'lose-amount'}">${getTotalCoinsCollected()}</span>`;
-    
-    resultMessage.innerHTML = message;
-    
-    // Make sure to show result screen visibly
-    resultScreen.style.display = 'flex'; // Force display
-    resultScreen.classList.add('visible');
-    
-    // End the game
-    setGameActive(false);
-}
-
-// Apply boost to the airplane
-function boostAirplane() {
-    if (!isGameActive() || !isGameRunning() || !getPaperAirplane().isFlying) {
-        return;
-    }
-    
-    // Check if the player has enough coins
-    if (window.coinBalance < GAME_CONFIG.boostCost) {
-        return;
-    }
-    
-    // Deduct cost
-    updateCoins(-GAME_CONFIG.boostCost);
-    
-    const paperAirplane = getPaperAirplane();
-    
-    // Apply boost - now with both vertical and horizontal boost
-    paperAirplane.velocity.y -= boostSpeed;
-    paperAirplane.velocity.x += boostForward; // Add horizontal boost
-    
-    // Increase boost effectiveness for next time
-    boostSpeed += 5;
-    boostForward += 3;
-    
-    // Add a minimum speed if the plane is moving too slowly
-    if (paperAirplane.velocity.x < 2) {
-        paperAirplane.velocity.x = 3; // Ensure the plane keeps moving forward
-    }
-    
-    // Update button text
-    updateBoostButtonState();
-}
-
-// Draw the paper airplane
-function drawPaperAirplane() {
-    if (!ctx) return;
-    
-    const paperAirplane = getPaperAirplane();
-    const camera = getCamera();
-    
-    // Save context for rotation
-    ctx.save();
-    
-    // Translate to airplane position (accounting for camera)
-    ctx.translate(paperAirplane.x - camera.x, paperAirplane.y - camera.y);
-    
-    // Rotate airplane based on angle
-    ctx.rotate(paperAirplane.angle);
-    
-    // Draw a paper airplane shape
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.moveTo(0, 0); // Nose
-    ctx.lineTo(-paperAirplane.width, paperAirplane.height/2); // Bottom wing
-    ctx.lineTo(-paperAirplane.width/2, 0); // Back middle
-    ctx.lineTo(-paperAirplane.width, -paperAirplane.height/2); // Top wing
-    ctx.closePath();
-    ctx.fill();
-    
-    // Add details
-    ctx.strokeStyle = '#AAAAAA';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-paperAirplane.width/2, 0);
-    ctx.lineTo(0, 0);
-    ctx.stroke();
-    
-    // Restore context
-    ctx.restore();
-}
-
-// Draw obstacles
-function drawObstacles() {
-    if (!ctx) return;
-    
-    const obstacles = getObstacles();
-    const camera = getCamera();
-    
-    for (let i = 0; i < obstacles.length; i++) {
-        const obstacle = obstacles[i];
+    // Show the result screen with game stats
+    function showResultScreen(reason) {
+        if (!resultScreen || !resultTitle || !resultMessage) {
+            console.error("Result screen elements not found!");
+            return;
+        }
         
-        // Calculate screen position
-        const screenX = obstacle.x - camera.x;
-        const screenY = obstacle.y - camera.y;
+        // Set the result screen content
+        if (getTotalCoinsCollected() > 0) {
+            resultTitle.textContent = "Good Flight!";
+            resultTitle.className = "overlay-title win";
+        } else {
+            resultTitle.textContent = "Game Over!";
+            resultTitle.className = "overlay-title lose";
+        }
         
-        // Only draw if on screen (with margin)
-        if (screenX < -50 || screenX > canvasWidth + 50) continue;
+        // Create message based on reason
+        let message = "";
         
-        // Draw based on type
+        switch (reason) {
+            case "crashed":
+                message = "Your paper airplane crashed!";
+                break;
+            case "stopped":
+                message = "Your paper airplane ran out of momentum.";
+                break;
+            default:
+                message = "Your flight has ended.";
+        }
+        
+        // Add distance traveled
+        const distance = Math.floor(getDistanceTraveled());
+        message += `<br>Distance traveled: ${distance} units<br>`;
+        
+        // Add coin total
+        message += `Total coins: <span class="${getTotalCoinsCollected() >= 0 ? 'win-amount' : 'lose-amount'}">${getTotalCoinsCollected()}</span>`;
+        
+        resultMessage.innerHTML = message;
+        
+        // Make sure to show result screen visibly
+        resultScreen.style.display = 'flex'; // Force display
+        resultScreen.classList.add('visible');
+        
+        // End the game
+        setGameActive(false);
+    }
+
+    // Apply boost to the airplane
+    function boostAirplane() {
+        if (!isGameActive() || !isGameRunning() || !getPaperAirplane().isFlying) {
+            return;
+        }
+        
+        // Check if the player has enough coins
+        if (window.coinBalance < GAME_CONFIG.boostCost) {
+            return;
+        }
+        
+        // Deduct cost
+        updateCoins(-GAME_CONFIG.boostCost);
+        
+        const paperAirplane = getPaperAirplane();
+        
+        // Apply boost - now with both vertical and horizontal boost
+        paperAirplane.velocity.y -= boostSpeed;
+        paperAirplane.velocity.x += boostForward; // Add horizontal boost
+        
+        // Increase boost effectiveness for next time
+        boostSpeed += 5;
+        boostForward += 3;
+        
+        // Add a minimum speed if the plane is moving too slowly
+        if (paperAirplane.velocity.x < 2) {
+            paperAirplane.velocity.x = 3; // Ensure the plane keeps moving forward
+        }
+        
+        // Update button text
+        updateBoostButtonState();
+    }
+
+    // Draw the paper airplane
+    function drawPaperAirplane() {
+        if (!ctx) return;
+        
+        const paperAirplane = getPaperAirplane();
+        const camera = getCamera();
+        
+        // Save context for rotation
         ctx.save();
         
-        if (!obstacle.hit) {
-            switch (obstacle.type) {
-                case 'money':
-                    // Draw money emoji
-                    ctx.font = '24px Arial';
-                    ctx.fillText('💰', screenX, screenY);
-                    break;
-                    
-                case 'bomb':
-                    // Draw bomb emoji
-                    ctx.font = '24px Arial';
-                    ctx.fillText('💣', screenX, screenY);
-                    break;
-                    
-                case 'fire':
-                    // Draw fire emoji
-                    ctx.font = '24px Arial';
-                    ctx.fillText('🔥', screenX, screenY);
-                    break;
-            }
-        }
+        // Translate to airplane position (accounting for camera)
+        ctx.translate(paperAirplane.x - camera.x, paperAirplane.y - camera.y);
         
+        // Rotate airplane based on angle
+        ctx.rotate(paperAirplane.angle);
+        
+        // Draw a paper airplane shape
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.moveTo(0, 0); // Nose
+        ctx.lineTo(-paperAirplane.width, paperAirplane.height/2); // Bottom wing
+        ctx.lineTo(-paperAirplane.width/2, 0); // Back middle
+        ctx.lineTo(-paperAirplane.width, -paperAirplane.height/2); // Top wing
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add details
+        ctx.strokeStyle = '#AAAAAA';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(-paperAirplane.width/2, 0);
+        ctx.lineTo(0, 0);
+        ctx.stroke();
+        
+        // Restore context
         ctx.restore();
     }
-}
 
-// Draw the ground
-function drawGround() {
-    if (!ctx) return;
-    
-    ctx.fillStyle = '#333333';
-    ctx.fillRect(0, canvasHeight - 20, canvasWidth, 20);
-    
-    // Add texture
-    ctx.fillStyle = '#444444';
-    for (let i = 0; i < canvasWidth; i += 30) {
-        ctx.fillRect(i, canvasHeight - 20, 15, 5);
-    }
-}
-
-// Draw stats
-function drawStats() {
-    if (!ctx) return;
-    
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = '16px Arial';
-    ctx.textAlign = 'left';
-    
-    // Draw distance
-    ctx.fillText(`Distance: ${Math.floor(getDistanceTraveled())}`, 10, 30);
-    
-    // Draw coins collected
-    const coinText = `Coins: ${getTotalCoinsCollected() >= 0 ? '+' : ''}${getTotalCoinsCollected()}`;
-    ctx.fillStyle = getTotalCoinsCollected() >= 0 ? '#4CAF50' : '#f44336';
-    ctx.fillText(coinText, 10, 60);
-    
-    // Draw speed
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(`Speed: ${getPaperAirplane().velocity.x.toFixed(1)}`, 10, 90);
-}
-
-// Draw stars in background
-function drawStars() {
-    if (!ctx || !canvas) return;
-
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    ctx.fillStyle = '#FFFFFF';
-
-    // Using deterministic star positions for performance
-    for (let i = 0; i < 100; i++) {
-        // Create a varied star pattern
-        const seed = i * 12437; // Large prime number
-        const x = (seed % canvasWidth) % canvasWidth;
-        const y = (seed * 23 % canvasHeight) % canvasHeight;
-
-        // Vary the star sizes
-        const size = (i % 3) + 1;
-
-        // Make stars twinkle
-        const alpha = 0.3 + 0.7 * Math.sin(Date.now() * 0.001 + i);
-
-        ctx.globalAlpha = alpha;
-        ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    ctx.globalAlpha = 1.0;
-}
-
-// Game loop for animation and game logic
-function gameLoop() {
-    // Draw background
-    drawStars();
-    
-    // Draw ground
-    drawGround();
-    
-    // Update physics if game is running
-    if (isGameRunning()) {
-        updatePhysics();
-        
-        // Update altitude display
-        updateAltitudeDisplay();
-    }
-    
     // Draw obstacles
-    drawObstacles();
-    
-    // Draw paper airplane
-    drawPaperAirplane();
-    
-    // Draw stats
-    drawStats();
-
-    // Continue game loop
-    animationFrame = requestAnimationFrame(gameLoop);
-}
-
-// Setup event listeners
-function setupEventListeners() {
-    // Start button
-    if (startBtn) {
-        startBtn.addEventListener('click', function() {
-            // Check if signed in
-            if (signInScreen && signInScreen.classList.contains('visible')) {
-                alert("You must sign in first to play the game!");
-                return;
-            }
-            
-            initGame();
-        });
-    }
-
-    // Play again button
-    if (playAgainBtn) {
-        playAgainBtn.addEventListener('click', function() {
-            if (resultScreen) {
-                resultScreen.classList.remove('visible');
-                setTimeout(() => {
-                    resetGame();
-                }, 300); // Give time for fade-out animation
-            } else {
-                resetGame();
-            }
-        });
-    }
-
-    // Back button
-    if (backBtn) {
-        backBtn.addEventListener('click', function() {
-            window.location.href = '/learning.html';
-        });
-    }
-    
-    // Sign in button
-    if (signInBtn) {
-        signInBtn.addEventListener('click', function() {
-            if (typeof window.signInToFirebase === 'function') {
-                window.signInToFirebase();
-            } else {
-                console.error("Sign in function not available");
-                alert("Sign in functionality not available. Please try again later.");
-            }
-        });
-    }
-
-    // Fly button
-    if (flyBtn) {
-        flyBtn.addEventListener('click', function() {
-            if (isGameActive() && !isGameRunning()) {
-                launchAirplane();
-            }
-        });
-    }
-    
-    // Boost button
-    if (boostBtn) {
-        boostBtn.addEventListener('click', function() {
-            if (isGameActive() && isGameRunning() && getPaperAirplane().isFlying) {
-                boostAirplane();
-            }
-        });
-    }
-
-    // Bet slider
-    if (betSlider) {
-        betSlider.addEventListener('input', function() {
-            setBetAmount(parseInt(betSlider.value));
-            updateBetAmountDisplay();
-            updateFlyButtonState(); // Update fly button text with new bet amount
-        });
-    }
-
-    // Bet amount buttons
-    if (decreaseBetBtn) {
-        decreaseBetBtn.addEventListener('click', function() {
-            if (getBetAmount() > 100) {
-                setBetAmount(Math.max(100, getBetAmount() - 100));
-                if (betSlider) betSlider.value = getBetAmount();
-                updateBetAmountDisplay();
-                updateFlyButtonState(); // Update fly button text with new bet amount
-            }
-        });
-    }
-
-    if (increaseBetBtn) {
-        increaseBetBtn.addEventListener('click', function() {
-            if (getBetAmount() < maxBet) {
-                setBetAmount(Math.min(maxBet, getBetAmount() + 100));
-                if (betSlider) betSlider.value = getBetAmount();
-                updateBetAmountDisplay();
-                updateFlyButtonState(); // Update fly button text with new bet amount
-            }
-        });
-    }
-
-    // Add resize event listener
-    window.addEventListener('resize', function() {
-        initCanvas();
-        if (isGameActive()) {
-            drawStars();
-        }
-    });
-    
-    // Add keyboard controls
-    window.addEventListener('keydown', function(e) {
-        if (!isGameRunning() || !getPaperAirplane().isFlying) return;
+    function drawObstacles() {
+        if (!ctx) return;
         
-        switch (e.key) {
-            case 'ArrowUp':
-                // Push airplane up
-                getPaperAirplane().velocity.y -= 0.5;
-                break;
-                
-            case 'ArrowDown':
-                // Push airplane down
-                getPaperAirplane().velocity.y += 0.3;
-                break;
-            
-            case ' ': // Spacebar for boost
-                boostAirplane();
-                break;
-        }
-    });
-    
-    // Reset game button in anti-cheat overlay
-    const resetGameBtn = document.getElementById('reset-game-btn');
-    if (resetGameBtn) {
-        resetGameBtn.addEventListener('click', function() {
-            // Hide the overlay
-            const antiCheatOverlay = document.getElementById('anti-cheat-overlay');
-            if (antiCheatOverlay) {
-                antiCheatOverlay.classList.remove('visible');
-            }
-            
-            // Re-enable game elements
-            const gameContainer = document.querySelector('.game-container');
-            if (gameContainer) {
-                gameContainer.style.opacity = '1';
-                gameContainer.style.pointerEvents = 'auto';
-            }
-            
-            // Reload page to reset everything
-            window.location.reload();
-        });
-    }
-}
-
-// =====================
-// ANTI-CHEAT MEASURES
-// =====================
-
-// Additional security monitoring
-function setupSecurityMonitoring() {
-    // Check integrity every 1 second
-    const securityInterval = setInterval(() => {
-        // Create checksum of critical game values
-        const gameStateCheck = isGameActive() + ':' + isGameRunning() + ':' + getPaperAirplane().isFlying;
-        
-        // Store last known good state for verification
-        if (!gameState[GAME_VARS.STATE].lastVerifiedState) {
-            gameState[GAME_VARS.STATE].lastVerifiedState = gameStateCheck;
-        }
-        
-        // Detect abrupt changes in state (potential memory manipulation)
-        if (gameState[GAME_VARS.STATE].lastVerifiedState !== gameStateCheck) {
-            // Allow legitimate transitions
-            const oldState = gameState[GAME_VARS.STATE].lastVerifiedState;
-            const newState = gameStateCheck;
-            
-            // Check for invalid transitions
-            if (oldState === 'false:false:false' && newState === 'true:true:true') {
-                // This is an invalid jump from completely inactive to all active
-                if (window.triggerAntiCheat) {
-                    window.triggerAntiCheat("Game state manipulation detected");
-                }
-            }
-            
-            // Update verified state
-            gameState[GAME_VARS.STATE].lastVerifiedState = gameStateCheck;
-        }
-        
-        // Check for coin balance manipulation
-        if (window.coinBalance !== undefined) {
-            const balance = window.coinBalance;
-            
-            // Detect large sudden increases in balance
-            if (balance > 1000000) {
-                if (window.triggerAntiCheat) {
-                    window.triggerAntiCheat("Suspicious balance detected");
-                }
-            }
-        }
-        
-        // Monitor for suspicious obstacle modifications
         const obstacles = getObstacles();
-        if (obstacles.length > 0) {
-            // Check if all obstacles turned to money (cheating)
-            let moneyCount = 0;
-            let otherCount = 0;
+        const camera = getCamera();
+        
+        for (let i = 0; i < obstacles.length; i++) {
+            const obstacle = obstacles[i];
             
-            for (let i = 0; i < Math.min(obstacles.length, 20); i++) {
-                if (obstacles[i].type === 'money') {
-                    moneyCount++;
-                } else {
-                    otherCount++;
+            // Calculate screen position
+            const screenX = obstacle.x - camera.x;
+            const screenY = obstacle.y - camera.y;
+            
+            // Only draw if on screen (with margin)
+            if (screenX < -50 || screenX > canvasWidth + 50) continue;
+            
+            // Draw based on type
+            ctx.save();
+            
+            if (!obstacle.hit) {
+                switch (obstacle.type) {
+                    case 'money':
+                        // Draw money emoji
+                        ctx.font = '24px Arial';
+                        ctx.fillText('💰', screenX, screenY);
+                        break;
+                        
+                    case 'bomb':
+                        // Draw bomb emoji
+                        ctx.font = '24px Arial';
+                        ctx.fillText('💣', screenX, screenY);
+                        break;
+                        
+                    case 'fire':
+                        // Draw fire emoji
+                        ctx.font = '24px Arial';
+                        ctx.fillText('🔥', screenX, screenY);
+                        break;
                 }
             }
             
-            // If all obstacles are money with no variation (suspicious)
-            if (moneyCount > 15 && otherCount === 0) {
-                gameState[GAME_VARS.STATE].cheatingAttempts++;
+            ctx.restore();
+        }
+    }
+
+    // Draw the ground
+    function drawGround() {
+        if (!ctx) return;
+        
+        ctx.fillStyle = '#333333';
+        ctx.fillRect(0, canvasHeight - 20, canvasWidth, 20);
+        
+        // Add texture
+        ctx.fillStyle = '#444444';
+        for (let i = 0; i < canvasWidth; i += 30) {
+            ctx.fillRect(i, canvasHeight - 20, 15, 5);
+        }
+    }
+
+    // Draw stats
+    function drawStats() {
+        if (!ctx) return;
+        
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'left';
+        
+        // Draw distance
+        ctx.fillText(`Distance: ${Math.floor(getDistanceTraveled())}`, 10, 30);
+        
+        // Draw coins collected
+        const coinText = `Coins: ${getTotalCoinsCollected() >= 0 ? '+' : ''}${getTotalCoinsCollected()}`;
+        ctx.fillStyle = getTotalCoinsCollected() >= 0 ? '#4CAF50' : '#f44336';
+        ctx.fillText(coinText, 10, 60);
+        
+        // Draw speed
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(`Speed: ${getPaperAirplane().velocity.x.toFixed(1)}`, 10, 90);
+        
+        // Draw pending rewards
+        if (getPendingRewards() > 0) {
+            ctx.fillStyle = '#FFD700';
+            ctx.fillText(`Pending: +${getPendingRewards()}`, 10, 120);
+        }
+    }
+
+    // Draw stars in background
+    function drawStars() {
+        if (!ctx || !canvas) return;
+
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+        ctx.fillStyle = '#FFFFFF';
+
+        // Using deterministic star positions for performance
+        for (let i = 0; i < 100; i++) {
+            // Create a varied star pattern
+            const seed = i * 12437; // Large prime number
+            const x = (seed % canvasWidth) % canvasWidth;
+            const y = (seed * 23 % canvasHeight) % canvasHeight;
+
+            // Vary the star sizes
+            const size = (i % 3) + 1;
+
+            // Make stars twinkle
+            const alpha = 0.3 + 0.7 * Math.sin(Date.now() * 0.001 + i);
+
+            ctx.globalAlpha = alpha;
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Game loop for animation and game logic
+    function gameLoop() {
+        // Draw background
+        drawStars();
+        
+        // Draw ground
+        drawGround();
+        
+        // Update physics if game is running
+        if (isGameRunning()) {
+            updatePhysics();
+            
+            // Update altitude display
+            updateAltitudeDisplay();
+        }
+        
+        // Draw obstacles
+        drawObstacles();
+        
+        // Draw paper airplane
+        drawPaperAirplane();
+        
+        // Draw stats
+        drawStats();
+
+        // Continue game loop
+        animationFrame = requestAnimationFrame(gameLoop);
+    }
+
+    // Setup event listeners
+    function setupEventListeners() {
+        // Start button
+        if (startBtn) {
+            startBtn.addEventListener('click', function() {
+                // Check if signed in
+                if (signInScreen && signInScreen.classList.contains('visible')) {
+                    alert("You must sign in first to play the game!");
+                    return;
+                }
                 
-                if (gameState[GAME_VARS.STATE].cheatingAttempts > 2) {
+                initGame();
+            });
+        }
+
+        // Play again button
+        if (playAgainBtn) {
+            playAgainBtn.addEventListener('click', function() {
+                if (resultScreen) {
+                    resultScreen.classList.remove('visible');
+                    setTimeout(() => {
+                        resetGame();
+                    }, 300); // Give time for fade-out animation
+                } else {
+                    resetGame();
+                }
+            });
+        }
+
+        // Back button
+        if (backBtn) {
+            backBtn.addEventListener('click', function() {
+                window.location.href = '/learning.html';
+            });
+        }
+        
+        // Sign in button
+        if (signInBtn) {
+            signInBtn.addEventListener('click', function() {
+                if (typeof window.signInToFirebase === 'function') {
+                    window.signInToFirebase();
+                } else {
+                    console.error("Sign in function not available");
+                    alert("Sign in functionality not available. Please try again later.");
+                }
+            });
+        }
+
+        // Fly button
+        if (flyBtn) {
+            flyBtn.addEventListener('click', function() {
+                if (isGameActive() && !isGameRunning()) {
+                    launchAirplane();
+                }
+            });
+        }
+        
+        // Boost button
+        if (boostBtn) {
+            boostBtn.addEventListener('click', function() {
+                if (isGameActive() && isGameRunning() && getPaperAirplane().isFlying) {
+                    boostAirplane();
+                }
+            });
+        }
+
+        // Bet slider
+        if (betSlider) {
+            betSlider.addEventListener('input', function() {
+                setBetAmount(parseInt(betSlider.value));
+                updateBetAmountDisplay();
+                updateFlyButtonState(); // Update fly button text with new bet amount
+            });
+        }
+
+        // Bet amount buttons
+        if (decreaseBetBtn) {
+            decreaseBetBtn.addEventListener('click', function() {
+                if (getBetAmount() > 100) {
+                    setBetAmount(Math.max(100, getBetAmount() - 100));
+                    if (betSlider) betSlider.value = getBetAmount();
+                    updateBetAmountDisplay();
+                    updateFlyButtonState(); // Update fly button text with new bet amount
+                }
+            });
+        }
+
+        if (increaseBetBtn) {
+            increaseBetBtn.addEventListener('click', function() {
+                if (getBetAmount() < maxBet) {
+                    setBetAmount(Math.min(maxBet, getBetAmount() + 100));
+                    if (betSlider) betSlider.value = getBetAmount();
+                    updateBetAmountDisplay();
+                    updateFlyButtonState(); // Update fly button text with new bet amount
+                }
+            });
+        }
+
+        // Add resize event listener
+        window.addEventListener('resize', function() {
+            initCanvas();
+            if (isGameActive()) {
+                drawStars();
+            }
+        });
+        
+        // Add keyboard controls
+        window.addEventListener('keydown', function(e) {
+            if (!isGameRunning() || !getPaperAirplane().isFlying) return;
+            
+            switch (e.key) {
+                case 'ArrowUp':
+                    // Push airplane up
+                    getPaperAirplane().velocity.y -= 0.5;
+                    break;
+                    
+                case 'ArrowDown':
+                    // Push airplane down
+                    getPaperAirplane().velocity.y += 0.3;
+                    break;
+                
+                case ' ': // Spacebar for boost
+                    boostAirplane();
+                    break;
+            }
+        });
+        
+        // Reset game button in anti-cheat overlay
+        const resetGameBtn = document.getElementById('reset-game-btn');
+        if (resetGameBtn) {
+            resetGameBtn.addEventListener('click', function() {
+                // Hide the overlay
+                const antiCheatOverlay = document.getElementById('anti-cheat-overlay');
+                if (antiCheatOverlay) {
+                    antiCheatOverlay.classList.remove('visible');
+                }
+                
+                // Re-enable game elements
+                const gameContainer = document.querySelector('.game-container');
+                if (gameContainer) {
+                    gameContainer.style.opacity = '1';
+                    gameContainer.style.pointerEvents = 'auto';
+                }
+                
+                // Reload page to reset everything
+                window.location.reload();
+            });
+        }
+    }
+
+    // =====================
+    // ANTI-CHEAT MEASURES
+    // =====================
+
+    // Additional security monitoring
+    function setupSecurityMonitoring() {
+        // Check integrity every 1 second
+        const securityInterval = setInterval(() => {
+            // Create checksum of critical game values
+            const gameStateCheck = isGameActive() + ':' + isGameRunning() + ':' + getPaperAirplane().isFlying;
+            
+            // Store last known good state for verification
+            if (!gameState[GAME_VARS.STATE].lastVerifiedState) {
+                gameState[GAME_VARS.STATE].lastVerifiedState = gameStateCheck;
+            }
+            
+            // Detect abrupt changes in state (potential memory manipulation)
+            if (gameState[GAME_VARS.STATE].lastVerifiedState !== gameStateCheck) {
+                // Allow legitimate transitions
+                const oldState = gameState[GAME_VARS.STATE].lastVerifiedState;
+                const newState = gameStateCheck;
+                
+                // Check for invalid transitions
+                if (oldState === 'false:false:false' && newState === 'true:true:true') {
+                    // This is an invalid jump from completely inactive to all active
                     if (window.triggerAntiCheat) {
-                        window.triggerAntiCheat("Obstacle manipulation detected");
+                        window.triggerAntiCheat("Game state manipulation detected");
+                    }
+                }
+                
+                // Update verified state
+                gameState[GAME_VARS.STATE].lastVerifiedState = gameStateCheck;
+            }
+            
+            // Check for coin balance manipulation
+            if (window.coinBalance !== undefined) {
+                const balance = window.coinBalance;
+                
+                // Detect large sudden increases in balance
+                if (balance > 1000000) {
+                    if (window.triggerAntiCheat) {
+                        window.triggerAntiCheat("Suspicious balance detected");
                     }
                 }
             }
-        }
-    }, 1000);
-    
-    // Return cleanup function
-    return function() {
-        clearInterval(securityInterval);
-    };
-}
+            
+            // Monitor for suspicious obstacle modifications
+            const obstacles = getObstacles();
+            if (obstacles.length > 0) {
+                // Check if all obstacles turned to money (cheating)
+                let moneyCount = 0;
+                let otherCount = 0;
+                
+                for (let i = 0; i < Math.min(obstacles.length, 20); i++) {
+                    if (obstacles[i].type === 'money') {
+                        moneyCount++;
+                    } else {
+                        otherCount++;
+                    }
+                }
+                
+                // If all obstacles are money with no variation (suspicious)
+                if (moneyCount > 15 && otherCount === 0) {
+                    gameState[GAME_VARS.STATE].cheatingAttempts++;
+                    
+                    if (gameState[GAME_VARS.STATE].cheatingAttempts > 2) {
+                        if (window.triggerAntiCheat) {
+                            window.triggerAntiCheat("Obstacle manipulation detected");
+                        }
+                    }
+                }
+            }
+        }, 1000);
+        
+        // Return cleanup function
+        return function() {
+            clearInterval(securityInterval);
+        };
+    }
 
-// =====================
-// INITIALIZATION
-// =====================
+    // =====================
+    // INITIALIZATION
+    // =====================
 
-// Initialize game after DOM is fully loaded
-function initializeGame() {
-    // Initialize DOM elements
-    initDomElements();
+    // Initialize game after DOM is fully loaded
+    function initializeGame() {
+        // Initialize DOM elements
+        initDomElements();
 
-    // Initialize canvas
-    initCanvas();
+        // Initialize canvas
+        initCanvas();
 
-    // Setup security monitoring
-    const cleanupSecurity = setupSecurityMonitoring();
+        // Setup security monitoring
+        const cleanupSecurity = setupSecurityMonitoring();
 
-    // Setup event listeners
-    setupEventListeners();
+        // Setup event listeners
+        setupEventListeners();
 
-    // Initial reset
-    resetGame();
+        // Initial reset
+        resetGame();
 
-    // Expose minimum necessary functions to global scope
-    window._updateStartButtonState = updateStartButtonState;
-    window._updateFlyButtonState = updateFlyButtonState;
-    window._updateBoostButtonState = updateBoostButtonState;
-    window._updateMaxBet = updateMaxBet;
+        // Expose minimum necessary functions to global scope
+        window._updateStartButtonState = updateStartButtonState;
+        window._updateFlyButtonState = updateFlyButtonState;
+        window._updateBoostButtonState = updateBoostButtonState;
+        window._updateMaxBet = updateMaxBet;
 
-    // Cleanup on page unload
-    window.addEventListener('unload', () => {
-        cleanupSecurity();
-        if (animationFrame) {
-            cancelAnimationFrame(animationFrame);
+        // Cleanup on page unload
+        window.addEventListener('unload', () => {
+            cleanupSecurity();
+            if (animationFrame) {
+                cancelAnimationFrame(animationFrame);
+            }
+        });
+    }
+
+    // Initialize when DOM is fully loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeGame();
+        
+        // Make doubly sure the result screen is initially hidden
+        const resultScreen = document.getElementById('result-screen');
+        if (resultScreen) {
+            resultScreen.classList.remove('visible');
         }
     });
-}
-
-// Initialize when DOM is fully loaded
-document.addEventListener('DOMContentLoaded', function() {
-    initializeGame();
-    
-    // Make doubly sure the result screen is initially hidden
-    const resultScreen = document.getElementById('result-screen');
-    if (resultScreen) {
-        resultScreen.classList.remove('visible');
-    }
-});
 })();
 </script>
 </body>
