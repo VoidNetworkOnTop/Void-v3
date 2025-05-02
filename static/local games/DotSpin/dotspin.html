@@ -2447,11 +2447,12 @@
         obstacles.sort((a, b) => a.x - b.x);
     }
     
-// Function to check if we need more obstacles and generate them
+    // Function to check if we need more obstacles and generate them
     function checkAndGenerateMoreObstacles() {
         if (!isGameRunning() || !getPaperAirplane().isFlying) return;
         
         const obstacles = getObstacles();
+        const plane = getPaperAirplane();
         
         // Find the furthest obstacle position horizontally
         let furthestX = 0;
@@ -2461,14 +2462,17 @@
             }
         }
         
+// Adjust buffer distance based on velocity - faster plane needs more lookahead
+        const velocityFactor = Math.max(1, Math.abs(plane.velocity.x) / 5);  // Scale based on horizontal speed
+        const bufferDistance = 2000 * velocityFactor; // Dynamic buffer based on speed
+        
         // If the plane is getting close to the furthest obstacle, generate more
-        const bufferDistance = 2000; // Generate more when within 2000px of the furthest obstacle
-        if (getPaperAirplane().x + bufferDistance > furthestX) {
+        if (plane.x + bufferDistance > furthestX) {
             generateMoreObstacles(furthestX);
         }
         
         // Generate obstacles at higher altitudes when the plane goes up
-        const planeY = getPaperAirplane().y;
+        const planeY = plane.y;
         const highestY = Math.min(100, planeY - 300); // 300px above the plane, but not higher than 100px
         
         // Find highest and lowest obstacles within a range ahead of the plane
@@ -2476,18 +2480,28 @@
         let lowestObstacleY = canvasHeight - 100;
         
         // Range to check for existing obstacles ahead of the plane
-        const rangeStart = getPaperAirplane().x;
-        const rangeEnd = getPaperAirplane().x + 1500;
+        // Also adjust this based on velocity
+        const rangeStart = plane.x;
+        const rangeEnd = plane.x + (1500 * velocityFactor);
         
         // Check if we have obstacles in the area ahead
         let hasHighObstacles = false;
+        let hasLowObstacles = false;
+        let obstacleCount = 0;
         
         for (let i = 0; i < obstacles.length; i++) {
             const obs = obstacles[i];
-            if (obs.x > rangeStart && obs.x < rangeEnd) {
+            if (obs.x > rangeStart && obs.x < rangeEnd && !obs.hit) {
+                obstacleCount++;
+                
                 // Track highest obstacle
                 if (obs.y < highestObstacleY + 200) {
                     hasHighObstacles = true;
+                }
+                
+                // Track lowest obstacles
+                if (obs.y > planeY + 200) {
+                    hasLowObstacles = true;
                 }
                 
                 // Update highest and lowest y positions
@@ -2498,13 +2512,165 @@
         
         // Generate high altitude obstacles if needed
         if (!hasHighObstacles && planeY < canvasHeight - 300) {
-            generateHighAltitudeObstacles(getPaperAirplane().x, highestY, false);
+            generateHighAltitudeObstacles(plane.x, highestY, false);
+        }
+        
+        // Generate low altitude obstacles if needed AND falling fast
+        if (!hasLowObstacles && plane.velocity.y > 5) {
+            generateLowAltitudeObstacles(plane.x, planeY);
+        }
+        
+        // If overall obstacle density is too low ahead, generate more regardless of position
+        if (obstacleCount < 5 && Math.random() < 0.5) {
+            generateRandomObstaclesAhead(plane.x, plane.y);
         }
         
         // Check for max altitude exceeded
         handleMaxAltitudeExceeded();
     }
     
+    // Add this new function to generate obstacles during rapid descent
+    function generateRapidDescentObstacles() {
+        const plane = getPaperAirplane();
+        const obstacles = getObstacles();
+        
+        // Check if plane is falling rapidly (high downward velocity)
+        if (plane.velocity.y > 8) {
+            // Calculate the area ahead of the plane based on velocity
+            // The faster it's falling, the wider the area we need to fill
+            const forwardDistance = Math.max(500, plane.velocity.x * 100);
+            const verticalRange = Math.max(300, plane.velocity.y * 50);
+            
+            // Calculate target area
+            const targetX = plane.x + forwardDistance / 2;
+            const targetY = plane.y + verticalRange / 2;
+            
+            // Check if there are enough obstacles in the target area
+            let obstaclesInPath = 0;
+            for (let i = 0; i < obstacles.length; i++) {
+                const obs = obstacles[i];
+                if (!obs.hit && 
+                    obs.x > plane.x && obs.x < plane.x + forwardDistance &&
+                    obs.y > plane.y && obs.y < plane.y + verticalRange) {
+                    obstaclesInPath++;
+                }
+            }
+            
+            // If not enough obstacles in path, generate more
+            // We want at least 5 obstacles in the plane's path during rapid descent
+            if (obstaclesInPath < 5) {
+                // Generate a mix of obstacle types with higher density
+                const obstacleCount = 10 - obstaclesInPath; // Fill up to 10 obstacles
+                
+                for (let i = 0; i < obstacleCount; i++) {
+                    // Randomize position within the target area
+                    const x = plane.x + Math.random() * forwardDistance;
+                    const y = plane.y + Math.random() * verticalRange;
+                    
+                    // Determine obstacle type - maintain the same distribution
+                    let rng = Math.random();
+                    let obstacleType;
+                    
+                    if (getBetAmount() < 500) {
+                        // Low bet - many bombs, few money
+                        if (rng < 0.10) {
+                            obstacleType = 'money';
+                        } else if (rng < 0.70) { // 0.10 + 0.60
+                            obstacleType = 'bomb';
+                        } else {
+                            obstacleType = 'fire';
+                        }
+                    } else {
+                        // High bet
+                        if (rng < 0.20) {
+                            obstacleType = 'money';
+                        } else if (rng < 0.70) { // 0.20 + 0.50
+                            obstacleType = 'bomb';
+                        } else {
+                            obstacleType = 'fire';
+                        }
+                    }
+                    
+                    // Add the obstacle
+                    obstacles.push({
+                        type: obstacleType,
+                        x: x,
+                        y: y,
+                        width: 30,
+                        height: 30,
+                        hit: false
+                    });
+                }
+            }
+        }
+    }
+    
+    // New function to generate obstacles at low altitudes when falling fast
+    function generateLowAltitudeObstacles(startX, currentY) {
+        const obstacles = getObstacles();
+        const obstacleCount = 5 + Math.floor(Math.random() * 5);
+        
+        for (let i = 0; i < obstacleCount; i++) {
+            // Position under and ahead of the plane
+            const x = startX + 300 + Math.random() * 1000;
+            const y = currentY + 200 + Math.random() * 400; // Below the plane
+            
+            // Determine obstacle type - maintain similar distribution as elsewhere
+            let rng = Math.random();
+            let obstacleType;
+            
+            if (rng < 0.15) {
+                obstacleType = 'money';
+            } else if (rng < 0.70) { // 0.15 + 0.55
+                obstacleType = 'bomb';
+            } else {
+                obstacleType = 'fire';
+            }
+            
+            obstacles.push({
+                type: obstacleType,
+                x: x,
+                y: y,
+                width: 30,
+                height: 30,
+                hit: false
+            });
+        }
+    }
+    
+    // New function to generate random obstacles ahead when density is too low
+    function generateRandomObstaclesAhead(startX, currentY) {
+        const obstacles = getObstacles();
+        const obstacleCount = 8 + Math.floor(Math.random() * 5);
+        
+        for (let i = 0; i < obstacleCount; i++) {
+            // Position randomly in front of the plane
+            const x = startX + 200 + Math.random() * 1200;
+            const y = Math.max(50, currentY - 300 + Math.random() * 600); // Around the plane
+            
+            // Determine obstacle type
+            let rng = Math.random();
+            let obstacleType;
+            
+            if (rng < 0.15) {
+                obstacleType = 'money';
+            } else if (rng < 0.70) {
+                obstacleType = 'bomb';
+            } else {
+                obstacleType = 'fire';
+            }
+            
+            obstacles.push({
+                type: obstacleType,
+                x: x,
+                y: y,
+                width: 30,
+                height: 30,
+                hit: false
+            });
+        }
+    }
+
     // Function to generate obstacles at high altitudes
     function generateHighAltitudeObstacles(startX, topY, forceDown = false) {
         const luckFactor = calculateLuckFactor();
@@ -2816,6 +2982,9 @@
                 offscreenArrow.style.display = 'none';
             }
         }
+        
+        // Special check for rapid descent - ADDED THIS LINE
+        generateRapidDescentObstacles();
         
         // Check for collisions
         handleCollisions();
