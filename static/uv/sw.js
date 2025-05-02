@@ -1,7 +1,7 @@
 /global UVServiceWorker,__uv$config/
 /*
  * Optimized service worker script for Ultraviolet proxy
- * Features improved performance, caching, and compatibility
+ * Enhanced compatibility with all website types
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -10,144 +10,107 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
-// Enhanced configuration
+// Configuration
 const CONFIG = {
-  FETCH_TIMEOUT: 60000,          // 60 second timeout for slow connections
-  CACHE_NAME: 'uv-cache-v1',     // Cache storage name
-  CACHE_EXPIRY: 3600000,         // Cache expiry (1 hour)
-  MAX_RETRIES: 2,                // Maximum retry attempts
-  RETRY_DELAY: 1000,             // Delay between retries
-  CACHE_EXEMPTIONS: [            // URLs that shouldn't be cached
-    'login', 'signin', 'signup', 'auth', 'oauth', 'account',
-    'session', 'token', 'checkout', 'payment', 'purchase'
-  ]
+  FETCH_TIMEOUT: 60000,        // 60 second timeout for slow connections
+  MAX_RETRIES: 2,              // Maximum retry attempts
+  RETRY_DELAY: 1000,           // Delay between retries
 };
 
-// Initialize cache
-self.addEventListener('install', event => {
-  console.log('[UV Service Worker] Installed');
-  self.skipWaiting();
-});
+// Log initialization
+console.log('[UV Service Worker] Initializing with proper scope');
 
-// Clean up old caches when activated
-self.addEventListener('activate', event => {
-  console.log('[UV Service Worker] Activated');
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.filter(cacheName => {
-          return cacheName.startsWith('uv-cache-') && cacheName !== CONFIG.CACHE_NAME;
-        }).map(cacheName => {
-          return caches.delete(cacheName);
-        })
-      );
-    }).then(() => clients.claim())
-  );
-});
-
-// Enhanced fetch with timeout, retries and better error handling
-const fetchWithRetry = async (request, retries = CONFIG.MAX_RETRIES) => {
+// Enhanced fetch with timeout and retries
+const fetchWithRetry = async (event, retries = CONFIG.MAX_RETRIES) => {
   try {
     // Try to fetch with timeout
     return await Promise.race([
-      sw.fetch(request),
+      sw.fetch(event),
       new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Request timeout')), CONFIG.FETCH_TIMEOUT)
       )
     ]);
   } catch (error) {
+    console.error('[UV Service Worker] Fetch error:', error.message);
+    
     // Retry logic
     if (retries > 0) {
       console.log(`[UV Service Worker] Retrying fetch (${retries} attempts left)`);
       await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
-      return fetchWithRetry(request, retries - 1);
+      return fetchWithRetry(event, retries - 1);
     }
     throw error;
   }
 };
 
-// Determine if a request should be cached
-const shouldCache = (request, response) => {
-  // Don't cache non-GET requests
-  if (request.method !== 'GET') return false;
-  
-  // Don't cache if response isn't successful
-  if (!response || response.status !== 200) return false;
-  
-  // Don't cache sensitive URLs
-  const url = request.url.toLowerCase();
-  if (CONFIG.CACHE_EXEMPTIONS.some(term => url.includes(term))) return false;
-  
-  // Only cache specific content types
-  const contentType = response.headers.get('content-type') || '';
-  return contentType.includes('text/html') || 
-         contentType.includes('text/css') || 
-         contentType.includes('application/javascript') ||
-         contentType.includes('image/') ||
-         contentType.includes('font/') ||
-         contentType.includes('application/font');
-};
-
 // Main fetch event handler
 self.addEventListener('fetch', event => {
-  // Only handle requests in our scope
-  if (!event.request.url.includes('/uv/service/')) {
+  // IMPORTANT: Don't filter by URL pattern to ensure all UV requests work
+  // Check if the request is in the UV scope based on the request URL
+  if (!event.request.url.toString().startsWith(self.registration.scope)) {
     return;
   }
 
-  // Clone the request for potential caching
-  const requestClone = event.request.clone();
-
+  // Respond to the fetch event
   event.respondWith((async () => {
     try {
-      // Check cache first
-      const cache = await caches.open(CONFIG.CACHE_NAME);
-      const cachedResponse = await cache.match(event.request);
-      
-      if (cachedResponse) {
-        // Return cached response if we have it
-        console.log('[UV Service Worker] Serving from cache');
-        return cachedResponse;
-      }
-      
       // Fetch from network with retries
-      const response = await fetchWithRetry(event.request);
-      const responseClone = response.clone();
+      const response = await fetchWithRetry(event);
       
-      // Cache if appropriate
-      if (shouldCache(requestClone, response)) {
-        try {
-          await cache.put(requestClone, responseClone);
-          console.log('[UV Service Worker] Cached response');
+      // For HTML responses, check if we want to add any scripts
+      if (response && response.headers.get('content-type')?.includes('text/html')) {
+        const clone = response.clone();
+        const text = await clone.text();
+        
+        // Only modify text if needed (add compatibility scripts)
+        if (text.includes('<body') && !text.includes('UV_COMPATIBILITY')) {
+          const modifiedText = text.replace(
+            '<body',
+            `<body><script data-id="UV_COMPATIBILITY">
+              try {
+                // Compatibility fixes for various sites
+                window.addEventListener('load', function() {
+                  // Fix for sites that check navigator properties
+                  if (typeof Navigator !== 'undefined') {
+                    const originalNavigator = Navigator.prototype;
+                    if (originalNavigator) {
+                      // Ensure proper user agent behavior
+                      if (Object.getOwnPropertyDescriptor(originalNavigator, 'userAgent')) {
+                        try {
+                          // Make sure userAgent getter works properly
+                          const ua = navigator.userAgent;
+                        } catch(e) {}
+                      }
+                    }
+                  }
+                  
+                  // Notify parent window when content is loaded
+                  setTimeout(function() {
+                    if (window.parent && window.parent !== window) {
+                      window.parent.postMessage({ type: 'UV_PAGE_LOADED' }, '*');
+                    }
+                  }, 1000);
+                });
+              } catch(e) {
+                // Silently fail to avoid breaking the page
+                console.error('[UV Compatibility]', e);
+              }
+            </script>`
+          );
           
-          // Set expiry for this cache entry
-          setTimeout(async () => {
-            try {
-              const cache = await caches.open(CONFIG.CACHE_NAME);
-              await cache.delete(requestClone);
-              console.log('[UV Service Worker] Expired cache entry removed');
-            } catch (err) {
-              console.error('[UV Service Worker] Error removing expired cache:', err);
-            }
-          }, CONFIG.CACHE_EXPIRY);
-        } catch (err) {
-          console.error('[UV Service Worker] Error caching response:', err);
+          return new Response(modifiedText, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers
+          });
         }
       }
       
-      // Add performance optimization headers
-      const enhancedHeaders = new Headers(response.headers);
-      
-      // Return the response
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: enhancedHeaders
-      });
+      return response;
     } catch (err) {
-      console.error('[UV Service Worker] Error in fetch:', err);
+      console.error('[UV Service Worker] Fatal error in fetch handler:', err);
       
-      // Return friendly error page
+      // Return user-friendly error page
       return new Response(
         `<!DOCTYPE html>
         <html>
@@ -176,6 +139,14 @@ self.addEventListener('fetch', event => {
               margin-top: 0;
               color: #4a6ed3;
             }
+            .error-details {
+              background: rgba(0,0,0,0.2);
+              padding: 10px;
+              border-radius: 4px;
+              margin: 15px 0;
+              font-family: monospace;
+              word-break: break-all;
+            }
             ul {
               margin-bottom: 20px;
             }
@@ -201,6 +172,10 @@ self.addEventListener('fetch', event => {
           <div class="container">
             <h2>Connection Error</h2>
             <p>The service encountered an error: ${err.message}</p>
+            <div class="error-details">
+              Error: ${err.message}<br>
+              URL: ${event.request.url.split('?')[0]}
+            </div>
             <p>This might be due to:</p>
             <ul>
               <li>Slow or unstable internet connection</li>
@@ -223,23 +198,21 @@ self.addEventListener('fetch', event => {
   })());
 });
 
+// Standard handlers
+self.addEventListener('install', event => {
+  console.log('[UV Service Worker] Installed');
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+  console.log('[UV Service Worker] Activated');
+  event.waitUntil(clients.claim());
+});
+
 // Handle messages from clients
 self.addEventListener('message', event => {
-  // Handle skip waiting
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
-  }
-
-  // Handle cache clearing
-  if (event.data && event.data.type === 'CLEAR_CACHE') {
-    caches.delete(CONFIG.CACHE_NAME).then(() => {
-      if (event.source) {
-        event.source.postMessage({
-          type: 'CACHE_CLEARED',
-          timestamp: Date.now()
-        });
-      }
-    });
   }
 
   // Handle ping/health check
