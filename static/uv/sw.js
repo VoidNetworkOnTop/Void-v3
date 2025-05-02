@@ -1,6 +1,7 @@
 /global UVServiceWorker,__uv$config/
 /*
- * Self-healing Ultraviolet service worker with automatic recovery
+ * Enhanced service worker script for Ultraviolet proxy
+ * With improved HTML parsing and rendering fixes
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -9,224 +10,316 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
-// Self-healing configuration
-const SELF_HEALING = {
-  ENABLED: true,
-  MAX_CONSECUTIVE_ERRORS: 5,
-  ERROR_RESET_INTERVAL: 60000, // 1 minute
-  HEALTH_CHECK_INTERVAL: 30000, // 30 seconds
-  consecutiveErrors: 0,
-  lastErrorTime: 0,
-  healthCheckTimerId: null,
-  lastSuccessfulFetch: 0
+// Configuration
+const CONFIG = {
+  FETCH_TIMEOUT: 120000,        // 2 minute timeout for slow sites
+  MAX_RETRIES: 3,               // Number of retry attempts
+  RETRY_DELAY: 800,             // Delay between retries in ms
+  SPECIAL_DOMAINS: [            // Sites needing special handling
+    'chat.openai.com',
+    'chatgpt.com',
+    'openai.com',
+    'tiktok.com',
+    'youtube.com',
+    'youtu.be',
+    'snapchat.com',
+    'snap.com'
+  ]
 };
 
-// Start health check heartbeat
-function startHealthCheck() {
-  if (SELF_HEALING.healthCheckTimerId) {
-    clearInterval(SELF_HEALING.healthCheckTimerId);
+// Log initialization
+console.log('[UV Service Worker] Initializing with HTML fixes');
+
+// Enhanced fetch with timeout and retries
+const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
+  try {
+    // Try to fetch with timeout
+    return await Promise.race([
+      sw.fetch(event),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), CONFIG.FETCH_TIMEOUT)
+      )
+    ]);
+  } catch (error) {
+    console.error('[UV Service Worker] Fetch error:', error.message);
+    
+    // Retry logic
+    if (retries > 0 && !error.message.includes('Cannot read properties')) {
+      console.log(`[UV Service Worker] Retrying fetch (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
+      return enhancedFetch(event, retries - 1);
+    }
+    throw error;
+  }
+};
+
+// Fix HTML content issues
+const cleanHtml = async (response, url) => {
+  const clone = response.clone();
+  let text = await clone.text();
+  let modified = false;
+
+  // Check if this is HTML content
+  if (!response.headers.get('content-type')?.includes('text/html')) {
+    return response;
+  }
+
+  // Fix common HTML syntax issues
+  if (text.includes('class="">')) {
+    text = text.replace(/class=["']>/g, 'class="">');
+    modified = true;
   }
   
-  SELF_HEALING.healthCheckTimerId = setInterval(() => {
-    // Check if we've had successful operations recently
-    const now = Date.now();
-    const timeSinceSuccess = now - SELF_HEALING.lastSuccessfulFetch;
-    
-    // If no successful operation in 5 minutes, force skip waiting to refresh
-    if (SELF_HEALING.lastSuccessfulFetch > 0 && timeSinceSuccess > 300000) {
-      console.log('[UV SW] No successful operations in 5 minutes, self-healing...');
-      self.skipWaiting();
-      self.clients.claim();
-    }
-  }, SELF_HEALING.HEALTH_CHECK_INTERVAL);
-}
-
-// Initialize health checks
-startHealthCheck();
-
-// Enhanced fetch with automatic healing
-const enhancedFetch = async (event) => {
-  try {
-    // Record attempt time
-    const startTime = Date.now();
-    
-    // Use native UV fetch
-    const response = await sw.fetch(event);
-    
-    // Record successful fetch
-    SELF_HEALING.lastSuccessfulFetch = Date.now();
-    SELF_HEALING.consecutiveErrors = 0;
-    
-    // For HTML responses, inject self-healing script
-    if (response.headers.get('content-type')?.includes('text/html')) {
-      const clone = response.clone();
-      const text = await clone.text();
-      
-      // Add auto-healing script to the HTML content
-      if (!text.includes('uv-auto-healing')) {
-        const modified = text.replace('<head', `<head>
-          <script data-id="uv-auto-healing">
-            (function() {
-              // Auto-healing for blank pages
-              if (document.addEventListener) {
-                document.addEventListener('DOMContentLoaded', function() {
-                  // Check if page is effectively blank
-                  setTimeout(function() {
-                    const bodyContent = document.body.innerText.trim();
-                    const elementCount = document.querySelectorAll('*').length;
-                    
-                    // If page is blank or has minimal content, auto-reload
-                    if ((bodyContent === '' || bodyContent.length < 20) && elementCount < 10) {
-                      // Only reload if we haven't reloaded too many times
-                      const reloadCount = parseInt(sessionStorage.getItem('uv-reload-count') || '0');
-                      if (reloadCount < 3) {
-                        sessionStorage.setItem('uv-reload-count', (reloadCount + 1).toString());
-                        console.log('UV: Auto-healing - detected blank page, reloading');
-                        location.reload();
-                      } else {
-                        console.log('UV: Too many reload attempts, sending diagnostic to parent');
-                        try {
-                          window.parent.postMessage({ type: 'UV_BLANK_PAGE', url: location.href }, '*');
-                        } catch(e) {}
-                      }
-                    } else {
-                      // Reset reload count on successful load
-                      sessionStorage.removeItem('uv-reload-count');
-                    }
-                  }, 2000);
-                });
-              }
-            })();
-          </script>`);
-        
-        return new Response(modified, {
-          status: response.status,
-          statusText: response.statusText,
-          headers: response.headers
-        });
-      }
-    }
-    
-    return response;
-  } catch (err) {
-    console.error('[UV SW] Fetch error:', err);
-    
-    // Track consecutive errors for self-healing
-    const now = Date.now();
-    if (now - SELF_HEALING.lastErrorTime > SELF_HEALING.ERROR_RESET_INTERVAL) {
-      SELF_HEALING.consecutiveErrors = 1;
-    } else {
-      SELF_HEALING.consecutiveErrors++;
-    }
-    SELF_HEALING.lastErrorTime = now;
-    
-    // If too many consecutive errors, trigger self-healing
-    if (SELF_HEALING.ENABLED && SELF_HEALING.consecutiveErrors >= SELF_HEALING.MAX_CONSECUTIVE_ERRORS) {
-      console.log('[UV SW] Too many consecutive errors, triggering self-healing');
-      SELF_HEALING.consecutiveErrors = 0;
-      // Force the service worker to update
-      self.skipWaiting();
-      self.clients.claim();
-    }
-    
-    // Return error page with auto-retry
-    return new Response(
-      `<!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Auto-Recovering</title>
-        <style>
-          body { font-family: sans-serif; background: #222; color: white; padding: 20px; text-align: center; }
-          .container { max-width: 600px; margin: 40px auto; background: #333; border-radius: 8px; padding: 20px; }
-          .progress { width: 100%; height: 4px; background: #555; margin: 20px 0; overflow: hidden; }
-          .progress-bar { height: 100%; width: 0%; background: #4a6ed3; animation: progress 3s forwards; }
-          @keyframes progress { to { width: 100%; } }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h2>Auto-Recovering Connection</h2>
-          <p>The service is automatically recovering from an error: ${err.message}</p>
-          <div class="progress"><div class="progress-bar"></div></div>
-          <p id="message">Reconnecting automatically in 3 seconds...</p>
-        </div>
-        <script>
-          // Auto-retry after 3 seconds
-          setTimeout(() => {
-            document.getElementById('message').textContent = 'Reconnecting now...';
-            window.location.reload();
-          }, 3000);
-        </script>
-      </body>
-      </html>`,
-      {
-        status: 200,
-        headers: { 'Content-Type': 'text/html' }
-      }
-    );
+  // Remove stray closing tags at the beginning
+  if (text.match(/^\s*>/)) {
+    text = text.replace(/^\s*>/, '');
+    modified = true;
   }
+  
+  // Find and fix unclosed or mismatched tags
+  const findStrayClosingTags = () => {
+    // Find standalone ">" that aren't part of a tag
+    let matches = text.match(/([^<]|^)>([^>]|$)/g);
+    if (matches) {
+      // Replace standalone ">" with nothing
+      text = text.replace(/([^<]|^)>([^>]|$)/g, '$1$2');
+      return true;
+    }
+    return false;
+  };
+  
+  // Run the stray tag finder and fix
+  if (findStrayClosingTags()) {
+    modified = true;
+  }
+  
+  // Add our compatibility scripts with proper HTML syntax
+  if (!text.includes('uv-html-fix')) {
+    // Insert at the beginning of head safely
+    const headPos = text.indexOf('<head');
+    if (headPos !== -1) {
+      // Find where the head tag ends
+      const headEndPos = text.indexOf('>', headPos);
+      if (headEndPos !== -1) {
+        // Insert after the head opening tag
+        text = text.substring(0, headEndPos + 1) + 
+               `\n<!-- UV HTML Fix -->\n<script data-id="uv-html-fix">
+                (function() {
+                  // Fix HTML rendering issues
+                  document.addEventListener('DOMContentLoaded', function() {
+                    // Remove any stray ">" characters
+                    const walker = document.createTreeWalker(
+                      document.body, 
+                      NodeFilter.SHOW_TEXT
+                    );
+                    
+                    let node;
+                    const nodesToFix = [];
+                    while(node = walker.nextNode()) {
+                      if (node.textContent.includes('>') && node.parentNode.nodeName !== 'SCRIPT' && node.parentNode.nodeName !== 'STYLE') {
+                        nodesToFix.push(node);
+                      }
+                    }
+                    
+                    // Fix the nodes
+                    nodesToFix.forEach(node => {
+                      node.textContent = node.textContent.replace(/>/g, '');
+                    });
+                    
+                    // Fix broken class attributes
+                    document.querySelectorAll('[class=""]').forEach(el => {
+                      el.removeAttribute('class');
+                    });
+                  });
+                  
+                  // Handle special cases for interactive websites
+                  if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('chat.openai.com')) {
+                    // Fix for ChatGPT input handling
+                    window.addEventListener('load', function() {
+                      setTimeout(function() {
+                        const textareas = document.querySelectorAll('textarea');
+                        textareas.forEach(textarea => {
+                          if (!textarea.dataset.fixed) {
+                            textarea.dataset.fixed = 'true';
+                            
+                            // Fix Enter key handling
+                            textarea.addEventListener('keydown', function(e) {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                // Look for and click send button
+                                const buttons = Array.from(document.querySelectorAll('button'));
+                                const sendButton = buttons.find(b => 
+                                  b.textContent.includes('Send') || 
+                                  b.getAttribute('aria-label')?.includes('Send')
+                                );
+                                
+                                if (sendButton) {
+                                  sendButton.click();
+                                  e.preventDefault();
+                                }
+                              }
+                            });
+                          }
+                        });
+                      }, 1500);
+                    });
+                  }
+                })();
+               </script>\n` + 
+               text.substring(headEndPos + 1);
+        modified = true;
+      }
+    }
+  }
+
+  // Return modified response or original if no changes
+  if (modified) {
+    return new Response(text, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers
+    });
+  }
+  
+  return response;
 };
 
 // Main fetch event handler
 self.addEventListener('fetch', event => {
-  if (event.request.url.startsWith(self.registration.scope)) {
-    event.respondWith(enhancedFetch(event));
+  // Check if this is a request we should handle
+  if (!event.request.url.startsWith(self.registration.scope) && 
+      !event.request.url.includes('/uv/')) {
+    return;
   }
+
+  event.respondWith((async () => {
+    try {
+      // Get response with enhanced fetch
+      const response = await enhancedFetch(event);
+      
+      // Clean HTML for rendering issues
+      return await cleanHtml(response, event.request.url);
+    } catch (err) {
+      console.error('[UV Service Worker] Fatal error:', err);
+      
+      // Return user-friendly error page
+      return new Response(
+        `<!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Connection Error</title>
+          <style>
+            body {
+              font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              color: white;
+              background: #222;
+              margin: 0;
+              padding: 20px;
+              line-height: 1.6;
+            }
+            .container {
+              max-width: 600px;
+              margin: 40px auto;
+              background: #333;
+              border-radius: 8px;
+              padding: 20px;
+              box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            }
+            h2 {
+              margin-top: 0;
+              color: #4a6ed3;
+            }
+            .error-details {
+              background: rgba(0,0,0,0.2);
+              padding: 10px;
+              border-radius: 4px;
+              margin: 15px 0;
+              font-family: monospace;
+              word-break: break-all;
+            }
+            ul {
+              margin-bottom: 20px;
+            }
+            button {
+              padding: 10px 16px;
+              background: #4a6ed3;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              margin-right: 10px;
+              font-size: 14px;
+            }
+            button.secondary {
+              background: #555;
+            }
+            button:hover {
+              opacity: 0.9;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2>Connection Error</h2>
+            <p>The service encountered an error: ${err.message}</p>
+            <div class="error-details">
+              ${err.message}
+            </div>
+            <p>This might be due to:</p>
+            <ul>
+              <li>The website blocking proxy access</li>
+              <li>Slow or unstable internet connection</li>
+              <li>The website using features that require direct access</li>
+            </ul>
+            <div>
+              <button onclick="window.location.reload()">Try Again</button>
+              <button class="secondary" onclick="window.history.back()">Go Back</button>
+              <button class="secondary" onclick="window.location.href='/'">Home</button>
+            </div>
+          </div>
+          
+          <!-- Auto-reload for specific errors -->
+          <script>
+            if ("${err.message}".includes("undefined") || "${err.message}".includes("null")) {
+              setTimeout(() => window.location.reload(), 3000);
+            }
+          </script>
+        </body>
+        </html>`,
+        {
+          status: 200,
+          headers: { 'Content-Type': 'text/html' }
+        }
+      );
+    }
+  })());
 });
 
-// Install handler with auto-claim
+// Standard handlers
 self.addEventListener('install', event => {
-  console.log('[UV SW] Installed');
-  event.waitUntil(self.skipWaiting());
+  console.log('[UV Service Worker] Installed');
+  self.skipWaiting();
 });
 
-// Activate handler with auto-claim
 self.addEventListener('activate', event => {
-  console.log('[UV SW] Activated');
-  event.waitUntil(self.clients.claim());
+  console.log('[UV Service Worker] Activated');
+  event.waitUntil(clients.claim());
 });
 
-// Enhanced message handler with self-healing commands
+// Handle messages from clients
 self.addEventListener('message', event => {
-  // Handle skip waiting
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-  
-  // Handle health check pings
+
+  // Handle health check
   if (event.data && event.data.type === 'PING') {
-    // Respond to confirm service worker is alive
     if (event.source) {
       event.source.postMessage({
         type: 'PONG',
         timestamp: Date.now(),
-        status: 'healthy',
-        errorCount: SELF_HEALING.consecutiveErrors
-      });
-    }
-    
-    // Update last successful communication time
-    SELF_HEALING.lastSuccessfulFetch = Date.now();
-  }
-  
-  // Handle force healing command
-  if (event.data && event.data.type === 'FORCE_HEAL') {
-    console.log('[UV SW] Forced healing requested');
-    
-    // Reset error tracking
-    SELF_HEALING.consecutiveErrors = 0;
-    SELF_HEALING.lastErrorTime = 0;
-    
-    // Restart health checks
-    startHealthCheck();
-    
-    // Respond to confirm healing
-    if (event.source) {
-      event.source.postMessage({
-        type: 'HEAL_COMPLETE',
-        timestamp: Date.now()
+        status: 'healthy'
       });
     }
   }
