@@ -1,7 +1,7 @@
 /global UVServiceWorker,__uv$config/
 /*
  * Enhanced service worker script for Ultraviolet proxy
- * With improved game compatibility
+ * With improved game compatibility and fixed __uv$bareData issues
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -10,72 +10,37 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
-// Configuration
+// Configuration with extended timeouts
 const CONFIG = {
   FETCH_TIMEOUT: 180000,        // 3 minute timeout for slow sites
   MAX_RETRIES: 3,               // Number of retry attempts
   RETRY_DELAY: 800,             // Delay between retries in ms
-  GAME_DOMAINS: [               // Game-specific domains that need special handling
-    'unity',
-    'unitycdn',
-    'roblox',
-    'game',
-    'games',
-    'play',
-    'yujian',
-    'yujiandemo',
-    'cdn.jsdelivr.net',
-    'jsdelivr',
-    'cloudfront.net',
-    '3d',
-    'webgl'
-  ]
+  LOG_LEVEL: 'debug'            // Set to 'info' to reduce logging
 };
 
 // Log initialization
-console.log('[UV Service Worker] Initializing with game compatibility improvements');
-
-// Check if a URL is for a game resource
-const isGameResource = (url) => {
-  if (!url) return false;
-  
-  // Skip content modifications for these file types (common game resources)
-  const skipExtensions = ['.js', '.json', '.wasm', '.data', '.unity3d', '.mem', '.bin', '.svg', '.mp3', '.ogg', '.assets'];
-  for (const ext of skipExtensions) {
-    if (url.endsWith(ext)) return true;
-  }
-  
-  // Check against game domains
-  for (const domain of CONFIG.GAME_DOMAINS) {
-    if (url.includes(domain)) return true;
-  }
-  
-  // Check common game paths
-  return url.includes('/game') || 
-         url.includes('/games') || 
-         url.includes('/play') || 
-         url.includes('/assets/') ||
-         url.includes('unity');
-};
+console.log('[UV Service Worker] Initializing with bareData fix...');
 
 // Enhanced fetch with timeout and retries
 const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
   try {
-    // Get the URL for special case handling
-    const url = new URL(event.request.url).toString();
+    // Get URL information
+    const url = new URL(event.request.url);
     
-    // Special handling for game resources - skip timeouts
-    const isGame = isGameResource(url);
-    if (isGame) {
-      // Log game resources but less verbosely to avoid spamming the console
-      const shortUrl = url.length > 80 ? url.substring(0, 80) + '...' : url;
-      console.log(`[UV Service Worker] Game resource: ${shortUrl}`);
+    // Special handling for game URLs - CRITICAL: DON'T MODIFY THESE RESPONSES
+    const isGameUrl = 
+      url.pathname.includes('/uv/service/') || 
+      url.pathname.includes('/service/') ||
+      url.search.includes('game=');
       
-      // Fetch without timeout for game resources
+    if (isGameUrl) {
+      console.log(`[UV Service Worker] Handling game URL: ${url.toString().substring(0, 100)}...`);
+      
+      // IMPORTANT: Don't apply any special handling to the game URL, just let UV handle it
       return await sw.fetch(event);
     }
     
-    // Use timeout for non-game resources
+    // For non-game URLs, use timeout
     return await Promise.race([
       sw.fetch(event),
       new Promise((_, reject) => 
@@ -85,21 +50,20 @@ const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
   } catch (error) {
     console.error('[UV Service Worker] Fetch error:', error.message);
     
-    // Retry logic with exponential backoff
-    if (retries > 0 && !error.message.includes('Cannot read properties')) {
-      const backoffDelay = CONFIG.RETRY_DELAY * Math.pow(1.5, CONFIG.MAX_RETRIES - retries);
-      console.log(`[UV Service Worker] Retrying fetch in ${backoffDelay}ms (${retries} attempts left)`);
-      await new Promise(resolve => setTimeout(resolve, backoffDelay));
+    // Retry logic
+    if (retries > 0) {
+      console.log(`[UV Service Worker] Retrying fetch (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
       return enhancedFetch(event, retries - 1);
     }
     throw error;
   }
 };
 
-// Fix HTML content issues - but only for non-game content
+// Fix HTML content issues
 const cleanHtml = async (response, url) => {
-  // CRITICAL FIX - Skip content modifications for game resources
-  if (isGameResource(url)) {
+  // Skip processing for UV service URLs and game content
+  if (url.includes('/uv/service/') || url.includes('/service/') || url.search.includes('game=')) {
     return response;
   }
   
@@ -112,6 +76,17 @@ const cleanHtml = async (response, url) => {
   const clone = response.clone();
   try {
     let text = await clone.text();
+    
+    // Check if text contains bareData (which should never be visible to user)
+    if (text.includes('__uv$bareData') || text.includes('__uv$cookies')) {
+      console.error('[UV Service Worker] Detected UV configuration in response body!');
+      console.log('[UV Service Worker] URL with bareData issue:', url);
+      
+      // This indicates a processing error - we'll try to fetch directly without modifications
+      return await sw.fetch(event);
+    }
+    
+    // Normal HTML processing for non-game content
     let modified = false;
 
     // Fix common HTML syntax issues
@@ -120,7 +95,7 @@ const cleanHtml = async (response, url) => {
       modified = true;
     }
     
-    // Remove stray closing tags at the beginning
+    // Remove stray closing tags
     if (text.match(/^\s*>/)) {
       text = text.replace(/^\s*>/, '');
       modified = true;
@@ -143,7 +118,7 @@ const cleanHtml = async (response, url) => {
       modified = true;
     }
     
-    // Add our compatibility scripts with proper HTML syntax
+    // Add our compatibility scripts only to non-game content
     if (!text.includes('uv-html-fix')) {
       // Insert at the beginning of head safely
       const headPos = text.indexOf('<head');
@@ -155,70 +130,34 @@ const cleanHtml = async (response, url) => {
           text = text.substring(0, headEndPos + 1) + 
                  `\n<!-- UV HTML Fix -->\n<script data-id="uv-html-fix">
                   (function() {
-                    // Fix HTML rendering issues but avoid breaking games
+                    // Fix HTML rendering issues
                     document.addEventListener('DOMContentLoaded', function() {
-                      try {
-                        // Remove any stray ">" characters
-                        const walker = document.createTreeWalker(
-                          document.body, 
-                          NodeFilter.SHOW_TEXT
-                        );
-                        
-                        let node;
-                        const nodesToFix = [];
-                        while((node = walker.nextNode())) {
-                          if (node.textContent.includes('>') && 
-                              node.parentNode.nodeName !== 'SCRIPT' && 
-                              node.parentNode.nodeName !== 'STYLE') {
-                            nodesToFix.push(node);
-                          }
+                      // Remove any stray ">" characters
+                      const walker = document.createTreeWalker(
+                        document.body, 
+                        NodeFilter.SHOW_TEXT
+                      );
+                      
+                      let node;
+                      const nodesToFix = [];
+                      while(node = walker.nextNode()) {
+                        if (node.textContent.includes('>') && 
+                            node.parentNode.nodeName !== 'SCRIPT' && 
+                            node.parentNode.nodeName !== 'STYLE') {
+                          nodesToFix.push(node);
                         }
-                        
-                        // Fix the nodes
-                        nodesToFix.forEach(node => {
-                          node.textContent = node.textContent.replace(/>/g, '');
-                        });
-                        
-                        // Fix broken class attributes
-                        document.querySelectorAll('[class=""]').forEach(el => {
-                          el.removeAttribute('class');
-                        });
-                      } catch(e) {
-                        // Silent fail to avoid breaking anything
                       }
-                    });
-                    
-                    // Handle special cases for interactive websites
-                    if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('chat.openai.com')) {
-                      // Fix for ChatGPT input handling
-                      window.addEventListener('load', function() {
-                        setTimeout(function() {
-                          const textareas = document.querySelectorAll('textarea');
-                          textareas.forEach(textarea => {
-                            if (!textarea.dataset.fixed) {
-                              textarea.dataset.fixed = 'true';
-                              
-                              // Fix Enter key handling
-                              textarea.addEventListener('keydown', function(e) {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  // Look for and click send button
-                                  const buttons = Array.from(document.querySelectorAll('button'));
-                                  const sendButton = buttons.find(b => 
-                                    b.textContent.includes('Send') || 
-                                    b.getAttribute('aria-label')?.includes('Send')
-                                  );
-                                  
-                                  if (sendButton) {
-                                    sendButton.click();
-                                    e.preventDefault();
-                                  }
-                                }
-                              });
-                            }
-                          });
-                        }, 1500);
+                      
+                      // Fix the nodes
+                      nodesToFix.forEach(node => {
+                        node.textContent = node.textContent.replace(/>/g, '');
                       });
-                    }
+                      
+                      // Fix broken class attributes
+                      document.querySelectorAll('[class=""]').forEach(el => {
+                        el.removeAttribute('class');
+                      });
+                    });
                   })();
                  </script>\n` + 
                  text.substring(headEndPos + 1);
@@ -252,19 +191,13 @@ self.addEventListener('fetch', event => {
 
   event.respondWith((async () => {
     try {
-      // Get the URL for special case handling
-      const url = new URL(event.request.url).toString();
+      // Get the URL
+      const url = event.request.url;
       
       // Get response with enhanced fetch
       const response = await enhancedFetch(event);
       
-      // Skip HTML processing for game content
-      if (isGameResource(url)) {
-        // Return unmodified response for game resources
-        return response;
-      }
-      
-      // Clean HTML for non-game content
+      // Clean HTML (skips game content)
       return await cleanHtml(response, url);
     } catch (err) {
       console.error('[UV Service Worker] Fatal error:', err);
@@ -346,13 +279,6 @@ self.addEventListener('fetch', event => {
               <button class="secondary" onclick="window.location.href='/'">Home</button>
             </div>
           </div>
-          
-          <!-- Auto-reload for specific errors -->
-          <script>
-            if ("${err.message}".includes("undefined") || "${err.message}".includes("null")) {
-              setTimeout(() => window.location.reload(), 3000);
-            }
-          </script>
         </body>
         </html>`,
         {
