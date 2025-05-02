@@ -36,7 +36,7 @@
     const particleCount = 150; // More dots for a fuller effect
     const minSize = 1.5;
     const maxSize = 4;
-    const baseOpacity = 0.6; // Base opacity for dots
+    const baseOpacity = 0.3; // Lower base opacity for more transparency
     const fallSpeed = 0.3; // Very slow falling speed
     const horizontalDrift = 0.1; // Slight horizontal movement
     
@@ -86,9 +86,8 @@
     
     // Draw particles
     function drawParticles() {
-      // Clear the canvas with a very subtle fade effect instead of complete clear
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.03)'; // Subtle trail effect
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Complete clear with no trail effect
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       // Update and draw each particle
       for (let i = 0; i < particles.length; i++) {
