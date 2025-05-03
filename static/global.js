@@ -62,7 +62,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Check and apply About:blank cloaking (must run last)
+    // Enhanced About:blank cloaking
     if (localStorage.getItem('cloaking') === 'true') {
         // Skip if we're already in an about:blank page
         if (window.location.href !== 'about:blank') {
@@ -108,9 +108,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     setTimeout(() => {
                         window.location.replace('about:blank');
                     }, 100);
+                } else {
+                    // Popup blocked - trigger reload to prompt user
+                    if (window !== top && !window.location.href.includes('settings.html')) {
+                        console.log('Popup blocked. Attempting to navigate to settings for guidance.');
+                        window.location.href = '/settings.html';
+                    }
                 }
             } catch (error) {
                 console.error('Error applying about:blank cloaking:', error);
+                if (window !== top && !window.location.href.includes('settings.html')) {
+                    window.location.href = '/settings.html';
+                }
             }
         }
     }
