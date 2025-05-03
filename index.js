@@ -193,6 +193,10 @@ app.get("/chat", function (req, res) {
   res.sendFile(path.join(__dirname, "static/chat.html"));
 });
 
+app.get("/voidgpt", function (req, res) {
+  res.sendFile(path.join(__dirname, "static/voidgpt.html"));
+});
+
 // Simple cache clearer for troubleshooting
 app.get("/clearcache", (req, res) => {
   res.send(`
