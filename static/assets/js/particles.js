@@ -37,7 +37,7 @@
     const minSize = 1.5;
     const maxSize = 3.5;
     const baseOpacity = 0.4;
-    const fallSpeed = 9.9; // Very fast falling speed
+    const fallSpeed = 3.5; // Very fast falling speed
     const diagonalDrift = 2.5; // Much stronger diagonal movement
     
     // Array to store particles
