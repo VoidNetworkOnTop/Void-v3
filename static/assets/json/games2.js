@@ -264,6 +264,11 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/2YGjtKZeclh6T_MmyQtQRBUcwlw1Ot7kGNXiPVBelfTabaXEA9px3LWN93CNTTe7ovxSYpxFmkBt2DytqzxeS32OU0K63O8lZhi08sy8MWRnt-V-pckzf0pvD0vagVKIe6mfrpgucRR2w9DUfvgtBjoZGf96j91d3jPIggCf690n8jF9VDz5w445yqV-XgBSvi2Tvily?key=yj4V8pHW144VjA9YlEbf1Q",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://html-classic.itch.zone/html/13448030/crazychicken%20web%20port/index.html")
 },  
+{
+    title: "Basketball Legends", 
+    imgSrc: "https://lh7-us.googleusercontent.com/0nwyFoEcn-ISiCZwdyIdyVVRuVYIVgoqXEbMGtyx2pYQwIoyv-EMYmeVtz1_UZHY5t8YSO-e09wE9WYTymvkqTixPqjHepJgXExnhc_4SBOATtY_b7onEebJMTXG2CSE6FpJeCi6UK9KuQ51XUwgNxG4qTxFZ5j-nQ9BiaZxVCydE1M28x4IHOfHQ4dm2uEzj2g_qbyu?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://basketballlegends.io/iframe/index.html")
+}, 
 
 
     
