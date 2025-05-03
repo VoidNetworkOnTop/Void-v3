@@ -1,5 +1,5 @@
-// Refined Diagonal Falling Particles with Umbrella Effect
-// Particles fall from sides with elegant umbrella bounce around cursor
+// Fast Falling Particles with Pure Umbrella Bounce Effect
+// Rapid diagonal movement with energetic umbrella physics
 
 (function() {
   // Wait for the DOM to be fully loaded before initializing
@@ -11,7 +11,7 @@
   }
   
   function initParticlesBackground() {
-    console.log("Refined Falling Particles: Initializing background effect");
+    console.log("Fast Umbrella Particles: Initializing background effect");
     
     // Create canvas element  
     const canvas = document.createElement('canvas');
@@ -27,18 +27,18 @@
     canvas.style.pointerEvents = 'none'; // Allow clicking through canvas
     
     // Add a class for easier debugging
-    canvas.classList.add('refined-particles-canvas');
+    canvas.classList.add('fast-umbrella-particles-canvas');
     
     // Append canvas to body
     document.body.appendChild(canvas);
     
     // Particle settings
-    const particleCount = 200; // Increased for richer effect
+    const particleCount = 200;
     const minSize = 1.5;
     const maxSize = 3.5;
-    const baseOpacity = 0.4; // Slightly more visible
-    const fallSpeed = 0.8; // Significantly faster falling speed
-    const diagonalDrift = 0.5; // More pronounced diagonal movement
+    const baseOpacity = 0.4;
+    const fallSpeed = 1.5; // Much faster falling speed
+    const diagonalDrift = 0.8; // Faster diagonal movement
     
     // Array to store particles
     let particles = [];
@@ -47,7 +47,7 @@
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      console.log("Refined Falling Particles: Canvas resized to", canvas.width, "x", canvas.height);
+      console.log("Fast Umbrella Particles: Canvas resized to", canvas.width, "x", canvas.height);
     }
     
     // Initialize particles
@@ -63,35 +63,36 @@
           // Spawn from left side, moving diagonally down-right
           startX = Math.random() * (canvas.width * 0.1); // First 10% from left
           startY = Math.random() * canvas.height;
-          speedX = diagonalDrift * (0.8 + Math.random() * 0.4); // Right direction
+          speedX = diagonalDrift * (1 + Math.random() * 0.2); // Right direction
         } else {
           // Spawn from right side, moving diagonally down-left  
           startX = canvas.width - Math.random() * (canvas.width * 0.1); // Last 10% from right
           startY = Math.random() * canvas.height;
-          speedX = -diagonalDrift * (0.8 + Math.random() * 0.4); // Left direction
+          speedX = -diagonalDrift * (1 + Math.random() * 0.2); // Left direction
         }
         
         const size = minSize + Math.random() * (maxSize - minSize);
-        const opacity = baseOpacity * (0.6 + Math.random() * 0.4); // Less opacity variation
+        const opacity = baseOpacity * (0.7 + Math.random() * 0.3);
         
         particles.push({
           x: startX,
           y: startY,
           size: size,
           opacity: opacity,
-          speedY: fallSpeed * (0.8 + Math.random() * 0.4), // Faster downward speed
+          speedY: fallSpeed * (1 + Math.random() * 0.3), // Faster and more variable downward speed
           speedX: speedX,
-          // Each particle gets a slight glow effect
+          // Keep glow for visual effect
           glow: Math.random() * 1.5
         });
       }
-      console.log("Refined Falling Particles: Created", particles.length, "particles");
+      console.log("Fast Umbrella Particles: Created", particles.length, "particles");
     }
     
-    // Mouse interaction - umbrella effect
+    // Mouse interaction - pure umbrella bounce only
     let mouseX = null;
     let mouseY = null;
-    const umbrellaRadius = 60; // Smaller, more focused umbrella radius
+    const umbrellaRadius = 60; // Umbrella radius
+    const bounceMultiplier = 1.5; // Increase bounce energy
     
     function handleMouseMove(e) {
       mouseX = e.clientX;
@@ -125,27 +126,20 @@
             const normalX = dx / distance;
             const normalY = dy / distance;
             
-            // Reflect particle's velocity
+            // Reflect particle's velocity with enhanced bounce
             const dotProduct = particle.speedX * normalX + particle.speedY * normalY;
             particle.speedX = particle.speedX - 2 * dotProduct * normalX;
             particle.speedY = particle.speedY - 2 * dotProduct * normalY;
+            
+            // Apply bounce multiplier for more energetic bounces
+            particle.speedX *= bounceMultiplier;
+            particle.speedY *= bounceMultiplier;
             
             // Move particle away from umbrella to prevent sticking
             const pushDistance = umbrellaRadius - distance + 2;
             particle.x = mouseX + normalX * umbrellaRadius;
             particle.y = mouseY + normalY * umbrellaRadius;
-            
-            // Add slight random element to bounce for natural look
-            particle.speedX += (Math.random() - 0.5) * 0.2;
-            particle.speedY += (Math.random() - 0.5) * 0.2;
-            
-            // Brighten on collision
-            ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(particle.opacity * 1.5, 0.9)})`;
-          } else {
-            ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
           }
-        } else {
-          ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
         }
         
         // Apply velocity if no collision
@@ -163,6 +157,8 @@
           } else {
             particle.x = canvas.width - Math.random() * (canvas.width * 0.1);
           }
+          // Reset to initial speed when wrapping
+          particle.speedY = fallSpeed * (1 + Math.random() * 0.3);
         }
         
         // Wrap around horizontally
@@ -172,17 +168,17 @@
           particle.x = -particle.size;
         }
         
-        // Gravity effect - slightly increase downward speed over time
-        particle.speedY += 0.002;
-        particle.speedY = Math.min(particle.speedY, fallSpeed * 1.5);
+        // Accelerated gravity effect for faster falling
+        particle.speedY += 0.01;
+        particle.speedY = Math.min(particle.speedY, fallSpeed * 3);
         
-        // Limit horizontal speed to maintain diagonal effect
-        particle.speedX *= 0.99;
+        // Maintain diagonal drift with gentle damping
+        particle.speedX *= 0.985;
         
-        // Draw particle with refined appearance
+        // Draw particle - no interaction-based style changes
         ctx.beginPath();
         
-        // Create gradient for more refined look
+        // Create gradient for visual appeal
         const gradient = ctx.createRadialGradient(
           particle.x, particle.y, 0,
           particle.x, particle.y, particle.size
@@ -203,14 +199,6 @@
         ctx.shadowBlur = 0;
       }
       
-      // Optional: Visualize umbrella area for debugging
-      // if (mouseX !== null && mouseY !== null) {
-      //   ctx.beginPath();
-      //   ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-      //   ctx.arc(mouseX, mouseY, umbrellaRadius, 0, Math.PI * 2);
-      //   ctx.stroke();
-      // }
-      
       // Request next animation frame
       requestAnimationFrame(drawParticles);
     }
@@ -228,6 +216,6 @@
     
     window.addEventListener('mousemove', handleMouseMove);
     
-    console.log("Refined Falling Particles: Animation started");
+    console.log("Fast Umbrella Particles: Animation started");
   }
 })();
