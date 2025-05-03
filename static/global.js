@@ -190,11 +190,3 @@ function loadHTML(url, elementId) {
         })
         .catch(error => console.error('Error loading HTML:', error));
 }
-
-// Load particles.js script
-document.addEventListener('DOMContentLoaded', function() {
-    const script = document.createElement('script');
-    script.src = '/assets/js/particles.js?' + Date.now();
-    script.type = 'text/javascript';
-    document.head.appendChild(script);
-});
