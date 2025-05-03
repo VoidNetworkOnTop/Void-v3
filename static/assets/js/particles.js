@@ -35,7 +35,7 @@
     // Particle settings
     const particleCount = 200; // More particles for richer effect
     const minSize = 1.5;
-    const maxSize = 5; // Slightly larger max size
+    const maxSize = 4; // Same max size as original
     const baseOpacity = 0.4; // Better visibility
     const fallSpeed = 0.7; // Faster falling speed
     const horizontalDrift = 0.1; // Slight horizontal movement
