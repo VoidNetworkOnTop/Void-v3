@@ -1,5 +1,5 @@
-// Refined Diagonal Falling Particles with Umbrella Effect
-// Particles fall from sides with elegant umbrella bounce around cursor
+// Refined Falling Dots Background Script
+// Particles fall from left and right with umbrella effect around cursor
 
 (function() {
   // Wait for the DOM to be fully loaded before initializing
@@ -11,7 +11,7 @@
   }
   
   function initParticlesBackground() {
-    console.log("Refined Falling Particles: Initializing background effect");
+    console.log("Refined Falling Dots: Initializing background effect");
     
     // Create canvas element  
     const canvas = document.createElement('canvas');
@@ -27,18 +27,23 @@
     canvas.style.pointerEvents = 'none'; // Allow clicking through canvas
     
     // Add a class for easier debugging
-    canvas.classList.add('refined-particles-canvas');
+    canvas.classList.add('falling-dots-canvas');
     
     // Append canvas to body
     document.body.appendChild(canvas);
     
     // Particle settings
-    const particleCount = 200; // Increased for richer effect
+    const particleCount = 200; // More particles for richer effect
     const minSize = 1.5;
-    const maxSize = 3.5;
-    const baseOpacity = 0.4; // Slightly more visible
-    const fallSpeed = 0.8; // Significantly faster falling speed
-    const diagonalDrift = 0.5; // More pronounced diagonal movement
+    const maxSize = 5; // Slightly larger max size
+    const baseOpacity = 0.4; // Better visibility
+    const fallSpeed = 0.7; // Faster falling speed
+    const horizontalDrift = 0.1; // Slight horizontal movement
+    
+    // Enhanced visual settings
+    const glowIntensity = 0.8;
+    const innerColor = 'rgba(255, 255, 255, ';
+    const outerColor = 'rgba(200, 220, 255, '; // Subtle blue tint
     
     // Array to store particles
     let particles = [];
@@ -47,7 +52,7 @@
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      console.log("Refined Falling Particles: Canvas resized to", canvas.width, "x", canvas.height);
+      console.log("Refined Falling Dots: Canvas resized to", canvas.width, "x", canvas.height);
     }
     
     // Initialize particles
@@ -55,43 +60,39 @@
       particles = [];
       
       for (let i = 0; i < particleCount; i++) {
-        // Create particles coming from left and right sides
-        const side = Math.random() < 0.5 ? 'left' : 'right';
-        let startX, startY, speedX, speedY;
+        // Create particles coming from left and right edges
+        const side = Math.random() > 0.5 ? 'left' : 'right';
+        const size = minSize + Math.random() * (maxSize - minSize);
+        const opacity = baseOpacity * (0.5 + Math.random() * 0.5);
         
+        // Spawn from left third or right third of screen
+        let xPosition;
         if (side === 'left') {
-          // Spawn from left side, moving diagonally down-right
-          startX = Math.random() * (canvas.width * 0.1); // First 10% from left
-          startY = Math.random() * canvas.height;
-          speedX = diagonalDrift * (0.8 + Math.random() * 0.4); // Right direction
+          xPosition = Math.random() * canvas.width * 0.3;
         } else {
-          // Spawn from right side, moving diagonally down-left  
-          startX = canvas.width - Math.random() * (canvas.width * 0.1); // Last 10% from right
-          startY = Math.random() * canvas.height;
-          speedX = -diagonalDrift * (0.8 + Math.random() * 0.4); // Left direction
+          xPosition = canvas.width * 0.7 + Math.random() * canvas.width * 0.3;
         }
         
-        const size = minSize + Math.random() * (maxSize - minSize);
-        const opacity = baseOpacity * (0.6 + Math.random() * 0.4); // Less opacity variation
-        
         particles.push({
-          x: startX,
-          y: startY,
+          x: xPosition,
+          y: Math.random() * canvas.height,
           size: size,
           opacity: opacity,
-          speedY: fallSpeed * (0.8 + Math.random() * 0.4), // Faster downward speed
-          speedX: speedX,
-          // Each particle gets a slight glow effect
-          glow: Math.random() * 1.5
+          // Faster downward movement with more horizontal drift
+          speedY: fallSpeed * (0.7 + Math.random() * 0.6),
+          speedX: (Math.random() - 0.5) * horizontalDrift * 2,
+          // Each particle gets a slight blur effect for smoother appearance
+          blur: Math.random() * 2.5,
+          side: side
         });
       }
-      console.log("Refined Falling Particles: Created", particles.length, "particles");
+      console.log("Refined Falling Dots: Created", particles.length, "particles");
     }
     
-    // Mouse interaction - umbrella effect
+    // Mouse interaction with umbrella effect
     let mouseX = null;
     let mouseY = null;
-    const umbrellaRadius = 60; // Smaller, more focused umbrella radius
+    const umbrellaRadius = 50; // Invisible bubble around cursor
     
     function handleMouseMove(e) {
       mouseX = e.clientX;
@@ -100,116 +101,88 @@
     
     // Draw particles
     function drawParticles() {
-      // Clear canvas
+      // Complete clear with no trail effect
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       // Update and draw each particle
       for (let i = 0; i < particles.length; i++) {
         let particle = particles[i];
         
-        // Store original position for collision check
-        const nextX = particle.x + particle.speedX;
-        const nextY = particle.y + particle.speedY;
-        
-        // Umbrella collision detection
-        let hitUmbrella = false;
+        // Mouse interaction - umbrella effect
         if (mouseX !== null && mouseY !== null) {
-          const dx = nextX - mouseX;
-          const dy = nextY - mouseY;
+          const dx = mouseX - particle.x;
+          const dy = mouseY - particle.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
           
           if (distance < umbrellaRadius) {
-            hitUmbrella = true;
+            // Umbrella bounce effect - stronger repulsion
+            const force = 0.3 * (1 - distance / umbrellaRadius);
+            const angle = Math.atan2(dy, dx);
             
-            // Calculate collision normal
-            const normalX = dx / distance;
-            const normalY = dy / distance;
+            // Push particle away from cursor more aggressively
+            particle.speedX -= Math.cos(angle) * force * 2;
+            particle.speedY -= Math.sin(angle) * force;
             
-            // Reflect particle's velocity
-            const dotProduct = particle.speedX * normalX + particle.speedY * normalY;
-            particle.speedX = particle.speedX - 2 * dotProduct * normalX;
-            particle.speedY = particle.speedY - 2 * dotProduct * normalY;
-            
-            // Move particle away from umbrella to prevent sticking
-            const pushDistance = umbrellaRadius - distance + 2;
-            particle.x = mouseX + normalX * umbrellaRadius;
-            particle.y = mouseY + normalY * umbrellaRadius;
-            
-            // Add slight random element to bounce for natural look
-            particle.speedX += (Math.random() - 0.5) * 0.2;
-            particle.speedY += (Math.random() - 0.5) * 0.2;
-            
-            // Brighten on collision
-            ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(particle.opacity * 1.5, 0.9)})`;
-          } else {
-            ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
+            // Bounce particles around the umbrella
+            if (distance < umbrellaRadius * 0.8) {
+              particle.speedY += Math.abs(Math.sin(angle)) * force;
+              particle.speedX += Math.sign(dx) * force * 1.5;
+            }
           }
-        } else {
-          ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
+          // Gradually return to normal speed
+          particle.speedX *= 0.94;
+          particle.speedY = Math.max(particle.speedY * 0.95, fallSpeed * 0.7);
         }
         
-        // Apply velocity if no collision
-        if (!hitUmbrella) {
-          particle.x += particle.speedX;
-          particle.y += particle.speedY;
-        }
+        // Move particle
+        particle.y += particle.speedY;
+        particle.x += particle.speedX;
         
-        // Wrap around when particle reaches edges
-        if (particle.y > canvas.height + particle.size) {
+        // Limit maximum speeds for smooth animation
+        particle.speedX = Math.max(-horizontalDrift * 3, Math.min(horizontalDrift * 3, particle.speedX));
+        particle.speedY = Math.max(fallSpeed * 0.2, Math.min(fallSpeed * 1.8, particle.speedY));
+        
+        // Wrap around when particle reaches bottom
+        if (particle.y > canvas.height) {
           particle.y = -particle.size;
-          // Reset horizontal position randomly on the spawning side
-          if (particle.speedX > 0) {
-            particle.x = Math.random() * (canvas.width * 0.1);
+          // Respawn on appropriate side
+          if (particle.side === 'left') {
+            particle.x = Math.random() * canvas.width * 0.3;
           } else {
-            particle.x = canvas.width - Math.random() * (canvas.width * 0.1);
+            particle.x = canvas.width * 0.7 + Math.random() * canvas.width * 0.3;
           }
         }
         
-        // Wrap around horizontally
+        // Wrap around sides
         if (particle.x < -particle.size) {
           particle.x = canvas.width + particle.size;
         } else if (particle.x > canvas.width + particle.size) {
           particle.x = -particle.size;
         }
         
-        // Gravity effect - slightly increase downward speed over time
-        particle.speedY += 0.002;
-        particle.speedY = Math.min(particle.speedY, fallSpeed * 1.5);
-        
-        // Limit horizontal speed to maintain diagonal effect
-        particle.speedX *= 0.99;
-        
-        // Draw particle with refined appearance
-        ctx.beginPath();
-        
-        // Create gradient for more refined look
+        // Create gradient for refined visual effect
         const gradient = ctx.createRadialGradient(
           particle.x, particle.y, 0,
-          particle.x, particle.y, particle.size
+          particle.x, particle.y, particle.size * 2
         );
-        gradient.addColorStop(0, `rgba(255, 255, 255, ${particle.opacity})`);
-        gradient.addColorStop(0.7, `rgba(255, 255, 255, ${particle.opacity * 0.5})`);
-        gradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
+        gradient.addColorStop(0, innerColor + particle.opacity + ')');
+        gradient.addColorStop(0.5, outerColor + (particle.opacity * 0.7) + ')');
+        gradient.addColorStop(1, outerColor + '0)');
         
-        // Subtle glow effect
-        ctx.shadowBlur = particle.glow;
-        ctx.shadowColor = `rgba(255, 255, 255, ${particle.opacity * 0.3})`;
+        // Draw particle as a soft circle with gradient and glow
+        ctx.beginPath();
+        
+        // Add outer glow
+        ctx.shadowBlur = particle.blur * 2;
+        ctx.shadowColor = 'rgba(200, 220, 255, ' + (particle.opacity * glowIntensity) + ')';
         
         ctx.fillStyle = gradient;
         ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
         ctx.fill();
         
-        // Reset shadow
+        // Reset shadow for better performance
         ctx.shadowBlur = 0;
       }
-      
-      // Optional: Visualize umbrella area for debugging
-      // if (mouseX !== null && mouseY !== null) {
-      //   ctx.beginPath();
-      //   ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-      //   ctx.arc(mouseX, mouseY, umbrellaRadius, 0, Math.PI * 2);
-      //   ctx.stroke();
-      // }
       
       // Request next animation frame
       requestAnimationFrame(drawParticles);
@@ -228,6 +201,6 @@
     
     window.addEventListener('mousemove', handleMouseMove);
     
-    console.log("Refined Falling Particles: Animation started");
+    console.log("Refined Falling Dots: Animation started");
   }
 })();
