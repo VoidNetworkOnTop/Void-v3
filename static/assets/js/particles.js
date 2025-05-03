@@ -1466,7 +1466,7 @@ function clamp(number, min, max) {
 };
 
 function isInArray(value, array) {
-  return array.indexOf(value) > -1;
+  return array.indexOf(value) > 1;
 }
 
 
