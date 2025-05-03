@@ -4,10 +4,23 @@ import http from 'node:http';
 import path from "node:path";
 import compression from 'compression';
 import { promisify } from 'util';
+import fs from 'fs';
 
 const app = express();
 const PORT = 8080;
 const __dirname = process.cwd();
+
+// Generate a version number based on timestamp
+const APP_VERSION = Date.now().toString();
+
+// Create version file automatically
+const versionData = {
+  version: APP_VERSION,
+  timestamp: Date.now(),
+  force_update: true
+};
+
+fs.writeFileSync(path.join(__dirname, "static/version.json"), JSON.stringify(versionData, null, 2));
 
 // Create Bare server with improved configuration for games
 const bare = createBareServer("/bare/", {
@@ -86,6 +99,18 @@ app.use(compression({
   threshold: 0 // Always compress
 }));
 
+// Add cache-busting headers for service worker and important files
+app.use((req, res, next) => {
+  if (req.path === '/sw.js' || req.path.includes('.js') || req.path.includes('.html') || req.path.includes('version.json')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Version', APP_VERSION);
+  }
+  next();
+});
+
 // Add CORS headers for better game compatibility
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -108,6 +133,55 @@ app.use((req, res, next) => {
   next();
 });
 
+// Add auto-update script to all HTML files
+const autoUpdateScript = `
+<script>
+// Auto-update detection
+(function() {
+  if ('serviceWorker' in navigator) {
+    // Register service worker with cache-busting
+    navigator.serviceWorker.register('/sw.js?' + Date.now())
+      .then(registration => {
+        console.log('SW registered');
+        
+        // Force check for updates
+        registration.update();
+        
+        // Check for new version periodically
+        setInterval(() => {
+          fetch('/version.json?' + Date.now())
+            .then(res => res.json())
+            .then(data => {
+              const cached = localStorage.getItem('app_version');
+              if (!cached || cached !== data.version) {
+                console.log('New version available, updating...');
+                localStorage.setItem('app_version', data.version);
+                
+                // Unregister and reload
+                navigator.serviceWorker.getRegistrations()
+                  .then(regs => regs.forEach(reg => reg.unregister()))
+                  .then(() => window.location.reload(true));
+              }
+            })
+            .catch(console.error);
+        }, 60000); // Check every minute
+        
+        // Handle service worker updates
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              window.location.reload();
+            }
+          });
+        });
+      })
+      .catch(console.error);
+  }
+})();
+</script>
+`;
+
 // Add game-specific headers for better compatibility
 app.use((req, res, next) => {
   // Check if this is likely a game request
@@ -126,6 +200,34 @@ app.use((req, res, next) => {
   }
   
   next();
+});
+
+// Middleware to inject auto-update script into HTML
+const injectAutoUpdate = (req, res, next) => {
+  const originalSend = res.send;
+  res.send = function(body) {
+    if (res.getHeader('Content-Type')?.includes('text/html')) {
+      if (typeof body === 'string' && body.includes('</body>')) {
+        body = body.replace('</body>', autoUpdateScript + '</body>');
+      }
+    }
+    originalSend.call(this, body);
+  };
+  next();
+};
+
+app.use(injectAutoUpdate);
+
+// Special route for service worker with absolute no caching
+app.get('/sw.js', (req, res) => {
+  res.set({
+    'Content-Type': 'application/javascript',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    'Service-Worker-Allowed': '/',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
+  res.sendFile(path.join(__dirname, 'sw.js'));
 });
 
 // Static files and routes - keep your existing routes
@@ -259,6 +361,45 @@ app.get("/clearcache", (req, res) => {
   `);
 });
 
+// Complete reset route
+app.get("/reset-cache", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Reset Cache</title>
+      <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+      <meta http-equiv="Pragma" content="no-cache">
+      <meta http-equiv="Expires" content="0">
+      <script>
+        // Clear service worker and caches
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(registrations => {
+            registrations.forEach(registration => registration.unregister());
+          });
+        }
+        if ('caches' in window) {
+          caches.keys().then(keys => {
+            keys.forEach(key => caches.delete(key));
+          });
+        }
+        // Clear local/session storage
+        localStorage.clear();
+        sessionStorage.clear();
+        // Reload after clear
+        setTimeout(() => {
+          window.location.href = '/?nocache=' + Date.now();
+        }, 2000);
+      </script>
+    </head>
+    <body>
+      <h1>Forcing Update...</h1>
+      <p>Clearing all caches and reloading...</p>
+    </body>
+    </html>
+  `);
+});
+
 // Serve static files
 app.use(express.static(path.join(__dirname, "static")));
 
@@ -330,6 +471,7 @@ server.listen({ port: PORT }, () => {
   console.log(`Server listening on port ${PORT}`);
   console.log(`Bare server running at /bare/`);
   console.log(`Server started at: ${new Date().toISOString()}`);
+  console.log(`App version: ${APP_VERSION}`);
 });
 
 // Handle process termination gracefully
