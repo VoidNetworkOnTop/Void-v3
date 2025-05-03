@@ -269,6 +269,11 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/0nwyFoEcn-ISiCZwdyIdyVVRuVYIVgoqXEbMGtyx2pYQwIoyv-EMYmeVtz1_UZHY5t8YSO-e09wE9WYTymvkqTixPqjHepJgXExnhc_4SBOATtY_b7onEebJMTXG2CSE6FpJeCi6UK9KuQ51XUwgNxG4qTxFZ5j-nQ9BiaZxVCydE1M28x4IHOfHQ4dm2uEzj2g_qbyu?key=yj4V8pHW144VjA9YlEbf1Q",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://basketballlegends.io/iframe/index.html")
 }, 
+{
+    title: "Soccer Legends", 
+    imgSrc: "https://lh7-us.googleusercontent.com/BOFW1ZerubL2OaBLXFFS-Ns2OWRr_yO1gGqCJPSckN5jnlpKxChw-fbKiHrJ4iIQMVbJRwxARPvqzR8OukN6KmFQfaOkV1rZlLY3ghMmZKuKmeLsBi2rdfYmY3u_0oXSOqpffNAgrs-7RUYjtK8ecj6YR1zEDiXK-hYOkFUKnySdslg2l1I74Sngv5j3D1Au9fLmymBe?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://soccerlegends.github.io/soccer-legends")
+}, 
 
 
     
