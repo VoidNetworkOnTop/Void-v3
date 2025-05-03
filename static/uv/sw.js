@@ -1,4 +1,4 @@
-/global UVServiceWorker,__uv$config/
+/*global UVServiceWorker,__uv$config*/
 /*
  * First-Try Service Worker for Ultraviolet proxy
  * With aggressive WebGL fixes and auto-reload logic
@@ -10,13 +10,17 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
+// Increment this version when you update files to force cache refresh
+const CACHE_VERSION = 'v1.1.0';
+const DEV_MODE = false; // Set to true when developing to bypass cache
+
 // Configuration with extended timeouts
 const CONFIG = {
   FETCH_TIMEOUT: 240000,  // 4 minute timeout for slow sites
   MAX_RETRIES: 3,         // Number of retry attempts
   RETRY_DELAY: 800,       // Delay between retries in ms
   LOG_LEVEL: 'debug',     // Set to 'info' to reduce logging
-  CACHE_NAME: 'uv-game-resources-v1' // Cache for game resources
+  CACHE_NAME: `uv-game-resources-${CACHE_VERSION}` // Versioned cache name
 };
 
 // Create a cache for game resources
@@ -69,18 +73,44 @@ const isGameUrl = (url) => {
 // Enhanced fetch with timeout, retries, and caching for game resources
 const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
   try {
+    // In dev mode, skip cache entirely
+    if (DEV_MODE) {
+      console.log('[UV Service Worker] DEV MODE: Skipping cache');
+      return await sw.fetch(event);
+    }
+
     // Get URL information
     const url = new URL(event.request.url);
     const reqUrl = url.toString();
     
+    // Check if this is a JavaScript file that needs fresh content
+    const isJsFile = reqUrl.endsWith('.js');
+    const shouldBypassCache = isJsFile && 
+      (event.request.headers.get('cache-control') === 'no-cache' ||
+       url.searchParams.has('nocache') ||
+       url.searchParams.has('v')); // Version parameter
+    
     // Special handling for game resources - check cache first
-    if (isGameUrl(reqUrl)) {
+    if (isGameUrl(reqUrl) && !shouldBypassCache) {
       // Try to get from cache first for speed
       const cache = await gameCache;
       const cachedResponse = await cache.match(event.request);
       
-      if (cachedResponse) {
-        // console.log(`[UV Service Worker] Serving from cache: ${reqUrl.substring(0, 100)}...`);
+      // For JS files, check if it's stale (optional)
+      if (cachedResponse && isJsFile) {
+        // Check if cache is older than 1 hour (adjust as needed)
+        const cacheTimestamp = cachedResponse.headers.get('sw-cache-timestamp');
+        if (cacheTimestamp) {
+          const age = Date.now() - parseInt(cacheTimestamp);
+          if (age > 3600000) { // 1 hour in milliseconds
+            console.log('[UV Service Worker] JS file cache is stale, fetching fresh copy');
+          } else {
+            return cachedResponse;
+          }
+        } else {
+          return cachedResponse;
+        }
+      } else if (cachedResponse) {
         return cachedResponse;
       }
       
@@ -91,7 +121,16 @@ const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
       // Cache the response if it's valid and not a streamed response
       if (response.ok && !response.bodyUsed && response.status !== 101 && response.status !== 204) {
         const clonedResponse = response.clone();
-        cache.put(event.request, clonedResponse).catch(err => {
+        const headers = new Headers(clonedResponse.headers);
+        headers.set('sw-cache-timestamp', Date.now().toString());
+        
+        const responseToCache = new Response(clonedResponse.body, {
+          status: clonedResponse.status,
+          statusText: clonedResponse.statusText,
+          headers: headers
+        });
+        
+        cache.put(event.request, responseToCache).catch(err => {
           console.warn('[UV Service Worker] Failed to cache resource:', err);
         });
       }
@@ -901,6 +940,44 @@ self.addEventListener('message', event => {
           timestamp: Date.now()
         });
       }
+    });
+  }
+  
+  // Clear specific file from cache
+  if (event.data && event.data.type === 'CLEAR_FILE_CACHE') {
+    const { url } = event.data;
+    caches.open(CONFIG.CACHE_NAME).then(cache => {
+      cache.delete(url).then(() => {
+        console.log('[UV Service Worker] File cache cleared:', url);
+        if (event.source) {
+          event.source.postMessage({
+            type: 'FILE_CACHE_CLEARED',
+            url: url,
+            timestamp: Date.now()
+          });
+        }
+      });
+    });
+  }
+  
+  // Force refresh for specific patterns
+  if (event.data && event.data.type === 'FORCE_REFRESH') {
+    const { pattern } = event.data;
+    caches.open(CONFIG.CACHE_NAME).then(cache => {
+      cache.keys().then(requests => {
+        requests.forEach(request => {
+          if (request.url.includes(pattern)) {
+            cache.delete(request);
+            console.log('[UV Service Worker] Deleted cache for:', request.url);
+          }
+        });
+        if (event.source) {
+          event.source.postMessage({
+            type: 'REFRESH_COMPLETE',
+            timestamp: Date.now()
+          });
+        }
+      });
     });
   }
 });
