@@ -191,7 +191,7 @@ function loadHTML(url, elementId) {
         .catch(error => console.error('Error loading HTML:', error));
 }
 
-// Particles.js Initialization - Added at the end of global.js
+// Particles.js Initialization - With Particles Above Everything
 document.addEventListener('DOMContentLoaded', function() {
     const config = {
         particles: {
@@ -307,29 +307,80 @@ document.addEventListener('DOMContentLoaded', function() {
     // Create style element with necessary CSS
     const style = document.createElement('style');
     style.textContent = `
+        /* Background for particles */
+        #particles-background {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            background-color: #000;
+            pointer-events: none;
+        }
+        
+        /* Particles container */
         #particles-js {
             position: fixed;
             width: 100%;
             height: 100%;
             top: 0;
             left: 0;
-            z-index: 0;
+            z-index: 999998;  /* Very high z-index to be above everything */
             pointer-events: none;
-            background-color: #000;
+            background: transparent !important;  /* Ensure background is transparent */
         }
         
-        /* Ensure content stays above particles */
-        .container, .games-box {
-            position: relative;
-            z-index: 10 !important;
+        /* Specifically target the canvas created by particles.js */
+        #particles-js canvas {
+            position: absolute !important;
+            z-index: 999998 !important;
+            pointer-events: none !important;
         }
         
-        /* Ensure loading overlay stays on top */
+        /* Keep loading overlay above particles */
         #loadingOverlay {
             z-index: 999999 !important;
         }
+        
+        /* Make sure content has relative positioning for proper stacking */
+        .container, .games-box {
+            position: relative;
+            z-index: 10;
+        }
     `;
     document.head.appendChild(style);
+
+    // Create background div
+    const background = document.createElement('div');
+    background.id = 'particles-background';
+    document.body.insertBefore(background, document.body.firstChild);
+
+    // Create particles div
+    const div = document.createElement('div');
+    div.id = 'particles-js';
+    document.body.insertBefore(div, document.body.firstChild);
+
+    // Load particles.js and initialize
+    const script = document.createElement('script');
+    script.src = '/assets/js/particles.js?' + Date.now();
+    script.onload = () => {
+        particlesJS('particles-js', config);
+        
+        // Additional styling to ensure transparency
+        const particlesDiv = document.getElementById('particles-js');
+        particlesDiv.style.backgroundColor = 'transparent';
+        
+        // Find the canvas and ensure it has proper z-index
+        setTimeout(() => {
+            const canvas = particlesDiv.querySelector('canvas');
+            if (canvas) {
+                canvas.style.zIndex = '999998';
+                canvas.style.pointerEvents = 'none';
+            }
+        }, 100);
+    };
+    document.head.appendChild(script);
 
     // Create particles div
     const div = document.createElement('div');
