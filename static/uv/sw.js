@@ -1,7 +1,7 @@
 /*global UVServiceWorker,__uv$config*/
 /*
- * First-Try Service Worker for Ultraviolet proxy
- * With aggressive WebGL fixes and auto-reload logic
+ * UV Service Worker for Ultraviolet proxy
+ * With WebGL fixes but NO CACHING
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -10,24 +10,16 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
-// Increment this version when you update files to force cache refresh
-const CACHE_VERSION = 'v1.1.0';
-const DEV_MODE = true; // Set to true when developing to bypass cache
-
 // Configuration with extended timeouts
 const CONFIG = {
   FETCH_TIMEOUT: 240000,  // 4 minute timeout for slow sites
   MAX_RETRIES: 3,         // Number of retry attempts
   RETRY_DELAY: 800,       // Delay between retries in ms
-  LOG_LEVEL: 'debug',     // Set to 'info' to reduce logging
-  CACHE_NAME: `uv-game-resources-${CACHE_VERSION}` // Versioned cache name
+  LOG_LEVEL: 'debug'      // Set to 'info' to reduce logging
 };
 
-// Create a cache for game resources
-const gameCache = caches.open(CONFIG.CACHE_NAME);
-
 // Log initialization
-console.log('[UV Service Worker] Initializing first-try game loader...');
+console.log('[UV Service Worker] Initializing (NO CACHING version)...');
 
 // Detect WebGL-based games and sites
 const isWebGLSite = (url) => {
@@ -70,73 +62,13 @@ const isGameUrl = (url) => {
          url.includes('/play/');
 };
 
-// Enhanced fetch with timeout, retries, and caching for game resources
+// Enhanced fetch with timeout and retries (NO CACHING)
 const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
   try {
-    // In dev mode, skip cache entirely
-    if (DEV_MODE) {
-      console.log('[UV Service Worker] DEV MODE: Skipping cache');
-      return await sw.fetch(event);
-    }
-
-    // Get URL information
     const url = new URL(event.request.url);
     const reqUrl = url.toString();
     
-    // Check if this is a JavaScript file that needs fresh content
-    const isJsFile = reqUrl.endsWith('.js');
-    const shouldBypassCache = isJsFile && 
-      (event.request.headers.get('cache-control') === 'no-cache' ||
-       url.searchParams.has('nocache') ||
-       url.searchParams.has('v')); // Version parameter
-    
-    // Special handling for game resources - check cache first
-    if (isGameUrl(reqUrl) && !shouldBypassCache) {
-      // Try to get from cache first for speed
-      const cache = await gameCache;
-      const cachedResponse = await cache.match(event.request);
-      
-      // For JS files, check if it's stale (optional)
-      if (cachedResponse && isJsFile) {
-        // Check if cache is older than 1 hour (adjust as needed)
-        const cacheTimestamp = cachedResponse.headers.get('sw-cache-timestamp');
-        if (cacheTimestamp) {
-          const age = Date.now() - parseInt(cacheTimestamp);
-          if (age > 3600000) { // 1 hour in milliseconds
-            console.log('[UV Service Worker] JS file cache is stale, fetching fresh copy');
-          } else {
-            return cachedResponse;
-          }
-        } else {
-          return cachedResponse;
-        }
-      } else if (cachedResponse) {
-        return cachedResponse;
-      }
-      
-      // Not in cache, fetch it
-      console.log(`[UV Service Worker] Game resource: ${reqUrl.substring(0, 80)}...`);
-      const response = await sw.fetch(event);
-      
-      // Cache the response if it's valid and not a streamed response
-      if (response.ok && !response.bodyUsed && response.status !== 101 && response.status !== 204) {
-        const clonedResponse = response.clone();
-        const headers = new Headers(clonedResponse.headers);
-        headers.set('sw-cache-timestamp', Date.now().toString());
-        
-        const responseToCache = new Response(clonedResponse.body, {
-          status: clonedResponse.status,
-          statusText: clonedResponse.statusText,
-          headers: headers
-        });
-        
-        cache.put(event.request, responseToCache).catch(err => {
-          console.warn('[UV Service Worker] Failed to cache resource:', err);
-        });
-      }
-      
-      return response;
-    }
+    console.log('[UV Service Worker] Fetching (no cache):', reqUrl.substring(0, 80));
     
     // Special handling for WebGL sites - add WebGL fixes
     if (isWebGLSite(reqUrl)) {
@@ -188,7 +120,7 @@ const addWebGLFixes = async (response, url) => {
     
     // Skip if it's UV configuration data
     if (text.includes('__uv$bareData') || text.includes('__uv$cookies')) {
-      console.error('[UV Service Worker] Detected UV configuration in response body!');
+      console.log('[UV Service Worker] Detected UV configuration in response body, skipping modifications');
       return response; // Return the original response
     }
     
@@ -862,53 +794,35 @@ self.addEventListener('fetch', event => {
   })());
 });
 
-// Precache commonly used game resources
+// Simplified install handler - NO CACHING
 self.addEventListener('install', event => {
-  console.log('[UV Service Worker] Installing with game precaching...');
+  console.log('[UV Service Worker] Installing (NO CACHING version)...');
   
   // Skip waiting so the service worker activates immediately
   self.skipWaiting();
-  
-  // Precache essential WebGL polyfills and helpers
-  event.waitUntil(
-    caches.open(CONFIG.CACHE_NAME).then(cache => {
-      return cache.addAll([
-        '/uv/uv.bundle.js',
-        '/uv/uv.config.js',
-        '/uv/uv.sw.js'
-      ]).catch(err => {
-        console.warn('[UV Service Worker] Failed to precache some resources:', err);
-      });
-    })
-  );
 });
 
+// Simplified activate handler - NO CACHING
 self.addEventListener('activate', event => {
   console.log('[UV Service Worker] Activated');
   
   // Claim clients so the service worker starts controlling current pages
   event.waitUntil(clients.claim());
   
-  // Clean up old caches
+  // Clean up any old caches that might still exist
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
-        cacheNames
-          .filter(cacheName => {
-            // Delete old versions of our cache
-            return cacheName.startsWith('uv-game-resources-') && 
-                   cacheName !== CONFIG.CACHE_NAME;
-          })
-          .map(cacheName => {
-            console.log('[UV Service Worker] Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          })
+        cacheNames.map(cacheName => {
+          console.log('[UV Service Worker] Deleting cache:', cacheName);
+          return caches.delete(cacheName);
+        })
       );
     })
   );
 });
 
-// Handle messages from clients
+// Simplified message handler - NO CACHING
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
@@ -921,63 +835,8 @@ self.addEventListener('message', event => {
         type: 'PONG',
         timestamp: Date.now(),
         status: 'healthy',
-        version: 'first-try-1.0'
+        version: 'no-cache-1.0'
       });
     }
-  }
-  
-  // Handle cache clearing
-  if (event.data && event.data.type === 'CLEAR_CACHE') {
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => caches.delete(cacheName))
-      );
-    }).then(() => {
-      console.log('[UV Service Worker] Cache cleared by request');
-      if (event.source) {
-        event.source.postMessage({
-          type: 'CACHE_CLEARED',
-          timestamp: Date.now()
-        });
-      }
-    });
-  }
-  
-  // Clear specific file from cache
-  if (event.data && event.data.type === 'CLEAR_FILE_CACHE') {
-    const { url } = event.data;
-    caches.open(CONFIG.CACHE_NAME).then(cache => {
-      cache.delete(url).then(() => {
-        console.log('[UV Service Worker] File cache cleared:', url);
-        if (event.source) {
-          event.source.postMessage({
-            type: 'FILE_CACHE_CLEARED',
-            url: url,
-            timestamp: Date.now()
-          });
-        }
-      });
-    });
-  }
-  
-  // Force refresh for specific patterns
-  if (event.data && event.data.type === 'FORCE_REFRESH') {
-    const { pattern } = event.data;
-    caches.open(CONFIG.CACHE_NAME).then(cache => {
-      cache.keys().then(requests => {
-        requests.forEach(request => {
-          if (request.url.includes(pattern)) {
-            cache.delete(request);
-            console.log('[UV Service Worker] Deleted cache for:', request.url);
-          }
-        });
-        if (event.source) {
-          event.source.postMessage({
-            type: 'REFRESH_COMPLETE',
-            timestamp: Date.now()
-          });
-        }
-      });
-    });
   }
 });
