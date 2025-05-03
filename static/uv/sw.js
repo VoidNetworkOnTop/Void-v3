@@ -11,7 +11,7 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 const sw = new UVServiceWorker();
 
 // Increment this version when you update files to force cache refresh
-const CACHE_VERSION = 'v1.1.0';
+const CACHE_VERSION = 'v1.1.1';
 const DEV_MODE = false; // Set to true when developing to bypass cache
 
 // Configuration with extended timeouts
