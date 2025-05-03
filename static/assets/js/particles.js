@@ -1,5 +1,5 @@
-// Refined Falling Dots Background Script
-// Particles fall from left and right with umbrella effect around cursor
+// Simple Falling Dots Background Script
+// Smooth, gentle downward animation with no connections
 
 (function() {
   // Wait for the DOM to be fully loaded before initializing
@@ -11,7 +11,7 @@
   }
   
   function initParticlesBackground() {
-    console.log("Refined Falling Dots: Initializing background effect");
+    console.log("Falling Dots: Initializing background effect");
     
     // Create canvas element  
     const canvas = document.createElement('canvas');
@@ -33,17 +33,12 @@
     document.body.appendChild(canvas);
     
     // Particle settings
-    const particleCount = 200; // More particles for richer effect
+    const particleCount = 150; // More dots for a fuller effect
     const minSize = 1.5;
-    const maxSize = 4; // Same max size as original
-    const baseOpacity = 0.4; // Better visibility
-    const fallSpeed = 0.7; // Faster falling speed
+    const maxSize = 4;
+    const baseOpacity = 0.3; // Lower base opacity for more transparency
+    const fallSpeed = 0.3; // Very slow falling speed
     const horizontalDrift = 0.1; // Slight horizontal movement
-    
-    // Enhanced visual settings
-    const glowIntensity = 0.8;
-    const innerColor = 'rgba(255, 255, 255, ';
-    const outerColor = 'rgba(200, 220, 255, '; // Subtle blue tint
     
     // Array to store particles
     let particles = [];
@@ -52,7 +47,7 @@
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      console.log("Refined Falling Dots: Canvas resized to", canvas.width, "x", canvas.height);
+      console.log("Falling Dots: Canvas resized to", canvas.width, "x", canvas.height);
     }
     
     // Initialize particles
@@ -60,39 +55,29 @@
       particles = [];
       
       for (let i = 0; i < particleCount; i++) {
-        // Create particles coming from left and right edges
-        const side = Math.random() > 0.5 ? 'left' : 'right';
+        // Create particles at random positions
         const size = minSize + Math.random() * (maxSize - minSize);
-        const opacity = baseOpacity * (0.5 + Math.random() * 0.5);
-        
-        // Spawn from left third or right third of screen
-        let xPosition;
-        if (side === 'left') {
-          xPosition = Math.random() * canvas.width * 0.3;
-        } else {
-          xPosition = canvas.width * 0.7 + Math.random() * canvas.width * 0.3;
-        }
+        const opacity = baseOpacity * (0.4 + Math.random() * 0.6); // Varied opacity
         
         particles.push({
-          x: xPosition,
+          x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
           size: size,
           opacity: opacity,
-          // Faster downward movement with more horizontal drift
-          speedY: fallSpeed * (0.7 + Math.random() * 0.6),
-          speedX: (Math.random() - 0.5) * horizontalDrift * 2,
+          // Mostly downward movement with slight horizontal drift
+          speedY: fallSpeed * (0.5 + Math.random() * 0.8),
+          speedX: (Math.random() - 0.5) * horizontalDrift,
           // Each particle gets a slight blur effect for smoother appearance
-          blur: Math.random() * 2.5,
-          side: side
+          blur: Math.random() * 2
         });
       }
-      console.log("Refined Falling Dots: Created", particles.length, "particles");
+      console.log("Falling Dots: Created", particles.length, "particles");
     }
     
-    // Mouse interaction with umbrella effect
+    // Mouse interaction
     let mouseX = null;
     let mouseY = null;
-    const umbrellaRadius = 50; // Invisible bubble around cursor
+    const mouseRadius = 120;
     
     function handleMouseMove(e) {
       mouseX = e.clientX;
@@ -108,75 +93,63 @@
       for (let i = 0; i < particles.length; i++) {
         let particle = particles[i];
         
-        // Mouse interaction - umbrella effect
+        // Move particle
+        particle.y += particle.speedY;
+        particle.x += particle.speedX;
+        
+        // Wrap around when particle reaches bottom
+        if (particle.y > canvas.height) {
+          particle.y = 0;
+          particle.x = Math.random() * canvas.width;
+        }
+        
+        // Wrap around sides too
+        if (particle.x < 0) {
+          particle.x = canvas.width;
+        } else if (particle.x > canvas.width) {
+          particle.x = 0;
+        }
+        
+        // Mouse interaction - gentle avoid effect
         if (mouseX !== null && mouseY !== null) {
           const dx = mouseX - particle.x;
           const dy = mouseY - particle.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
           
-          if (distance < umbrellaRadius) {
-            // Umbrella bounce effect - stronger repulsion
-            const force = 0.3 * (1 - distance / umbrellaRadius);
+          if (distance < mouseRadius) {
+            // Create a very gentle avoidance - just enough to create a subtle effect
+            const force = 0.05 * (1 - distance / mouseRadius);
             const angle = Math.atan2(dy, dx);
             
-            // Push particle away from cursor more aggressively
-            particle.speedX -= Math.cos(angle) * force * 2;
+            // Move away from cursor, but very gently
+            particle.speedX -= Math.cos(angle) * force;
             particle.speedY -= Math.sin(angle) * force;
             
-            // Bounce particles around the umbrella
-            if (distance < umbrellaRadius * 0.8) {
-              particle.speedY += Math.abs(Math.sin(angle)) * force;
-              particle.speedX += Math.sign(dx) * force * 1.5;
-            }
-          }
-          // Gradually return to normal speed
-          particle.speedX *= 0.94;
-          particle.speedY = Math.max(particle.speedY * 0.95, fallSpeed * 0.7);
-        }
-        
-        // Move particle
-        particle.y += particle.speedY;
-        particle.x += particle.speedX;
-        
-        // Limit maximum speeds for smooth animation
-        particle.speedX = Math.max(-horizontalDrift * 3, Math.min(horizontalDrift * 3, particle.speedX));
-        particle.speedY = Math.max(fallSpeed * 0.2, Math.min(fallSpeed * 1.8, particle.speedY));
-        
-        // Wrap around when particle reaches bottom
-        if (particle.y > canvas.height) {
-          particle.y = -particle.size;
-          // Respawn on appropriate side
-          if (particle.side === 'left') {
-            particle.x = Math.random() * canvas.width * 0.3;
+            // Slightly brighten particles near cursor
+            const brightenFactor = 1 + (1 - distance / mouseRadius) * 0.3;
+            ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(particle.opacity * brightenFactor, 0.95)})`;
           } else {
-            particle.x = canvas.width * 0.7 + Math.random() * canvas.width * 0.3;
+            ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
           }
+        } else {
+          ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
         }
         
-        // Wrap around sides
-        if (particle.x < -particle.size) {
-          particle.x = canvas.width + particle.size;
-        } else if (particle.x > canvas.width + particle.size) {
-          particle.x = -particle.size;
-        }
+        // Limit speeds for smooth movement
+        particle.speedX = Math.max(-horizontalDrift, Math.min(horizontalDrift, particle.speedX));
+        particle.speedY = Math.max(fallSpeed * 0.1, Math.min(fallSpeed * 1.5, particle.speedY));
         
-        // Create gradient for refined visual effect
-        const gradient = ctx.createRadialGradient(
-          particle.x, particle.y, 0,
-          particle.x, particle.y, particle.size * 2
-        );
-        gradient.addColorStop(0, innerColor + particle.opacity + ')');
-        gradient.addColorStop(0.5, outerColor + (particle.opacity * 0.7) + ')');
-        gradient.addColorStop(1, outerColor + '0)');
+        // Apply subtle damping to horizontal movement
+        particle.speedX *= 0.99;
         
-        // Draw particle as a soft circle with gradient and glow
+        // Draw particle as a soft circle with slight blur for smoothness
         ctx.beginPath();
         
-        // Add outer glow
-        ctx.shadowBlur = particle.blur * 2;
-        ctx.shadowColor = 'rgba(200, 220, 255, ' + (particle.opacity * glowIntensity) + ')';
+        // Use shadow blur for softer dots
+        ctx.shadowBlur = particle.blur;
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
         
-        ctx.fillStyle = gradient;
+        // Draw the dot
         ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
         ctx.fill();
         
@@ -201,6 +174,6 @@
     
     window.addEventListener('mousemove', handleMouseMove);
     
-    console.log("Refined Falling Dots: Animation started");
+    console.log("Falling Dots: Animation started");
   }
 })();
