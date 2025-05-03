@@ -12,7 +12,7 @@ const sw = new UVServiceWorker();
 
 // Increment this version when you update files to force cache refresh
 const CACHE_VERSION = 'v1.1.0';
-const DEV_MODE = false; // Set to true when developing to bypass cache
+const DEV_MODE = true; // Set to true when developing to bypass cache
 
 // Configuration with extended timeouts
 const CONFIG = {
