@@ -37,7 +37,7 @@
     const minSize = 1.5;
     const maxSize = 4;
     const baseOpacity = 0.3; // Lower base opacity for more transparency
-    const baseSpeed = 0.5; // Base speed for diagonal movement
+    const baseSpeed = 2.5; // Increased base speed for faster diagonal movement
     
     // Array to store particles
     let particles = [];
@@ -57,7 +57,7 @@
       for (let i = 0; i < particleCount; i++) {
         const size = minSize + Math.random() * (maxSize - minSize);
         const opacity = baseOpacity * (0.4 + Math.random() * 0.6); // Varied opacity
-        const speed = baseSpeed * (0.5 + Math.random() * 0.8);
+        const speed = baseSpeed * (0.8 + Math.random() * 0.5); // Faster speed range
         
         // Determine which corner this particle comes from
         const fromTopLeft = i < particleCount / 2;
@@ -126,8 +126,7 @@
           particle.y = 0;
           
           // Slightly vary the speed for visual interest
-          const baseSpeed = 0.5;
-          const speed = baseSpeed * (0.5 + Math.random() * 0.8);
+          const speed = baseSpeed * (0.8 + Math.random() * 0.5);
           
           if (particle.fromTopLeft) {
             particle.speedX = speed + (Math.random() - 0.5) * 0.2;
