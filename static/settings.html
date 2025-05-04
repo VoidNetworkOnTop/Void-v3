@@ -132,90 +132,34 @@ if (typeof loadHTML !== 'function') {
     </script>
     
     <script>
-// Toggle cloaking - with enhanced navigation detection
+// Toggle cloaking - simplified to just set the flag
 function toggleCloaking() {
     const currentCloaking = localStorage.getItem('cloaking');
     
     if (currentCloaking === null || currentCloaking === 'false') {
-        // Enable cloaking - open about:blank with iframe
-        localStorage.setItem("cloaking", 'true');
+        // Enable cloaking
+        localStorage.setItem('cloaking', 'true');
+        showMessage("About:blank cloaking enabled. onload.js will now detect and apply on all pages.");
         
-        // Get root URL
-        const rootUrl = window.location.origin;
-        
-        // Create about:blank window immediately
-        const aboutBlankWindow = window.open('about:blank', '_blank');
-        
-        if (aboutBlankWindow) {
-            // Write enhanced iframe HTML with navigation support
-            aboutBlankWindow.document.write(`<html>
-<head>
-    <title>New Tab</title>
-    <style>
-        body, html { 
-            margin: 0px; 
-            height: 100vh; 
-            overflow: hidden;
-        }
-        iframe { 
-            border: none; 
-            width: 100%; 
-            height: 100%; 
-            margin: 0px;
-        }
-    </style>
-    <script>
-        // Navigation handler for iframe
-        window.addEventListener('message', function(e) {
-            if (e.data && e.data.type === 'navigate') {
-                const iframe = document.querySelector('iframe');
-                if (iframe) {
-                    iframe.src = e.data.url;
-                }
-            }
-        });
-        
-        // Try to monitor iframe navigation (limited by cross-origin)
-        window.addEventListener('load', function() {
-            const iframe = document.querySelector('iframe');
-            if (iframe) {
-                // This will only work for same-origin iframes
-                try {
-                    iframe.onload = function() {
-                        try {
-                            const newUrl = iframe.contentWindow.location.href;
-                            console.log('Iframe navigated to:', newUrl);
-                            // Update the document title to match iframe
-                            if (iframe.contentDocument) {
-                                document.title = iframe.contentDocument.title || 'New Tab';
-                            }
-                        } catch (e) {
-                            // Cross-origin error - can't access iframe content
-                            console.log('Cross-origin restriction');
-                        }
-                    };
-                } catch (e) {
-                    console.log('Cannot monitor iframe navigation');
-                }
-            }
-        });
-    <\/script>
-</head>
-<body>
-    <iframe src="${rootUrl}"></iframe>
-</body>
-</html>`);
-            aboutBlankWindow.document.close();
-            
-            // Close this window
-            window.close();
-        }
-        
-        showMessage("About:blank cloaking enabled");
+        // Notify all other tabs (including ones with onload.js)
+        window.dispatchEvent(new StorageEvent('storage', {
+            key: 'cloaking',
+            newValue: 'true',
+            oldValue: currentCloaking,
+            storageArea: localStorage
+        }));
     } else {
         // Disable cloaking
         localStorage.setItem('cloaking', 'false');
         showMessage("About:blank cloaking disabled");
+        
+        // Notify all other tabs (including ones with onload.js)
+        window.dispatchEvent(new StorageEvent('storage', {
+            key: 'cloaking',
+            newValue: 'false',
+            oldValue: currentCloaking,
+            storageArea: localStorage
+        }));
     }
 }
     </script>
