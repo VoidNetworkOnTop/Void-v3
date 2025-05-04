@@ -284,6 +284,11 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/MG61ryfsIFHqeOglDcH5qGEzHwNqBsJdSGVJA1Q_A65WL3QgIteLefelKseMqf7oAtMTCes4ABYkFyWzxGq3rBM4C8Tsfc6iar8hXwLLH6tH24HH7r1f1XIBqEklb07JabqNU8PJAv9uq6KbTMfXfU3aV8EAPxoloEu9f4ny0Xmf6aQc5DYX_mWbZjPBGrdAmqHN6549?key=yj4V8pHW144VjA9YlEbf1Q",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://bloons-towerdefense.github.io/file/")
 }, 
+{
+    title: "Space Wave", 
+    imgSrc: "https://lh7-us.googleusercontent.com/4supg0ReRZsQvGZGVeqpJ3nUENg_Er3FchO5mGUBY52j1D0xxsDhBW-j5MAiWeoivJSyxJu-hR_KE2Nqw8pOMjb6FuQKI2Lejpzo7udmDx9PGZs4hhkZRY1HFJ80zzf9waxIDSLQJ5AycB_irXZ4yGcJ1IZyGN12idR4DVJV45T0QJ6jbNZTyg6H2HVVPsNtDWRf5Siu?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://space-waves.co/game/space-wave/")
+},
 
 
     
