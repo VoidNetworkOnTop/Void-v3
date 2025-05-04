@@ -1,5 +1,5 @@
-// Upward Floating Particles with Umbrella Effect
-// Particles float upward and bounce off a hard umbrella around the cursor
+// Upward Floating Particles with Hard Umbrella Effect
+// Particles float upward and bounce off a hard umbrella barrier around the cursor
 
 (function() {
   // Wait for the DOM to be fully loaded before initializing
@@ -32,14 +32,14 @@
     // Append canvas to body
     document.body.appendChild(canvas);
     
-    // Particle settings
-    const particleCount = 150;
+    // Particle settings - increased count and speed
+    const particleCount = 300; // More particles
     const minSize = 1.5;
     const maxSize = 4;
     const baseOpacity = 0.3;
-    const floatSpeedMin = 0.5; // Faster upward movement
-    const floatSpeedMax = 1.5;
-    const horizontalDrift = 0.3; // More horizontal movement
+    const floatSpeedMin = 1.5; // Much faster upward movement
+    const floatSpeedMax = 3.0;
+    const horizontalDrift = 0.4; // More horizontal movement
     
     // Array to store particles
     let particles = [];
@@ -78,7 +78,7 @@
       console.log("Upward Particles: Created", particles.length, "particles");
     }
     
-    // Mouse interaction - umbrella effect
+    // Mouse interaction - hard umbrella effect
     let mouseX = null;
     let mouseY = null;
     const umbrellaRadius = 100; // Radius of the umbrella
@@ -88,35 +88,50 @@
       mouseY = e.clientY;
     }
     
-    // Check if particle hits the umbrella
-    function checkUmbrellaCollision(particle) {
+    // Check if particle will hit the umbrella in next frame
+    function checkUmbrellaCollision(particle, nextX, nextY) {
       if (mouseX === null || mouseY === null) return false;
       
-      const dx = mouseX - particle.x;
-      const dy = mouseY - particle.y;
+      const dx = mouseX - nextX;
+      const dy = mouseY - nextY;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      return distance < umbrellaRadius;
+      // Check if particle would be inside umbrella or just touching it
+      return distance < (umbrellaRadius + particle.size);
     }
     
-    // Redirect particle around the umbrella
-    function redirectParticle(particle) {
+    // Handle collision and redirect particle
+    function handleUmbrellaCollision(particle) {
       if (mouseX === null || mouseY === null) return;
       
+      // Calculate distance to umbrella center
       const dx = mouseX - particle.x;
       const dy = mouseY - particle.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      // Calculate angle to cursor
-      const angle = Math.atan2(dy, dx);
+      // If particle is already inside, push it out
+      if (distance < umbrellaRadius + particle.size) {
+        // Push particle outside umbrella
+        const pushFactor = (umbrellaRadius + particle.size) / distance;
+        particle.x = mouseX - dx * pushFactor;
+        particle.y = mouseY - dy * pushFactor;
+      }
       
-      // Calculate bounce angle (redirect around the umbrella)
-      const bounceAngle = angle + Math.PI; // Opposite direction
+      // Calculate collision normal (direction from collision point)
+      const normal = {
+        x: (particle.x - mouseX) / distance,
+        y: (particle.y - mouseY) / distance
+      };
       
-      // Set new speed to redirect around umbrella
-      const redirectSpeed = 1.0;
-      particle.speedX = Math.cos(bounceAngle) * redirectSpeed;
-      particle.speedY = Math.sin(bounceAngle) * redirectSpeed;
+      // Reflect velocity off umbrella surface
+      const dotProduct = particle.speedX * normal.x + particle.speedY * normal.y;
+      particle.speedX = particle.speedX - 2 * dotProduct * normal.x;
+      particle.speedY = particle.speedY - 2 * dotProduct * normal.y;
+      
+      // Add some bounce intensity to make it feel more solid
+      const bounceIntensity = 1.2;
+      particle.speedX *= bounceIntensity;
+      particle.speedY *= bounceIntensity;
     }
     
     // Draw particles
@@ -124,12 +139,12 @@
       // Complete clear with no trail effect
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Draw umbrella area for visualization (optional)
+      // Draw umbrella area for visualization
       if (mouseX !== null && mouseY !== null) {
         ctx.beginPath();
         ctx.arc(mouseX, mouseY, umbrellaRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 2;
         ctx.stroke();
       }
       
@@ -137,13 +152,18 @@
       for (let i = 0; i < particles.length; i++) {
         let particle = particles[i];
         
-        // Check if particle hits umbrella
-        if (checkUmbrellaCollision(particle)) {
-          redirectParticle(particle);
+        // Calculate next position
+        let nextX = particle.x + particle.speedX;
+        let nextY = particle.y + particle.speedY;
+        
+        // Check for umbrella collision before moving
+        if (checkUmbrellaCollision(particle, nextX, nextY)) {
+          // Handle the collision
+          handleUmbrellaCollision(particle);
         } else {
           // Gradually return to natural movement
-          particle.speedX += (particle.originalSpeedX - particle.speedX) * 0.1;
-          particle.speedY += (particle.originalSpeedY - particle.speedY) * 0.1;
+          particle.speedX += (particle.originalSpeedX - particle.speedX) * 0.05;
+          particle.speedY += (particle.originalSpeedY - particle.speedY) * 0.05;
         }
         
         // Move particle
