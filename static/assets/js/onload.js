@@ -53,7 +53,64 @@ function initiateCloaking() {
     </style>
 </head>
 <body>
-    <iframe class="fullscreen-iframe" src="${window.location.origin}"></iframe>
+    <iframe class="fullscreen-iframe" src="${window.location.origin}/"></iframe>
+    
+    <script>
+        // Intercept all navigation to keep it within about:blank
+        const iframe = document.querySelector('.fullscreen-iframe');
+        
+        iframe.onload = function() {
+            try {
+                const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
+                
+                // Intercept all clicks on links
+                iframeDocument.addEventListener('click', function(e) {
+                    const link = e.target.closest('a');
+                    if (link && link.href) {
+                        // Check if it's a relative link or same origin
+                        const url = new URL(link.href);
+                        const currentOrigin = new URL(iframe.src).origin;
+                        
+                        if (url.origin === currentOrigin || link.href.startsWith('/')) {
+                            e.preventDefault();
+                            iframe.src = link.href;
+                        }
+                        // External links will open normally in about:blank
+                    }
+                });
+                
+                // Intercept form submissions
+                iframeDocument.addEventListener('submit', function(e) {
+                    const form = e.target;
+                    if (form.tagName === 'FORM') {
+                        const url = new URL(form.action || iframe.src);
+                        const currentOrigin = new URL(iframe.src).origin;
+                        
+                        if (url.origin === currentOrigin) {
+                            e.preventDefault();
+                            if (form.method.toLowerCase() === 'get') {
+                                const formData = new FormData(form);
+                                const params = new URLSearchParams(formData);
+                                iframe.src = form.action + '?' + params.toString();
+                            } else {
+                                form.target = iframe.name;
+                                form.submit();
+                            }
+                        }
+                    }
+                });
+            } catch (e) {
+                // Cross-origin restrictions may prevent access
+                console.log('Cross-origin access blocked');
+            }
+        };
+        
+        // Keep navigation within iframe
+        window.addEventListener('popstate', function() {
+            // Prevent back/forward navigation from leaving about:blank
+            history.pushState(null, '', window.location.href);
+        });
+    </script>
 </body>
 </html>`);
         doc.close();
@@ -61,7 +118,7 @@ function initiateCloaking() {
         // Redirect original tab to Google Classroom
         setTimeout(() => {
             window.location.replace("https://classroom.google.com");
-        }, 100);
+        }, 500); // Slightly longer delay to ensure iframe loads
     }
 }
 
