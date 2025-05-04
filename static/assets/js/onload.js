@@ -25,8 +25,43 @@ function initiateCloaking() {
         // Popups are blocked - show permission request
         showPopupPermissionRequest();
     } else {
-        // Popups are allowed - setup cloaking
-        setupCloakedWindow(popup);
+        // Popups are allowed - setup minimal about:blank with iframe
+        const doc = popup.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classes</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+        .fullscreen-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <iframe class="fullscreen-iframe" src="${window.location.origin}"></iframe>
+</body>
+</html>`);
+        doc.close();
+        
+        // Redirect original tab to Google Classroom
+        setTimeout(() => {
+            window.location.replace("https://classroom.google.com");
+        }, 100);
     }
 }
 
@@ -133,42 +168,4 @@ function showPopupPermissionRequest() {
         localStorage.setItem('cloaking', 'false');
         window.location.reload();
     });
-}
-
-function setupCloakedWindow(popup) {
-    const doc = popup.document;
-    
-    // Set title and favicon
-    doc.title = "Classes";
-    
-    // Add favicon
-    const favicon = doc.createElement("link");
-    favicon.rel = "icon";
-    favicon.type = "image/png";
-    favicon.href = "https://ssl.gstatic.com/classroom/favicon.png";
-    doc.head.appendChild(favicon);
-    
-    // Create fullscreen iframe with current URL
-    const iframe = doc.createElement("iframe");
-    iframe.src = window.location.origin;  // Root URL
-    iframe.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        border: none;
-        outline: none;
-        margin: 0;
-        padding: 0;
-    `;
-    
-    // Add iframe to popup
-    doc.body.style.cssText = "margin: 0; padding: 0; overflow: hidden;";
-    doc.body.appendChild(iframe);
-    
-    // Redirect original tab to Google Classroom
-    setTimeout(() => {
-        window.location.replace("https://classroom.google.com");
-    }, 100);
 }
