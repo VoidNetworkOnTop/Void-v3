@@ -1,9 +1,23 @@
-// Ultra simple about:blank cloaking - no navigation interception
+// Ultra simple about:blank cloaking - prevents nested windows
 (function() {
     'use strict';
     
-    // Only run if not already in iframe and cloaking is enabled
-    if (window.self === window.top && localStorage.getItem('cloaking') === 'true') {
+    // Check if we need to apply cloaking
+    function shouldApplyCloaking() {
+        // Don't apply if:
+        // 1. Already in an iframe
+        // 2. URL starts with about:blank (already cloaked)
+        // 3. Cloaking is not enabled
+        if (window.self !== window.top || 
+            window.location.href.startsWith('about:blank') || 
+            localStorage.getItem('cloaking') !== 'true') {
+            return false;
+        }
+        return true;
+    }
+    
+    // Apply cloaking if needed
+    if (shouldApplyCloaking()) {
         const currentUrl = window.location.href;
         const aboutBlankWindow = window.open('about:blank', '_blank');
         
@@ -23,7 +37,11 @@
 </body>
 </html>`);
             aboutBlankWindow.document.close();
-            window.close();
+            
+            // Small delay to ensure the window is ready before closing this one
+            setTimeout(() => {
+                window.close();
+            }, 100);
         }
     }
 })();
