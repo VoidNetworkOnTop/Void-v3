@@ -61,68 +61,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-    
-    // Enhanced About:blank cloaking
-    if (localStorage.getItem('cloaking') === 'true') {
-        // Skip if we're already in an about:blank page
-        if (window.location.href !== 'about:blank') {
-            try {
-                const win = window.open('about:blank', '_blank');
-                if (win) {
-                    // Add the script nodes first
-                    const scripts = document.querySelectorAll('script');
-                    scripts.forEach(script => {
-                        const newScript = win.document.createElement('script');
-                        if (script.src) {
-                            newScript.src = script.src;
-                        } else {
-                            newScript.textContent = script.textContent;
-                        }
-                        win.document.head.appendChild(newScript);
-                    });
-                    
-                    // Copy over stylesheets
-                    const styles = document.querySelectorAll('link[rel="stylesheet"]');
-                    styles.forEach(style => {
-                        const newStyle = win.document.createElement('link');
-                        newStyle.rel = 'stylesheet';
-                        newStyle.href = style.href;
-                        win.document.head.appendChild(newStyle);
-                    });
-                    
-                    // Set title and meta tags
-                    win.document.title = document.title;
-                    const meta = document.querySelectorAll('meta');
-                    meta.forEach(tag => {
-                        const newMeta = win.document.createElement('meta');
-                        Array.from(tag.attributes).forEach(attr => {
-                            newMeta.setAttribute(attr.name, attr.value);
-                        });
-                        win.document.head.appendChild(newMeta);
-                    });
-                    
-                    // Copy the body
-                    win.document.body.innerHTML = document.body.innerHTML;
-                    
-                    // Close original window
-                    setTimeout(() => {
-                        window.location.replace('about:blank');
-                    }, 100);
-                } else {
-                    // Popup blocked - trigger reload to prompt user
-                    if (window !== top && !window.location.href.includes('settings.html')) {
-                        console.log('Popup blocked. Attempting to navigate to settings for guidance.');
-                        window.location.href = '/settings.html';
-                    }
-                }
-            } catch (error) {
-                console.error('Error applying about:blank cloaking:', error);
-                if (window !== top && !window.location.href.includes('settings.html')) {
-                    window.location.href = '/settings.html';
-                }
-            }
-        }
-    }
 });
 
 // Favicon and Title Change Function
