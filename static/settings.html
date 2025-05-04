@@ -353,6 +353,22 @@
     </style>
 
     <script>
+        // Check if we need to auto-enable cloaking on page load
+        function checkAndApplyCloaking() {
+            // Only auto-activate cloaking if not already inside an iframe
+            if (window.self === window.top && localStorage.getItem('cloaking') === 'true') {
+                // Don't show message for automatic activation
+                toggleCloaking(true);
+            }
+        }
+        
+        // Auto-apply cloaking if enabled
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', checkAndApplyCloaking);
+        } else {
+            checkAndApplyCloaking();
+        }
+        
         // Anti-close system
         (function() {
             // Main functions for handling anti-close behavior
@@ -450,12 +466,12 @@
         })();
 
         // Updated cloaking function with popup permission request
-        function toggleCloaking() {
+        function toggleCloaking(autoActivated = false) {
             const currentCloaking = localStorage.getItem('cloaking');
             
             if (currentCloaking === null || currentCloaking === 'false') {
                 // Enable cloaking
-                showMessage("Requesting popup permissions...");
+                if (!autoActivated) showMessage("Requesting popup permissions...");
                 
                 // First, test if we can open popups
                 const testPopup = window.open('', '_blank', 'width=1,height=1');
@@ -466,7 +482,7 @@
                     
                     // Permission granted, proceed with cloaking
                     localStorage.setItem("cloaking", 'true');
-                    showMessage("About:blank cloaking enabled. Opening new window...");
+                    if (!autoActivated) showMessage("About:blank cloaking enabled. Opening new window...");
                     
                     setTimeout(() => {
                         // Get current URL
@@ -477,52 +493,70 @@
                         
                         if (aboutBlankWindow) {
                             // Write the iframe to the about:blank page
-                            aboutBlankWindow.document.write(`
-                                <!DOCTYPE html>
-                                <html>
-                                <head>
-                                    <style>
-                                        * {
-                                            margin: 0;
-                                            padding: 0;
-                                            box-sizing: border-box;
-                                        }
-                                        body, html {
-                                            width: 100%;
-                                            height: 100%;
-                                            overflow: hidden;
-                                        }
-                                        iframe {
-                                            position: fixed;
-                                            top: 0;
-                                            left: 0;
-                                            width: 100%;
-                                            height: 100%;
-                                            border: none;
-                                            overflow: auto;
-                                        }
-                                    </style>
-                                </head>
-                                <body>
-                                    <iframe src="${currentUrl}"></iframe>
-                                </body>
-                                </html>
-                            `);
+                            aboutBlankWindow.document.write('<!DOCTYPE html>' +
+                                '<html>' +
+                                '<head>' +
+                                '<title>New Tab</title>' +
+                                '<style>' +
+                                '* { margin: 0; padding: 0; box-sizing: border-box; }' +
+                                'body, html { width: 100%; height: 100%; overflow: hidden; background: #fff; }' +
+                                'iframe { position: fixed; top: 0; left: 0; width: 100%; height: 100%; border: none; overflow: auto; }' +
+                                '</style>' +
+                                '<script>' +
+                                '// Store reference to iframe' +
+                                'window.siteFrame = null;' +
+                                '' +
+                                '// Navigation handler for links within iframe' +
+                                'window.addEventListener("message", function(e) {' +
+                                '    if (e.data.type === "navigate") {' +
+                                '        if (window.siteFrame) {' +
+                                '            window.siteFrame.src = e.data.url;' +
+                                '        }' +
+                                '    }' +
+                                '});' +
+                                '' +
+                                '// Update title when iframe changes' +
+                                'function updateTitle() {' +
+                                '    try {' +
+                                '        if (window.siteFrame && window.siteFrame.contentDocument) {' +
+                                '            const iframeTitle = window.siteFrame.contentDocument.title;' +
+                                '            if (iframeTitle) {' +
+                                '                document.title = iframeTitle;' +
+                                '            }' +
+                                '        }' +
+                                '    } catch (e) {' +
+                                '        // Cross-origin error, ignore' +
+                                '    }' +
+                                '}' +
+                                '' +
+                                '// Monitor iframe changes' +
+                                'setInterval(updateTitle, 1000);' +
+                                '</script>' +
+                                '</head>' +
+                                '<body>' +
+                                '<iframe id="siteFrame" src="' + currentUrl + '"></iframe>' +
+                                '<script>' +
+                                'window.siteFrame = document.getElementById("siteFrame");' +
+                                '// Initial title update' +
+                                'updateTitle();' +
+                                '</script>' +
+                                '</body>' +
+                                '</html>');
                             
                             // Close this window after creating the about:blank window
                             aboutBlankWindow.document.close();
                             window.close();
                         } else {
-                            showMessage("Failed to open about:blank window. Please check popup settings.", "error");
+                            if (!autoActivated) showMessage("Failed to open about:blank window. Please check popup settings.", "error");
                             localStorage.setItem('cloaking', 'false');
                         }
                     }, 1000);
                 } else {
                     // Popup blocked
-                    showMessage("Popup blocked! Please allow popups from this site and try again.", "error");
-                    
-                    // Show instructions for enabling popups based on browser
-                    showMessage("Enable popups: Click the blocked popup icon in your address bar", "error");
+                    if (!autoActivated) {
+                        showMessage("Popup blocked! Please allow popups from this site and try again.", "error");
+                        showMessage("Enable popups: Click the blocked popup icon in your address bar", "error");
+                    }
                 }
             } else {
                 // Disable cloaking
@@ -533,7 +567,7 @@
 
         function setSearchType(type) {
             localStorage.setItem('searchBackend', type);
-            showMessage(`Search engine set to ${type}`);
+            showMessage('Search engine set to ' + type);
         } 
 
         function addApp() {
@@ -565,7 +599,8 @@
         }
 
         // Show message function
-        function showMessage(message, type = "success") {
+        function showMessage(message, type) {
+            type = type || "success";
             const messageElement = document.getElementById('responseMessage');
             if (!messageElement) return;
             
@@ -578,7 +613,7 @@
                 messageElement.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
             }
             
-            setTimeout(() => {
+            setTimeout(function() {
                 messageElement.className = "response-message";
             }, 3000);
         }
@@ -691,9 +726,80 @@
     <div id="footer"></div>
     
     <script type="module">
+        // Navigation handler for when site is running inside about:blank iframe
+        function setupCloakedNavigation() {
+            // Check if we're inside an iframe
+            if (window.self !== window.top) {
+                // Override all navigation within iframe
+                const originalWindowOpen = window.open;
+                const originalLocationReplace = location.replace;
+                const originalLocationAssign = location.assign;
+                const originalLocationHref = location.href;
+                
+                // Override window.open to navigate within same tab
+                window.open = function(url, target, features) {
+                    if (target === '_blank' || target === '_top' || !target) {
+                        // Send message to parent to navigate
+                        window.parent.postMessage({
+                            type: 'navigate',
+                            url: url
+                        }, '*');
+                        return null;
+                    }
+                    return originalWindowOpen.call(window, url, target, features);
+                };
+                
+                // Override location methods
+                location.replace = function(url) {
+                    window.parent.postMessage({
+                        type: 'navigate',
+                        url: url
+                    }, '*');
+                };
+                
+                location.assign = function(url) {
+                    window.parent.postMessage({
+                        type: 'navigate',
+                        url: url
+                    }, '*');
+                };
+                
+                // Override href setting
+                Object.defineProperty(location, 'href', {
+                    get: function() {
+                        return originalLocationHref;
+                    },
+                    set: function(url) {
+                        window.parent.postMessage({
+                            type: 'navigate',
+                            url: url
+                        }, '*');
+                    }
+                });
+                
+                // Intercept all link clicks
+                document.addEventListener('click', function(e) {
+                    const link = e.target.closest('a');
+                    if (link && link.href) {
+                        // Check if link should open in new tab/window
+                        if (link.target === '_blank' || link.target === '_top' || e.ctrlKey || e.metaKey || e.button === 1) {
+                            e.preventDefault();
+                            window.parent.postMessage({
+                                type: 'navigate',
+                                url: link.href
+                            }, '*');
+                        }
+                    }
+                }, true);
+            }
+        }
+        
         // Load header and footer
         loadHTML("/assets/html/header.html", "header"),
         loadHTML("/assets/html/footer.html", "footer")
+        
+        // Initialize cloaked navigation
+        setupCloakedNavigation();
         
         // Window load handler
         window.onload = function() {
