@@ -2,8 +2,27 @@
 (function() {
     'use strict';
     
-    // Only run if not already in iframe and cloaking is enabled
-    if (window.self === window.top && localStorage.getItem('cloaking') === 'true') {
+    // Only run if we should apply cloaking
+    function shouldApplyCloaking() {
+        // Don't apply if:
+        // 1. Already in an iframe
+        // 2. URL starts with about:blank (already cloaked)
+        // 3. Cloaking is not enabled
+        // 4. Already processed (prevent multiple runs)
+        if (window.self !== window.top || 
+            window.location.href.startsWith('about:blank') || 
+            localStorage.getItem('cloaking') !== 'true' ||
+            sessionStorage.getItem('cloaking_processed') === 'true') {
+            return false;
+        }
+        
+        // Mark as processed for this session
+        sessionStorage.setItem('cloaking_processed', 'true');
+        return true;
+    }
+    
+    // Apply cloaking if needed
+    if (shouldApplyCloaking()) {
         // Get the root URL (protocol + domain)
         const rootUrl = window.location.origin;
         
