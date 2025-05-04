@@ -39,7 +39,7 @@
     const baseOpacity = 0.3;
     const floatSpeedMin = 1.5; // Much faster upward movement
     const floatSpeedMax = 3.0;
-    const horizontalDrift = 0.4; // More horizontal movement
+    const horizontalDrift = 0.8; // Maximum horizontal movement for diagonal effect
     
     // Array to store particles
     let particles = [];
@@ -65,12 +65,12 @@
           y: canvas.height - Math.random() * 50, // Start near bottom
           size: size,
           opacity: opacity,
-          // Upward movement with random speed and direction
+          // More varied diagonal movement
           speedY: -(floatSpeedMin + Math.random() * (floatSpeedMax - floatSpeedMin)),
-          speedX: (Math.random() - 0.5) * horizontalDrift,
+          speedX: (Math.random() - 0.5) * horizontalDrift * 2, // Double horizontal variation
           // Original speed for return to natural movement
           originalSpeedY: -(floatSpeedMin + Math.random() * (floatSpeedMax - floatSpeedMin)),
-          originalSpeedX: (Math.random() - 0.5) * horizontalDrift,
+          originalSpeedX: (Math.random() - 0.5) * horizontalDrift * 2,
           // Each particle gets a slight blur effect for smoother appearance
           blur: Math.random() * 2
         });
@@ -139,14 +139,7 @@
       // Complete clear with no trail effect
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Draw umbrella area for visualization
-      if (mouseX !== null && mouseY !== null) {
-        ctx.beginPath();
-        ctx.arc(mouseX, mouseY, umbrellaRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
+      // Umbrella is now invisible - no visualization
       
       // Update and draw each particle
       for (let i = 0; i < particles.length; i++) {
