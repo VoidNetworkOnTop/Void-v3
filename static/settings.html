@@ -16,15 +16,288 @@
     <!-- Stylesheets -->
     <link rel="stylesheet" href="/assets/css/styles.css">
     
-    <!-- Scripts -->
-    <script src="/config.js"></script>
-    <script src="/global.js"></script>
-    <script src="uv/uv.bundle.js"></script>
-    <script src="uv/uv.config.js"></script>
-    <script src="/assets/js/favicon-handler.js"></script>
-    <script src="/assets/js/ads.js"></script>
-    <script src="/assets/js/particles.js"></script>
+    <!-- Scripts in correct order -->
+    <script>// Check if we need to auto-enable cloaking on page load
+function checkAndApplyCloaking() {
+    // Only auto-activate cloaking if not already inside an iframe
+    if (window.self === window.top && localStorage.getItem('cloaking') === 'true') {
+        // Don't show message for automatic activation
+        toggleCloaking(true);
+    }
+}
 
+// Auto-apply cloaking if enabled
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checkAndApplyCloaking);
+} else {
+    checkAndApplyCloaking();
+}
+
+// Anti-close system
+(function() {
+    // Main functions for handling anti-close behavior
+    function setupAntiClose() {
+        window.addEventListener('beforeunload', showWarning);
+        updateActiveState(true);
+    }
+
+    function removeAntiClose() {
+        window.removeEventListener('beforeunload', showWarning);
+        updateActiveState(false);
+    }
+
+    function showWarning(e) {
+        // Don't show warning for redirects or if system is disabled
+        if (!e.target.location.href.includes("redirect") && localStorage.getItem('anticlose') === 'true') {
+            e.preventDefault();
+            e.returnValue = 'Leave site? Changes you made may not be saved.';
+            return e.returnValue;
+        }
+    }
+
+    // Update active state and handle UI if present
+    function updateActiveState(isActive) {
+        // Update checkbox if it exists on the current page
+        const checkbox = document.getElementById('cbox_anticlose');
+        if (checkbox) {
+            checkbox.checked = isActive;
+        }
+    }
+
+    // Initialize anti-close system
+    function initAntiClose() {
+        // Check if anti-close is enabled in localStorage
+        const isEnabled = localStorage.getItem('anticlose') === 'true';
+        
+        // Set up initial state
+        if (isEnabled) {
+            setupAntiClose();
+        } else if (localStorage.getItem('anticlose') === null) {
+            // First time initialization
+            localStorage.setItem('anticlose', 'false');
+        }
+
+        // Update UI to match current state
+        updateActiveState(isEnabled);
+    }
+
+    // Toggle function for the anti-close feature
+    window.toggleAntiClose = function() {
+        const currentState = localStorage.getItem('anticlose');
+        
+        if (currentState === null || currentState === 'false') {
+            localStorage.setItem('anticlose', 'true');
+            setupAntiClose();
+            showMessage("Anti-close enabled");
+            // Notify other tabs
+            window.dispatchEvent(new StorageEvent('storage', {
+                key: 'anticlose',
+                newValue: 'true',
+                oldValue: currentState,
+                storageArea: localStorage
+            }));
+        } else {
+            localStorage.setItem('anticlose', 'false');
+            removeAntiClose();
+            showMessage("Anti-close disabled");
+            // Notify other tabs
+            window.dispatchEvent(new StorageEvent('storage', {
+                key: 'anticlose',
+                newValue: 'false',
+                oldValue: currentState,
+                storageArea: localStorage
+            }));
+        }
+    };
+
+    // Listen for changes from other tabs/windows
+    window.addEventListener('storage', function(e) {
+        if (e.key === 'anticlose') {
+            if (e.newValue === 'true') {
+                setupAntiClose();
+            } else {
+                removeAntiClose();
+            }
+        }
+    });
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAntiClose);
+    } else {
+        initAntiClose();
+    }
+})();
+
+// Updated cloaking function with popup permission request
+function toggleCloaking(autoActivated = false) {
+    const currentCloaking = localStorage.getItem('cloaking');
+    
+    if (currentCloaking === null || currentCloaking === 'false') {
+        // Enable cloaking
+        if (!autoActivated) showMessage("Requesting popup permissions...");
+        
+        // First, test if we can open popups
+        const testPopup = window.open('', '_blank', 'width=1,height=1');
+        
+        if (testPopup) {
+            // Close the test popup immediately
+            testPopup.close();
+            
+            // Permission granted, proceed with cloaking
+            localStorage.setItem("cloaking", 'true');
+            if (!autoActivated) showMessage("About:blank cloaking enabled. Opening new window...");
+            
+            setTimeout(() => {
+                // Get current URL
+                const currentUrl = window.location.href;
+                
+                // Create about:blank window
+                const aboutBlankWindow = window.open('about:blank', '_blank');
+                
+                if (aboutBlankWindow) {
+                    // Create HTML for about:blank window
+                    const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+    <title>New Tab</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #fff; }
+        iframe { position: fixed; top: 0; left: 0; width: 100%; height: 100%; border: none; overflow: auto; }
+    </style>
+</head>
+<body>
+    <iframe id="siteFrame" src="${currentUrl}"></iframe>
+    <script>
+        // Store reference to iframe
+        window.siteFrame = document.getElementById('siteFrame');
+        
+        // Navigation handler for links within iframe
+        window.addEventListener('message', function(e) {
+            if (e.data.type === 'navigate') {
+                if (window.siteFrame) {
+                    window.siteFrame.src = e.data.url;
+                }
+            }
+        });
+        
+        // Update title when iframe changes
+        function updateTitle() {
+            try {
+                if (window.siteFrame && window.siteFrame.contentDocument) {
+                    const iframeTitle = window.siteFrame.contentDocument.title;
+                    if (iframeTitle) {
+                        document.title = iframeTitle;
+                    }
+                }
+            } catch (e) {
+                // Cross-origin error, ignore
+            }
+        }
+        
+        // Monitor iframe changes
+        setInterval(updateTitle, 1000);
+        
+        // Initial title update
+        updateTitle();
+    </script>
+</body>
+</html>`;
+                    
+                    // Write to about:blank window
+                    aboutBlankWindow.document.open();
+                    aboutBlankWindow.document.write(htmlContent);
+                    aboutBlankWindow.document.close();
+                    
+                    // Close this window after creating the about:blank window
+                    window.close();
+                } else {
+                    if (!autoActivated) showMessage("Failed to open about:blank window. Please check popup settings.", "error");
+                    localStorage.setItem('cloaking', 'false');
+                }
+            }, 1000);
+        } else {
+            // Popup blocked
+            if (!autoActivated) {
+                showMessage("Popup blocked! Please allow popups from this site and try again.", "error");
+                showMessage("Enable popups: Click the blocked popup icon in your address bar", "error");
+            }
+        }
+    } else {
+        // Disable cloaking
+        localStorage.setItem('cloaking', 'false');
+        showMessage("About:blank cloaking disabled");
+    }
+}
+
+function setSearchType(type) {
+    localStorage.setItem('searchBackend', type);
+    showMessage('Search engine set to ' + type);
+} 
+
+function addApp() {
+    if (localStorage.getItem('apps') == null) {
+        showMessage("Please load apps properly first", "error");
+        return;
+    }
+    
+    try {
+        const appsData = JSON.parse(localStorage.getItem("apps"));
+        const newApp = {
+            title: prompt("Title?"),
+            imgSrc: prompt("Image?"),
+            link: prompt("Link?")
+        };
+        
+        if (!newApp.title || !newApp.link) {
+            showMessage("App creation cancelled", "error");
+            return;
+        }
+        
+        newApp.link = __uv$config.prefix + __uv$config.encodeUrl(newApp.link);
+        appsData.push(newApp);
+        localStorage.setItem("apps", JSON.stringify(appsData));
+        showMessage("App added successfully");
+    } catch (error) {
+        showMessage("Error adding app: " + error.message, "error");
+    }
+}
+
+// Show message function
+function showMessage(message, type) {
+    type = type || "success";
+    const messageElement = document.getElementById('responseMessage');
+    if (!messageElement) return;
+    
+    messageElement.textContent = message;
+    messageElement.className = "response-message show";
+    
+    if (type === "error") {
+        messageElement.style.backgroundColor = "rgba(220, 53, 69, 0.8)";
+    } else {
+        messageElement.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
+    }
+    
+    setTimeout(function() {
+        messageElement.className = "response-message";
+    }, 3000);
+}
+
+// Make loadHTML function available globally
+if (typeof loadHTML !== 'function') {
+    window.loadHTML = function(url, elementId) {
+        fetch(url)
+            .then(response => response.text())
+            .then(data => {
+                document.getElementById(elementId).innerHTML = data;
+            })
+            .catch(error => {
+                console.error('Error loading', url, ':', error);
+            });
+    };
+}</script>
+    
     <!-- Settings Styles -->
     <style>
         /* Header and Footer styles */
@@ -351,273 +624,6 @@
             }
         }
     </style>
-
-    <script>
-        // Check if we need to auto-enable cloaking on page load
-        function checkAndApplyCloaking() {
-            // Only auto-activate cloaking if not already inside an iframe
-            if (window.self === window.top && localStorage.getItem('cloaking') === 'true') {
-                // Don't show message for automatic activation
-                toggleCloaking(true);
-            }
-        }
-        
-        // Auto-apply cloaking if enabled
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', checkAndApplyCloaking);
-        } else {
-            checkAndApplyCloaking();
-        }
-        
-        // Anti-close system
-        (function() {
-            // Main functions for handling anti-close behavior
-            function setupAntiClose() {
-                window.addEventListener('beforeunload', showWarning);
-                updateActiveState(true);
-            }
-
-            function removeAntiClose() {
-                window.removeEventListener('beforeunload', showWarning);
-                updateActiveState(false);
-            }
-
-            function showWarning(e) {
-                // Don't show warning for redirects or if system is disabled
-                if (!e.target.location.href.includes("redirect") && localStorage.getItem('anticlose') === 'true') {
-                    e.preventDefault();
-                    e.returnValue = 'Leave site? Changes you made may not be saved.';
-                    return e.returnValue;
-                }
-            }
-
-            // Update active state and handle UI if present
-            function updateActiveState(isActive) {
-                // Update checkbox if it exists on the current page
-                const checkbox = document.getElementById('cbox_anticlose');
-                if (checkbox) {
-                    checkbox.checked = isActive;
-                }
-            }
-
-            // Initialize anti-close system
-            function initAntiClose() {
-                // Check if anti-close is enabled in localStorage
-                const isEnabled = localStorage.getItem('anticlose') === 'true';
-                
-                // Set up initial state
-                if (isEnabled) {
-                    setupAntiClose();
-                } else if (localStorage.getItem('anticlose') === null) {
-                    // First time initialization
-                    localStorage.setItem('anticlose', 'false');
-                }
-
-                // Update UI to match current state
-                updateActiveState(isEnabled);
-            }
-
-            // Toggle function for the anti-close feature
-            window.toggleAntiClose = function() {
-                const currentState = localStorage.getItem('anticlose');
-                
-                if (currentState === null || currentState === 'false') {
-                    localStorage.setItem('anticlose', 'true');
-                    setupAntiClose();
-                    showMessage("Anti-close enabled");
-                    // Notify other tabs
-                    window.dispatchEvent(new StorageEvent('storage', {
-                        key: 'anticlose',
-                        newValue: 'true',
-                        oldValue: currentState,
-                        storageArea: localStorage
-                    }));
-                } else {
-                    localStorage.setItem('anticlose', 'false');
-                    removeAntiClose();
-                    showMessage("Anti-close disabled");
-                    // Notify other tabs
-                    window.dispatchEvent(new StorageEvent('storage', {
-                        key: 'anticlose',
-                        newValue: 'false',
-                        oldValue: currentState,
-                        storageArea: localStorage
-                    }));
-                }
-            };
-
-            // Listen for changes from other tabs/windows
-            window.addEventListener('storage', function(e) {
-                if (e.key === 'anticlose') {
-                    if (e.newValue === 'true') {
-                        setupAntiClose();
-                    } else {
-                        removeAntiClose();
-                    }
-                }
-            });
-
-            // Initialize when DOM is ready
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', initAntiClose);
-            } else {
-                initAntiClose();
-            }
-        })();
-
-        // Updated cloaking function with popup permission request
-        function toggleCloaking(autoActivated = false) {
-            const currentCloaking = localStorage.getItem('cloaking');
-            
-            if (currentCloaking === null || currentCloaking === 'false') {
-                // Enable cloaking
-                if (!autoActivated) showMessage("Requesting popup permissions...");
-                
-                // First, test if we can open popups
-                const testPopup = window.open('', '_blank', 'width=1,height=1');
-                
-                if (testPopup) {
-                    // Close the test popup immediately
-                    testPopup.close();
-                    
-                    // Permission granted, proceed with cloaking
-                    localStorage.setItem("cloaking", 'true');
-                    if (!autoActivated) showMessage("About:blank cloaking enabled. Opening new window...");
-                    
-                    setTimeout(() => {
-                        // Get current URL
-                        const currentUrl = window.location.href;
-                        
-                        // Create about:blank window
-                        const aboutBlankWindow = window.open('about:blank', '_blank');
-                        
-                        if (aboutBlankWindow) {
-                            // Write the iframe to the about:blank page
-                            aboutBlankWindow.document.write('<!DOCTYPE html>' +
-                                '<html>' +
-                                '<head>' +
-                                '<title>New Tab</title>' +
-                                '<style>' +
-                                '* { margin: 0; padding: 0; box-sizing: border-box; }' +
-                                'body, html { width: 100%; height: 100%; overflow: hidden; background: #fff; }' +
-                                'iframe { position: fixed; top: 0; left: 0; width: 100%; height: 100%; border: none; overflow: auto; }' +
-                                '</style>' +
-                                '<script>' +
-                                '// Store reference to iframe' +
-                                'window.siteFrame = null;' +
-                                '' +
-                                '// Navigation handler for links within iframe' +
-                                'window.addEventListener("message", function(e) {' +
-                                '    if (e.data.type === "navigate") {' +
-                                '        if (window.siteFrame) {' +
-                                '            window.siteFrame.src = e.data.url;' +
-                                '        }' +
-                                '    }' +
-                                '});' +
-                                '' +
-                                '// Update title when iframe changes' +
-                                'function updateTitle() {' +
-                                '    try {' +
-                                '        if (window.siteFrame && window.siteFrame.contentDocument) {' +
-                                '            const iframeTitle = window.siteFrame.contentDocument.title;' +
-                                '            if (iframeTitle) {' +
-                                '                document.title = iframeTitle;' +
-                                '            }' +
-                                '        }' +
-                                '    } catch (e) {' +
-                                '        // Cross-origin error, ignore' +
-                                '    }' +
-                                '}' +
-                                '' +
-                                '// Monitor iframe changes' +
-                                'setInterval(updateTitle, 1000);' +
-                                '</script>' +
-                                '</head>' +
-                                '<body>' +
-                                '<iframe id="siteFrame" src="' + currentUrl + '"></iframe>' +
-                                '<script>' +
-                                'window.siteFrame = document.getElementById("siteFrame");' +
-                                '// Initial title update' +
-                                'updateTitle();' +
-                                '</script>' +
-                                '</body>' +
-                                '</html>');
-                            
-                            // Close this window after creating the about:blank window
-                            aboutBlankWindow.document.close();
-                            window.close();
-                        } else {
-                            if (!autoActivated) showMessage("Failed to open about:blank window. Please check popup settings.", "error");
-                            localStorage.setItem('cloaking', 'false');
-                        }
-                    }, 1000);
-                } else {
-                    // Popup blocked
-                    if (!autoActivated) {
-                        showMessage("Popup blocked! Please allow popups from this site and try again.", "error");
-                        showMessage("Enable popups: Click the blocked popup icon in your address bar", "error");
-                    }
-                }
-            } else {
-                // Disable cloaking
-                localStorage.setItem('cloaking', 'false');
-                showMessage("About:blank cloaking disabled");
-            }
-        }
-
-        function setSearchType(type) {
-            localStorage.setItem('searchBackend', type);
-            showMessage('Search engine set to ' + type);
-        } 
-
-        function addApp() {
-            if (localStorage.getItem('apps') == null) {
-                showMessage("Please load apps properly first", "error");
-                return;
-            }
-            
-            try {
-                const appsData = JSON.parse(localStorage.getItem("apps"));
-                const newApp = {
-                    title: prompt("Title?"),
-                    imgSrc: prompt("Image?"),
-                    link: prompt("Link?")
-                };
-                
-                if (!newApp.title || !newApp.link) {
-                    showMessage("App creation cancelled", "error");
-                    return;
-                }
-                
-                newApp.link = __uv$config.prefix + __uv$config.encodeUrl(newApp.link);
-                appsData.push(newApp);
-                localStorage.setItem("apps", JSON.stringify(appsData));
-                showMessage("App added successfully");
-            } catch (error) {
-                showMessage("Error adding app: " + error.message, "error");
-            }
-        }
-
-        // Show message function
-        function showMessage(message, type) {
-            type = type || "success";
-            const messageElement = document.getElementById('responseMessage');
-            if (!messageElement) return;
-            
-            messageElement.textContent = message;
-            messageElement.className = "response-message show";
-            
-            if (type === "error") {
-                messageElement.style.backgroundColor = "rgba(220, 53, 69, 0.8)";
-            } else {
-                messageElement.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
-            }
-            
-            setTimeout(function() {
-                messageElement.className = "response-message";
-            }, 3000);
-        }
-    </script>
 </head>
 <body>
     <div id="header"></div>
@@ -725,81 +731,89 @@
     
     <div id="footer"></div>
     
-    <script type="module">
-        // Navigation handler for when site is running inside about:blank iframe
-        function setupCloakedNavigation() {
-            // Check if we're inside an iframe
-            if (window.self !== window.top) {
-                // Override all navigation within iframe
-                const originalWindowOpen = window.open;
-                const originalLocationReplace = location.replace;
-                const originalLocationAssign = location.assign;
-                const originalLocationHref = location.href;
-                
-                // Override window.open to navigate within same tab
-                window.open = function(url, target, features) {
-                    if (target === '_blank' || target === '_top' || !target) {
-                        // Send message to parent to navigate
-                        window.parent.postMessage({
-                            type: 'navigate',
-                            url: url
-                        }, '*');
-                        return null;
-                    }
-                    return originalWindowOpen.call(window, url, target, features);
-                };
-                
-                // Override location methods
-                location.replace = function(url) {
-                    window.parent.postMessage({
-                        type: 'navigate',
-                        url: url
-                    }, '*');
-                };
-                
-                location.assign = function(url) {
-                    window.parent.postMessage({
-                        type: 'navigate',
-                        url: url
-                    }, '*');
-                };
-                
-                // Override href setting
-                Object.defineProperty(location, 'href', {
-                    get: function() {
-                        return originalLocationHref;
-                    },
-                    set: function(url) {
-                        window.parent.postMessage({
-                            type: 'navigate',
-                            url: url
-                        }, '*');
-                    }
-                });
-                
-                // Intercept all link clicks
-                document.addEventListener('click', function(e) {
-                    const link = e.target.closest('a');
-                    if (link && link.href) {
-                        // Check if link should open in new tab/window
-                        if (link.target === '_blank' || link.target === '_top' || e.ctrlKey || e.metaKey || e.button === 1) {
-                            e.preventDefault();
-                            window.parent.postMessage({
-                                type: 'navigate',
-                                url: link.href
-                            }, '*');
-                        }
-                    }
-                }, true);
-            }
+    <!-- Load other scripts after all critical functions are defined -->
+    
+    <script src="/global.js" defer></script>
+    <script src="/config.js" defer></script>
+    <script src="uv/uv.bundle.js" defer></script>
+    <script src="uv/uv.config.js" defer></script>
+    <script src="/assets/js/favicon-handler.js" defer></script>
+    <script src="/assets/js/ads.js" defer></script>
+    <script src="/assets/js/particles.js" defer></script>
+    
+    <script>
+    // Navigation handler and header/footer loader
+    document.addEventListener('DOMContentLoaded', function() {
+        // Ensure loadHTML is available
+        if (typeof loadHTML === 'function') {
+            loadHTML("/assets/html/header.html", "header");
+            loadHTML("/assets/html/footer.html", "footer");
         }
         
-        // Load header and footer
-        loadHTML("/assets/html/header.html", "header"),
-        loadHTML("/assets/html/footer.html", "footer")
-        
-        // Initialize cloaked navigation
-        setupCloakedNavigation();
+        // Setup cloaked navigation if inside iframe
+        if (window.self !== window.top) {
+            // Override all navigation within iframe
+            const originalWindowOpen = window.open;
+            const originalLocationReplace = location.replace;
+            const originalLocationAssign = location.assign;
+            const originalLocationHref = location.href;
+            
+            // Override window.open to navigate within same tab
+            window.open = function(url, target, features) {
+                if (target === '_blank' || target === '_top' || !target) {
+                    // Send message to parent to navigate
+                    window.parent.postMessage({
+                        type: 'navigate',
+                        url: url
+                    }, '*');
+                    return null;
+                }
+                return originalWindowOpen.call(window, url, target, features);
+            };
+            
+            // Override location methods
+            location.replace = function(url) {
+                window.parent.postMessage({
+                    type: 'navigate',
+                    url: url
+                }, '*');
+            };
+            
+            location.assign = function(url) {
+                window.parent.postMessage({
+                    type: 'navigate',
+                    url: url
+                }, '*');
+            };
+            
+            // Override href setting
+            Object.defineProperty(location, 'href', {
+                get: function() {
+                    return originalLocationHref;
+                },
+                set: function(url) {
+                    window.parent.postMessage({
+                        type: 'navigate',
+                        url: url
+                    }, '*');
+                }
+            });
+            
+            // Intercept all link clicks
+            document.addEventListener('click', function(e) {
+                const link = e.target.closest('a');
+                if (link && link.href) {
+                    // Check if link should open in new tab/window
+                    if (link.target === '_blank' || link.target === '_top' || e.ctrlKey || e.metaKey || e.button === 1) {
+                        e.preventDefault();
+                        window.parent.postMessage({
+                            type: 'navigate',
+                            url: link.href
+                        }, '*');
+                    }
+                }
+            }, true);
+        }
         
         // Window load handler
         window.onload = function() {
@@ -814,6 +828,7 @@
             const searchType = localStorage.getItem('searchBackend') || 'UV';
             document.getElementById('currentSearchEngine').textContent = searchType;
         }
+    });
     </script>
 </body>
 </html>
