@@ -16,7 +16,7 @@ const CONFIG = {
   MAX_RETRIES: 4,            // Increased from 3
   RETRY_DELAY: 1200,         // Increased from 800ms
   RETRY_BACKOFF: 1.5,        // Add exponential backoff
-  MAX_CONCURRENT_REQUESTS: 8, // Limit concurrent requests
+  MAX_CONCURRENT_REQUESTS: 12, // Limit concurrent requests
   LOG_LEVEL: 'debug'         // Keep debug logging for now
 };
 
@@ -765,11 +765,12 @@ function createErrorResponse(err) {
                          err.message.includes('blocked') ||
                          err.message.includes('security');
   
-  let errorType = "Unknown Error";
-  let errorDetails = "";
+  let errorType = "Game Load Error";
+  let errorDetails = "There was a problem loading the game";
   let troubleshootingSteps = [
     "Try refreshing the page",
-    "Check your internet connection"
+    "Check your internet connection",
+    "Try a different game"
   ];
   
   if (isConnectivityIssue) {
