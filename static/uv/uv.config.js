@@ -19,10 +19,7 @@ const xor = {
       return result + (search.length ? "?" + search.join("?") : "");
     },
 };
-
-
 /*global Ultraviolet*/
-
 self.__uv$config = {
     prefix: '/uv/service/',
     bare: '/bare/',
@@ -33,4 +30,14 @@ self.__uv$config = {
     bundle: '/uv/uv.bundle.js',
     config: '/uv/uv.config.js',
     sw: '/uv/uv.sw.js',
+    
+    // Add these important settings for game loading
+    timeout: 60000,       // Increase timeout to 60 seconds for slow-loading games
+    strict: false,        // Disable strict mode for better compatibility
+    rewriteUrl: false,    // Let URLs pass through more naturally (helps with games)
+    cookies: true,        // Enable cookies for better game state persistence
+    safeMethod: false,    // Allow all HTTP methods for better game API compatibility
+    chunked: true,        // Enable chunked transfers for large game assets
+    abuseLevel: 0,        // Lowest abuse protection level for better performance
+    worker: true          // Use worker mode when possible for better performance
 };
