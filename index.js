@@ -6,7 +6,7 @@ const app = express();
 const bare = createBareServer("/bare/");
 const server = http.createServer();
 const dirname = process.cwd();
-const PORT = 8081;
+const PORT = 8080;
 app.use(express.static("img")) // IMGS GET PROIRITY BI
 app.get("/ga", function (req, res) {
   res.sendFile(path.join(dirname, "static/games.html"));
