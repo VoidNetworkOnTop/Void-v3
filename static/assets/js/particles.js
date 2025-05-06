@@ -72,7 +72,8 @@
           originalSpeedY: -(floatSpeedMin + Math.random() * (floatSpeedMax - floatSpeedMin)),
           originalSpeedX: (Math.random() - 0.5) * horizontalDrift * 2,
           // Each particle gets a slight blur effect for smoother appearance
-          blur: Math.random() * 2
+          blur: Math.random() * 2,
+          isSpecialRed: false // Flag for normal particles
         });
       }
       console.log("Upward Particles: Created", particles.length, "particles");
@@ -90,6 +91,9 @@
     
     // Check if particle will hit the umbrella in next frame
     function checkUmbrellaCollision(particle, nextX, nextY) {
+      // Special red particles ignore umbrella
+      if (particle.isSpecialRed) return false;
+      
       if (mouseX === null || mouseY === null) return false;
       
       const dx = mouseX - nextX;
@@ -134,6 +138,81 @@
       particle.speedY *= bounceIntensity;
     }
     
+    // ======== SPECIAL RED PARTICLE FEATURE - START ========
+    // This section adds a special red particle that appears randomly once per hour
+    // and is immune to the umbrella effect. Can be removed if not needed.
+    
+    // Variables for special red particle
+    let hasSpecialRedParticle = false;
+    let specialRedParticleTimer = null;
+    
+    // Function to spawn a special red particle
+    function spawnSpecialRedParticle() {
+      // Only spawn if there isn't already a special red particle
+      if (!hasSpecialRedParticle) {
+        console.log("Special red particle spawned");
+        
+        // Create the special red particle
+        const size = maxSize * 1.5; // Make it a bit larger
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: canvas.height, // Start at the bottom
+          size: size,
+          opacity: 0.8, // Higher opacity
+          // Slower upward movement
+          speedY: -(floatSpeedMin * 0.6),
+          speedX: (Math.random() - 0.5) * horizontalDrift,
+          // Original speed for reference
+          originalSpeedY: -(floatSpeedMin * 0.6),
+          originalSpeedX: (Math.random() - 0.5) * horizontalDrift,
+          blur: 3, // More glow
+          isSpecialRed: true // Flag for special particle
+        });
+        
+        hasSpecialRedParticle = true;
+      }
+    }
+    
+    // Function to check if special particles are still visible
+    function checkSpecialRedParticle() {
+      // Look through all particles
+      for (let i = 0; i < particles.length; i++) {
+        if (particles[i].isSpecialRed && particles[i].y < 0) {
+          // Red particle has left the screen
+          particles.splice(i, 1);
+          hasSpecialRedParticle = false;
+          break;
+        }
+      }
+    }
+    
+    // Start the hourly timer for spawning the special red particle
+    function startSpecialRedParticleTimer() {
+      // Clear any existing timer
+      if (specialRedParticleTimer) {
+        clearInterval(specialRedParticleTimer);
+      }
+      
+      // Set timer to spawn a red particle every hour (3600000 ms)
+      specialRedParticleTimer = setInterval(() => {
+        spawnSpecialRedParticle();
+      }, 3600000); // Every hour
+    }
+    
+    // Add console command for testing
+    window.spawnRedParticle = function() {
+      spawnSpecialRedParticle();
+      return "Red particle spawned. Try moving your cursor near it - it won't be affected!";
+    };
+    
+    // Start the timer
+    startSpecialRedParticleTimer();
+    
+    // For testing purposes, spawn one right away
+    setTimeout(spawnSpecialRedParticle, 5000); // Spawn first one after 5 seconds
+    
+    // ======== SPECIAL RED PARTICLE FEATURE - END ========
+    
     // Draw particles
     function drawParticles() {
       // Complete clear with no trail effect
@@ -165,11 +244,15 @@
         
         // Wrap around when particle reaches top - respawn at bottom
         if (particle.y < 0) {
-          particle.y = canvas.height;
-          particle.x = Math.random() * canvas.width;
-          // Reset to original speed
-          particle.speedX = particle.originalSpeedX;
-          particle.speedY = particle.originalSpeedY;
+          // For regular particles only
+          if (!particle.isSpecialRed) {
+            particle.y = canvas.height;
+            particle.x = Math.random() * canvas.width;
+            // Reset to original speed
+            particle.speedX = particle.originalSpeedX;
+            particle.speedY = particle.originalSpeedY;
+          } 
+          // Special red particles will be cleaned up by checkSpecialRedParticle
         }
         
         // Wrap around sides too
@@ -179,15 +262,22 @@
           particle.x = 0;
         }
         
-        // Draw particles with consistent opacity
-        ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
+        // Choose color based on particle type
+        if (particle.isSpecialRed) {
+          // Red particle has a reddish glow
+          ctx.fillStyle = `rgba(255, 50, 50, ${particle.opacity})`;
+          ctx.shadowColor = 'rgba(255, 0, 0, 0.8)';
+        } else {
+          // Regular white particles
+          ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
+          ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+        }
         
         // Draw particle as a soft circle with slight blur for smoothness
         ctx.beginPath();
         
         // Use shadow blur for softer dots
         ctx.shadowBlur = particle.blur;
-        ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
         
         // Draw the dot
         ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
@@ -196,6 +286,9 @@
         // Reset shadow for better performance
         ctx.shadowBlur = 0;
       }
+      
+      // Check if the special red particle needs cleanup
+      checkSpecialRedParticle();
       
       // Request next animation frame
       requestAnimationFrame(drawParticles);
@@ -215,5 +308,6 @@
     window.addEventListener('mousemove', handleMouseMove);
     
     console.log("Upward Particles: Animation started");
+    console.log("Use 'spawnRedParticle()' in the console to spawn a special red particle for testing");
   }
 })();
