@@ -66,5 +66,4 @@
     isInArrowSequence = true;
   }
   
-  console.log('Konami Code script loaded. Enter: ↑↑↓↓←→←→BA to proceed...');
 })();
