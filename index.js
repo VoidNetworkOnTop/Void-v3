@@ -39,4 +39,4 @@ app.use(express.static(path.join(dirname, "static")));
 app.get('*', function(req, res) {res.sendFile(path.join(dirname, "static/404.html"))})
 server.on("request", (req, res) => {
 if (bare.shouldRoute(req)) {bare.routeRequest(req, res)} else {app(req, res)}})
-server.listen({port: PORT}, () => {console.log("listening on port " + PORT)})
+server.listen({port: PORT, host: '0.0.0.0'}, () => {console.log("listening on port " + PORT + " (IPv4 and IPv6)")})
