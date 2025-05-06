@@ -290,7 +290,7 @@ const games2Data = [
     link: __uv$config.prefix + __uv$config.encodeUrl("https://space-waves.co/game/space-wave/")
 },
 {
-    title: "Super Liquid Soccer", 
+    title: "Super Liquid Soccerr", 
     imgSrc: "https://lh7-us.googleusercontent.com/9awxqJ3gZ5kMMU1p7v_tjBIuNU_Q3g0a7xnhupHxXDFkjYs6whvHj3z1tR3NLg3NnY7GQWvx1mJLy_3dxgFf2vo-YFrs2FSNA2frDBEKha2rbdpW9hjVoKOQfCjqCwPySig7z2sFPXXU8NmpW2UNS6EgFDo31XmPiwcMJnsHiBNKXLbo5afZinH9X6JfD4auC-qLzFkP?key=yj4V8pHW144VjA9YlEbf1Q",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://superliquidsoccer.gitlab.io/file/")
 },
