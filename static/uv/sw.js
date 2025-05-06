@@ -1,7 +1,7 @@
 /*global UVServiceWorker,__uv$config*/
 /*
  * UV Service Worker for Ultraviolet proxy
- * With WebGL fixes but NO CACHING
+ * With WebGL fixes and improved reliability
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -10,16 +10,30 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
-// Configuration with extended timeouts
+// Configuration with improved settings for reliability
 const CONFIG = {
-  FETCH_TIMEOUT: 240000,  // 4 minute timeout for slow sites
-  MAX_RETRIES: 3,         // Number of retry attempts
-  RETRY_DELAY: 800,       // Delay between retries in ms
-  LOG_LEVEL: 'debug'      // Set to 'info' to reduce logging
+  FETCH_TIMEOUT: 180000,     // 3 minute timeout (reduced from 4)
+  MAX_RETRIES: 4,            // Increased from 3
+  RETRY_DELAY: 1200,         // Increased from 800ms
+  RETRY_BACKOFF: 1.5,        // Add exponential backoff
+  MAX_CONCURRENT_REQUESTS: 8, // Limit concurrent requests
+  LOG_LEVEL: 'debug'         // Keep debug logging for now
 };
 
 // Log initialization
-console.log('[UV Service Worker] Initializing (NO CACHING version)...');
+console.log('[UV Service Worker] Initializing (improved reliability version)...');
+
+// Add request queue management for high load situations
+let activeRequests = 0;
+const requestQueue = [];
+
+// Process the next request in queue when a slot becomes available
+function processNextRequest() {
+  if (requestQueue.length > 0 && activeRequests < CONFIG.MAX_CONCURRENT_REQUESTS) {
+    const nextRequest = requestQueue.shift();
+    nextRequest.resolve();
+  }
+}
 
 // Detect WebGL-based games and sites
 const isWebGLSite = (url) => {
@@ -62,31 +76,70 @@ const isGameUrl = (url) => {
          url.includes('/play/');
 };
 
-// Enhanced fetch with timeout and retries (NO CACHING)
-const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
+// Improved enhancedFetch with queue and better error handling
+const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES, retryDelay = CONFIG.RETRY_DELAY) => {
+  // Check if we need to queue this request
+  if (activeRequests >= CONFIG.MAX_CONCURRENT_REQUESTS) {
+    console.log(`[UV Service Worker] Queueing request (${requestQueue.length} in queue)`);
+    
+    // Return a promise that resolves when the request can be processed
+    await new Promise(resolve => {
+      requestQueue.push({ resolve, event });
+    });
+  }
+  
+  // Increment active requests counter
+  activeRequests++;
+  
   try {
     const url = new URL(event.request.url);
     const reqUrl = url.toString();
     
-    console.log('[UV Service Worker] Fetching (no cache):', reqUrl.substring(0, 80));
+    console.log('[UV Service Worker] Fetching:', reqUrl.substring(0, 80));
     
     // Special handling for WebGL sites - add WebGL fixes
     if (isWebGLSite(reqUrl)) {
       console.log(`[UV Service Worker] WebGL site detected: ${reqUrl.substring(0, 80)}...`);
       
-      // Get the response
-      const response = await sw.fetch(event);
-      
-      // Check if this is an HTML response
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('text/html')) {
-        return await addWebGLFixes(response, reqUrl);
+      try {
+        // Get the response
+        const response = await Promise.race([
+          sw.fetch(event),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('WebGL request timeout')), CONFIG.FETCH_TIMEOUT)
+          )
+        ]);
+        
+        // Check if this is an HTML response
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+          return await addWebGLFixes(response, reqUrl);
+        }
+        
+        return response;
+      } catch (error) {
+        console.error(`[UV Service Worker] WebGL site fetch error: ${error.message}`);
+        throw error;
       }
-      
-      return response;
     }
     
-    // For non-game URLs, use timeout
+    // Special handling for critical resources
+    const isCriticalResource = reqUrl.includes('.js') || 
+                               reqUrl.includes('.css') || 
+                               reqUrl.includes('.wasm') ||
+                               reqUrl.includes('.json');
+    
+    if (isCriticalResource) {
+      console.log(`[UV Service Worker] Critical resource detected: ${reqUrl.substring(0, 80)}`);
+      
+      // Use higher retry count for critical resources
+      const criticalRetries = CONFIG.MAX_RETRIES + 1;
+      if (retries === CONFIG.MAX_RETRIES) {
+        retries = criticalRetries;
+      }
+    }
+    
+    // Use timeout for all requests
     return await Promise.race([
       sw.fetch(event),
       new Promise((_, reject) => 
@@ -96,13 +149,23 @@ const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES) => {
   } catch (error) {
     console.error('[UV Service Worker] Fetch error:', error.message);
     
-    // Retry logic
+    // Retry logic with exponential backoff
     if (retries > 0) {
-      console.log(`[UV Service Worker] Retrying fetch (${retries} attempts left)`);
-      await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
-      return enhancedFetch(event, retries - 1);
+      console.log(`[UV Service Worker] Retrying fetch (${retries} attempts left) after ${retryDelay}ms`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      
+      // Calculate next retry delay with exponential backoff
+      const nextRetryDelay = Math.min(30000, retryDelay * CONFIG.RETRY_BACKOFF);
+      
+      return enhancedFetch(event, retries - 1, nextRetryDelay);
     }
     throw error;
+  } finally {
+    // Decrement active requests counter
+    activeRequests--;
+    
+    // Process next request in queue if any
+    processNextRequest();
   }
 };
 
@@ -690,12 +753,198 @@ const addWebGLFixes = async (response, url) => {
   return response;
 };
 
-// Main fetch event handler
+// Improved error response function with more helpful messages
+function createErrorResponse(err) {
+  // Determine if this is likely a connectivity issue
+  const isConnectivityIssue = err.message.includes('timeout') || 
+                             err.message.includes('network') ||
+                             err.message.includes('connection');
+                              
+  // Determine if this is likely a content blocking issue
+  const isBlockingIssue = err.message.includes('CORS') ||
+                         err.message.includes('blocked') ||
+                         err.message.includes('security');
+  
+  let errorType = "Unknown Error";
+  let errorDetails = "";
+  let troubleshootingSteps = [
+    "Try refreshing the page",
+    "Check your internet connection"
+  ];
+  
+  if (isConnectivityIssue) {
+    errorType = "Connection Error";
+    errorDetails = "There was a problem connecting to the game server";
+    troubleshootingSteps.push("Try using a more stable internet connection");
+    troubleshootingSteps.push("The game server might be experiencing high traffic");
+  } else if (isBlockingIssue) {
+    errorType = "Content Access Error";
+    errorDetails = "There was a problem accessing the game content";
+    troubleshootingSteps.push("The game site might be blocking proxy access");
+    troubleshootingSteps.push("Try a different game");
+  }
+  
+  return new Response(
+    `<!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${errorType}</title>
+      <style>
+        body {
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          color: white;
+          background: #222;
+          margin: 0;
+          padding: 20px;
+          line-height: 1.6;
+        }
+        .container {
+          max-width: 600px;
+          margin: 40px auto;
+          background: #333;
+          border-radius: 8px;
+          padding: 20px;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        h2 {
+          margin-top: 0;
+          color: #4a6ed3;
+        }
+        .error-details {
+          background: rgba(0,0,0,0.2);
+          padding: 10px;
+          border-radius: 4px;
+          margin: 15px 0;
+          font-family: monospace;
+          word-break: break-all;
+        }
+        ul {
+          margin-bottom: 20px;
+        }
+        button {
+          padding: 10px 16px;
+          background: #4a6ed3;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          margin-right: 10px;
+          font-size: 14px;
+        }
+        button.secondary {
+          background: #555;
+        }
+        button:hover {
+          opacity: 0.9;
+        }
+        .status-indicator {
+          display: flex;
+          align-items: center;
+          margin-top: 15px;
+          padding: 10px;
+          background: rgba(0,0,0,0.1);
+          border-radius: 4px;
+        }
+        .status-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: #f44336;
+          margin-right: 10px;
+        }
+        .status-text {
+          font-size: 14px;
+          color: #ccc;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h2>${errorType}</h2>
+        <p>${errorDetails}</p>
+        <div class="error-details">
+          ${err.message}
+        </div>
+        <p>Try the following:</p>
+        <ul>
+          ${troubleshootingSteps.map(step => `<li>${step}</li>`).join('')}
+        </ul>
+        <div>
+          <button onclick="window.location.reload()">Try Again</button>
+          <button class="secondary" onclick="window.history.back()">Go Back</button>
+          <button class="secondary" onclick="window.location.href='/'">Home</button>
+        </div>
+        <div class="status-indicator">
+          <div class="status-dot"></div>
+          <div class="status-text">Service Worker: Active (Reported: ${new Date().toLocaleTimeString()})</div>
+        </div>
+      </div>
+      <script>
+        // Add connectivity test
+        function testConnectivity() {
+          const startTime = Date.now();
+          fetch('/bare/status-check?' + startTime)
+            .then(response => {
+              const latency = Date.now() - startTime;
+              document.querySelector('.status-dot').style.background = '#4caf50';
+              document.querySelector('.status-text').innerText = 
+                'Service Worker: Connected (Latency: ' + latency + 'ms)';
+            })
+            .catch(err => {
+              document.querySelector('.status-text').innerText = 
+                'Service Worker: Disconnected - ' + err.message;
+            });
+        }
+        
+        // Run connectivity test
+        setTimeout(testConnectivity, 500);
+        
+        // Add automatic retry
+        let retryCount = 0;
+        function autoRetry() {
+          if (retryCount < 2) {
+            retryCount++;
+            setTimeout(() => {
+              document.querySelector('.status-text').innerText = 
+                'Auto-retrying (' + retryCount + '/2)...';
+              window.location.reload();
+            }, 5000);
+          }
+        }
+        
+        // Enable auto-retry if appropriate
+        if (${isConnectivityIssue}) {
+          autoRetry();
+        }
+      </script>
+    </body>
+    </html>`,
+    {
+      status: 200,
+      headers: { 'Content-Type': 'text/html' }
+    }
+  );
+}
+
+// Update the main fetch handler
 self.addEventListener('fetch', event => {
   // Check if this is a request we should handle
   if (!event.request.url.startsWith(self.registration.scope) && 
       !event.request.url.includes('/uv/')) {
     return;
+  }
+
+  // Check if this is a status check request
+  if (event.request.url.includes('/bare/status-check')) {
+    return event.respondWith(new Response('OK', {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/plain',
+        'Cache-Control': 'no-store'
+      }
+    }));
   }
 
   event.respondWith((async () => {
@@ -707,96 +956,14 @@ self.addEventListener('fetch', event => {
       console.error('[UV Service Worker] Fatal error:', err);
       
       // Return user-friendly error page
-      return new Response(
-        `<!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Connection Error</title>
-          <style>
-            body {
-              font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              color: white;
-              background: #222;
-              margin: 0;
-              padding: 20px;
-              line-height: 1.6;
-            }
-            .container {
-              max-width: 600px;
-              margin: 40px auto;
-              background: #333;
-              border-radius: 8px;
-              padding: 20px;
-              box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            }
-            h2 {
-              margin-top: 0;
-              color: #4a6ed3;
-            }
-            .error-details {
-              background: rgba(0,0,0,0.2);
-              padding: 10px;
-              border-radius: 4px;
-              margin: 15px 0;
-              font-family: monospace;
-              word-break: break-all;
-            }
-            ul {
-              margin-bottom: 20px;
-            }
-            button {
-              padding: 10px 16px;
-              background: #4a6ed3;
-              color: white;
-              border: none;
-              border-radius: 4px;
-              cursor: pointer;
-              margin-right: 10px;
-              font-size: 14px;
-            }
-            button.secondary {
-              background: #555;
-            }
-            button:hover {
-              opacity: 0.9;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h2>Connection Error</h2>
-            <p>The service encountered an error: ${err.message}</p>
-            <div class="error-details">
-              ${err.message}
-            </div>
-            <p>This might be due to:</p>
-            <ul>
-              <li>The website blocking proxy access</li>
-              <li>Slow or unstable internet connection</li>
-              <li>The website using features that require direct access</li>
-            </ul>
-            <div>
-              <button onclick="window.location.reload()">Try Again</button>
-              <button class="secondary" onclick="window.history.back()">Go Back</button>
-              <button class="secondary" onclick="window.location.href='/'">Home</button>
-            </div>
-          </div>
-        </body>
-        </html>`,
-        {
-          status: 200,
-          headers: { 'Content-Type': 'text/html' }
-        }
-      );
+      return createErrorResponse(err);
     }
   })());
 });
 
 // Simplified install handler - NO CACHING
 self.addEventListener('install', event => {
-  console.log('[UV Service Worker] Installing (NO CACHING version)...');
+  console.log('[UV Service Worker] Installing (improved reliability version)...');
   
   // Skip waiting so the service worker activates immediately
   self.skipWaiting();
@@ -822,7 +989,7 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Simplified message handler - NO CACHING
+// Improved message handler with health check response
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
@@ -831,11 +998,16 @@ self.addEventListener('message', event => {
   // Handle health check
   if (event.data && event.data.type === 'PING') {
     if (event.source) {
+      // Send more detailed health info
       event.source.postMessage({
         type: 'PONG',
         timestamp: Date.now(),
         status: 'healthy',
-        version: 'no-cache-1.0'
+        version: 'reliability-enhanced-1.0',
+        stats: {
+          activeRequests: activeRequests,
+          queueLength: requestQueue.length
+        }
       });
     }
   }
