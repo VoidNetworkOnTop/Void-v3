@@ -1,7 +1,7 @@
 /*global UVServiceWorker,__uv$config*/
 /*
  * UV Service Worker for Ultraviolet proxy
- * Fixed version for blank page and loading issues
+ * High-Performance Version with WebGL fixes and caching
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -10,23 +10,56 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
-// Configuration with focus on reducing timeouts
+// Configuration with improved settings for reliability
 const CONFIG = {
-  FETCH_TIMEOUT: 90000,       // 90 second maximum timeout (more responsive)
-  MAX_RETRIES: 5,             // Increased retries for better success rate
+  FETCH_TIMEOUT: 90000,       // 90 second timeout for better reliability
+  MAX_RETRIES: 5,             // Increased number of retries
   RETRY_DELAY: 800,           // Initial delay between retries
   RETRY_BACKOFF: 1.5,         // Exponential backoff factor
-  MAX_CONCURRENT_REQUESTS: 20, // Higher limit for concurrent requests
-  LOG_LEVEL: 'debug'          // Enable detailed logging for diagnostics
+  MAX_CONCURRENT_REQUESTS: 20, // Increased for better parallel loading
+  LOG_LEVEL: 'debug'          // Detailed logging for diagnostics
 };
 
-// Request tracking
+// Game asset cache management
+const CACHE_NAME = 'uv-game-cache-v1';
+const CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+const CACHE_MAX_SIZE = 250; // Maximum number of cached items
+
+// Request management variables
 let activeRequests = 0;
 const requestQueue = [];
 const failedUrls = new Map(); // Track problematic URLs
+const gameDomainsLoading = new Set(); // Track game domains being loaded
 
-// Detect game content
-const isGameContent = (url) => {
+// Priority levels for request queue
+const QUEUE_PRIORITY = {
+  HIGH: 0,
+  MEDIUM: 1,
+  LOW: 2
+};
+
+// Assets that are critical for game loading
+const CRITICAL_ASSETS = [
+  '.js', '.wasm', '.unity3d', '.json', '.data', 
+  'jquery', 'unity', 'bootstrap', 'three.js', 'phaser'
+];
+
+// Process next request from queue based on priority
+function processNextRequest() {
+  if (requestQueue.length === 0 || activeRequests >= CONFIG.MAX_CONCURRENT_REQUESTS) {
+    return;
+  }
+  
+  // Sort queue by priority
+  requestQueue.sort((a, b) => a.priority - b.priority);
+  
+  // Get next request
+  const nextRequest = requestQueue.shift();
+  nextRequest.resolve();
+}
+
+// Detect game content for special handling
+function isGameContent(url) {
   if (!url) return false;
   
   // Game patterns
@@ -39,74 +72,293 @@ const isGameContent = (url) => {
     'play',
     '3d',
     'html5',
-    'canvas'
+    'canvas',
+    'github.io'
   ];
   
   return gamePatterns.some(pattern => url.includes(pattern));
-};
+}
 
-// Process next request from queue
-function processNextRequest() {
-  if (requestQueue.length > 0 && activeRequests < CONFIG.MAX_CONCURRENT_REQUESTS) {
-    const nextRequest = requestQueue.shift();
-    nextRequest.resolve();
+// Detect game domains from URLs
+function detectGameDomain(url) {
+  if (!url) return null;
+  
+  try {
+    const parsedUrl = new URL(url);
+    const hostname = parsedUrl.hostname;
+    
+    // Check if this is likely a game domain
+    const gamePatterns = ['game', 'unity', 'play', 'arcade', 'gl', 'gitlab.io', 'github.io'];
+    if (gamePatterns.some(pattern => hostname.includes(pattern))) {
+      gameDomainsLoading.add(hostname);
+      return hostname;
+    }
+  } catch (e) {
+    // Ignore URL parsing errors
+  }
+  
+  return null;
+}
+
+// Function to determine request priority
+function getPriority(url) {
+  // Game resources get high priority
+  if (isGameContent(url)) {
+    return QUEUE_PRIORITY.HIGH;
+  }
+  
+  // Critical assets get high priority
+  if (CRITICAL_ASSETS.some(asset => url.includes(asset))) {
+    return QUEUE_PRIORITY.HIGH;
+  }
+  
+  // HTML pages get medium priority
+  if (url.endsWith('.html') || url.endsWith('/')) {
+    return QUEUE_PRIORITY.MEDIUM;
+  }
+  
+  // Default to low priority
+  return QUEUE_PRIORITY.LOW;
+}
+
+// Function to skip unnecessary resources when under high load
+function shouldSkipResource(url) {
+  // Only apply this under high load
+  if (activeRequests < CONFIG.MAX_CONCURRENT_REQUESTS * 0.8) {
+    return false;
+  }
+  
+  // Skip analytics, trackers, and non-essential resources
+  const skipPatterns = [
+    'analytics', 'tracking', 'ga.js', 'gtag', 'pixel',
+    'facebook.net', 'twitter.com/widgets', 'ad-', 
+    '.gif', 'beacon', 'telemetry'
+  ];
+  
+  return skipPatterns.some(pattern => url.includes(pattern));
+}
+
+// Cache management functions
+async function cacheGameAsset(request, response) {
+  // Only cache successful responses
+  if (!response || !response.ok) return response;
+  
+  // Only cache GET requests
+  if (request.method !== 'GET') return response;
+  
+  // Check if this is a game asset worth caching
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const isGameAsset = gameDomainsLoading.has(url.hostname) || 
+                      CRITICAL_ASSETS.some(ext => path.includes(ext)) ||
+                      isGameContent(url.toString());
+  
+  // Skip caching if not a game asset
+  if (!isGameAsset) return response;
+  
+  try {
+    // Open cache
+    const cache = await caches.open(CACHE_NAME);
+    
+    // Clone the response before using it
+    const responseToCache = response.clone();
+    
+    // Custom cache headers to ensure fresh content
+    const headers = new Headers(responseToCache.headers);
+    headers.append('X-UV-Cached', 'true');
+    headers.append('X-UV-Cached-Time', Date.now().toString());
+    
+    // Create new response with our headers
+    const enhancedResponse = new Response(
+      await responseToCache.blob(), 
+      {
+        status: responseToCache.status,
+        statusText: responseToCache.statusText,
+        headers: headers
+      }
+    );
+    
+    // Store in cache
+    await cache.put(request, enhancedResponse);
+    
+    // Trim cache if needed
+    cleanCache();
+    
+  } catch (error) {
+    console.error('[UV Cache] Error caching asset:', error);
+  }
+  
+  return response;
+}
+
+// Clean old items from cache
+async function cleanCache() {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const requests = await cache.keys();
+    
+    // If cache is not too large, don't bother cleaning
+    if (requests.length <= CACHE_MAX_SIZE) return;
+    
+    // Get all cache entries with metadata
+    const entries = await Promise.all(
+      requests.map(async request => {
+        const response = await cache.match(request);
+        const timestamp = response.headers.get('X-UV-Cached-Time') || '0';
+        return {
+          request,
+          timestamp: parseInt(timestamp, 10)
+        };
+      })
+    );
+    
+    // Sort by timestamp (oldest first)
+    entries.sort((a, b) => a.timestamp - b.timestamp);
+    
+    // Calculate how many to remove
+    const removeCount = Math.ceil(entries.length * 0.2); // Remove 20%
+    
+    // Delete oldest entries
+    const toRemove = entries.slice(0, removeCount);
+    for (const entry of toRemove) {
+      await cache.delete(entry.request);
+    }
+  } catch (error) {
+    console.error('[UV Cache] Error cleaning cache:', error);
   }
 }
 
-// Enhanced fetch with better timeout handling
-const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES, retryDelay = CONFIG.RETRY_DELAY) => {
-  // Queue management
-  if (activeRequests >= CONFIG.MAX_CONCURRENT_REQUESTS) {
-    await new Promise(resolve => {
-      requestQueue.push({ resolve, event });
-    });
-  }
+// Serve from cache or fetch with prioritization
+async function serveFromCacheOrFetch(event, request) {
+  // Check if cached version exists
+  const cache = await caches.open(CACHE_NAME);
+  const cachedResponse = await cache.match(request);
   
-  // Increment active requests
-  activeRequests++;
-  
-  try {
-    const url = new URL(event.request.url);
-    const reqUrl = url.toString();
+  // If we have a cached version, check if it's still valid
+  if (cachedResponse) {
+    const cachedTime = parseInt(cachedResponse.headers.get('X-UV-Cached-Time') || '0', 10);
+    const age = Date.now() - cachedTime;
     
-    // Check if this URL has consistently failed
-    if (failedUrls.has(reqUrl) && failedUrls.get(reqUrl) > 3) {
-      console.log(`[UV SW] Skipping known problematic URL: ${reqUrl}`);
-      
-      // For HTML content, return a modified response that will auto-reload
-      if (event.request.headers.get('accept')?.includes('text/html')) {
-        return new Response(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>Loading Game...</title>
-            <script>
-              // Try again with a clean slate
-              sessionStorage.clear();
-              localStorage.removeItem('uv-game-failed');
-              setTimeout(() => {
-                window.location.reload();
-              }, 1000);
-            </script>
-          </head>
-          <body style="background:#000;color:#fff;text-align:center;font-family:sans-serif;padding-top:20%;">
-            <h2>Reloading Game...</h2>
-            <p>Please wait...</p>
-          </body>
-          </html>
-        `, {
-          headers: {'Content-Type': 'text/html'}
-        });
-      }
+    // If cached version is recent enough, use it
+    if (age < CACHE_MAX_AGE) {
+      return cachedResponse;
     }
     
-    // Special handling for game content
-    const isGame = isGameContent(reqUrl);
+    // Otherwise, fetch new version but still return cached immediately for speed
+    const fetchPromise = fetch(request).then(newResponse => {
+      // Update the cache with new version in background
+      cacheGameAsset(request, newResponse.clone());
+      return newResponse;
+    }).catch(error => {
+      console.error('[UV Cache] Fetch failed, using cached version:', error);
+      return cachedResponse;
+    });
     
+    // Start the fetch but return cached version immediately
+    fetchPromise.catch(() => {}); // Ignore fetch errors in background update
+    return cachedResponse;
+  }
+  
+  // No cached version, get from network
+  const response = await fetch(request);
+  
+  // Store in cache if it's a game asset
+  return cacheGameAsset(request, response);
+}
+
+// Preload common game libraries
+async function preloadCommonLibraries() {
+  const commonLibraries = [
+    'https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.3.0/pixi.min.js'
+  ];
+  
+  const cache = await caches.open(CACHE_NAME);
+  
+  for (const url of commonLibraries) {
+    try {
+      // Check if already cached
+      if (await cache.match(url)) continue;
+      
+      // Fetch and cache
+      const response = await fetch(url);
+      if (response.ok) {
+        await cache.put(url, response);
+      }
+    } catch (error) {
+      // Ignore errors during preloading
+    }
+  }
+}
+
+// Initialize speed optimizations
+function initSpeedOptimizations() {
+  // Preload common libraries in the background
+  preloadCommonLibraries().catch(() => {});
+  
+  console.log('[UV SW] Speed optimizations initialized');
+}
+
+// Enhanced fetch with retry, timeout, and caching
+const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES, retryDelay = CONFIG.RETRY_DELAY) => {
+  const url = new URL(event.request.url).toString();
+  
+  // Skip certain resources under high load
+  if (shouldSkipResource(url)) {
+    return new Response('', { status: 204 });
+  }
+  
+  // Check for game domains
+  detectGameDomain(url);
+  
+  // Get priority for this request
+  const priority = getPriority(url);
+  
+  // Check if this URL has consistently failed
+  if (failedUrls.has(url) && failedUrls.get(url) > 3) {
+    console.log(`[UV SW] Skipping known problematic URL: ${url}`);
+    
+    // For HTML content, return a modified response that will auto-reload
+    if (event.request.headers.get('accept')?.includes('text/html')) {
+      return new Response(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Loading Game...</title>
+          <script>
+            // Try again with a clean slate
+            sessionStorage.clear();
+            localStorage.removeItem('uv-game-failed');
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
+          </script>
+        </head>
+        <body style="background:#000;color:#fff;text-align:center;font-family:sans-serif;padding-top:20%;">
+          <h2>Reloading Game...</h2>
+          <p>Please wait...</p>
+        </body>
+        </html>
+      `, {
+        headers: {'Content-Type': 'text/html'}
+      });
+    }
+  }
+  
+  try {
     // For game content, use a more reliable timeout approach
-    if (isGame) {
-      console.log(`[UV SW] Game content detected: ${reqUrl.substring(0, 50)}...`);
+    if (isGameContent(url)) {
+      console.log(`[UV SW] Game content detected: ${url.substring(0, 50)}...`);
+      
+      // For game content, try to serve from cache first
+      try {
+        return await serveFromCacheOrFetch(event, event.request);
+      } catch (cacheError) {
+        console.log('[UV SW] Cache serving failed, falling back to direct fetch:', cacheError);
+        // Fall through to regular fetch if cache fails
+      }
       
       // Create an AbortController for precise timing control
       const controller = new AbortController();
@@ -125,7 +377,7 @@ const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES, retryDelay = C
         
         // Process HTML content for games to improve loading
         if (response.headers.get('content-type')?.includes('text/html')) {
-          return await injectLoadingFixes(response, reqUrl);
+          return await injectLoadingFixes(response, url);
         }
         
         return response;
@@ -134,7 +386,7 @@ const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES, retryDelay = C
         
         // Check if the error was due to timeout
         if (fetchError.name === 'AbortError') {
-          console.error(`[UV SW] Timeout for game URL: ${reqUrl}`);
+          console.error(`[UV SW] Timeout for game URL: ${url}`);
           throw new Error(`Timeout loading game content after ${CONFIG.FETCH_TIMEOUT}ms`);
         }
         
@@ -149,8 +401,7 @@ const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES, retryDelay = C
     console.error(`[UV SW] Fetch error: ${error.message}`);
     
     // Track failed URLs
-    const failedUrl = new URL(event.request.url).toString();
-    failedUrls.set(failedUrl, (failedUrls.get(failedUrl) || 0) + 1);
+    failedUrls.set(url, (failedUrls.get(url) || 0) + 1);
     
     // Retry logic with exponential backoff
     if (retries > 0) {
@@ -164,12 +415,6 @@ const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES, retryDelay = C
     }
     
     throw error;
-  } finally {
-    // Decrement active requests counter
-    activeRequests--;
-    
-    // Process next request in queue
-    processNextRequest();
   }
 };
 
@@ -692,20 +937,26 @@ self.addEventListener('fetch', event => {
 
 // Install handler
 self.addEventListener('install', event => {
-  console.log('[UV SW] Installing fixed service worker...');
+  console.log('[UV SW] Installing high-performance service worker...');
   self.skipWaiting();
 });
 
 // Activate handler
 self.addEventListener('activate', event => {
   console.log('[UV SW] Activated');
+  
+  // Claim clients immediately
   event.waitUntil(clients.claim());
   
-  // Clear any caches
+  // Initialize speed optimizations
+  initSpeedOptimizations();
+  
+  // Clean up old caches but keep our game cache
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
-        cacheNames.map(cacheName => caches.delete(cacheName))
+        cacheNames.filter(name => name !== CACHE_NAME)
+          .map(cacheName => caches.delete(cacheName))
       );
     })
   );
