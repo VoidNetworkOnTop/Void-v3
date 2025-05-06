@@ -150,23 +150,24 @@
     function spawnSpecialRedParticle() {
       // Only spawn if there isn't already a special red particle
       if (!hasSpecialRedParticle) {
-        console.log("Special red particle spawned");
+        console.log("Special neon red particle spawned");
         
         // Create the special red particle
-        const size = maxSize * 1.5; // Make it a bit larger
+        const size = maxSize * 2.5; // Make it significantly larger
         particles.push({
           x: Math.random() * canvas.width,
           y: canvas.height, // Start at the bottom
           size: size,
-          opacity: 0.8, // Higher opacity
+          opacity: 0.95, // Higher opacity for neon effect
           // Slower upward movement
           speedY: -(floatSpeedMin * 0.6),
           speedX: (Math.random() - 0.5) * horizontalDrift,
           // Original speed for reference
           originalSpeedY: -(floatSpeedMin * 0.6),
           originalSpeedX: (Math.random() - 0.5) * horizontalDrift,
-          blur: 3, // More glow
-          isSpecialRed: true // Flag for special particle
+          blur: 6, // Much more glow for neon effect
+          isSpecialRed: true, // Flag for special particle
+          pulsePhase: 0 // For pulsing effect
         });
         
         hasSpecialRedParticle = true;
@@ -202,7 +203,7 @@
     // Add console command for testing
     window.spawnRedParticle = function() {
       spawnSpecialRedParticle();
-      return "Red particle spawned. Try moving your cursor near it - it won't be affected!";
+      return "Super neon red particle spawned. Try moving your cursor near it - it won't be affected!";
     };
     
     // Start the timer
@@ -264,24 +265,39 @@
         
         // Choose color based on particle type
         if (particle.isSpecialRed) {
-          // Red particle has a reddish glow
-          ctx.fillStyle = `rgba(255, 50, 50, ${particle.opacity})`;
-          ctx.shadowColor = 'rgba(255, 0, 0, 0.8)';
+          // Update pulse phase for neon effect
+          if (particle.pulsePhase !== undefined) {
+            particle.pulsePhase = (particle.pulsePhase + 0.05) % (Math.PI * 2);
+          }
+          
+          // Super neon red particle with intense glow
+          ctx.fillStyle = `rgba(255, 0, 60, ${particle.opacity})`;
+          ctx.shadowColor = 'rgba(255, 0, 80, 1)'; // More intense shadow for neon glow
+          ctx.shadowBlur = particle.blur + (particle.pulsePhase ? Math.sin(particle.pulsePhase) * 2 : 0);
+          
+          // Draw the dot with extra glow for neon effect
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Draw a second smaller, brighter core for the neon effect
+          ctx.fillStyle = 'rgba(255, 180, 200, 0.9)';
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.size * 0.6, 0, Math.PI * 2);
+          ctx.fill();
         } else {
           // Regular white particles
           ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
           ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
+          
+          // Use shadow blur for softer dots
+          ctx.shadowBlur = particle.blur;
+          
+          // Draw the dot
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+          ctx.fill();
         }
-        
-        // Draw particle as a soft circle with slight blur for smoothness
-        ctx.beginPath();
-        
-        // Use shadow blur for softer dots
-        ctx.shadowBlur = particle.blur;
-        
-        // Draw the dot
-        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-        ctx.fill();
         
         // Reset shadow for better performance
         ctx.shadowBlur = 0;
