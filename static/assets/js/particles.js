@@ -21,24 +21,23 @@
     canvas.style.left = '0';
     canvas.style.width = '100%';
     canvas.style.height = '100%';
-    canvas.style.zIndex = '0'; // Back to original z-index
-    canvas.style.pointerEvents = 'auto'; // Allow clicks on canvas but keep default cursor
-    canvas.style.cursor = 'default'; // Default cursor
+    canvas.style.zIndex = '0'; // Normal z-index
+    canvas.style.pointerEvents = 'none'; // Don't intercept clicks
     
     // Add a class for easier reference
     canvas.classList.add('floating-particles-canvas');
     
-    // Create a transparent overlay just for click detection
-    const clickOverlay = document.createElement('div');
-    clickOverlay.style.position = 'fixed';
-    clickOverlay.style.top = '0';
-    clickOverlay.style.left = '0';
-    clickOverlay.style.width = '100%';
-    clickOverlay.style.height = '100%';
-    clickOverlay.style.zIndex = '10000'; // Very high z-index for the click overlay
-    clickOverlay.style.pointerEvents = 'none'; // Start with no pointer events (dynamically enabled)
-    clickOverlay.style.background = 'transparent';
-    document.body.appendChild(clickOverlay);
+    // Create a small clickable element that will follow the red particle
+    const redParticleClickDetector = document.createElement('div');
+    redParticleClickDetector.style.position = 'fixed';
+    redParticleClickDetector.style.width = '20px'; // Will be updated dynamically
+    redParticleClickDetector.style.height = '20px'; // Will be updated dynamically
+    redParticleClickDetector.style.borderRadius = '50%'; // Circle shape
+    redParticleClickDetector.style.zIndex = '10000'; // Very high z-index
+    redParticleClickDetector.style.background = 'transparent';
+    redParticleClickDetector.style.display = 'none'; // Hidden by default
+    redParticleClickDetector.style.transform = 'translate(-50%, -50%)'; // Center on point
+    document.body.appendChild(redParticleClickDetector);
     
     // Append canvas to body
     document.body.appendChild(canvas);
@@ -204,66 +203,61 @@
       }
     }
     
-    // Check if special particles are still visible
-    function checkSpecialRedParticle() {
-      redParticlePosition = null; // Reset position
+    // Update the position of the click detector to follow the red particle
+    function updateRedParticleClickDetector() {
+      // First find the red particle
+      redParticlePosition = null;
       
-      // Look through all particles
       for (let i = 0; i < particles.length; i++) {
         if (particles[i].isSpecialRed) {
-          if (particles[i].y < 0) {
-            // Red particle has left the screen
-            particles.splice(i, 1);
-            hasSpecialRedParticle = false;
-          } else {
-            // Update the position of the red particle for click detection
-            redParticlePosition = {
-              x: particles[i].x,
-              y: particles[i].y,
-              size: particles[i].size
-            };
-            
-            // Update click overlay to match red particle position for better clicking
-            if (redParticlePosition) {
-              clickOverlay.style.pointerEvents = 'auto';
-            }
-          }
+          // Found the red particle
+          redParticlePosition = {
+            x: particles[i].x,
+            y: particles[i].y,
+            size: particles[i].size
+          };
           break;
         }
       }
       
-      // If no red particle, disable click overlay
-      if (!redParticlePosition) {
-        clickOverlay.style.pointerEvents = 'none';
+      // Update click detector position and size if red particle exists
+      if (redParticlePosition) {
+        // Calculate click area size (4x particle size)
+        const clickAreaSize = redParticlePosition.size * 8; // 8x diameter for easy clicking
+        
+        // Update click detector
+        redParticleClickDetector.style.width = clickAreaSize + 'px';
+        redParticleClickDetector.style.height = clickAreaSize + 'px';
+        redParticleClickDetector.style.left = redParticlePosition.x + 'px';
+        redParticleClickDetector.style.top = redParticlePosition.y + 'px';
+        redParticleClickDetector.style.display = 'block';
+      } else {
+        // Hide click detector if no red particle
+        redParticleClickDetector.style.display = 'none';
       }
     }
     
-    // Function to check if a click hit the red particle
-    function checkRedParticleClick(clickX, clickY) {
-      if (!redParticlePosition) return false;
+    // Check if special particles are still visible
+    function checkSpecialRedParticle() {
+      // Look through all particles
+      for (let i = 0; i < particles.length; i++) {
+        if (particles[i].isSpecialRed && particles[i].y < 0) {
+          // Red particle has left the screen
+          particles.splice(i, 1);
+          hasSpecialRedParticle = false;
+          break;
+        }
+      }
       
-      // Calculate distance between click and particle
-      const dx = clickX - redParticlePosition.x;
-      const dy = clickY - redParticlePosition.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      // Check if click is within particle radius - using a much larger hit area
-      return distance <= redParticlePosition.size * 4; // Much larger hit area for easier clicking
+      // Update the click detector
+      updateRedParticleClickDetector();
     }
     
-    // Handle click on canvas
-    function handleCanvasClick(e) {
-      e.preventDefault(); // Prevent default behavior
-      e.stopPropagation(); // Stop propagation to ensure the click is captured
-      
-      const clickX = e.clientX;
-      const clickY = e.clientY;
-      
-      // Check if the red particle was clicked
-      if (checkRedParticleClick(clickX, clickY)) {
-        // Navigate to the specified URL
-        window.location.href = '/assets/html/footer2.html';
-      }
+    // Handle click on red particle
+    function handleRedParticleClick(e) {
+      e.preventDefault();
+      // Navigate to the specified URL when red particle is clicked
+      window.location.href = '/assets/html/footer2.html';
     }
     
     // Start the hourly timer for spawning the special red particle
@@ -385,8 +379,7 @@
     
     window.addEventListener('mousemove', handleMouseMove);
     
-    // Add click handlers
-    clickOverlay.addEventListener('click', handleCanvasClick);
-    canvas.addEventListener('click', handleCanvasClick);
+    // Add click handler to the red particle click detector
+    redParticleClickDetector.addEventListener('click', handleRedParticleClick);
   }
 })();
