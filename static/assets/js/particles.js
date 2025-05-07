@@ -154,8 +154,18 @@
     // Variables for special red particle
     let hasSpecialRedParticle = false;
     let specialRedParticleTimer = null;
+    let checkForRedParticleTimer = null;
     const COOLDOWN_TIME = 10 * 60 * 1000; // 10 minutes in milliseconds
     const STORAGE_KEY = 'redParticleLastSpawnTime';
+    const CHECK_INTERVAL = 30 * 1000; // Check every 30 seconds
+    
+    // Function to get time in milliseconds when the cooldown will expire
+    function getCooldownExpireTime() {
+      const lastSpawnTime = localStorage.getItem(STORAGE_KEY);
+      if (!lastSpawnTime) return 0;
+      
+      return parseInt(lastSpawnTime) + COOLDOWN_TIME;
+    }
     
     // Function to check if we can spawn a red particle based on cooldown
     function canSpawnRedParticle() {
@@ -169,10 +179,10 @@
       
       // Calculate time elapsed since last spawn
       const now = Date.now();
-      const timeSinceLastSpawn = now - parseInt(lastSpawnTime);
+      const expireTime = parseInt(lastSpawnTime) + COOLDOWN_TIME;
       
       // Return true if cooldown period has passed
-      return timeSinceLastSpawn >= COOLDOWN_TIME;
+      return now >= expireTime;
     }
     
     // Function to record spawn time in localStorage
@@ -182,55 +192,57 @@
     }
     
     // Function to spawn a special red particle
-    function spawnSpecialRedParticle() {
-      // Only spawn if there isn't already a special red particle
-      // AND if the cooldown period has passed
-      if (!hasSpecialRedParticle && canSpawnRedParticle()) {
-        // Determine left or right side (avoiding middle)
-        let particleX;
-        
-        // Define the middle section (30% of screen width)
-        const middleStart = canvas.width * 0.35;
-        const middleEnd = canvas.width * 0.65;
-        
-        // Randomly choose left or right side
-        if (Math.random() < 0.5) {
-          // Left side - 0 to 35% of screen width
-          particleX = Math.random() * middleStart;
-        } else {
-          // Right side - 65% to 100% of screen width
-          particleX = middleEnd + Math.random() * (canvas.width - middleEnd);
-        }
-        
-        // Make the red particle similar to normal ones but still special
-        const size = minSize + Math.random() * (maxSize - minSize) * 1.5; // Slightly larger than average
-        
-        // Calculate speeds similar to normal particles
-        const speedY = -(floatSpeedMin + Math.random() * (floatSpeedMax - floatSpeedMin));
-        const speedX = (Math.random() - 0.5) * horizontalDrift;
-        
-        // Add the red particle
-        particles.push({
-          x: particleX,
-          y: canvas.height, // Start at the bottom
-          size: size,
-          opacity: 0.8, // More visible than regular particles
-          // Normal movement speed
-          speedY: speedY,
-          speedX: speedX,
-          // Original speed reference
-          originalSpeedY: speedY,
-          originalSpeedX: speedX,
-          blur: 3, // Slight glow, not overwhelming
-          isSpecialRed: true,
-          pulsePhase: 0
-        });
-        
-        hasSpecialRedParticle = true;
-        
-        // Record spawn time in localStorage for persistence
-        recordRedParticleSpawn();
+    function spawnSpecialRedParticle(force = false) {
+      // Skip if there's already a red particle
+      if (hasSpecialRedParticle) return;
+      
+      // Check if we can spawn based on cooldown (unless forced)
+      if (!force && !canSpawnRedParticle()) return;
+      
+      // Determine left or right side (avoiding middle)
+      let particleX;
+      
+      // Define the middle section (30% of screen width)
+      const middleStart = canvas.width * 0.35;
+      const middleEnd = canvas.width * 0.65;
+      
+      // Randomly choose left or right side
+      if (Math.random() < 0.5) {
+        // Left side - 0 to 35% of screen width
+        particleX = Math.random() * middleStart;
+      } else {
+        // Right side - 65% to 100% of screen width
+        particleX = middleEnd + Math.random() * (canvas.width - middleEnd);
       }
+      
+      // Make the red particle similar to normal ones but still special
+      const size = minSize + Math.random() * (maxSize - minSize) * 1.5; // Slightly larger than average
+      
+      // Calculate speeds similar to normal particles
+      const speedY = -(floatSpeedMin + Math.random() * (floatSpeedMax - floatSpeedMin));
+      const speedX = (Math.random() - 0.5) * horizontalDrift;
+      
+      // Add the red particle
+      particles.push({
+        x: particleX,
+        y: canvas.height, // Start at the bottom
+        size: size,
+        opacity: 0.8, // More visible than regular particles
+        // Normal movement speed
+        speedY: speedY,
+        speedX: speedX,
+        // Original speed reference
+        originalSpeedY: speedY,
+        originalSpeedX: speedX,
+        blur: 3, // Slight glow, not overwhelming
+        isSpecialRed: true,
+        pulsePhase: 0
+      });
+      
+      hasSpecialRedParticle = true;
+      
+      // Record spawn time in localStorage for persistence
+      recordRedParticleSpawn();
     }
     
     // Update the position of the click detector to follow the red particle
@@ -290,23 +302,33 @@
       window.location.href = '/assets/html/footer2.html';
     }
     
-    // Start the hourly timer for spawning the special red particle
-    function startSpecialRedParticleTimer() {
-      // Clear any existing timer
-      if (specialRedParticleTimer) {
-        clearInterval(specialRedParticleTimer);
+    // Regularly check if we can spawn a red particle
+    function startRedParticleChecks() {
+      // Clear any existing timers
+      if (checkForRedParticleTimer) {
+        clearInterval(checkForRedParticleTimer);
       }
       
-      // Set timer to spawn a red particle every hour (3600000 ms)
-      specialRedParticleTimer = setInterval(() => {
+      // Check right away
+      if (!hasSpecialRedParticle && canSpawnRedParticle()) {
         spawnSpecialRedParticle();
-      }, 3600000); // Every hour
+      }
+      
+      // Set up regular checks
+      checkForRedParticleTimer = setInterval(() => {
+        if (!hasSpecialRedParticle && canSpawnRedParticle()) {
+          spawnSpecialRedParticle();
+        }
+      }, CHECK_INTERVAL);
     }
     
-    // Try to spawn a red particle at startup if cooldown allows
+    // Immediately attempt to spawn a particle if conditions are right
     setTimeout(() => {
-      spawnSpecialRedParticle();
-    }, 5000); // Try after 5 seconds
+      if (canSpawnRedParticle()) {
+        spawnSpecialRedParticle();
+      }
+      startRedParticleChecks();
+    }, 5000);
     
     // ======== SPECIAL RED PARTICLE FEATURE - END ========
     
