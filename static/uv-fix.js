@@ -1,19 +1,16 @@
 // Create this as uv-fix.js
-// Version that auto-hides loading messages and detects interaction
+// Version with NO loading messages - only shows error when game truly fails
 
 (function() {
   // Configuration
   const CONFIG = {
-    INITIAL_WAIT: 20000,         // Initial wait before checking
-    AUTO_DISMISS_TIMER: 40000,   // Auto-dismiss loading message after this time
-    FINAL_ERROR_TIMEOUT: 90000,  // Show error message after this time
-    DEBUG: false                 // Enable debug logging
+    WAIT_BEFORE_ERROR: 120000,  // 2 minutes before showing error
+    DEBUG: false                // Enable debug logging
   };
   
   // Track state
   let state = {
     loadStartTime: Date.now(),
-    noticeShown: false,
     contentDetected: false,
     userInteracted: false,
     timerIds: []
@@ -26,7 +23,7 @@
     }
   }
 
-  // Improved content detection
+  // Detect if content has loaded
   function hasGameContent() {
     if (!document.body) return false;
     
@@ -64,24 +61,28 @@
     return contentIndicators >= 2;
   }
   
-  // Create loading notice
-  function createLoadingNotice() {
-    // Don't create duplicate notices
-    if (document.getElementById('uv-notice') || state.noticeShown) {
+  // Show the error notice only after long wait with no content
+  function showErrorNotice() {
+    // Don't show error if user has interacted or content loaded
+    if (state.userInteracted || state.contentDetected) {
       return;
     }
     
-    state.noticeShown = true;
+    // Check one more time before showing error
+    if (hasGameContent()) {
+      state.contentDetected = true;
+      return;
+    }
     
     const notice = document.createElement('div');
-    notice.id = 'uv-notice';
+    notice.id = 'uv-error';
     notice.style.position = 'fixed';
-    notice.style.bottom = '10px';
+    notice.style.top = '50%';
     notice.style.left = '50%';
-    notice.style.transform = 'translateX(-50%)';
-    notice.style.background = 'rgba(0,0,0,0.8)';
+    notice.style.transform = 'translate(-50%, -50%)';
+    notice.style.background = 'rgba(0,0,0,0.9)';
     notice.style.color = 'white';
-    notice.style.padding = '10px 15px';
+    notice.style.padding = '20px';
     notice.style.borderRadius = '8px';
     notice.style.fontFamily = 'Arial, sans-serif';
     notice.style.fontSize = '14px';
@@ -90,22 +91,20 @@
     notice.style.maxWidth = '90%';
     notice.style.width = '400px';
     notice.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
-    notice.style.transition = 'opacity 0.5s ease';
     
     notice.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
-        <span style="color:#ffc107;font-weight:bold;">Game still loading...</span>
-        <button id="uv-dismiss" style="background:none;border:none;color:white;font-size:16px;cursor:pointer;padding:0 5px;">✕</button>
+      <div style="color:#f44336;font-weight:bold;font-size:16px;margin-bottom:10px;">
+        We're having trouble loading this game
       </div>
-      <div style="margin:5px 0;font-size:13px;">
-        This game is taking longer than usual to load. You can:
+      <div style="margin:10px 0;line-height:1.5;">
+        Sorry! This game isn't loading properly. If the issue continues, please visit our support team by going to the home page and clicking the phone icon at the bottom.
       </div>
-      <div style="display:flex;justify-content:center;gap:10px;margin-top:8px;">
-        <button id="uv-keep-waiting" style="background:#4caf50;border:none;color:white;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:13px;">
-          Keep Waiting
+      <div style="display:flex;justify-content:center;gap:10px;margin-top:15px;">
+        <button id="uv-try-again" style="background:#2196f3;border:none;color:white;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:bold;">
+          Try Again
         </button>
-        <button id="uv-reload" style="background:#2196f3;border:none;color:white;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:13px;">
-          Reload
+        <button id="uv-go-home" style="background:#757575;border:none;color:white;padding:8px 16px;border-radius:4px;cursor:pointer;">
+          Go Home
         </button>
       </div>
     `;
@@ -113,56 +112,6 @@
     document.body.appendChild(notice);
     
     // Add event listeners
-    document.getElementById('uv-dismiss').addEventListener('click', function() {
-      hideNotice();
-    });
-    
-    document.getElementById('uv-keep-waiting').addEventListener('click', function() {
-      hideNotice();
-    });
-    
-    document.getElementById('uv-reload').addEventListener('click', function() {
-      window.location.reload();
-    });
-    
-    // Set auto-dismiss timer
-    const autoDismissTimer = setTimeout(function() {
-      hideNotice();
-    }, CONFIG.AUTO_DISMISS_TIMER);
-    
-    state.timerIds.push(autoDismissTimer);
-  }
-  
-  // Update notice to error message
-  function updateToErrorNotice() {
-    const notice = document.getElementById('uv-notice');
-    if (!notice) {
-      return;
-    }
-    
-    notice.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <span style="color:#f44336;font-weight:bold;">We're having trouble loading this game</span>
-        <button id="uv-dismiss-error" style="background:none;border:none;color:white;font-size:16px;cursor:pointer;padding:0 5px;">✕</button>
-      </div>
-      <div style="margin:5px 0;font-size:13px;line-height:1.4;">
-        Sorry! This game isn't loading properly. If the issue continues, please visit our support team by going to the home page and clicking the phone icon at the bottom.
-      </div>
-      <div style="display:flex;justify-content:center;gap:10px;margin-top:10px;">
-        <button id="uv-try-again" style="background:#2196f3;border:none;color:white;padding:5px 12px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:13px;">
-          Try Again
-        </button>
-        <button id="uv-go-home" style="background:#757575;border:none;color:white;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;">
-          Go Home
-        </button>
-      </div>
-    `;
-    
-    // Update the event listeners for the new buttons
-    document.getElementById('uv-dismiss-error').addEventListener('click', function() {
-      hideNotice();
-    });
-    
     document.getElementById('uv-try-again').addEventListener('click', function() {
       window.location.reload();
     });
@@ -170,22 +119,6 @@
     document.getElementById('uv-go-home').addEventListener('click', function() {
       window.location.href = '/';
     });
-    
-    // Make sure notice is visible
-    notice.style.opacity = '1';
-  }
-  
-  // Hide the notice
-  function hideNotice() {
-    const notice = document.getElementById('uv-notice');
-    if (notice) {
-      notice.style.opacity = '0';
-      setTimeout(function() {
-        if (notice.parentNode) {
-          notice.parentNode.removeChild(notice);
-        }
-      }, 500);
-    }
   }
   
   // Add the necessary CSS fixes
@@ -207,31 +140,19 @@
     document.head.appendChild(style);
   }
   
-  // Setup user interaction detection
+  // Track user interaction
   function detectUserInteraction() {
     // These events suggest the user is interacting with the game
     const interactionEvents = ['click', 'touchstart', 'keydown', 'mousemove'];
     
-    // After enough interactions, consider the game loaded
-    let interactionCount = 0;
-    const interactionThreshold = 3;
-    
     function onUserInteraction() {
-      interactionCount++;
-      debug('User interaction detected:', interactionCount);
+      debug('User interaction detected');
+      state.userInteracted = true;
       
-      if (interactionCount >= interactionThreshold) {
-        debug('Sufficient interactions detected - assuming game is loaded');
-        state.userInteracted = true;
-        
-        // Hide notice if it exists
-        hideNotice();
-        
-        // Clean up event listeners
-        interactionEvents.forEach(event => {
-          document.removeEventListener(event, onUserInteraction);
-        });
-      }
+      // Clean up event listeners
+      interactionEvents.forEach(event => {
+        document.removeEventListener(event, onUserInteraction);
+      });
     }
     
     // Add listeners for each interaction type
@@ -240,9 +161,9 @@
     });
   }
   
-  // Initialize the system
+  // Initialize
   function initialize() {
-    debug('Initializing UV Fix Helper...');
+    debug('Initializing UV Fix Helper (no loading messages)');
     
     // Add CSS fixes immediately
     addFixStyles();
@@ -250,59 +171,25 @@
     // Setup interaction detection
     detectUserInteraction();
     
-    // Wait a bit before first check
-    const initialCheckTimer = setTimeout(function() {
-      // Check if content is loaded
-      state.contentDetected = hasGameContent();
-      debug('Initial content check:', state.contentDetected ? 'Content found' : 'No content yet');
-      
-      // If no content detected, show notice
-      if (!state.contentDetected && !state.userInteracted) {
-        debug('No content detected, showing loading notice');
-        createLoadingNotice();
-        
-        // Setup for error message after final timeout
-        const errorTimer = setTimeout(function() {
-          if (!state.contentDetected && !state.userInteracted) {
-            debug('Final timeout reached, showing error notice');
-            updateToErrorNotice();
-          }
-        }, CONFIG.FINAL_ERROR_TIMEOUT - CONFIG.INITIAL_WAIT);
-        
-        state.timerIds.push(errorTimer);
-        
-        // Start content check interval
-        const checkInterval = setInterval(function() {
-          // Check if content is now loaded
-          state.contentDetected = hasGameContent();
-          
-          if (state.contentDetected || state.userInteracted) {
-            debug('Content now detected, clearing interval');
-            hideNotice();
-            clearInterval(checkInterval);
-          }
-        }, 5000);
-        
-        state.timerIds.push(checkInterval);
+    // Start content checks
+    const checkInterval = setInterval(function() {
+      if (hasGameContent()) {
+        state.contentDetected = true;
+        clearInterval(checkInterval);
       }
-    }, CONFIG.INITIAL_WAIT);
+    }, 10000);
     
-    state.timerIds.push(initialCheckTimer);
+    state.timerIds.push(checkInterval);
     
-    // Final backup - auto-hide the message after load event
-    window.addEventListener('load', function() {
-      setTimeout(function() {
-        debug('Window load event complete');
-        
-        // Check if user has interacted or content is loaded
-        if (state.userInteracted || hasGameContent()) {
-          hideNotice();
-        }
-        
-        // Always hide after a longer timeout from load
-        setTimeout(hideNotice, 10000);
-      }, 2000);
-    });
+    // Setup the error message timer
+    const errorTimer = setTimeout(function() {
+      // Only show error if no content detected and no user interaction
+      if (!state.contentDetected && !state.userInteracted) {
+        showErrorNotice();
+      }
+    }, CONFIG.WAIT_BEFORE_ERROR);
+    
+    state.timerIds.push(errorTimer);
   }
   
   // Initialize based on document state
