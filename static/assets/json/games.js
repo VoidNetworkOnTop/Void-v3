@@ -35,11 +35,6 @@ const gamesData = [
     link: __uv$config.prefix + __uv$config.encodeUrl("https://games.crazygames.com/en_US/stickman-parkour-master/index.html?v=1.296")
 }, 
 {
-    title: "Shoot 'M",
-    imgSrc: "gameimg/shootm.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.silvergames.com/en/shoot-em") 
-}, 
-{
     title: "Moto X3M 1",
     imgSrc: "gameimg/motox3m.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.friv.com/z/games/motox3m/game.html")
