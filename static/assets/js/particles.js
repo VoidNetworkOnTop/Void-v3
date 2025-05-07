@@ -163,11 +163,27 @@
       if (!hasSpecialRedParticle) {
         console.log("Special neon red particle spawned");
         
-        // Create the special red particle
+        // Determine left or right side (avoiding middle)
+        let particleX;
+        
+        // Define the middle section (30% of screen width)
+        const middleStart = canvas.width * 0.35;
+        const middleEnd = canvas.width * 0.65;
+        
+        // Randomly choose left or right side
+        if (Math.random() < 0.5) {
+          // Left side - 0 to 35% of screen width
+          particleX = Math.random() * middleStart;
+        } else {
+          // Right side - 65% to 100% of screen width
+          particleX = middleEnd + Math.random() * (canvas.width - middleEnd);
+        }
+        
+        // Create the special red particle with the calculated X position
         const size = maxSize * 3; // Make it extremely large for visibility
         particles.push({
-          x: Math.random() * canvas.width,
-          y: canvas.height, // Start at the bottom
+          x: particleX,
+          y: canvas.height + size, // Start just below the visible bottom edge
           size: size,
           opacity: 1.0, // Full opacity for maximum visibility
           // Slower upward movement
@@ -184,7 +200,13 @@
         hasSpecialRedParticle = true;
         
         // Log the particle for debugging
-        console.log("RED PARTICLE DETAILS:", particles[particles.length - 1]);
+        console.log("RED PARTICLE DETAILS:", 
+          {
+            position: `X: ${particleX.toFixed(0)}, Y: ${canvas.height}`,
+            side: particleX < middleStart ? "LEFT" : "RIGHT",
+            speed: `X: ${particles[particles.length-1].speedX.toFixed(2)}, Y: ${particles[particles.length-1].speedY.toFixed(2)}`
+          }
+        );
       } else {
         console.log("Red particle already exists, not spawning a new one.");
       }
@@ -220,7 +242,7 @@
     // Add console command for testing
     window.spawnRedParticle = function() {
       spawnSpecialRedParticle(true); // Force a new red particle
-      return "Super neon red particle spawned. Try moving your cursor near it - it won't be affected!";
+      return "Super neon red particle spawned on the left or right side. Try moving your cursor near it - it won't be affected!";
     };
     
     // Start the timer
