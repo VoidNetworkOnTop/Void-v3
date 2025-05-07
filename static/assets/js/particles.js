@@ -147,30 +147,46 @@
     let specialRedParticleTimer = null;
     
     // Function to spawn a special red particle
-    function spawnSpecialRedParticle() {
+    function spawnSpecialRedParticle(force = false) {
+      // Remove any existing red particles if forced
+      if (force && hasSpecialRedParticle) {
+        for (let i = 0; i < particles.length; i++) {
+          if (particles[i].isSpecialRed) {
+            particles.splice(i, 1);
+            break;
+          }
+        }
+        hasSpecialRedParticle = false;
+      }
+      
       // Only spawn if there isn't already a special red particle
       if (!hasSpecialRedParticle) {
         console.log("Special neon red particle spawned");
         
         // Create the special red particle
-        const size = maxSize * 2.5; // Make it significantly larger
+        const size = maxSize * 3; // Make it extremely large for visibility
         particles.push({
           x: Math.random() * canvas.width,
           y: canvas.height, // Start at the bottom
           size: size,
-          opacity: 0.95, // Higher opacity for neon effect
+          opacity: 1.0, // Full opacity for maximum visibility
           // Slower upward movement
-          speedY: -(floatSpeedMin * 0.6),
+          speedY: -(floatSpeedMin * 0.5), // Make it slower so it's easier to see
           speedX: (Math.random() - 0.5) * horizontalDrift,
           // Original speed for reference
-          originalSpeedY: -(floatSpeedMin * 0.6),
+          originalSpeedY: -(floatSpeedMin * 0.5),
           originalSpeedX: (Math.random() - 0.5) * horizontalDrift,
-          blur: 6, // Much more glow for neon effect
+          blur: 8, // Extreme glow for neon effect
           isSpecialRed: true, // Flag for special particle
           pulsePhase: 0 // For pulsing effect
         });
         
         hasSpecialRedParticle = true;
+        
+        // Log the particle for debugging
+        console.log("RED PARTICLE DETAILS:", particles[particles.length - 1]);
+      } else {
+        console.log("Red particle already exists, not spawning a new one.");
       }
     }
     
@@ -180,6 +196,7 @@
       for (let i = 0; i < particles.length; i++) {
         if (particles[i].isSpecialRed && particles[i].y < 0) {
           // Red particle has left the screen
+          console.log("Red particle left the screen, removing it");
           particles.splice(i, 1);
           hasSpecialRedParticle = false;
           break;
@@ -202,7 +219,7 @@
     
     // Add console command for testing
     window.spawnRedParticle = function() {
-      spawnSpecialRedParticle();
+      spawnSpecialRedParticle(true); // Force a new red particle
       return "Super neon red particle spawned. Try moving your cursor near it - it won't be affected!";
     };
     
@@ -210,7 +227,7 @@
     startSpecialRedParticleTimer();
     
     // For testing purposes, spawn one right away
-    setTimeout(spawnSpecialRedParticle, 5000); // Spawn first one after 5 seconds
+    setTimeout(() => spawnSpecialRedParticle(), 5000); // Spawn first one after 5 seconds
     
     // ======== SPECIAL RED PARTICLE FEATURE - END ========
     
@@ -272,8 +289,8 @@
           
           // Super neon red particle with intense glow
           ctx.fillStyle = `rgba(255, 0, 60, ${particle.opacity})`;
-          ctx.shadowColor = 'rgba(255, 0, 80, 1)'; // More intense shadow for neon glow
-          ctx.shadowBlur = particle.blur + (particle.pulsePhase ? Math.sin(particle.pulsePhase) * 2 : 0);
+          ctx.shadowColor = 'rgba(255, 50, 80, 1)'; // More intense shadow for neon glow
+          ctx.shadowBlur = particle.blur + (Math.sin(particle.pulsePhase) * 3);
           
           // Draw the dot with extra glow for neon effect
           ctx.beginPath();
@@ -281,9 +298,15 @@
           ctx.fill();
           
           // Draw a second smaller, brighter core for the neon effect
-          ctx.fillStyle = 'rgba(255, 180, 200, 0.9)';
+          ctx.fillStyle = 'rgba(255, 220, 220, 0.9)';
           ctx.beginPath();
-          ctx.arc(particle.x, particle.y, particle.size * 0.6, 0, Math.PI * 2);
+          ctx.arc(particle.x, particle.y, particle.size * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Even brighter center
+          ctx.fillStyle = 'rgba(255, 255, 255, 1.0)';
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.size * 0.25, 0, Math.PI * 2);
           ctx.fill();
         } else {
           // Regular white particles
