@@ -375,6 +375,83 @@
             }
         }
     </style>
+
+    <!-- CSS for hiding DuckDuckGo search elements -->
+    <style id="ddg-style-injector">
+        /* This will be injected into the iframe to hide DuckDuckGo's search elements */
+        /* Target the exact element structure provided */
+        .header__search-wrap,
+        div.header__search-wrap,
+        [class*="header__search-wrap"],
+        div[class*="header__search-wrap"],
+        
+        /* Also hide the search form explicitly */
+        #search_form,
+        form#search_form,
+        form[data-testid="search-form"],
+        .search--adv,
+        .search--header,
+        .js-search-form,
+        
+        /* Other search elements for backup */
+        #search_form_homepage,
+        #search_form_homepage_top,
+        #search_form_input_homepage,
+        #search_form_input,
+        .js-search-input,
+        .header__search,
+        .search-form,
+        .search__autocomplete {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            max-height: 0 !important;
+            overflow: hidden !important;
+            position: absolute !important;
+            z-index: -9999 !important;
+            clip: rect(0, 0, 0, 0) !important;
+            margin: -1px !important;
+            padding: 0 !important;
+            border: 0 !important;
+        }
+    </style>
+
+    <!-- Essential UV Scripts -->
+    <script src="uv/uv.bundle.js"></script>
+    <script src="uv/uv.config.js"></script>
+
+    <!-- Configure UV to inject our CSS -->
+    <script>
+        // This will run before UV is loaded
+        window.addEventListener('beforescriptexecute', function(e) {
+            if (e.target && e.target.src && e.target.src.includes('uv.bundle.js')) {
+                // Register the CSS injection with UV
+                window.__uv$config = window.__uv$config || {};
+                window.__uv$config.onBeforeInjection = function(html) {
+                    // Check if this is a DuckDuckGo page
+                    if (html.includes('duckduckgo.com')) {
+                        // Create a style tag to inject
+                        const style = '<style>' + 
+                            document.getElementById('ddg-style-injector').textContent +
+                            '</style>';
+                        
+                        // Add class to body for targeting with CSS
+                        html = html.replace('<body', '<body class="hide-ddg-search"');
+                        
+                        // Add our style to the head
+                        html = html.replace('</head>', style + '</head>');
+                        
+                        // Try to also use direct HTML manipulation to remove the element
+                        // Target the specific structure you provided
+                        const searchWrapRegex = /<div class="header__search-wrap">[\s\S]*?<\/div><\/div>/g;
+                        html = html.replace(searchWrapRegex, ''); // Replace with empty string
+                    }
+                    return html;
+                };
+            }
+        }, true);
+    </script>
 </head>
 <body>
     <!-- Minimal header -->
@@ -430,59 +507,7 @@
         </div>
     </div>
 
-    <!-- Essential UV Scripts -->
-    <script src="uv/uv.bundle.js"></script>
-    <script src="uv/uv.config.js"></script>
-
-    <!-- CSS Injection for DuckDuckGo -->
-    <style id="ddg-style-injector">
-        /* This will be injected into the iframe to hide DuckDuckGo's search elements */
-        .hide-ddg-search #search_form_homepage,
-        .hide-ddg-search #search_form_homepage_top,
-        .hide-ddg-search #search_form,
-        .hide-ddg-search #search_form_input_homepage,
-        .hide-ddg-search #search_form_input,
-        .hide-ddg-search .js-search-input,
-        .hide-ddg-search .header__search,
-        .hide-ddg-search .header__search-wrap,
-        .hide-ddg-search .search-form,
-        .hide-ddg-search .search__autocomplete,
-        .hide-ddg-search .header__search-wrap {
-            display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-        }
-    </style>
-
-    <!-- Configure UV to inject our CSS -->
-    <script>
-        // This will run before UV is loaded
-        window.addEventListener('beforescriptexecute', function(e) {
-            if (e.target && e.target.src && e.target.src.includes('uv.bundle.js')) {
-                // Register the CSS injection with UV
-                window.__uv$config = window.__uv$config || {};
-                window.__uv$config.onBeforeInjection = function(html) {
-                    // Check if this is a DuckDuckGo page
-                    if (html.includes('duckduckgo.com')) {
-                        // Create a style tag to inject
-                        const style = '<style>' + 
-                            document.getElementById('ddg-style-injector').textContent +
-                            '</style>';
-                        
-                        // Add class to body for targeting with CSS
-                        html = html.replace('<body', '<body class="hide-ddg-search"');
-                        
-                        // Add our style to the head
-                        html = html.replace('</head>', style + '</head>');
-                    }
-                    return html;
-                };
-            }
-        }, true);
-    </script>
-
-    <!-- Proxy handling script -->
+    <!-- URL Decoding and Proxy handling script -->
     <script>
         // Define our variables in global scope first
         let iframe;
@@ -493,6 +518,49 @@
         let loadingTimeout;
         let loadStartTime = 0;
         let currentUrl = '';
+        
+        // Advanced URL decoder that handles various encoding formats
+        function decodeUVUrl(encodedUrl) {
+            if (!encodedUrl) return '';
+            
+            try {
+                // Check if this is a UV proxy URL
+                if (encodedUrl.includes(__uv$config.prefix)) {
+                    // Extract just the encoded part after the prefix
+                    const encodedPart = encodedUrl.substring(__uv$config.prefix.length);
+                    
+                    try {
+                        // Use UV's built-in decoder
+                        return __uv$config.decodeUrl(encodedPart);
+                    } catch (e) {
+                        console.error("UV decode error:", e);
+                    }
+                }
+                
+                // Fallback: Try to find and decode base64 segments (most UV URLs use base64)
+                // This regex finds common base64 patterns that start with 'aHR0' (which is 'http' in base64)
+                const base64Pattern = /aHR0[a-zA-Z0-9+/=]+/;
+                const match = encodedUrl.match(base64Pattern);
+                
+                if (match && match[0]) {
+                    try {
+                        // Try basic base64 decoding
+                        const decoded = atob(match[0]);
+                        if (decoded.startsWith('http')) {
+                            return decoded;
+                        }
+                    } catch (e) {
+                        console.error("Base64 decode error:", e);
+                    }
+                }
+                
+                // If all decoding attempts fail, return the original URL
+                return encodedUrl;
+            } catch (error) {
+                console.error("Error in decodeUVUrl:", error);
+                return encodedUrl; // Return original URL on error
+            }
+        }
         
         // Function to reload the current page
         function reloadPage() {
@@ -638,21 +706,6 @@
             return "https://duckduckgo.com/?t=h_&q=" + str;
         }
         
-        // Function to extract actual URL from a UV encoded URL
-        function getDecodedUrl(encodedUrl) {
-            try {
-                if (encodedUrl && encodedUrl.includes(__uv$config.prefix)) {
-                    return __uv$config.decodeUrl(
-                        encodedUrl.substring(__uv$config.prefix.length)
-                    );
-                }
-                return encodedUrl;
-            } catch (e) {
-                console.error("Error decoding URL:", e);
-                return encodedUrl;
-            }
-        }
-        
         // Apply DDG search bar hiding CSS directly
         function injectDDGStyles(iframeWindow) {
             try {
@@ -665,21 +718,41 @@
                 // Create style element
                 const style = iframeWindow.document.createElement('style');
                 style.textContent = `
+                    /* Target the exact element structure */
+                    .header__search-wrap,
+                    div.header__search-wrap,
+                    [class*="header__search-wrap"],
+                    div[class*="header__search-wrap"],
+                    
+                    /* Also hide the search form explicitly */
+                    #search_form,
+                    form#search_form,
+                    form[data-testid="search-form"],
+                    .search--adv,
+                    .search--header,
+                    .js-search-form,
+                    
+                    /* Other search elements for backup */
                     #search_form_homepage,
                     #search_form_homepage_top,
-                    #search_form,
                     #search_form_input_homepage,
                     #search_form_input,
                     .js-search-input,
                     .header__search,
-                    .header__search-wrap,
                     .search-form,
-                    .search__autocomplete,
-                    .header__search-wrap {
+                    .search__autocomplete {
                         display: none !important;
                         visibility: hidden !important;
                         opacity: 0 !important;
                         pointer-events: none !important;
+                        max-height: 0 !important;
+                        overflow: hidden !important;
+                        position: absolute !important; 
+                        z-index: -9999 !important;
+                        clip: rect(0, 0, 0, 0) !important;
+                        margin: -1px !important;
+                        padding: 0 !important;
+                        border: 0 !important;
                     }
                 `;
                 
@@ -696,10 +769,60 @@
                 } catch (e) {
                     console.log("Could not add style to head", e);
                 }
+                
+                // Direct removal of the element
+                try {
+                    // Try to remove the specific element by its class
+                    const searchWrapElements = iframeWindow.document.querySelectorAll('.header__search-wrap');
+                    searchWrapElements.forEach(el => {
+                        el.parentNode.removeChild(el);
+                    });
+                    
+                    // Also try to remove by data-testid
+                    const searchFormElements = iframeWindow.document.querySelectorAll('[data-testid="search-form"]');
+                    searchFormElements.forEach(el => {
+                        el.parentNode.removeChild(el);
+                    });
+                } catch (e) {
+                    console.log("Could not remove elements directly", e);
+                }
             } catch (e) {
                 // CORS will likely prevent this
                 console.log("Could not inject styles due to CORS", e);
             }
+        }
+        
+        // URL monitoring function: detects navigation and updates address bar
+        function monitorUrlChanges() {
+            // Store the last URL we processed
+            let lastProcessedUrl = '';
+            
+            // Check iframe URL periodically
+            setInterval(() => {
+                try {
+                    if (!iframe || !iframe.contentWindow) return;
+                    
+                    // Try to get current URL from iframe
+                    const currentIframeUrl = iframe.contentWindow.location.href;
+                    
+                    // Skip if URL hasn't changed or is about:blank
+                    if (currentIframeUrl === lastProcessedUrl || currentIframeUrl === 'about:blank') {
+                        return;
+                    }
+                    
+                    // Update our tracking
+                    lastProcessedUrl = currentIframeUrl;
+                    
+                    // Decode and update search bar with current URL
+                    const decodedUrl = decodeUVUrl(currentIframeUrl);
+                    if (decodedUrl && decodedUrl !== 'about:blank') {
+                        document.getElementById('proxy-search').value = decodedUrl;
+                        currentUrl = decodedUrl;
+                    }
+                } catch (e) {
+                    // Expected CORS error - can't directly access iframe location
+                }
+            }, 1000);
         }
         
         // Initialize on page load
@@ -720,13 +843,17 @@
                 loadingScreen.style.display = 'flex';
                 startProgressUpdates();
                 
-                // Load URL into iframe
-                iframe.src = proxyUrl;
-                
-                // Update search bar with decoded URL
-                const decodedUrl = getDecodedUrl(proxyUrl);
+                // Try to decode the URL for display in the search bar
+                const decodedUrl = decodeUVUrl(proxyUrl);
                 document.getElementById('proxy-search').value = decodedUrl;
                 currentUrl = decodedUrl;
+                
+                // Debug logging
+                console.log('Proxy URL:', proxyUrl);
+                console.log('Decoded URL:', decodedUrl);
+                
+                // Load URL into iframe
+                iframe.src = proxyUrl;
             } else {
                 // Default starting page if no URL specified
                 loadingScreen.style.display = 'none';
@@ -741,13 +868,12 @@
                     // Try to inject CSS to hide DuckDuckGo search bar
                     injectDDGStyles(iframe.contentWindow);
                     
-                    // Get the loaded URL
+                    // Try to get the loaded URL
                     if (iframe.contentWindow) {
                         const loadedUrl = iframe.contentWindow.location.href;
                         if (loadedUrl !== 'about:blank') {
-                            const decodedUrl = getDecodedUrl(loadedUrl);
-                            
-                            // Update search bar with decoded URL
+                            // Decode and update search bar with current URL
+                            const decodedUrl = decodeUVUrl(loadedUrl);
                             document.getElementById('proxy-search').value = decodedUrl;
                             currentUrl = decodedUrl;
                         }
@@ -755,13 +881,11 @@
                 } catch (e) {
                     // CORS might prevent access to contentWindow
                     console.log("Could not access iframe content due to CORS policy");
-                    
-                    // Use the currentUrl as a fallback
-                    if (currentUrl) {
-                        document.getElementById('proxy-search').value = currentUrl;
-                    }
                 }
             });
+            
+            // Start monitoring URL changes
+            monitorUrlChanges();
             
             // Set up reload button in overlay
             document.getElementById('overlayReloadBtn').addEventListener('click', function() {
@@ -776,16 +900,6 @@
                     reloadOverlay.classList.add('visible');
                 }
             }, 30000); // 30 second timeout
-            
-            // Set up message listener for UV service worker messages
-            window.addEventListener('message', function(event) {
-                if (event.data && event.data.type === 'uvIframeNavigate') {
-                    // UV is notifying us of navigation in the iframe
-                    const decodedUrl = getDecodedUrl(event.data.url);
-                    document.getElementById('proxy-search').value = decodedUrl;
-                    currentUrl = decodedUrl;
-                }
-            });
         });
     </script>
 
