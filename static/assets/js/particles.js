@@ -21,7 +21,7 @@
     canvas.style.left = '0';
     canvas.style.width = '100%';
     canvas.style.height = '100%';
-    canvas.style.zIndex = '0'; // Make sure it's behind everything
+    canvas.style.zIndex = '1000'; // Higher z-index to ensure clicks reach it
     canvas.style.pointerEvents = 'auto'; // Allow clicks on canvas but keep default cursor
     canvas.style.cursor = 'default'; // Default cursor
     
@@ -214,8 +214,8 @@
           const dy = clickY - particle.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
           
-          // Check if click is within particle radius
-          if (distance <= particle.size * 1.5) { // Give a slightly larger hit area
+          // Check if click is within particle radius - using a much larger hit area
+          if (distance <= particle.size * 4) { // Much larger hit area for easier clicking
             return true;
           }
         }
@@ -225,13 +225,16 @@
     
     // Handle click on canvas
     function handleCanvasClick(e) {
+      e.preventDefault(); // Prevent default behavior
+      e.stopPropagation(); // Stop propagation to ensure the click is captured
+      
       const clickX = e.clientX;
       const clickY = e.clientY;
       
       // Check if the red particle was clicked
       if (checkRedParticleClick(clickX, clickY)) {
         // Navigate to the specified URL
-        window.location.href = '/assets/html/footer2.html';
+        window.location.href = window.location.origin + '/assets/html/footer2.html';
       }
     }
     
@@ -257,8 +260,6 @@
     function drawParticles() {
       // Complete clear with no trail effect
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Umbrella is now invisible - no visualization
       
       // Update and draw each particle
       for (let i = 0; i < particles.length; i++) {
@@ -356,7 +357,16 @@
     
     window.addEventListener('mousemove', handleMouseMove);
     
-    // Add click handler for red particle
+    // Add click handler for red particle - using both mousedown and click for better detection
     canvas.addEventListener('click', handleCanvasClick);
+    canvas.addEventListener('mousedown', handleCanvasClick); // Also try mousedown event
+    
+    // For debugging - temporary solution
+    window.addEventListener('keydown', function(e) {
+      // Press 'r' key to navigate to footer2.html (for testing)
+      if (e.key === 'r') {
+        window.location.href = window.location.origin + '/assets/html/footer2.html';
+      }
+    });
   }
 })();
