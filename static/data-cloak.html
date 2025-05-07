@@ -1,18 +1,41 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Iframe via Data URL</title>
+    <title>Loading...</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
             background-color: #f5f5f5;
         }
-        button {
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        p {
+            color: #666;
+        }
+        #errorMessage {
+            color: #e74c3c;
+            margin-top: 20px;
+            display: none;
+        }
+        #manualButton {
+            margin-top: 20px;
             padding: 10px 20px;
             font-size: 16px;
             cursor: pointer;
@@ -20,20 +43,25 @@
             color: white;
             border: none;
             border-radius: 4px;
-        }
-        button:hover {
-            background-color: #3367d6;
+            display: none;
         }
     </style>
 </head>
 <body>
-    <button id="openIframe">Click to Open Iframed Website</button>
+    <div class="loader"></div>
+    <p>Loading website...</p>
+    <div id="errorMessage">An error occurred. Please try again.</div>
+    <button id="manualButton">Click here to continue</button>
 
     <script>
-        document.getElementById('openIframe').addEventListener('click', function() {
+        // Function to create and load the cloaked page
+        function loadCloakedPage() {
             try {
                 // Get the root domain
                 const rootUrl = window.location.origin;
+                
+                // Get the page title from the original site (if possible)
+                const originalTitle = document.title;
                 
                 // Create HTML for the iframe page with proper DOCTYPE and meta tags
                 const iframeHtml = `<!DOCTYPE html>
@@ -41,7 +69,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Iframed Content</title>
+    <title>${originalTitle}</title>
     <style>
         html, body { 
             margin: 0; 
@@ -68,24 +96,26 @@
                 // Create an object URL for the blob
                 const blobUrl = URL.createObjectURL(blob);
                 
-                // Open the blob URL in a new window
-                const newWindow = window.open(blobUrl);
-                
-                if (!newWindow) {
-                    alert("Pop-up blocker might be preventing the window from opening. Please allow pop-ups for this site.");
-                    return;
-                }
-                
-                // Close the current window after the new one is opened
-                setTimeout(function() {
-                    window.close();
-                }, 500);
+                // Replace the current window with the blob URL
+                window.location.replace(blobUrl);
                 
             } catch (error) {
                 console.error("Error:", error);
-                alert("An error occurred: " + error.message);
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('errorMessage').style.display = 'block';
+                document.getElementById('errorMessage').textContent = 'Error: ' + error.message;
+                document.getElementById('manualButton').style.display = 'block';
             }
+        }
+
+        // Try to load automatically on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Adding a small delay can help with some browsers
+            setTimeout(loadCloakedPage, 300);
         });
+
+        // Provide a fallback button in case automatic loading fails
+        document.getElementById('manualButton').addEventListener('click', loadCloakedPage);
     </script>
 </body>
 </html>
