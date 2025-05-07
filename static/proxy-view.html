@@ -434,6 +434,54 @@
     <script src="uv/uv.bundle.js"></script>
     <script src="uv/uv.config.js"></script>
 
+    <!-- CSS Injection for DuckDuckGo -->
+    <style id="ddg-style-injector">
+        /* This will be injected into the iframe to hide DuckDuckGo's search elements */
+        .hide-ddg-search #search_form_homepage,
+        .hide-ddg-search #search_form_homepage_top,
+        .hide-ddg-search #search_form,
+        .hide-ddg-search #search_form_input_homepage,
+        .hide-ddg-search #search_form_input,
+        .hide-ddg-search .js-search-input,
+        .hide-ddg-search .header__search,
+        .hide-ddg-search .header__search-wrap,
+        .hide-ddg-search .search-form,
+        .hide-ddg-search .search__autocomplete,
+        .hide-ddg-search .header__search-wrap {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+    </style>
+
+    <!-- Configure UV to inject our CSS -->
+    <script>
+        // This will run before UV is loaded
+        window.addEventListener('beforescriptexecute', function(e) {
+            if (e.target && e.target.src && e.target.src.includes('uv.bundle.js')) {
+                // Register the CSS injection with UV
+                window.__uv$config = window.__uv$config || {};
+                window.__uv$config.onBeforeInjection = function(html) {
+                    // Check if this is a DuckDuckGo page
+                    if (html.includes('duckduckgo.com')) {
+                        // Create a style tag to inject
+                        const style = '<style>' + 
+                            document.getElementById('ddg-style-injector').textContent +
+                            '</style>';
+                        
+                        // Add class to body for targeting with CSS
+                        html = html.replace('<body', '<body class="hide-ddg-search"');
+                        
+                        // Add our style to the head
+                        html = html.replace('</head>', style + '</head>');
+                    }
+                    return html;
+                };
+            }
+        }, true);
+    </script>
+
     <!-- Proxy handling script -->
     <script>
         // Define our variables in global scope first
@@ -444,6 +492,7 @@
         let reloadOverlay;
         let loadingTimeout;
         let loadStartTime = 0;
+        let currentUrl = '';
         
         // Function to reload the current page
         function reloadPage() {
@@ -561,6 +610,9 @@
             let url = parseSearch(searchInput);
             let encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(url);
             
+            // Store current URL for later reference
+            currentUrl = url;
+            
             // Show loading and load the URL
             loadingScreen.style.display = 'flex';
             loadingText.textContent = "Loading Website...";
@@ -568,6 +620,11 @@
             
             // Update iframe src
             iframe.src = encodedUrl;
+            
+            // Update URL in address bar without reload
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.set('url', encodedUrl);
+            window.history.pushState({}, '', newUrl.toString());
         }
         
         // Parse search input to proper URL
@@ -579,6 +636,70 @@
                 return "https://" + str;
             }
             return "https://duckduckgo.com/?t=h_&q=" + str;
+        }
+        
+        // Function to extract actual URL from a UV encoded URL
+        function getDecodedUrl(encodedUrl) {
+            try {
+                if (encodedUrl && encodedUrl.includes(__uv$config.prefix)) {
+                    return __uv$config.decodeUrl(
+                        encodedUrl.substring(__uv$config.prefix.length)
+                    );
+                }
+                return encodedUrl;
+            } catch (e) {
+                console.error("Error decoding URL:", e);
+                return encodedUrl;
+            }
+        }
+        
+        // Apply DDG search bar hiding CSS directly
+        function injectDDGStyles(iframeWindow) {
+            try {
+                if (!iframeWindow || !iframeWindow.document) return;
+                
+                // Check if this is a DuckDuckGo page
+                const isDDG = iframeWindow.location.href.includes('duckduckgo.com');
+                if (!isDDG) return;
+                
+                // Create style element
+                const style = iframeWindow.document.createElement('style');
+                style.textContent = `
+                    #search_form_homepage,
+                    #search_form_homepage_top,
+                    #search_form,
+                    #search_form_input_homepage,
+                    #search_form_input,
+                    .js-search-input,
+                    .header__search,
+                    .header__search-wrap,
+                    .search-form,
+                    .search__autocomplete,
+                    .header__search-wrap {
+                        display: none !important;
+                        visibility: hidden !important;
+                        opacity: 0 !important;
+                        pointer-events: none !important;
+                    }
+                `;
+                
+                // Add class to body
+                try {
+                    iframeWindow.document.body.classList.add('hide-ddg-search');
+                } catch (e) {
+                    console.log("Could not add class to body", e);
+                }
+                
+                // Add style to head
+                try {
+                    iframeWindow.document.head.appendChild(style);
+                } catch (e) {
+                    console.log("Could not add style to head", e);
+                }
+            } catch (e) {
+                // CORS will likely prevent this
+                console.log("Could not inject styles due to CORS", e);
+            }
         }
         
         // Initialize on page load
@@ -603,14 +724,9 @@
                 iframe.src = proxyUrl;
                 
                 // Update search bar with decoded URL
-                try {
-                    const decodedUrl = __uv$config.decodeUrl(
-                        proxyUrl.substring(__uv$config.prefix.length)
-                    );
-                    document.getElementById('proxy-search').value = decodedUrl;
-                } catch (e) {
-                    console.error("Error decoding URL:", e);
-                }
+                const decodedUrl = getDecodedUrl(proxyUrl);
+                document.getElementById('proxy-search').value = decodedUrl;
+                currentUrl = decodedUrl;
             } else {
                 // Default starting page if no URL specified
                 loadingScreen.style.display = 'none';
@@ -621,23 +737,29 @@
                 // Hide loading screen when iframe loaded
                 loadingScreen.style.display = 'none';
                 
-                // Update search bar with loaded URL
                 try {
+                    // Try to inject CSS to hide DuckDuckGo search bar
+                    injectDDGStyles(iframe.contentWindow);
+                    
+                    // Get the loaded URL
                     if (iframe.contentWindow) {
                         const loadedUrl = iframe.contentWindow.location.href;
-                        // Check if this is a proxied URL
-                        if (loadedUrl.includes(__uv$config.prefix)) {
-                            const decodedUrl = __uv$config.decodeUrl(
-                                loadedUrl.substring(__uv$config.prefix.length)
-                            );
+                        if (loadedUrl !== 'about:blank') {
+                            const decodedUrl = getDecodedUrl(loadedUrl);
+                            
+                            // Update search bar with decoded URL
                             document.getElementById('proxy-search').value = decodedUrl;
-                        } else if (loadedUrl !== 'about:blank') {
-                            document.getElementById('proxy-search').value = loadedUrl;
+                            currentUrl = decodedUrl;
                         }
                     }
                 } catch (e) {
-                    // CORS might prevent access to contentWindow.location
-                    console.log("Could not access iframe URL due to same-origin policy");
+                    // CORS might prevent access to contentWindow
+                    console.log("Could not access iframe content due to CORS policy");
+                    
+                    // Use the currentUrl as a fallback
+                    if (currentUrl) {
+                        document.getElementById('proxy-search').value = currentUrl;
+                    }
                 }
             });
             
@@ -654,6 +776,16 @@
                     reloadOverlay.classList.add('visible');
                 }
             }, 30000); // 30 second timeout
+            
+            // Set up message listener for UV service worker messages
+            window.addEventListener('message', function(event) {
+                if (event.data && event.data.type === 'uvIframeNavigate') {
+                    // UV is notifying us of navigation in the iframe
+                    const decodedUrl = getDecodedUrl(event.data.url);
+                    document.getElementById('proxy-search').value = decodedUrl;
+                    currentUrl = decodedUrl;
+                }
+            });
         });
     </script>
 
