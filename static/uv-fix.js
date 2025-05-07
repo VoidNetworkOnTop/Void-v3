@@ -1,39 +1,22 @@
 // Create this as uv-fix.js
-// Final version with support message for actual errors
+// Version that auto-hides loading messages and detects interaction
 
 (function() {
-  console.log('UV Fix Helper initializing...');
-  
-  // Configuration - adjust these values
+  // Configuration
   const CONFIG = {
-    INITIAL_WAIT: 20000,         // Wait 20 seconds before first check (increased)
-    EXTENDED_WAIT: 35000,        // Wait 35 seconds for slow-loading games
-    FINAL_ERROR_TIMEOUT: 90000,  // 1.5 minutes before showing final error
-    LOAD_PATIENCE: 4,            // Number of loading checks before showing recovery UI
-    DEBUG: false                 // Set to true for detailed console logging
+    INITIAL_WAIT: 20000,         // Initial wait before checking
+    AUTO_DISMISS_TIMER: 40000,   // Auto-dismiss loading message after this time
+    FINAL_ERROR_TIMEOUT: 90000,  // Show error message after this time
+    DEBUG: false                 // Enable debug logging
   };
   
-  // List of known slow-loading domains (these get more time)
-  const SLOW_DOMAINS = [
-    'crazygames.com',
-    'coolmathgames.com',
-    'y8.com',
-    'gamepix',
-    'poki.com',
-    'agame',
-    'gamedistribution',
-    'html5games.com',
-    'unity'
-  ];
-  
-  // Track loading state
-  let gameLoadingData = {
+  // Track state
+  let state = {
     loadStartTime: Date.now(),
-    loadingComplete: false,
-    loadingChecks: 0,
-    recoveryUIShown: false,
-    userDismissedWarning: false,
-    finalErrorShown: false
+    noticeShown: false,
+    contentDetected: false,
+    userInteracted: false,
+    timerIds: []
   };
   
   // Debug logging
@@ -42,74 +25,53 @@
       console.log('[UV Fix]', ...args);
     }
   }
-  
-  // Check if the current site matches a slow domain
-  function isSlowLoadingDomain() {
-    const url = window.location.href;
-    return SLOW_DOMAINS.some(domain => url.includes(domain));
-  }
-  
-  // Get more time for slow domains
-  function getAppropriateWaitTime() {
-    return isSlowLoadingDomain() ? 
-      CONFIG.EXTENDED_WAIT : CONFIG.INITIAL_WAIT;
-  }
-  
-  // Better content detection - checks more indicators
+
+  // Improved content detection
   function hasGameContent() {
     if (!document.body) return false;
     
-    // Look for specific signs of game content
-    const hasCanvas = document.querySelectorAll('canvas').length > 0;
-    const hasSizeableCanvas = Array.from(document.querySelectorAll('canvas')).some(canvas => {
+    // Check for canvas with reasonable size
+    const hasCanvas = Array.from(document.querySelectorAll('canvas')).some(canvas => {
       const rect = canvas.getBoundingClientRect();
-      return rect.width > 50 && rect.height > 50; // Canvas must be a reasonable size
+      return rect.width > 50 && rect.height > 50;
     });
     
-    const hasIframe = document.querySelectorAll('iframe').length > 0;
+    // Check for game containers
     const hasGameContainer = document.querySelectorAll(
       '[id*="game"], [id*="unity"], [class*="game"], [class*="unity"], #gameContainer, .game-container'
     ).length > 0;
     
-    const hasActiveAnimations = document.querySelectorAll(
-      'canvas[style*="animation"], div[style*="animation"]'
-    ).length > 0;
+    // Check for substantial content
+    const bodyContent = document.body.innerHTML;
+    const hasSubstantialContent = bodyContent.length > 10000;
     
-    const hasInteractiveElements = document.querySelectorAll(
-      'button, a[href], input, select, textarea'
-    ).length > 3; // Should have at least a few interactive elements
-    
-    const hasVisibleImages = document.querySelectorAll('img[src]').length > 1;
-    
-    // If we have a canvas with size or game container, that's a good sign
-    if (hasSizeableCanvas || hasGameContainer) {
-      debug('Game content detected: Canvas or game container');
+    // Fast check - if we have obvious game elements, return true immediately
+    if (hasCanvas || hasGameContainer) {
       return true;
     }
     
-    // Multiple indicators together suggest content is loaded
+    // More thorough check
     const contentIndicators = [
-      hasCanvas, hasIframe, hasGameContainer, hasActiveAnimations, 
-      hasInteractiveElements, hasVisibleImages
+      document.querySelectorAll('iframe').length > 0,
+      document.querySelectorAll('img[src]').length > 3,
+      document.querySelectorAll('svg').length > 0,
+      document.querySelectorAll('video').length > 0,
+      document.querySelectorAll('button, a[href], input').length > 5,
+      document.body.innerText.trim().length > 200,
+      hasSubstantialContent
     ].filter(Boolean).length;
     
-    // More thorough text content check
-    const textContent = document.body.innerText.trim();
-    const hasMeaningfulText = textContent.length > 50 || 
-                             textContent.split(/\s+/).length > 10;
-    
-    debug('Content indicators:', contentIndicators, 'Meaningful text:', hasMeaningfulText);
-    
-    // Either several indicators or meaningful text suggest content is loaded
-    return contentIndicators >= 2 || hasMeaningfulText;
+    return contentIndicators >= 2;
   }
   
-  // Create a dismissible loading notice (not an error yet)
+  // Create loading notice
   function createLoadingNotice() {
-    // Don't create multiple notices
-    if (document.getElementById('uv-notice')) {
+    // Don't create duplicate notices
+    if (document.getElementById('uv-notice') || state.noticeShown) {
       return;
     }
+    
+    state.noticeShown = true;
     
     const notice = document.createElement('div');
     notice.id = 'uv-notice';
@@ -128,8 +90,8 @@
     notice.style.maxWidth = '90%';
     notice.style.width = '400px';
     notice.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+    notice.style.transition = 'opacity 0.5s ease';
     
-    // We start with a "still loading" message
     notice.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
         <span style="color:#ffc107;font-weight:bold;">Game still loading...</span>
@@ -152,29 +114,32 @@
     
     // Add event listeners
     document.getElementById('uv-dismiss').addEventListener('click', function() {
-      notice.style.display = 'none';
-      gameLoadingData.userDismissedWarning = true;
+      hideNotice();
     });
     
     document.getElementById('uv-keep-waiting').addEventListener('click', function() {
-      notice.style.display = 'none';
-      gameLoadingData.userDismissedWarning = true;
+      hideNotice();
     });
     
     document.getElementById('uv-reload').addEventListener('click', function() {
       window.location.reload();
     });
+    
+    // Set auto-dismiss timer
+    const autoDismissTimer = setTimeout(function() {
+      hideNotice();
+    }, CONFIG.AUTO_DISMISS_TIMER);
+    
+    state.timerIds.push(autoDismissTimer);
   }
   
-  // Update to error notice after timeout
+  // Update notice to error message
   function updateToErrorNotice() {
     const notice = document.getElementById('uv-notice');
-    if (!notice || gameLoadingData.finalErrorShown) return;
+    if (!notice) {
+      return;
+    }
     
-    // Mark as final error shown
-    gameLoadingData.finalErrorShown = true;
-    
-    // Enhanced error message with support information
     notice.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <span style="color:#f44336;font-weight:bold;">We're having trouble loading this game</span>
@@ -195,7 +160,7 @@
     
     // Update the event listeners for the new buttons
     document.getElementById('uv-dismiss-error').addEventListener('click', function() {
-      notice.style.display = 'none';
+      hideNotice();
     });
     
     document.getElementById('uv-try-again').addEventListener('click', function() {
@@ -206,291 +171,144 @@
       window.location.href = '/';
     });
     
-    // Make sure the notice is visible
-    notice.style.display = 'block';
+    // Make sure notice is visible
+    notice.style.opacity = '1';
   }
   
-  // Create full recovery UI for actual blank screens
-  function createRecoveryUI() {
-    // Don't create if user has dismissed warning
-    if (gameLoadingData.userDismissedWarning) {
-      return;
-    }
-    
-    // Don't create multiple recovery UIs
-    if (document.getElementById('uv-recovery')) {
-      return;
-    }
-    
-    const recoveryDiv = document.createElement('div');
-    recoveryDiv.id = 'uv-recovery';
-    recoveryDiv.style.position = 'fixed';
-    recoveryDiv.style.top = '0';
-    recoveryDiv.style.left = '0';
-    recoveryDiv.style.width = '100%';
-    recoveryDiv.style.height = '100%';
-    recoveryDiv.style.display = 'flex';
-    recoveryDiv.style.flexDirection = 'column';
-    recoveryDiv.style.alignItems = 'center';
-    recoveryDiv.style.justifyContent = 'center';
-    recoveryDiv.style.background = 'rgba(0,0,0,0.9)';
-    recoveryDiv.style.color = '#fff';
-    recoveryDiv.style.fontFamily = 'Arial, sans-serif';
-    recoveryDiv.style.zIndex = '9999';
-    
-    // Check if this is a slow-loading domain
-    const isSlowDomain = isSlowLoadingDomain();
-    
-    // Different messaging based on domain type
-    const messageHtml = isSlowDomain ?
-      `<p>This game is known to take longer to load.<br>It may still be initializing in the background.</p>` :
-      `<p>The game is taking longer than expected to load.</p>`;
-    
-    // Add content
-    recoveryDiv.innerHTML = `
-      <h2>Game Loading</h2>
-      <div style="width:60px;height:60px;border:5px solid rgba(255,255,255,0.3);border-top:5px solid white;border-radius:50%;margin:20px;animation:uvSpin 1s linear infinite;"></div>
-      ${messageHtml}
-      <div style="display:flex;margin-top:20px;">
-        <button id="uv-wait-btn" style="padding:10px 20px;background:#4caf50;color:white;border:none;margin:0 10px;border-radius:4px;cursor:pointer;">
-          Continue Waiting
-        </button>
-        <button id="uv-reload-btn" style="padding:10px 20px;background:#2196f3;color:white;border:none;margin:0 10px;border-radius:4px;cursor:pointer;">
-          Reload Game
-        </button>
-      </div>
-      <div id="uv-timer-text" style="margin-top:15px;font-size:14px;color:#aaa;"></div>
-      <style>@keyframes uvSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}</style>
-    `;
-    
-    document.body.appendChild(recoveryDiv);
-    
-    // Add event listeners
-    document.getElementById('uv-wait-btn').addEventListener('click', function() {
-      // Just hide the recovery UI
-      recoveryDiv.style.display = 'none';
-      gameLoadingData.userDismissedWarning = true;
-      
-      // Create a small indicator that can bring back the UI
-      const indicator = document.createElement('div');
-      indicator.id = 'uv-mini-indicator';
-      indicator.style.position = 'fixed';
-      indicator.style.bottom = '10px';
-      indicator.style.right = '10px';
-      indicator.style.background = 'rgba(0,0,0,0.7)';
-      indicator.style.color = 'white';
-      indicator.style.padding = '8px 12px';
-      indicator.style.borderRadius = '4px';
-      indicator.style.fontFamily = 'Arial, sans-serif';
-      indicator.style.fontSize = '12px';
-      indicator.style.cursor = 'pointer';
-      indicator.style.zIndex = '9998';
-      indicator.textContent = 'Show Loading Help';
-      
-      indicator.addEventListener('click', function() {
-        recoveryDiv.style.display = 'flex';
-        indicator.remove();
-      });
-      
-      document.body.appendChild(indicator);
-    });
-    
-    document.getElementById('uv-reload-btn').addEventListener('click', function() {
-      window.location.reload();
-    });
-    
-    // Show a timer that counts up instead of counting down
-    const timerText = document.getElementById('uv-timer-text');
-    let seconds = 0;
-    
-    const timerInterval = setInterval(function() {
-      seconds++;
-      timerText.textContent = `Waiting: ${seconds} seconds`;
-      
-      // After enough time (90 seconds by default), show the final error message
-      if (seconds >= CONFIG.FINAL_ERROR_TIMEOUT / 1000) {
-        clearInterval(timerInterval);
-        
-        // Update recovery UI to show final error message
-        const messageContainer = recoveryDiv.querySelector('p');
-        if (messageContainer) {
-          messageContainer.innerHTML = `
-            <div style="color:#f44336;font-weight:bold;margin-bottom:10px;">We're having trouble loading this game</div>
-            <div style="font-size:14px;line-height:1.5;max-width:550px;margin:0 auto 15px auto;">
-              Sorry! This game isn't loading properly. If the issue continues, please visit our support team by going to the home page and clicking the phone icon at the bottom.
-            </div>
-          `;
-        }
-        
-        // Update buttons
-        const buttonContainer = document.querySelector('#uv-recovery div:nth-child(4)');
-        if (buttonContainer) {
-          buttonContainer.innerHTML = `
-            <button id="uv-try-again-btn" style="padding:10px 20px;background:#2196f3;color:white;border:none;margin:0 10px;border-radius:4px;cursor:pointer;font-weight:bold;">
-              Try Again
-            </button>
-            <button id="uv-home-btn" style="padding:10px 20px;background:#757575;color:white;border:none;margin:0 10px;border-radius:4px;cursor:pointer;">
-              Go Home
-            </button>
-          `;
-          
-          // Add new event listeners
-          document.getElementById('uv-try-again-btn').addEventListener('click', function() {
-            window.location.reload();
-          });
-          
-          document.getElementById('uv-home-btn').addEventListener('click', function() {
-            window.location.href = '/';
-          });
-        }
-        
-        // Hide the timer
-        timerText.style.display = 'none';
-      }
-    }, 1000);
-    
-    // Store for cleanup
-    gameLoadingData.timerInterval = timerInterval;
-    gameLoadingData.recoveryUIShown = true;
-  }
-  
-  // Initialize blank screen detection and recovery
-  function initBlankScreenChecks() {
-    // Initial wait based on site
-    const initialWait = getAppropriateWaitTime();
-    debug(`Initial wait time: ${initialWait}ms, Slow domain: ${isSlowLoadingDomain()}`);
-    
-    // First check - just show notice if game is still loading
-    setTimeout(function() {
-      debug('Performing initial content check');
-      
-      // Exit if loading completed during wait
-      if (gameLoadingData.loadingComplete) {
-        debug('Loading completed during initial wait, exiting checks');
-        return;
-      }
-      
-      // Skip if there's content
-      if (hasGameContent()) {
-        debug('Initial check: Content detected');
-        gameLoadingData.loadingComplete = true;
-        return;
-      }
-      
-      debug('Initial check: No content detected yet');
-      
-      // Show a non-intrusive notice first
-      createLoadingNotice();
-      
-      // Setup for final error message after timeout
+  // Hide the notice
+  function hideNotice() {
+    const notice = document.getElementById('uv-notice');
+    if (notice) {
+      notice.style.opacity = '0';
       setTimeout(function() {
-        if (!gameLoadingData.loadingComplete && !gameLoadingData.userDismissedWarning) {
-          debug('Final timeout reached, showing error message');
-          updateToErrorNotice();
+        if (notice.parentNode) {
+          notice.parentNode.removeChild(notice);
         }
-      }, CONFIG.FINAL_ERROR_TIMEOUT - initialWait);
-      
-      // Start more thorough checks for blank screen
-      const checkInterval = setInterval(function() {
-        gameLoadingData.loadingChecks++;
-        debug(`Check #${gameLoadingData.loadingChecks} for content`);
-        
-        // If content detected, clean up
-        if (hasGameContent()) {
-          debug('Content detected, clearing checks');
-          clearInterval(checkInterval);
-          gameLoadingData.loadingComplete = true;
-          
-          // Hide notice if it exists
-          const notice = document.getElementById('uv-notice');
-          if (notice) {
-            notice.style.display = 'none';
-          }
-          
-          // Hide recovery UI if it exists
-          const recovery = document.getElementById('uv-recovery');
-          if (recovery) {
-            recovery.style.display = 'none';
-          }
-          
-          return;
-        }
-        
-        // After several checks with no content, show full recovery UI
-        if (gameLoadingData.loadingChecks >= CONFIG.LOAD_PATIENCE && !gameLoadingData.recoveryUIShown) {
-          debug('Multiple empty checks, showing recovery UI');
-          createRecoveryUI();
-          clearInterval(checkInterval);
-        }
-      }, 5000); // Check every 5 seconds
-      
-      // Store for cleanup
-      gameLoadingData.checkInterval = checkInterval;
-      
-    }, initialWait);
-    
-    // Mark loading as complete when we have real evidence
-    window.addEventListener('load', function() {
-      // Wait a bit after load event to check for content
-      setTimeout(function() {
-        if (hasGameContent()) {
-          debug('Content detected after load event');
-          gameLoadingData.loadingComplete = true;
-          
-          // Clean up any checks and UI
-          if (gameLoadingData.checkInterval) {
-            clearInterval(gameLoadingData.checkInterval);
-          }
-          
-          if (gameLoadingData.timerInterval) {
-            clearInterval(gameLoadingData.timerInterval);
-          }
-          
-          // Hide notice if it exists
-          const notice = document.getElementById('uv-notice');
-          if (notice) {
-            notice.style.display = 'none';
-          }
-          
-          // Hide recovery UI if it exists
-          const recovery = document.getElementById('uv-recovery');
-          if (recovery) {
-            recovery.style.display = 'none';
-          }
-        }
-      }, 2000);
-    });
+      }, 500);
+    }
   }
   
-  // Add CSS for page-specific fixes
+  // Add the necessary CSS fixes
   function addFixStyles() {
-    const fixStyles = document.createElement('style');
-    fixStyles.textContent = `
-      /* Make canvas elements visible */
+    const style = document.createElement('style');
+    style.textContent = `
+      /* Make canvas visible */
       canvas {
         display: block !important;
         visibility: visible !important;
       }
       
-      /* Fix broken game containers */
+      /* Fix game containers */
       [id*="game"], [id*="unity"], [class*="game"], [class*="unity"] {
         display: block !important;
         visibility: visible !important;
       }
     `;
-    document.head.appendChild(fixStyles);
+    document.head.appendChild(style);
   }
   
-  // Initialize
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      addFixStyles();
-      initBlankScreenChecks();
+  // Setup user interaction detection
+  function detectUserInteraction() {
+    // These events suggest the user is interacting with the game
+    const interactionEvents = ['click', 'touchstart', 'keydown', 'mousemove'];
+    
+    // After enough interactions, consider the game loaded
+    let interactionCount = 0;
+    const interactionThreshold = 3;
+    
+    function onUserInteraction() {
+      interactionCount++;
+      debug('User interaction detected:', interactionCount);
+      
+      if (interactionCount >= interactionThreshold) {
+        debug('Sufficient interactions detected - assuming game is loaded');
+        state.userInteracted = true;
+        
+        // Hide notice if it exists
+        hideNotice();
+        
+        // Clean up event listeners
+        interactionEvents.forEach(event => {
+          document.removeEventListener(event, onUserInteraction);
+        });
+      }
+    }
+    
+    // Add listeners for each interaction type
+    interactionEvents.forEach(event => {
+      document.addEventListener(event, onUserInteraction);
     });
-  } else {
-    addFixStyles();
-    initBlankScreenChecks();
   }
   
-  console.log('UV Fix Helper initialized');
+  // Initialize the system
+  function initialize() {
+    debug('Initializing UV Fix Helper...');
+    
+    // Add CSS fixes immediately
+    addFixStyles();
+    
+    // Setup interaction detection
+    detectUserInteraction();
+    
+    // Wait a bit before first check
+    const initialCheckTimer = setTimeout(function() {
+      // Check if content is loaded
+      state.contentDetected = hasGameContent();
+      debug('Initial content check:', state.contentDetected ? 'Content found' : 'No content yet');
+      
+      // If no content detected, show notice
+      if (!state.contentDetected && !state.userInteracted) {
+        debug('No content detected, showing loading notice');
+        createLoadingNotice();
+        
+        // Setup for error message after final timeout
+        const errorTimer = setTimeout(function() {
+          if (!state.contentDetected && !state.userInteracted) {
+            debug('Final timeout reached, showing error notice');
+            updateToErrorNotice();
+          }
+        }, CONFIG.FINAL_ERROR_TIMEOUT - CONFIG.INITIAL_WAIT);
+        
+        state.timerIds.push(errorTimer);
+        
+        // Start content check interval
+        const checkInterval = setInterval(function() {
+          // Check if content is now loaded
+          state.contentDetected = hasGameContent();
+          
+          if (state.contentDetected || state.userInteracted) {
+            debug('Content now detected, clearing interval');
+            hideNotice();
+            clearInterval(checkInterval);
+          }
+        }, 5000);
+        
+        state.timerIds.push(checkInterval);
+      }
+    }, CONFIG.INITIAL_WAIT);
+    
+    state.timerIds.push(initialCheckTimer);
+    
+    // Final backup - auto-hide the message after load event
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        debug('Window load event complete');
+        
+        // Check if user has interacted or content is loaded
+        if (state.userInteracted || hasGameContent()) {
+          hideNotice();
+        }
+        
+        // Always hide after a longer timeout from load
+        setTimeout(hideNotice, 10000);
+      }, 2000);
+    });
+  }
+  
+  // Initialize based on document state
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initialize);
+  } else {
+    initialize();
+  }
 })();
