@@ -154,11 +154,38 @@
     // Variables for special red particle
     let hasSpecialRedParticle = false;
     let specialRedParticleTimer = null;
+    const COOLDOWN_TIME = 10 * 60 * 1000; // 10 minutes in milliseconds
+    const STORAGE_KEY = 'redParticleLastSpawnTime';
+    
+    // Function to check if we can spawn a red particle based on cooldown
+    function canSpawnRedParticle() {
+      // Get the last spawn time from localStorage
+      const lastSpawnTime = localStorage.getItem(STORAGE_KEY);
+      
+      // If no record exists, we can spawn
+      if (!lastSpawnTime) {
+        return true;
+      }
+      
+      // Calculate time elapsed since last spawn
+      const now = Date.now();
+      const timeSinceLastSpawn = now - parseInt(lastSpawnTime);
+      
+      // Return true if cooldown period has passed
+      return timeSinceLastSpawn >= COOLDOWN_TIME;
+    }
+    
+    // Function to record spawn time in localStorage
+    function recordRedParticleSpawn() {
+      const now = Date.now();
+      localStorage.setItem(STORAGE_KEY, now.toString());
+    }
     
     // Function to spawn a special red particle
     function spawnSpecialRedParticle() {
       // Only spawn if there isn't already a special red particle
-      if (!hasSpecialRedParticle) {
+      // AND if the cooldown period has passed
+      if (!hasSpecialRedParticle && canSpawnRedParticle()) {
         // Determine left or right side (avoiding middle)
         let particleX;
         
@@ -200,6 +227,9 @@
         });
         
         hasSpecialRedParticle = true;
+        
+        // Record spawn time in localStorage for persistence
+        recordRedParticleSpawn();
       }
     }
     
@@ -273,8 +303,10 @@
       }, 3600000); // Every hour
     }
     
-    // For testing purposes, spawn one right away
-    setTimeout(() => spawnSpecialRedParticle(), 5000); // Spawn first one after 5 seconds
+    // Try to spawn a red particle at startup if cooldown allows
+    setTimeout(() => {
+      spawnSpecialRedParticle();
+    }, 5000); // Try after 5 seconds
     
     // ======== SPECIAL RED PARTICLE FEATURE - END ========
     
