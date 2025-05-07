@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Proxy</title>
+    <!-- Critical hints to prioritize content display -->
+    <meta http-equiv="Page-Speed" content="High">
+    <meta name="priority" content="high">
+    
+    <!-- Import Inter font -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap">
+    <script src="/config.js"></script>
+    <script src="/global.js"></script>
+    <script src="/assets/js/adblock.js"></script>
+    <script src="/assets/js/favicon-handler.js"></script>
+
+    <!-- Inline critical styles -->
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            min-width: 100%;
+            max-width: 100%;
+            height: 100%;
+            min-height: 100%;
+            max-height: 100%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #121212 0%, #000000 100%);
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }
+
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(5px);
+            height: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .header a {
+            margin: 0 20px;
+            transition: transform 0.2s ease;
+        }
+        
+        .header a:hover {
+            transform: scale(1.1);
+        }
+        
+        .home_bttn {
+            height: 26px;
+            width: 26px;
+            opacity: 0.8;
+            transition: opacity 0.2s ease;
+        }
+        
+        .header a:hover .home_bttn {
+            opacity: 1;
+        }
+
+        /* Main content area */
+        .page_content {
+            display: flex;
+            width: 100%;
+            height: calc(100% - 70px);
+            margin-top: 70px;
+            box-sizing: border-box;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Main proxy container */
+        .proxy_container {
+            background: #0a0a0a;
+            width: 95%;
+            height: 90vh;
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 
+                0 0 10px rgba(0,0,0,0.5),
+                0 0 30px rgba(255, 255, 255, 0.9),
+                0 0 50px rgba(255, 255, 255, 0.5),
+                0 0 80px rgba(100, 180, 255, 0.3);
+            z-index: 2;
+            overflow: hidden;
+            border: 2px solid rgba(30,30,30,0.8);
+            background-clip: padding-box;
+        }
+
+        /* Proxy iframe takes most of the space */
+        #proxy_frame {
+            width: 100%;
+            height: calc(100% - 40px);
+            border: none;
+            border-radius: 22px 22px 0 0;
+            background: #000;
+            display: block;
+        }
+        
+        /* Footer bar */
+        .footer {
+            height: 40px;
+            background: rgba(15,15,15,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 0 0 22px 22px;
+            border-top: 1px solid rgba(50,50,50,0.5);
+            padding: 0 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .footer button {
+            margin: 0 15px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            height: 40px;
+            width: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0;
+            transition: transform 0.2s ease, background 0.2s ease;
+            border-radius: 8px;
+        }
+        
+        .footer button:hover {
+            background: rgba(255,255,255,0.1);
+            transform: scale(1.1);
+        }
+        
+        .footer img {
+            height: 22px;
+            width: 22px;
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+            object-fit: contain;
+        }
+        
+        .footer button:hover img {
+            opacity: 1;
+        }
+        
+        /* Loading screen styles */
+        .loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 40px);
+            background: rgba(10,10,10,0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 5;
+            border-radius: 22px 22px 0 0;
+        }
+        
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(50,50,50,0.3);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            position: relative;
+            box-shadow: 0 0 15px rgba(255,255,255,0.3);
+        }
+        
+        .loading-spinner::after {
+            content: '';
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            right: -4px;
+            bottom: -4px;
+            border-radius: 50%;
+            border: 4px solid transparent;
+            border-top: 4px solid #ffffff;
+            animation: spin 1s linear infinite, pulseGlow 2s ease-in-out infinite;
+        }
+        
+        .loading-text {
+            margin-top: 25px;
+            font-size: 20px;
+            color: #fff;
+            font-weight: 300;
+            letter-spacing: 0.5px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            position: relative;
+        }
+        
+        .loading-text::after {
+            content: '';
+            display: inline-block;
+            width: 0;
+            animation: loadingDots 1.5s infinite;
+            margin-left: 4px;
+        }
+        
+        .loading-progress {
+            width: 250px;
+            height: 4px;
+            background: rgba(50,50,50,0.3);
+            border-radius: 2px;
+            margin-top: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .loading-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(to right, #4a6ed3, #5a7ee5);
+            border-radius: 2px;
+            transition: width 0.3s ease-in-out;
+            position: relative;
+        }
+        
+        .loading-progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                to right,
+                transparent 0%,
+                rgba(255, 255, 255, 0.5) 50%,
+                transparent 100%
+            );
+            animation: shimmer 1.5s infinite;
+            transform: translateX(-100%);
+        }
+        
+        .reload-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 40px);
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            border-radius: 22px 22px 0 0;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+        
+        .reload-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .reload-message {
+            color: white;
+            font-size: 18px;
+            margin-bottom: 20px;
+            text-align: center;
+            max-width: 80%;
+        }
+        
+        .reload-button {
+            padding: 10px 20px;
+            background: linear-gradient(to bottom, #5a7ee5, #4a6ed3);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s ease;
+        }
+        
+        .reload-button:hover {
+            transform: scale(1.05);
+            background: linear-gradient(to bottom, #6a8ef5, #5a7ee5);
+        }
+
+        /* Search bar */
+        .proxy-search-container {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            max-width: 700px;
+            z-index: 6;
+            display: flex;
+            background: rgba(30, 30, 30, 0.8);
+            border-radius: 30px;
+            border: 1px solid rgba(100, 180, 255, 0.3);
+            overflow: hidden;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .proxy-search {
+            flex: 1;
+            height: 38px;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: white;
+            padding: 0 15px;
+            font-size: 16px;
+        }
+        
+        .proxy-search::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .proxy-search-button {
+            background: rgba(100, 180, 255, 0.2);
+            border: none;
+            padding: 0 15px;
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .proxy-search-button:hover {
+            background: rgba(100, 180, 255, 0.4);
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 5px rgba(255, 255, 255, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(255, 255, 255, 0.6); }
+        }
+        
+        @keyframes loadingDots {
+            0% { content: ''; }
+            25% { content: '.'; }
+            50% { content: '..'; }
+            75% { content: '...'; }
+        }
+        
+        @keyframes shimmer {
+            100% { transform: translateX(100%); }
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .proxy-search-container {
+                width: 90%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Minimal header -->
+    <header class="header">
+        <a href="/"><img src="/nav/home.png" class="home_bttn" alt="Home"></a>
+        <a href="/learn"><img src="/nav/search.png" class="home_bttn" alt="Search"></a>
+        <a href="/app"><img src="/nav/apps.png" class="home_bttn" alt="Apps"></a>
+    </header>
+
+    <!-- Main page content -->
+    <div class="page_content">
+        <!-- Main proxy container -->
+        <div class="proxy_container">
+            <!-- Search bar -->
+            <div class="proxy-search-container">
+                <input type="text" class="proxy-search" id="proxy-search" placeholder="Enter URL or search..." onkeypress="handleProxySearch(event)">
+                <button class="proxy-search-button" onclick="submitProxySearch()">Go</button>
+            </div>
+            
+            <!-- Enhanced loading screen with progress bar -->
+            <div class="loading-screen" id="loadingScreen">
+                <div class="loading-spinner"></div>
+                <div class="loading-text" id="loadingText">Loading Website...</div>
+                <div class="loading-progress" id="loadingProgress">
+                    <div class="loading-progress-bar" id="loadingProgressBar"></div>
+                </div>
+            </div>
+            
+            <!-- Reload overlay -->
+            <div class="reload-overlay" id="reloadOverlay">
+                <div class="reload-message">Website failed to load properly. This may be due to a slow connection or content blocking.</div>
+                <button class="reload-button" id="overlayReloadBtn">Reload Website</button>
+            </div>
+            
+            <!-- Proxy iframe -->
+            <iframe id="proxy_frame" allowfullscreen="true" sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"></iframe>
+            
+            <!-- Footer -->
+            <div class="footer">
+                <button onclick="reloadPage()" title="Reload">
+                    <img src="/nav/reload.png" alt="Reload">
+                </button>
+                <button onclick="toggleFullScreen()" title="Fullscreen">
+                    <img src="/nav/fullscreenbutton.png" alt="Fullscreen">
+                </button>
+                <button onclick="goBack()" title="Back">
+                    <img src="/nav/back.png" alt="Go Back" onerror="this.src='/nav/reload.png'">
+                </button>
+                <button onclick="goForward()" title="Forward">
+                    <img src="/nav/forward.png" alt="Go Forward" onerror="this.src='/nav/reload.png'">
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Essential UV Scripts -->
+    <script src="uv/uv.bundle.js"></script>
+    <script src="uv/uv.config.js"></script>
+
+    <!-- Proxy handling script -->
+    <script>
+        // Define our variables in global scope first
+        let iframe;
+        let loadingScreen;
+        let loadingText;
+        let loadingProgressBar;
+        let reloadOverlay;
+        let loadingTimeout;
+        let loadStartTime = 0;
+        
+        // Function to reload the current page
+        function reloadPage() {
+            if (!iframe) {
+                iframe = document.getElementById('proxy_frame');
+            }
+            
+            // Show loading screen
+            loadingScreen.style.display = 'flex';
+            loadingText.textContent = "Reloading Website...";
+            startProgressUpdates();
+            
+            // Reload iframe
+            try {
+                iframe.contentWindow.location.reload();
+            } catch (e) {
+                // CORS might prevent direct reload, so reload with current src
+                const currentSrc = iframe.src;
+                iframe.src = 'about:blank';
+                setTimeout(() => {
+                    iframe.src = currentSrc;
+                }, 100);
+            }
+        }
+        
+        // Function to toggle fullscreen
+        function toggleFullScreen() {
+            if (!iframe) {
+                iframe = document.getElementById('proxy_frame');
+            }
+            
+            if (!document.fullscreenElement) {
+                if (iframe.requestFullscreen) {
+                    iframe.requestFullscreen();
+                } else if (iframe.webkitRequestFullscreen) {
+                    iframe.webkitRequestFullscreen();
+                } else if (iframe.msRequestFullscreen) {
+                    iframe.msRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+            }
+        }
+        
+        // Function to go back
+        function goBack() {
+            if (!iframe) {
+                iframe = document.getElementById('proxy_frame');
+            }
+            
+            try {
+                iframe.contentWindow.history.back();
+            } catch (e) {
+                console.error("Error going back:", e);
+            }
+        }
+        
+        // Function to go forward
+        function goForward() {
+            if (!iframe) {
+                iframe = document.getElementById('proxy_frame');
+            }
+            
+            try {
+                iframe.contentWindow.history.forward();
+            } catch (e) {
+                console.error("Error going forward:", e);
+            }
+        }
+        
+        // Progress bar updates
+        function startProgressUpdates() {
+            // Start time for loading
+            loadStartTime = Date.now();
+            
+            // Reset progress bar
+            loadingProgressBar.style.width = '0%';
+            
+            // Update progress bar every 50ms
+            const progressInterval = setInterval(() => {
+                const timeElapsed = Date.now() - loadStartTime;
+                let progress = Math.min(95, (timeElapsed / 10000) * 100); // 10 seconds to reach 95%
+                
+                // Make progress non-linear for more natural feel
+                progress = Math.pow(progress / 100, 0.7) * 100;
+                
+                loadingProgressBar.style.width = `${progress}%`;
+                
+                // Stop updating if loading is complete
+                if (loadingScreen.style.display === 'none') {
+                    clearInterval(progressInterval);
+                    loadingProgressBar.style.width = '100%';
+                }
+            }, 50);
+        }
+        
+        // Function to handle search input
+        function handleProxySearch(e) {
+            if (e.key === 'Enter') {
+                submitProxySearch();
+            }
+        }
+        
+        // Function to submit the search
+        function submitProxySearch() {
+            const searchInput = document.getElementById('proxy-search').value;
+            if (!searchInput) return;
+            
+            let url = parseSearch(searchInput);
+            let encodedUrl = __uv$config.prefix + __uv$config.encodeUrl(url);
+            
+            // Show loading and load the URL
+            loadingScreen.style.display = 'flex';
+            loadingText.textContent = "Loading Website...";
+            startProgressUpdates();
+            
+            // Update iframe src
+            iframe.src = encodedUrl;
+        }
+        
+        // Parse search input to proper URL
+        function parseSearch(str) {
+            if (str.includes("http") && str.includes(":")) {
+                return str;
+            }
+            if (str.includes(".")) {
+                return "https://" + str;
+            }
+            return "https://duckduckgo.com/?t=h_&q=" + str;
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get DOM elements
+            iframe = document.getElementById('proxy_frame');
+            loadingScreen = document.getElementById('loadingScreen');
+            loadingText = document.getElementById('loadingText');
+            loadingProgressBar = document.getElementById('loadingProgressBar');
+            reloadOverlay = document.getElementById('reloadOverlay');
+            
+            // Get URL from query parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const proxyUrl = urlParams.get('url');
+            
+            if (proxyUrl) {
+                // Display loading screen
+                loadingScreen.style.display = 'flex';
+                startProgressUpdates();
+                
+                // Load URL into iframe
+                iframe.src = proxyUrl;
+                
+                // Update search bar with decoded URL
+                try {
+                    const decodedUrl = __uv$config.decodeUrl(
+                        proxyUrl.substring(__uv$config.prefix.length)
+                    );
+                    document.getElementById('proxy-search').value = decodedUrl;
+                } catch (e) {
+                    console.error("Error decoding URL:", e);
+                }
+            } else {
+                // Default starting page if no URL specified
+                loadingScreen.style.display = 'none';
+            }
+            
+            // Set up iframe load event
+            iframe.addEventListener('load', function() {
+                // Hide loading screen when iframe loaded
+                loadingScreen.style.display = 'none';
+                
+                // Update search bar with loaded URL
+                try {
+                    if (iframe.contentWindow) {
+                        const loadedUrl = iframe.contentWindow.location.href;
+                        // Check if this is a proxied URL
+                        if (loadedUrl.includes(__uv$config.prefix)) {
+                            const decodedUrl = __uv$config.decodeUrl(
+                                loadedUrl.substring(__uv$config.prefix.length)
+                            );
+                            document.getElementById('proxy-search').value = decodedUrl;
+                        } else if (loadedUrl !== 'about:blank') {
+                            document.getElementById('proxy-search').value = loadedUrl;
+                        }
+                    }
+                } catch (e) {
+                    // CORS might prevent access to contentWindow.location
+                    console.log("Could not access iframe URL due to same-origin policy");
+                }
+            });
+            
+            // Set up reload button in overlay
+            document.getElementById('overlayReloadBtn').addEventListener('click', function() {
+                reloadOverlay.classList.remove('visible');
+                reloadPage();
+            });
+            
+            // Show reload overlay after timeout
+            loadingTimeout = setTimeout(function() {
+                if (loadingScreen.style.display !== 'none') {
+                    // Website is taking too long to load
+                    reloadOverlay.classList.add('visible');
+                }
+            }, 30000); // 30 second timeout
+        });
+    </script>
+
+    <!-- Global JavaScript -->
+    <script src="/global.js"></script>
+    <script>!function(w,d,s,g){var c=function(){try{var t=localStorage.getItem("_ga_cid");return t||(t=Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3),localStorage.setItem("_ga_cid",t)),t}catch(e){return Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3)}}();w.dataLayer=w.dataLayer||[],w.gtag=function(){dataLayer.push(arguments)},gtag("js",new Date),gtag("config",g,{client_id:c});var a=d.createElement("script");a.async=1,a.src="https://www.googletagmanager.com/gtag/js?id="+g;var m=d.getElementsByTagName("script")[0];m.parentNode.insertBefore(a,m);setTimeout(function(){var e=new Image;e.src="https://www.google-analytics.com/collect?v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview&_s=1",e.style.display="none",d.body&&d.body.appendChild(e)},1e3);w.addEventListener("beforeunload",function(){navigator.sendBeacon&&navigator.sendBeacon("https://www.google-analytics.com/collect","v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview")});var n=d.createElement("noscript");if(n.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl='+encodeURIComponent(location.href)+'&dt='+encodeURIComponent(d.title)+'&t=pageview&_s=1" height="1" width="1" style="display:none">',d.head.appendChild(n),d.body){var b=d.createElement("noscript");b.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(b,d.body.firstChild)}else d.addEventListener("DOMContentLoaded",function(){var e=d.createElement("noscript");e.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(e,d.body.firstChild)})}(window,document,"10184903349","G-814Y2X3KSF");</script>
+</body>
+</html>
