@@ -1,15 +1,15 @@
 // Create this as uv-fix.js
-// More patient version that reduces false positives
+// Final version with support message for actual errors
 
 (function() {
   console.log('UV Fix Helper initializing...');
   
   // Configuration - adjust these values
   const CONFIG = {
-    INITIAL_WAIT: 15000,         // Wait 15 seconds before first check (increased from 8s)
-    EXTENDED_WAIT: 30000,        // Wait 30 seconds for slow-loading games before recovery UI
-    AUTO_RELOAD_TIMEOUT: 60000,  // 1 minute before auto-reload
-    LOAD_PATIENCE: 3,            // Number of loading checks before showing recovery UI
+    INITIAL_WAIT: 20000,         // Wait 20 seconds before first check (increased)
+    EXTENDED_WAIT: 35000,        // Wait 35 seconds for slow-loading games
+    FINAL_ERROR_TIMEOUT: 90000,  // 1.5 minutes before showing final error
+    LOAD_PATIENCE: 4,            // Number of loading checks before showing recovery UI
     DEBUG: false                 // Set to true for detailed console logging
   };
   
@@ -32,7 +32,8 @@
     loadingComplete: false,
     loadingChecks: 0,
     recoveryUIShown: false,
-    userDismissedWarning: false
+    userDismissedWarning: false,
+    finalErrorShown: false
   };
   
   // Debug logging
@@ -103,8 +104,8 @@
     return contentIndicators >= 2 || hasMeaningfulText;
   }
   
-  // Create a dismissible notice (instead of blocking UI)
-  function createDismissibleNotice() {
+  // Create a dismissible loading notice (not an error yet)
+  function createLoadingNotice() {
     // Don't create multiple notices
     if (document.getElementById('uv-notice')) {
       return;
@@ -126,20 +127,22 @@
     notice.style.textAlign = 'center';
     notice.style.maxWidth = '90%';
     notice.style.width = '400px';
+    notice.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
     
+    // We start with a "still loading" message
     notice.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
         <span style="color:#ffc107;font-weight:bold;">Game still loading...</span>
-        <button id="uv-dismiss" style="background:none;border:none;color:white;font-size:16px;cursor:pointer;">✕</button>
+        <button id="uv-dismiss" style="background:none;border:none;color:white;font-size:16px;cursor:pointer;padding:0 5px;">✕</button>
       </div>
       <div style="margin:5px 0;font-size:13px;">
         This game is taking longer than usual to load. You can:
       </div>
       <div style="display:flex;justify-content:center;gap:10px;margin-top:8px;">
-        <button id="uv-keep-waiting" style="background:#4caf50;border:none;color:white;padding:5px 10px;border-radius:4px;cursor:pointer;">
+        <button id="uv-keep-waiting" style="background:#4caf50;border:none;color:white;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:13px;">
           Keep Waiting
         </button>
-        <button id="uv-reload" style="background:#2196f3;border:none;color:white;padding:5px 10px;border-radius:4px;cursor:pointer;">
+        <button id="uv-reload" style="background:#2196f3;border:none;color:white;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:13px;">
           Reload
         </button>
       </div>
@@ -161,8 +164,50 @@
     document.getElementById('uv-reload').addEventListener('click', function() {
       window.location.reload();
     });
+  }
+  
+  // Update to error notice after timeout
+  function updateToErrorNotice() {
+    const notice = document.getElementById('uv-notice');
+    if (!notice || gameLoadingData.finalErrorShown) return;
     
-    gameLoadingData.recoveryUIShown = true;
+    // Mark as final error shown
+    gameLoadingData.finalErrorShown = true;
+    
+    // Enhanced error message with support information
+    notice.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="color:#f44336;font-weight:bold;">We're having trouble loading this game</span>
+        <button id="uv-dismiss-error" style="background:none;border:none;color:white;font-size:16px;cursor:pointer;padding:0 5px;">✕</button>
+      </div>
+      <div style="margin:5px 0;font-size:13px;line-height:1.4;">
+        Sorry! This game isn't loading properly. If the issue continues, please visit our support team by going to the home page and clicking the phone icon at the bottom.
+      </div>
+      <div style="display:flex;justify-content:center;gap:10px;margin-top:10px;">
+        <button id="uv-try-again" style="background:#2196f3;border:none;color:white;padding:5px 12px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:13px;">
+          Try Again
+        </button>
+        <button id="uv-go-home" style="background:#757575;border:none;color:white;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;">
+          Go Home
+        </button>
+      </div>
+    `;
+    
+    // Update the event listeners for the new buttons
+    document.getElementById('uv-dismiss-error').addEventListener('click', function() {
+      notice.style.display = 'none';
+    });
+    
+    document.getElementById('uv-try-again').addEventListener('click', function() {
+      window.location.reload();
+    });
+    
+    document.getElementById('uv-go-home').addEventListener('click', function() {
+      window.location.href = '/';
+    });
+    
+    // Make sure the notice is visible
+    notice.style.display = 'block';
   }
   
   // Create full recovery UI for actual blank screens
@@ -214,7 +259,7 @@
           Reload Game
         </button>
       </div>
-      <div id="uv-auto-reload-text" style="margin-top:15px;font-size:14px;color:#aaa;"></div>
+      <div id="uv-timer-text" style="margin-top:15px;font-size:14px;color:#aaa;"></div>
       <style>@keyframes uvSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}</style>
     `;
     
@@ -254,27 +299,58 @@
       window.location.reload();
     });
     
-    // Maybe add auto-reload countdown for non-slow domains
-    if (!isSlowDomain) {
-      const countdownText = document.getElementById('uv-auto-reload-text');
-      
-      let countdown = 60; // 1 minute countdown
-      countdownText.textContent = `Auto-reloading in ${countdown} seconds...`;
-      
-      const countdownInterval = setInterval(function() {
-        countdown--;
-        countdownText.textContent = `Auto-reloading in ${countdown} seconds...`;
-        
-        if (countdown <= 0) {
-          clearInterval(countdownInterval);
-          window.location.reload();
-        }
-      }, 1000);
-      
-      // Store for cleanup
-      gameLoadingData.countdownInterval = countdownInterval;
-    }
+    // Show a timer that counts up instead of counting down
+    const timerText = document.getElementById('uv-timer-text');
+    let seconds = 0;
     
+    const timerInterval = setInterval(function() {
+      seconds++;
+      timerText.textContent = `Waiting: ${seconds} seconds`;
+      
+      // After enough time (90 seconds by default), show the final error message
+      if (seconds >= CONFIG.FINAL_ERROR_TIMEOUT / 1000) {
+        clearInterval(timerInterval);
+        
+        // Update recovery UI to show final error message
+        const messageContainer = recoveryDiv.querySelector('p');
+        if (messageContainer) {
+          messageContainer.innerHTML = `
+            <div style="color:#f44336;font-weight:bold;margin-bottom:10px;">We're having trouble loading this game</div>
+            <div style="font-size:14px;line-height:1.5;max-width:550px;margin:0 auto 15px auto;">
+              Sorry! This game isn't loading properly. If the issue continues, please visit our support team by going to the home page and clicking the phone icon at the bottom.
+            </div>
+          `;
+        }
+        
+        // Update buttons
+        const buttonContainer = document.querySelector('#uv-recovery div:nth-child(4)');
+        if (buttonContainer) {
+          buttonContainer.innerHTML = `
+            <button id="uv-try-again-btn" style="padding:10px 20px;background:#2196f3;color:white;border:none;margin:0 10px;border-radius:4px;cursor:pointer;font-weight:bold;">
+              Try Again
+            </button>
+            <button id="uv-home-btn" style="padding:10px 20px;background:#757575;color:white;border:none;margin:0 10px;border-radius:4px;cursor:pointer;">
+              Go Home
+            </button>
+          `;
+          
+          // Add new event listeners
+          document.getElementById('uv-try-again-btn').addEventListener('click', function() {
+            window.location.reload();
+          });
+          
+          document.getElementById('uv-home-btn').addEventListener('click', function() {
+            window.location.href = '/';
+          });
+        }
+        
+        // Hide the timer
+        timerText.style.display = 'none';
+      }
+    }, 1000);
+    
+    // Store for cleanup
+    gameLoadingData.timerInterval = timerInterval;
     gameLoadingData.recoveryUIShown = true;
   }
   
@@ -304,7 +380,15 @@
       debug('Initial check: No content detected yet');
       
       // Show a non-intrusive notice first
-      createDismissibleNotice();
+      createLoadingNotice();
+      
+      // Setup for final error message after timeout
+      setTimeout(function() {
+        if (!gameLoadingData.loadingComplete && !gameLoadingData.userDismissedWarning) {
+          debug('Final timeout reached, showing error message');
+          updateToErrorNotice();
+        }
+      }, CONFIG.FINAL_ERROR_TIMEOUT - initialWait);
       
       // Start more thorough checks for blank screen
       const checkInterval = setInterval(function() {
@@ -358,8 +442,8 @@
             clearInterval(gameLoadingData.checkInterval);
           }
           
-          if (gameLoadingData.countdownInterval) {
-            clearInterval(gameLoadingData.countdownInterval);
+          if (gameLoadingData.timerInterval) {
+            clearInterval(gameLoadingData.timerInterval);
           }
           
           // Hide notice if it exists
