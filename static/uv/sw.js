@@ -1,7 +1,7 @@
 /*global UVServiceWorker,__uv$config*/
 /*
  * UV Service Worker for Ultraviolet proxy
- * Fixed version for blank page and loading issues
+ * High-Load Optimized Version
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -10,668 +10,399 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
-// Configuration with focus on reducing timeouts
+// Configuration with optimizations for high load
 const CONFIG = {
-  FETCH_TIMEOUT: 90000,       // 90 second maximum timeout (more responsive)
-  MAX_RETRIES: 5,             // Increased retries for better success rate
-  RETRY_DELAY: 800,           // Initial delay between retries
-  RETRY_BACKOFF: 1.5,         // Exponential backoff factor
-  MAX_CONCURRENT_REQUESTS: 20, // Higher limit for concurrent requests
-  LOG_LEVEL: 'debug'          // Enable detailed logging for diagnostics
+  FETCH_TIMEOUT: 120000,      // 2 minute timeout
+  CONNECTION_LIMIT: 30,       // Maximum simultaneous connections
+  RETRY_COUNT: 3,             // Number of retry attempts
+  RETRY_DELAY: 1000,          // Delay between retries in ms
+  LOG_LEVEL: 'error',         // Reduce logging to improve performance
+  HIGH_LOAD_THRESHOLD: 15     // Number of active requests to trigger high-load mode
 };
 
-// Request tracking
+// Request management
 let activeRequests = 0;
+let peakRequests = 0;
+const pendingRequests = new Map(); // Track requests in progress
 const requestQueue = [];
-const failedUrls = new Map(); // Track problematic URLs
 
-// Detect game content
-const isGameContent = (url) => {
-  if (!url) return false;
-  
-  // Game patterns
-  const gamePatterns = [
-    '.gitlab.io',
-    'superliquid',
-    'unity',
-    'webgl',
-    'game',
-    'play',
-    '3d',
-    'html5',
-    'canvas'
-  ];
-  
-  return gamePatterns.some(pattern => url.includes(pattern));
+// Track connection health
+let bareServerHealth = {
+  successCount: 0,
+  failureCount: 0,
+  lastSuccessTime: Date.now(),
+  isHealthy: true
 };
 
 // Process next request from queue
 function processNextRequest() {
-  if (requestQueue.length > 0 && activeRequests < CONFIG.MAX_CONCURRENT_REQUESTS) {
-    const nextRequest = requestQueue.shift();
-    nextRequest.resolve();
+  // Don't process if we're at connection limit
+  if (activeRequests >= CONFIG.CONNECTION_LIMIT || requestQueue.length === 0) {
+    return;
   }
+  
+  // Get next request
+  const nextRequest = requestQueue.shift();
+  nextRequest.resolve();
 }
 
-// Enhanced fetch with better timeout handling
-const enhancedFetch = async (event, retries = CONFIG.MAX_RETRIES, retryDelay = CONFIG.RETRY_DELAY) => {
-  // Queue management
-  if (activeRequests >= CONFIG.MAX_CONCURRENT_REQUESTS) {
-    await new Promise(resolve => {
-      requestQueue.push({ resolve, event });
-    });
+// Detect if we're in high-load mode
+function isHighLoad() {
+  return activeRequests >= CONFIG.HIGH_LOAD_THRESHOLD;
+}
+
+// Check if a URL is a game resource
+function isGameResource(url) {
+  if (!url) return false;
+  
+  // Critical game resource extensions
+  const gameExtensions = ['.js', '.wasm', '.json', '.unity3d', '.data'];
+  
+  // Check if this is likely a game file
+  if (gameExtensions.some(ext => url.endsWith(ext))) {
+    return true;
   }
   
-  // Increment active requests
+  // Check for game domains
+  const gameDomains = ['unity', 'webgl', 'github.io', 'gitlab.io', 'itch.io'];
+  return gameDomains.some(domain => url.includes(domain));
+}
+
+// Get resource priority (1 highest, 5 lowest)
+function getResourcePriority(url, headers) {
+  // Document/HTML - always highest priority
+  if (headers && headers.get('accept')?.includes('text/html')) {
+    return 1;
+  }
+  
+  // Game code resources - high priority
+  if (url.endsWith('.js') || url.endsWith('.wasm') || url.endsWith('.json')) {
+    return 2;
+  }
+  
+  // CSS and font files - medium-high priority
+  if (url.endsWith('.css') || url.includes('font') || 
+      url.endsWith('.woff') || url.endsWith('.woff2') || url.endsWith('.ttf')) {
+    return 3;
+  }
+  
+  // Small images - medium priority
+  if (url.endsWith('.png') || url.endsWith('.jpg') || url.endsWith('.svg') || 
+      url.endsWith('.gif') || url.endsWith('.webp')) {
+    return 4;
+  }
+  
+  // All other resources - lowest priority
+  return 5;
+}
+
+// Function to handle requests during high load
+async function highLoadFetch(event, retryCount = 0) {
+  const url = new URL(event.request.url);
+  const request = event.request;
+  const priority = getResourcePriority(url.toString(), request.headers);
+  
+  // During high load, possibly delay low-priority requests
+  if (isHighLoad() && priority > 3 && retryCount === 0) {
+    // Add random delay for low-priority requests to prevent overload
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
+  }
+  
+  // Add request to tracking
+  const requestId = Date.now() + Math.random().toString(36).substring(2, 9);
+  pendingRequests.set(requestId, {
+    url: url.toString(),
+    startTime: Date.now(),
+    priority,
+    retries: retryCount
+  });
+  
   activeRequests++;
+  updatePeakRequests();
   
   try {
-    const url = new URL(event.request.url);
-    const reqUrl = url.toString();
+    // Timeout promise
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Request timeout')), CONFIG.FETCH_TIMEOUT);
+    });
     
-    // Check if this URL has consistently failed
-    if (failedUrls.has(reqUrl) && failedUrls.get(reqUrl) > 3) {
-      console.log(`[UV SW] Skipping known problematic URL: ${reqUrl}`);
-      
-      // For HTML content, return a modified response that will auto-reload
-      if (event.request.headers.get('accept')?.includes('text/html')) {
-        return new Response(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>Loading Game...</title>
-            <script>
-              // Try again with a clean slate
-              sessionStorage.clear();
-              localStorage.removeItem('uv-game-failed');
-              setTimeout(() => {
-                window.location.reload();
-              }, 1000);
-            </script>
-          </head>
-          <body style="background:#000;color:#fff;text-align:center;font-family:sans-serif;padding-top:20%;">
-            <h2>Reloading Game...</h2>
-            <p>Please wait...</p>
-          </body>
-          </html>
-        `, {
-          headers: {'Content-Type': 'text/html'}
-        });
-      }
-    }
+    // Actual fetch
+    const fetchPromise = sw.fetch(event);
     
-    // Special handling for game content
-    const isGame = isGameContent(reqUrl);
+    // Race between fetch and timeout
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
     
-    // For game content, use a more reliable timeout approach
-    if (isGame) {
-      console.log(`[UV SW] Game content detected: ${reqUrl.substring(0, 50)}...`);
-      
-      // Create an AbortController for precise timing control
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), CONFIG.FETCH_TIMEOUT);
-      
+    // For HTML responses in game resources, inject the loading fixes
+    if (isGameResource(url.toString()) && 
+        response.headers.get('content-type')?.includes('text/html')) {
       try {
-        // Fetch with abort capability
-        const fetchPromise = sw.fetch(event, {
-          // Only pass signal if AbortController is supported
-          signal: controller.signal
-        });
-        
-        // Wait for response
-        const response = await fetchPromise;
-        clearTimeout(timeoutId);
-        
-        // Process HTML content for games to improve loading
-        if (response.headers.get('content-type')?.includes('text/html')) {
-          return await injectLoadingFixes(response, reqUrl);
-        }
-        
+        return await injectGameFixes(response);
+      } catch (injectionError) {
+        console.error('Error injecting game fixes:', injectionError);
         return response;
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        
-        // Check if the error was due to timeout
-        if (fetchError.name === 'AbortError') {
-          console.error(`[UV SW] Timeout for game URL: ${reqUrl}`);
-          throw new Error(`Timeout loading game content after ${CONFIG.FETCH_TIMEOUT}ms`);
-        }
-        
-        throw fetchError;
       }
     }
     
-    // Standard handling for non-game content
-    return await sw.fetch(event);
+    // Update bare server health
+    bareServerHealth.successCount++;
+    bareServerHealth.lastSuccessTime = Date.now();
+    bareServerHealth.isHealthy = true;
     
+    return response;
   } catch (error) {
-    console.error(`[UV SW] Fetch error: ${error.message}`);
+    // Update health status on failure
+    bareServerHealth.failureCount++;
+    if (bareServerHealth.failureCount > 10 && 
+        bareServerHealth.successCount / Math.max(1, bareServerHealth.failureCount) < 0.7) {
+      bareServerHealth.isHealthy = false;
+    }
     
-    // Track failed URLs
-    const failedUrl = new URL(event.request.url).toString();
-    failedUrls.set(failedUrl, (failedUrls.get(failedUrl) || 0) + 1);
-    
-    // Retry logic with exponential backoff
-    if (retries > 0) {
-      console.log(`[UV SW] Retrying fetch (${retries} attempts left) after ${retryDelay}ms`);
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-      
-      // Calculate next retry delay with exponential backoff
-      const nextRetryDelay = Math.min(30000, retryDelay * CONFIG.RETRY_BACKOFF);
-      
-      return enhancedFetch(event, retries - 1, nextRetryDelay);
+    // Retry logic
+    if (retryCount < CONFIG.RETRY_COUNT) {
+      // Add delay between retries
+      await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY * (retryCount + 1)));
+      return highLoadFetch(event, retryCount + 1);
     }
     
     throw error;
   } finally {
-    // Decrement active requests counter
+    // Clean up tracking
+    pendingRequests.delete(requestId);
     activeRequests--;
     
-    // Process next request in queue
+    // Process next queued request
     processNextRequest();
   }
-};
+}
 
-// Inject fixes to improve loading and prevent blank pages
-const injectLoadingFixes = async (response, url) => {
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('text/html')) {
+// Update peak request count
+function updatePeakRequests() {
+  if (activeRequests > peakRequests) {
+    peakRequests = activeRequests;
+  }
+}
+
+// Inject fixes to improve game loading speed and prevent blank screens
+async function injectGameFixes(response) {
+  // Only process HTML responses
+  if (!response.headers.get('content-type')?.includes('text/html')) {
     return response;
   }
   
   try {
-    const text = await response.text();
+    const html = await response.text();
     
-    // Skip UV configuration data
-    if (text.includes('__uv$bareData') || text.includes('__uv$cookies')) {
-      return new Response(text, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers
-      });
+    // Skip UV config data
+    if (html.includes('__uv$config') || html.includes('__uv$bareData')) {
+      return new Response(html, response);
     }
     
-    // Create a modified version with our fixes
-    let modifiedHtml = text;
+    // Apply our fixes to the HTML
+    let modifiedHtml = html;
     
-    // Fix 1: Add extensive early-loading fixes to the head
-    if (modifiedHtml.includes('<head')) {
-      const headInsertPos = modifiedHtml.indexOf('<head') + '<head'.length;
-      const headEndPos = modifiedHtml.indexOf('>', headInsertPos);
-      
-      if (headEndPos !== -1) {
-        modifiedHtml = modifiedHtml.substring(0, headEndPos + 1) + `
-        <!-- UV Enhanced Loading Fixes -->
-        <script>
-        (function() {
-          console.log('[UV Loader] Initializing loading fixes');
-          
-          // Track page load start time
-          window.__uvLoadStartTime = Date.now();
-          
-          // Fix for broken proxy paths
-          const originalFetch = window.fetch;
-          window.fetch = function(resource, options) {
-            // Fix relative URLs that might break in the proxy
-            if (typeof resource === 'string' && resource.startsWith('/') && !resource.startsWith('//')) {
-              const currentPath = window.location.pathname.split('/');
-              // Remove the last segment if it has a dot (likely a file)
-              if (currentPath[currentPath.length - 1].includes('.')) {
-                currentPath.pop();
-              }
-              resource = currentPath.join('/') + resource;
-              console.log('[UV Loader] Fixed relative path:', resource);
-            }
-            return originalFetch.call(this, resource, options);
-          };
-          
-          // Track slow resources
-          let slowResources = [];
-          const observer = new PerformanceObserver((list) => {
-            list.getEntries().forEach((entry) => {
-              if (entry.duration > 5000) {
-                slowResources.push(entry.name);
-                console.warn('[UV Loader] Slow resource:', entry.name, entry.duration.toFixed(0) + 'ms');
-              }
-            });
-          });
-          try { observer.observe({entryTypes: ['resource']}); } catch(e) {}
-          
-          // Fix for DNS prefetching and preconnect
-          const domains = ['gitlab.io', 'github.io', 'cloudflare.com', 'jsdelivr.net'];
-          domains.forEach(domain => {
-            const link = document.createElement('link');
-            link.rel = 'dns-prefetch';
-            link.href = '//' + domain;
-            document.head.appendChild(link);
-            
-            const preconnect = document.createElement('link');
-            preconnect.rel = 'preconnect';
-            preconnect.href = 'https://' + domain;
-            document.head.appendChild(preconnect);
-          });
-          
-          // Load detection
-          let isLoaded = false;
-          window.addEventListener('load', function() {
-            isLoaded = true;
-            const loadTime = Date.now() - window.__uvLoadStartTime;
-            console.log('[UV Loader] Page loaded in ' + loadTime + 'ms');
-            
-            // Detect problems after load
-            setTimeout(checkLoadProblems, 2000);
-          });
-          
-          // Function to detect and fix load problems
-          function checkLoadProblems() {
-            // Check if page appears to be blank
-            const hasContent = document.body && (
-              document.body.innerText.trim().length > 50 ||
-              document.querySelectorAll('canvas, img, svg, iframe').length > 0
-            );
-            
-            if (!hasContent) {
-              console.warn('[UV Loader] Page appears blank after loading');
-              
-              // Check for canvas
-              const hasCanvas = document.querySelector('canvas');
-              if (!hasCanvas) {
-                console.log('[UV Loader] No canvas found, attempting to create one');
-                
-                // Create placeholder canvas
-                const canvas = document.createElement('canvas');
-                canvas.width = window.innerWidth * 0.8;
-                canvas.height = window.innerHeight * 0.7;
-                canvas.style.display = 'block';
-                canvas.style.margin = '50px auto';
-                canvas.style.border = '1px solid #333';
-                
-                // Add placeholder to body
-                document.body.appendChild(canvas);
-                
-                // Try to initialize WebGL on this canvas
-                try {
-                  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-                  if (gl) {
-                    gl.clearColor(0.0, 0.0, 0.0, 1.0);
-                    gl.clear(gl.COLOR_BUFFER_BIT);
-                    console.log('[UV Loader] Created WebGL context');
-                  }
-                } catch(e) {
-                  console.error('[UV Loader] WebGL initialization failed:', e);
-                }
-                
-                // Add reload message
-                const message = document.createElement('div');
-                message.style.textAlign = 'center';
-                message.style.padding = '20px';
-                message.style.color = 'white';
-                message.style.fontSize = '16px';
-                message.style.fontFamily = 'Arial, sans-serif';
-                message.innerHTML = 'Game is taking longer than expected to load.<br>You can <a href="#" onclick="window.location.reload()" style="color:#4a6ed3;text-decoration:underline;">reload the page</a> or try a different game.';
-                document.body.appendChild(message);
-                
-                // Create reload button
-                const button = document.createElement('button');
-                button.textContent = 'Reload Game';
-                button.style.display = 'block';
-                button.style.margin = '0 auto';
-                button.style.padding = '10px 20px';
-                button.style.backgroundColor = '#4a6ed3';
-                button.style.color = 'white';
-                button.style.border = 'none';
-                button.style.borderRadius = '4px';
-                button.style.fontSize = '16px';
-                button.style.cursor = 'pointer';
-                button.onclick = function() {
-                  window.location.reload();
-                };
-                document.body.appendChild(button);
-              }
-            }
-          }
-          
-          // Blank page failsafe - if page isn't loaded within 30 seconds, reload
-          setTimeout(function() {
-            if (!isLoaded || document.body.innerText.trim().length < 50) {
-              console.error('[UV Loader] Page failed to load properly in 30s, reloading');
-              window.location.reload();
-            }
-          }, 30000);
-        })();
-        </script>
-        ` + modifiedHtml.substring(headEndPos + 1);
-      }
-    }
-    
-    // Fix 2: Add WebGL compatibility fixes before end of head
+    // Add WebGL fixes to head
     if (modifiedHtml.includes('</head>')) {
-      const headEndPos = modifiedHtml.indexOf('</head>');
-      
-      modifiedHtml = modifiedHtml.substring(0, headEndPos) + `
-      <!-- UV WebGL Compatibility Fixes -->
+      const headFixesCode = `
+      <!-- UV WebGL Speed Fixes -->
       <script>
       (function() {
-        console.log('[UV WebGL] Applying WebGL compatibility fixes');
+        console.log('[UV] Applying performance fixes');
         
-        // Fix for broken WebGL detection
-        window.requestAnimationFrame = window.requestAnimationFrame || function(callback) {
-          return window.setTimeout(callback, 1000/60);
-        };
-        
-        // Override WebGL detection functions
-        window.hasWebGL = function() { return true; };
-        window.isWebGLAvailable = function() { return true; };
-        window.hasWebGL2 = function() { return true; };
-        
-        // Fix navigator user agent reporting
+        // Fix blank screen issues
         const originalUserAgent = navigator.userAgent;
         Object.defineProperty(navigator, 'userAgent', {
-          get: function() {
-            return originalUserAgent.replace(/Headless/g, '');
-          }
+          get: function() { return originalUserAgent.replace(/Headless/g, ''); }
         });
         
-        // Override canvas getContext to fix WebGL issues
+        // Make WebGL always available
+        window.hasWebGL = function() { return true; };
+        window.WebGLRenderingContext = window.WebGLRenderingContext || function(){};
+        
+        // Fix canvas sizing
         const originalGetContext = HTMLCanvasElement.prototype.getContext;
         HTMLCanvasElement.prototype.getContext = function(contextType, contextAttributes) {
-          // Fix for zero-sized canvases
-          if ((this.width === 0 || this.height === 0) && 
-              (contextType === 'webgl' || contextType === 'experimental-webgl' || contextType === 'webgl2')) {
-            console.log('[UV WebGL] Fixing zero-sized canvas');
-            this.width = this.width || window.innerWidth * 0.8 || 800;
-            this.height = this.height || window.innerHeight * 0.8 || 600;
+          if ((this.width === 0 || this.height === 0) && contextType.includes('webgl')) {
+            this.width = window.innerWidth * 0.8 || 800;
+            this.height = window.innerHeight * 0.8 || 600;
           }
           
-          // Optimize WebGL context attributes for compatibility
-          if (contextType === 'webgl' || contextType === 'experimental-webgl' || contextType === 'webgl2') {
+          if (contextType.includes('webgl')) {
             contextAttributes = contextAttributes || {};
-            contextAttributes.preserveDrawingBuffer = true;
             contextAttributes.failIfMajorPerformanceCaveat = false;
             contextAttributes.powerPreference = 'high-performance';
             
+            // Try to create context
             try {
               const ctx = originalGetContext.call(this, contextType, contextAttributes);
               if (ctx) {
-                // Fix missing methods
-                ctx.getShaderPrecisionFormat = ctx.getShaderPrecisionFormat || function() {
-                  return { precision: 23, rangeMin: 127, rangeMax: 127 };
-                };
-                
-                // Make sure canvas is visible
+                // Make canvas visible
                 this.style.display = 'block';
                 this.style.visibility = 'visible';
                 return ctx;
               }
               
-              // Try alternative context types
+              // Try alternatives
               const alternatives = ['webgl', 'experimental-webgl', 'webgl2'];
               for (const alt of alternatives) {
                 if (alt !== contextType) {
                   try {
-                    const ctx2 = originalGetContext.call(this, alt, contextAttributes);
-                    if (ctx2) return ctx2;
-                  } catch (e) {}
+                    return originalGetContext.call(this, alt, contextAttributes);
+                  } catch(e) {}
                 }
               }
-            } catch (e) {
-              console.error('[UV WebGL] Context creation error:', e);
-            }
+            } catch(e) {}
           }
           
-          // Default fallback
           return originalGetContext.call(this, contextType, contextAttributes);
         };
         
-        // Fix Unity objects
-        window.Unity = window.Unity || {};
-        window.UnityLoader = window.UnityLoader || {
-          instantiate: function() { return {}; },
-          SystemInfo: {
-            hasWebGL: true,
-            mobile: false
-          }
-        };
+        // Fix loading detection
+        window.addEventListener('load', function() {
+          // Check if page is blank
+          setTimeout(function() {
+            if (document.body) {
+              // Check for content
+              const hasContent = document.body.innerText.trim().length > 20 ||
+                                document.querySelectorAll('canvas').length > 0 ||
+                                document.querySelectorAll('img').length > 0;
+              
+              if (!hasContent) {
+                console.warn('[UV] Page appears blank, trying to fix...');
+                
+                // Make body visible
+                document.body.style.backgroundColor = '#000';
+                document.body.style.color = '#fff';
+                document.body.style.visibility = 'visible';
+                
+                // Check for canvas
+                if (!document.querySelector('canvas')) {
+                  console.log('[UV] No canvas found, creating one');
+                  
+                  // Create placeholder canvas
+                  const canvas = document.createElement('canvas');
+                  canvas.width = window.innerWidth * 0.8;
+                  canvas.height = window.innerHeight * 0.7;
+                  canvas.style.display = 'block';
+                  canvas.style.margin = '0 auto';
+                  canvas.style.backgroundColor = '#000';
+                  document.body.appendChild(canvas);
+                  
+                  // Try to initialize WebGL on this canvas
+                  try {
+                    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                    if (gl) {
+                      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+                      gl.clear(gl.COLOR_BUFFER_BIT);
+                    }
+                  } catch(e) {}
+                }
+              }
+            }
+          }, 3000);
+        });
       })();
       </script>
-      ` + modifiedHtml.substring(headEndPos);
+      `;
+      
+      modifiedHtml = modifiedHtml.replace('</head>', headFixesCode + '</head>');
     }
     
-    // Fix 3: Add body loading indicator
+    // Add loading indicator
     if (modifiedHtml.includes('<body')) {
       const bodyPos = modifiedHtml.indexOf('<body') + '<body'.length;
       const bodyEndPos = modifiedHtml.indexOf('>', bodyPos);
       
       if (bodyEndPos !== -1) {
-        modifiedHtml = modifiedHtml.substring(0, bodyEndPos + 1) + `
+        const loadingCode = `
         <!-- UV Loading Indicator -->
         <script>
         (function() {
-          // Create and add loading indicator
-          const loadingDiv = document.createElement('div');
-          loadingDiv.id = 'uv-loading-indicator';
-          loadingDiv.style.position = 'fixed';
-          loadingDiv.style.top = '50%';
-          loadingDiv.style.left = '50%';
-          loadingDiv.style.transform = 'translate(-50%, -50%)';
-          loadingDiv.style.backgroundColor = 'rgba(0,0,0,0.8)';
-          loadingDiv.style.color = 'white';
-          loadingDiv.style.padding = '20px';
-          loadingDiv.style.borderRadius = '10px';
-          loadingDiv.style.zIndex = '9999';
-          loadingDiv.style.textAlign = 'center';
-          loadingDiv.style.fontFamily = 'Arial, sans-serif';
-          loadingDiv.style.transition = 'opacity 0.5s ease';
+          // Create loading indicator
+          const loader = document.createElement('div');
+          loader.id = 'uv-loading';
+          loader.style.position = 'fixed';
+          loader.style.top = '50%';
+          loader.style.left = '50%';
+          loader.style.transform = 'translate(-50%, -50%)';
+          loader.style.background = 'rgba(0,0,0,0.8)';
+          loader.style.color = 'white';
+          loader.style.padding = '20px';
+          loader.style.borderRadius = '10px';
+          loader.style.textAlign = 'center';
+          loader.style.fontFamily = 'Arial, sans-serif';
+          loader.style.zIndex = '9999';
           
-          // Create spinner
+          // Add spinner
           const spinner = document.createElement('div');
           spinner.style.width = '40px';
           spinner.style.height = '40px';
           spinner.style.margin = '0 auto 15px auto';
-          spinner.style.border = '4px solid rgba(255, 255, 255, 0.3)';
+          spinner.style.border = '4px solid rgba(255,255,255,0.3)';
           spinner.style.borderTop = '4px solid white';
           spinner.style.borderRadius = '50%';
-          spinner.style.animation = 'uv-spin 1s linear infinite';
+          spinner.style.animation = 'uvSpin 1s linear infinite';
           
-          // Add keyframes
+          // Add styles
           const style = document.createElement('style');
-          style.textContent = '@keyframes uv-spin {0% {transform: rotate(0deg);} 100% {transform: rotate(360deg);}}';
+          style.textContent = '@keyframes uvSpin {0% {transform:rotate(0deg)} 100% {transform:rotate(360deg)}}';
           document.head.appendChild(style);
           
           // Add content
-          loadingDiv.appendChild(spinner);
-          loadingDiv.appendChild(document.createTextNode('Loading Game...'));
+          loader.appendChild(spinner);
+          loader.appendChild(document.createTextNode('Loading Game...'));
+          document.body.appendChild(loader);
           
-          // Add progress info
-          const progress = document.createElement('div');
-          progress.style.fontSize = '12px';
-          progress.style.marginTop = '10px';
-          progress.style.color = '#aaa';
-          loadingDiv.appendChild(progress);
-          
-          // Add to body
-          document.body.appendChild(loadingDiv);
-          
-          // Update progress info
-          let dots = '';
-          const progressInterval = setInterval(function() {
-            dots = dots.length >= 3 ? '' : dots + '.';
-            progress.textContent = 'Please wait' + dots;
-          }, 500);
-          
-          // Hide loading indicator when content appears
-          function hideLoader() {
-            // Check if any meaningful game content has loaded
+          // Hide when content loads
+          function checkContent() {
             const hasCanvas = document.querySelector('canvas');
-            const hasUnityContainer = document.querySelector('[id*="unity"], [id*="game"], #gameContainer');
-            const hasMultipleElements = document.body.children.length > 5;
+            const hasContent = document.body.querySelectorAll('img, canvas, svg').length > 0;
             
-            if (hasCanvas || hasUnityContainer || hasMultipleElements) {
-              const loadingDiv = document.getElementById('uv-loading-indicator');
-              if (loadingDiv) {
-                loadingDiv.style.opacity = '0';
-                setTimeout(function() {
-                  if (loadingDiv.parentNode) {
-                    loadingDiv.parentNode.removeChild(loadingDiv);
-                  }
-                }, 500);
+            if (hasCanvas || hasContent) {
+              const loader = document.getElementById('uv-loading');
+              if (loader && loader.parentNode) {
+                loader.parentNode.removeChild(loader);
               }
-              clearInterval(progressInterval);
               return true;
             }
             return false;
           }
           
-          // Check periodically for game content
-          let checkCount = 0;
+          // Check periodically
+          let checkAttempts = 0;
           const checkInterval = setInterval(function() {
-            checkCount++;
-            
-            // Update loading message for long loads
-            if (checkCount > 10) {
-              progress.textContent = 'Still loading... (' + checkCount + 's)';
-            }
-            
-            // Extra message if really slow
-            if (checkCount === 20) {
-              const message = document.createElement('div');
-              message.style.marginTop = '10px';
-              message.style.fontSize = '12px';
-              message.innerHTML = 'Taking longer than expected.<br>Game may still be loading...';
-              loadingDiv.appendChild(message);
-            }
-            
-            // Add reload button for very slow loads
-            if (checkCount === 30) {
-              const button = document.createElement('button');
-              button.textContent = 'Reload';
-              button.style.marginTop = '10px';
-              button.style.padding = '5px 10px';
-              button.style.background = '#4a6ed3';
-              button.style.color = 'white';
-              button.style.border = 'none';
-              button.style.borderRadius = '4px';
-              button.style.cursor = 'pointer';
-              button.onclick = function() {
-                window.location.reload();
-              };
-              loadingDiv.appendChild(button);
-            }
-            
-            if (hideLoader() || checkCount > 60) {
+            checkAttempts++;
+            if (checkContent() || checkAttempts > 30) {
               clearInterval(checkInterval);
             }
           }, 1000);
           
-          // Also check after window load
+          // Also check after load
           window.addEventListener('load', function() {
-            // Wait a moment after load to check again
-            setTimeout(hideLoader, 1000);
+            setTimeout(checkContent, 1000);
           });
         })();
         </script>
-        ` + modifiedHtml.substring(bodyEndPos + 1);
+        `;
+        
+        modifiedHtml = modifiedHtml.substring(0, bodyEndPos + 1) + 
+                      loadingCode + 
+                      modifiedHtml.substring(bodyEndPos + 1);
       }
     }
     
-    // Return the modified HTML
+    // Return modified HTML
     return new Response(modifiedHtml, {
       status: response.status,
       statusText: response.statusText,
       headers: response.headers
     });
   } catch (error) {
-    console.error('[UV SW] HTML modification error:', error);
+    console.error('Error modifying HTML:', error);
     return response;
   }
-};
-
-// Create a nice error page
-function createErrorPage(error) {
-  return new Response(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Game Loading Error</title>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          color: white;
-          background: #222;
-          margin: 0;
-          padding: 20px;
-          line-height: 1.6;
-        }
-        .container {
-          max-width: 600px;
-          margin: 40px auto;
-          background: #333;
-          border-radius: 8px;
-          padding: 20px;
-          box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-        }
-        h2 {
-          margin-top: 0;
-          color: #4a6ed3;
-        }
-        .error-details {
-          background: rgba(0,0,0,0.2);
-          padding: 10px;
-          border-radius: 4px;
-          margin: 15px 0;
-          font-family: monospace;
-          word-break: break-all;
-        }
-        button {
-          padding: 10px 16px;
-          background: #4a6ed3;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          margin-right: 10px;
-          font-size: 14px;
-        }
-        button:hover {
-          opacity: 0.9;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h2>Game Loading Error</h2>
-        <p>There was a problem loading this game. This might be due to:</p>
-        <ul>
-          <li>High server traffic</li>
-          <li>The game blocking proxy access</li>
-          <li>Temporary network issues</li>
-        </ul>
-        <div class="error-details">
-          ${error.message || 'Unknown error'}
-        </div>
-        <p>Try these options:</p>
-        <button onclick="window.location.reload()">Reload Game</button>
-        <button onclick="window.history.back()">Go Back</button>
-        <button onclick="window.location.href='/'">Home</button>
-      </div>
-      <script>
-        // Auto-reload after a short delay
-        setTimeout(function() {
-          window.location.reload();
-        }, 10000);
-      </script>
-    </body>
-    </html>
-  `, {
-    status: 200,
-    headers: { 'Content-Type': 'text/html' }
-  });
 }
 
-// Main fetch handler
+// Main fetch handler with high-load optimizations
 self.addEventListener('fetch', event => {
   // Only handle UV routes
   if (!event.request.url.startsWith(self.registration.scope) && 
@@ -681,18 +412,74 @@ self.addEventListener('fetch', event => {
 
   event.respondWith((async () => {
     try {
-      // Process with enhanced fetch
-      return await enhancedFetch(event);
-    } catch (err) {
-      console.error('[UV SW] Fatal error:', err);
-      return createErrorPage(err);
+      const url = new URL(event.request.url);
+      
+      // Always let service and bare paths go directly to UV
+      if (url.pathname.startsWith('/uv/service/') || 
+          url.pathname.startsWith('/bare/')) {
+        // Queue if we're at connection limit and this isn't a high priority request
+        if (activeRequests >= CONFIG.CONNECTION_LIMIT) {
+          const priority = getResourcePriority(url.toString(), event.request.headers);
+          
+          // Only queue lower priority requests
+          if (priority > 2) {
+            await new Promise(resolve => {
+              requestQueue.push({ resolve, event, priority });
+              
+              // Sort queue by priority
+              requestQueue.sort((a, b) => a.priority - b.priority);
+            });
+          }
+        }
+        
+        return await highLoadFetch(event);
+      }
+      
+      // For all other requests, use standard UV handling
+      return await sw.fetch(event);
+    } catch (error) {
+      console.error('Fetch error:', error);
+      
+      // Create a user-friendly error page
+      return new Response(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Loading Error</title>
+          <style>
+            body { font-family: Arial; color: white; background: #222; text-align: center; padding: 40px 20px; }
+            .box { max-width: 500px; margin: 0 auto; background: #333; padding: 20px; border-radius: 10px; }
+            button { padding: 10px 20px; background: #4a6ed3; color: white; border: none; margin: 10px; 
+                    border-radius: 4px; cursor: pointer; }
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <h2>Game Loading Error</h2>
+            <p>The game is taking too long to load. This might be because the server is currently busy.</p>
+            <p>Error: ${error.message}</p>
+            <button onclick="window.location.reload()">Try Again</button>
+            <button onclick="window.history.back()">Go Back</button>
+          </div>
+          <script>
+            // Try again automatically after a delay
+            setTimeout(() => window.location.reload(), 10000);
+          </script>
+        </body>
+        </html>
+      `, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' }
+      });
     }
   })());
 });
 
 // Install handler
 self.addEventListener('install', event => {
-  console.log('[UV SW] Installing fixed service worker...');
+  console.log('[UV SW] Installing high-load optimized worker...');
   self.skipWaiting();
 });
 
@@ -700,20 +487,22 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   console.log('[UV SW] Activated');
   event.waitUntil(clients.claim());
-  
-  // Clear any caches
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => caches.delete(cacheName))
-      );
-    })
-  );
 });
 
-// Message handler
+// Listen for messages
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  
+  // Return stats if requested
+  if (event.data?.type === 'GET_STATS') {
+    event.ports[0].postMessage({
+      activeRequests,
+      peakRequests,
+      queueLength: requestQueue.length,
+      bareHealth: bareServerHealth,
+      highLoadMode: isHighLoad()
+    });
   }
 });
