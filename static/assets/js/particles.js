@@ -11,8 +11,6 @@
   }
   
   function initParticlesBackground() {
-    console.log("Upward Particles: Initializing background effect");
-    
     // Create canvas element  
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -24,9 +22,10 @@
     canvas.style.width = '100%';
     canvas.style.height = '100%';
     canvas.style.zIndex = '0'; // Make sure it's behind everything
-    canvas.style.pointerEvents = 'none'; // Allow clicking through canvas
+    canvas.style.pointerEvents = 'auto'; // Allow clicks on canvas but keep default cursor
+    canvas.style.cursor = 'default'; // Default cursor
     
-    // Add a class for easier debugging
+    // Add a class for easier reference
     canvas.classList.add('floating-particles-canvas');
     
     // Append canvas to body
@@ -48,7 +47,6 @@
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      console.log("Upward Particles: Canvas resized to", canvas.width, "x", canvas.height);
     }
     
     // Initialize particles
@@ -76,7 +74,6 @@
           isSpecialRed: false // Flag for normal particles
         });
       }
-      console.log("Upward Particles: Created", particles.length, "particles");
     }
     
     // Mouse interaction - hard umbrella effect
@@ -145,37 +142,11 @@
     // Variables for special red particle
     let hasSpecialRedParticle = false;
     let specialRedParticleTimer = null;
-    let redParticleIndex = -1; // Keep track of the index
     
     // Function to spawn a special red particle
-    function spawnSpecialRedParticle(force = false) {
-      console.log("🔴 Attempting to spawn red particle...");
-      
-      // Remove any existing red particles if forced
-      if (force && hasSpecialRedParticle) {
-        console.log("🔴 Force flag is true, removing existing red particle");
-        if (redParticleIndex >= 0 && redParticleIndex < particles.length) {
-          particles.splice(redParticleIndex, 1);
-          console.log("🔴 Removed existing red particle at index:", redParticleIndex);
-        } else {
-          console.log("🔴 Could not find red particle at index:", redParticleIndex);
-          // Search for it
-          for (let i = 0; i < particles.length; i++) {
-            if (particles[i].isSpecialRed) {
-              particles.splice(i, 1);
-              console.log("🔴 Found and removed red particle at index:", i);
-              break;
-            }
-          }
-        }
-        hasSpecialRedParticle = false;
-        redParticleIndex = -1;
-      }
-      
+    function spawnSpecialRedParticle() {
       // Only spawn if there isn't already a special red particle
       if (!hasSpecialRedParticle) {
-        console.log("🔴 Creating new red particle");
-        
         // Determine left or right side (avoiding middle)
         let particleX;
         
@@ -213,55 +184,10 @@
           originalSpeedX: speedX,
           blur: 3, // Slight glow, not overwhelming
           isSpecialRed: true,
-          pulsePhase: 0,
-          // For debugging
-          debugName: "RED_PARTICLE"
+          pulsePhase: 0
         });
         
-        // Store the index of the red particle
-        redParticleIndex = particles.length - 1;
         hasSpecialRedParticle = true;
-        
-        // Log detailed info
-        console.log("🔴 RED PARTICLE CREATED:", 
-          {
-            index: redParticleIndex,
-            position: `X: ${particleX.toFixed(0)}, Y: ${canvas.height}`,
-            size: size,
-            speed: `X: ${speedX.toFixed(2)}, Y: ${speedY.toFixed(2)}`
-          }
-        );
-      } else {
-        console.log("🔴 Red particle already exists, not spawning a new one");
-      }
-    }
-    
-    // Log the current position of the red particle for debugging
-    function logRedParticlePosition() {
-      if (hasSpecialRedParticle && redParticleIndex >= 0 && redParticleIndex < particles.length) {
-        const rp = particles[redParticleIndex];
-        if (rp && rp.isSpecialRed) {
-          console.log("🔴 Red particle position:", 
-            {x: rp.x.toFixed(0), y: rp.y.toFixed(0), visible: rp.y > 0 && rp.y < canvas.height});
-        } else {
-          console.log("🔴 Red particle at index", redParticleIndex, "is not marked as special");
-        }
-      } else if (hasSpecialRedParticle) {
-        console.log("🔴 Red particle index is invalid:", redParticleIndex);
-        // Try to find it
-        let found = false;
-        for (let i = 0; i < particles.length; i++) {
-          if (particles[i].isSpecialRed) {
-            redParticleIndex = i;
-            found = true;
-            console.log("🔴 Found red particle at index:", i);
-            break;
-          }
-        }
-        if (!found) {
-          console.log("🔴 Could not find red particle in array despite hasSpecialRedParticle=true");
-          hasSpecialRedParticle = false;
-        }
       }
     }
     
@@ -271,12 +197,41 @@
       for (let i = 0; i < particles.length; i++) {
         if (particles[i].isSpecialRed && particles[i].y < 0) {
           // Red particle has left the screen
-          console.log("🔴 Red particle left the screen, removing it");
           particles.splice(i, 1);
           hasSpecialRedParticle = false;
-          redParticleIndex = -1;
           break;
         }
+      }
+    }
+    
+    // Function to check if a click hit the red particle
+    function checkRedParticleClick(clickX, clickY) {
+      for (let i = 0; i < particles.length; i++) {
+        const particle = particles[i];
+        if (particle.isSpecialRed) {
+          // Calculate distance between click and particle
+          const dx = clickX - particle.x;
+          const dy = clickY - particle.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          // Check if click is within particle radius
+          if (distance <= particle.size * 1.5) { // Give a slightly larger hit area
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+    
+    // Handle click on canvas
+    function handleCanvasClick(e) {
+      const clickX = e.clientX;
+      const clickY = e.clientY;
+      
+      // Check if the red particle was clicked
+      if (checkRedParticleClick(clickX, clickY)) {
+        // Navigate to the specified URL
+        window.location.href = '/assets/html/footer2.html';
       }
     }
     
@@ -293,29 +248,8 @@
       }, 3600000); // Every hour
     }
     
-    // Add console command for testing
-    window.spawnRedParticle = function() {
-      console.log("🔴 spawnRedParticle() called from console");
-      spawnSpecialRedParticle(true); // Force a new red particle
-      setTimeout(logRedParticlePosition, 500); // Log position after half a second
-      return "Red particle spawned. It looks similar to normal particles but is red and ignores the umbrella.";
-    };
-    
-    // Add commands to check status
-    window.checkRedParticle = function() {
-      console.log("🔴 Manual check requested");
-      logRedParticlePosition();
-      return "Red particle status logged to console";
-    };
-    
-    // Start the timer
-    startSpecialRedParticleTimer();
-    
     // For testing purposes, spawn one right away
-    setTimeout(() => {
-      console.log("🔴 Initial spawn timeout triggered");
-      spawnSpecialRedParticle();
-    }, 5000); // Spawn first one after 5 seconds
+    setTimeout(() => spawnSpecialRedParticle(), 5000); // Spawn first one after 5 seconds
     
     // ======== SPECIAL RED PARTICLE FEATURE - END ========
     
@@ -422,8 +356,7 @@
     
     window.addEventListener('mousemove', handleMouseMove);
     
-    console.log("Upward Particles: Animation started");
-    console.log("Use 'spawnRedParticle()' in the console to spawn a special red particle for testing");
-    console.log("Use 'checkRedParticle()' to check status of the red particle");
+    // Add click handler for red particle
+    canvas.addEventListener('click', handleCanvasClick);
   }
 })();
