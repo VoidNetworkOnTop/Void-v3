@@ -1,83 +1,98 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Loading...</title>
+    <title>Auto-Generate Iframe Creator</title>
     <style>
         body {
             font-family: Arial, sans-serif;
+            background-color: black;
+            color: white;
             display: flex;
             flex-direction: column;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
             height: 100vh;
             margin: 0;
-            background-color: black;
+            padding: 20px;
+            text-align: center;
         }
-        .loader {
-            border: 5px solid #333333;
-            border-top: 5px solid white;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 20px;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        p {
+        
+        input {
+            padding: 10px;
+            width: 80%;
+            max-width: 500px;
+            margin: 10px 0;
+            border: none;
+            background-color: #333;
             color: white;
+            border-radius: 4px;
         }
-        #errorMessage {
-            color: white;
-            margin-top: 20px;
-            display: none;
-        }
-        #manualButton {
-            margin-top: 20px;
+        
+        button {
             padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
+            margin: 10px 5px;
             background-color: white;
             color: black;
             border: none;
             border-radius: 4px;
-            display: none;
+            cursor: pointer;
+        }
+        
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            opacity: 0.7;
         }
     </style>
 </head>
 <body>
-    <div class="loader"></div>
-    <p>Loading website...</p>
-    <div id="errorMessage">An error occurred. Please try again.</div>
-    <button id="manualButton">Click here to continue</button>
-
+    <h1>Fullscreen Iframe Generator</h1>
+    
+    <p>Enter a URL (e.g., example.com/something.html):</p>
+    <input type="text" id="urlInput" placeholder="Enter URL" value="">
+    
+    <div>
+        <button onclick="generateFromInput()">Generate from Input</button>
+        <button onclick="generateFromCurrentURL()">Use Current URL</button>
+    </div>
+    
+    <p class="info">This tool extracts the root domain from the URL and creates an HTML file with a fullscreen iframe pointing to that domain.</p>
+    
     <script>
-        // Function to create and load the cloaked page
-        function loadCloakedPage() {
+        // Function to extract root domain from a URL
+        function extractRootDomain(url) {
+            // Add protocol if missing
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                url = 'https://' + url;
+            }
+            
             try {
-                // Get the root domain
-                const rootUrl = window.location.origin;
-                
-                // Get the page title from the original site (if possible)
-                const originalTitle = document.title;
-                
-                // Create HTML for the iframe page with proper DOCTYPE and meta tags
-                const iframeHtml = `<!DOCTYPE html>
+                // Parse the URL
+                const urlObj = new URL(url);
+                // Return just the origin (protocol + hostname + port)
+                return urlObj.origin;
+            } catch (e) {
+                // If URL parsing fails, return the original input
+                console.error("Error parsing URL:", e);
+                return url;
+            }
+        }
+        
+        // Function to generate HTML content
+        function generateHTML(rootUrl) {
+            return `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>${originalTitle}</title>
+    <title>${rootUrl}</title>
     <style>
-        html, body { 
-            margin: 0; 
-            padding: 0; 
-            height: 100%; 
-            overflow: hidden; 
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
             background-color: black;
-            color: white;
         }
         iframe {
             border: none;
@@ -91,33 +106,60 @@
     <iframe src="${rootUrl}" allowfullscreen></iframe>
 </body>
 </html>`;
-                
-                // Create a blob with the HTML content
-                const blob = new Blob([iframeHtml], {type: 'text/html'});
-                
-                // Create an object URL for the blob
-                const blobUrl = URL.createObjectURL(blob);
-                
-                // Replace the current window with the blob URL
-                window.location.replace(blobUrl);
-                
-            } catch (error) {
-                console.error("Error:", error);
-                document.getElementById('loader').style.display = 'none';
-                document.getElementById('errorMessage').style.display = 'block';
-                document.getElementById('errorMessage').textContent = 'Error: ' + error.message;
-                document.getElementById('manualButton').style.display = 'block';
-            }
         }
-
-        // Try to load automatically on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            // Adding a small delay can help with some browsers
-            setTimeout(loadCloakedPage, 300);
-        });
-
-        // Provide a fallback button in case automatic loading fails
-        document.getElementById('manualButton').addEventListener('click', loadCloakedPage);
+        
+        // Function to download HTML file
+        function downloadHTML(htmlContent, filename) {
+            // Create a blob with the HTML content
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            
+            // Create a download link
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename || 'iframe-page.html';
+            
+            // Append to body, click, and remove
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        // Generate and download from input field
+        function generateFromInput() {
+            const inputUrl = document.getElementById('urlInput').value.trim();
+            
+            if (!inputUrl) {
+                alert("Please enter a URL");
+                return;
+            }
+            
+            const rootUrl = extractRootDomain(inputUrl);
+            const htmlContent = generateHTML(rootUrl);
+            
+            // Extract domain name for the filename
+            let domain = rootUrl.replace(/https?:\/\//, '').replace(/[\/\\:*?"<>|]/g, '');
+            downloadHTML(htmlContent, `${domain}-iframe.html`);
+        }
+        
+        // Generate and download from current URL
+        function generateFromCurrentURL() {
+            const currentUrl = window.location.href;
+            document.getElementById('urlInput').value = currentUrl;
+            
+            const rootUrl = extractRootDomain(currentUrl);
+            const htmlContent = generateHTML(rootUrl);
+            
+            // Extract domain name for the filename
+            let domain = rootUrl.replace(/https?:\/\//, '').replace(/[\/\\:*?"<>|]/g, '');
+            downloadHTML(htmlContent, `${domain}-iframe.html`);
+        }
+        
+        // Set current URL as default if input is empty
+        window.onload = function() {
+            if (document.getElementById('urlInput').value === '') {
+                document.getElementById('urlInput').value = window.location.href;
+            }
+        };
     </script>
 </body>
 </html>
