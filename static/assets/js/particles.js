@@ -145,82 +145,142 @@
     // Variables for special red particle
     let hasSpecialRedParticle = false;
     let specialRedParticleTimer = null;
+    let redParticleIndex = -1; // Keep track of the index
     
     // Function to spawn a special red particle
     function spawnSpecialRedParticle(force = false) {
+      console.log("🔴 Attempting to spawn red particle...");
+      
       // Remove any existing red particles if forced
       if (force && hasSpecialRedParticle) {
-        for (let i = 0; i < particles.length; i++) {
-          if (particles[i].isSpecialRed) {
-            particles.splice(i, 1);
-            break;
+        console.log("🔴 Force flag is true, removing existing red particle");
+        if (redParticleIndex >= 0 && redParticleIndex < particles.length) {
+          particles.splice(redParticleIndex, 1);
+          console.log("🔴 Removed existing red particle at index:", redParticleIndex);
+        } else {
+          console.log("🔴 Could not find red particle at index:", redParticleIndex);
+          // Search for it
+          for (let i = 0; i < particles.length; i++) {
+            if (particles[i].isSpecialRed) {
+              particles.splice(i, 1);
+              console.log("🔴 Found and removed red particle at index:", i);
+              break;
+            }
           }
         }
         hasSpecialRedParticle = false;
+        redParticleIndex = -1;
       }
       
       // Only spawn if there isn't already a special red particle
       if (!hasSpecialRedParticle) {
-        console.log("Special neon red particle spawned");
+        console.log("🔴 Creating new red particle");
         
-        // Determine left or right side (avoiding middle)
-        let particleX;
+        // Always spawn on the left for testing
+        const particleX = 50; // Fixed position for debugging
+        const particleY = canvas.height - 20; // Just inside bottom edge
         
-        // Define the middle section (30% of screen width)
-        const middleStart = canvas.width * 0.35;
-        const middleEnd = canvas.width * 0.65;
+        // Create a GIANT red particle for testing
+        const size = maxSize * 8; // Massive size for testing
         
-        // Randomly choose left or right side
-        if (Math.random() < 0.5) {
-          // Left side - 0 to 35% of screen width
-          particleX = Math.random() * middleStart;
-        } else {
-          // Right side - 65% to 100% of screen width
-          particleX = middleEnd + Math.random() * (canvas.width - middleEnd);
-        }
-        
-        // Create the special red particle with the calculated X position
-        const size = maxSize * 3; // Make it extremely large for visibility
+        // Add the red particle
         particles.push({
           x: particleX,
-          y: canvas.height + size, // Start just below the visible bottom edge
+          y: particleY,
           size: size,
-          opacity: 1.0, // Full opacity for maximum visibility
-          // Slower upward movement
-          speedY: -(floatSpeedMin * 0.5), // Make it slower so it's easier to see
-          speedX: (Math.random() - 0.5) * horizontalDrift,
-          // Original speed for reference
-          originalSpeedY: -(floatSpeedMin * 0.5),
-          originalSpeedX: (Math.random() - 0.5) * horizontalDrift,
-          blur: 8, // Extreme glow for neon effect
-          isSpecialRed: true, // Flag for special particle
-          pulsePhase: 0 // For pulsing effect
+          opacity: 1.0, // Full opacity
+          // Very slow upward movement for testing
+          speedY: -0.3, // Super slow
+          speedX: 0, // No horizontal movement for testing
+          // Original speed reference
+          originalSpeedY: -0.3,
+          originalSpeedX: 0,
+          blur: 10, // Extreme glow
+          isSpecialRed: true,
+          pulsePhase: 0,
+          // For debugging
+          debugName: "RED_PARTICLE"
         });
         
+        // Store the index of the red particle
+        redParticleIndex = particles.length - 1;
         hasSpecialRedParticle = true;
         
-        // Log the particle for debugging
-        console.log("RED PARTICLE DETAILS:", 
+        // Log detailed info
+        console.log("🔴 RED PARTICLE CREATED:", 
           {
-            position: `X: ${particleX.toFixed(0)}, Y: ${canvas.height}`,
-            side: particleX < middleStart ? "LEFT" : "RIGHT",
-            speed: `X: ${particles[particles.length-1].speedX.toFixed(2)}, Y: ${particles[particles.length-1].speedY.toFixed(2)}`
+            index: redParticleIndex,
+            position: `X: ${particleX}, Y: ${particleY}`,
+            size: size,
+            speed: `X: 0, Y: -0.3 (very slow)`
           }
         );
+        
+        // Check if it actually exists
+        setTimeout(() => {
+          let found = false;
+          for (let i = 0; i < particles.length; i++) {
+            if (particles[i].isSpecialRed) {
+              found = true;
+              console.log("🔴 Red particle verified at index:", i, "position:", 
+                {x: particles[i].x, y: particles[i].y});
+              break;
+            }
+          }
+          if (!found) {
+            console.log("🔴 ERROR: Red particle was not found in particles array after creation");
+          }
+        }, 100);
+        
       } else {
-        console.log("Red particle already exists, not spawning a new one.");
+        console.log("🔴 Red particle already exists, not spawning a new one");
       }
     }
     
-    // Function to check if special particles are still visible
+    // Log the current position of the red particle for debugging
+    function logRedParticlePosition() {
+      if (hasSpecialRedParticle && redParticleIndex >= 0 && redParticleIndex < particles.length) {
+        const rp = particles[redParticleIndex];
+        if (rp && rp.isSpecialRed) {
+          console.log("🔴 Red particle position:", 
+            {x: rp.x, y: rp.y, visible: rp.y > 0 && rp.y < canvas.height});
+        } else {
+          console.log("🔴 Red particle at index", redParticleIndex, "is not marked as special");
+        }
+      } else if (hasSpecialRedParticle) {
+        console.log("🔴 Red particle index is invalid:", redParticleIndex);
+        // Try to find it
+        let found = false;
+        for (let i = 0; i < particles.length; i++) {
+          if (particles[i].isSpecialRed) {
+            redParticleIndex = i;
+            found = true;
+            console.log("🔴 Found red particle at index:", i);
+            break;
+          }
+        }
+        if (!found) {
+          console.log("🔴 Could not find red particle in array despite hasSpecialRedParticle=true");
+          hasSpecialRedParticle = false;
+        }
+      }
+    }
+    
+    // Check if special particles are still visible
     function checkSpecialRedParticle() {
+      // For debugging - log position every second
+      if (hasSpecialRedParticle && Math.random() < 0.01) { // roughly once per second at 60fps
+        logRedParticlePosition();
+      }
+      
       // Look through all particles
       for (let i = 0; i < particles.length; i++) {
-        if (particles[i].isSpecialRed && particles[i].y < 0) {
+        if (particles[i].isSpecialRed && particles[i].y < -100) { // Give extra room
           // Red particle has left the screen
-          console.log("Red particle left the screen, removing it");
+          console.log("🔴 Red particle left the screen, removing it");
           particles.splice(i, 1);
           hasSpecialRedParticle = false;
+          redParticleIndex = -1;
           break;
         }
       }
@@ -241,15 +301,27 @@
     
     // Add console command for testing
     window.spawnRedParticle = function() {
+      console.log("🔴 spawnRedParticle() called from console");
       spawnSpecialRedParticle(true); // Force a new red particle
-      return "Super neon red particle spawned on the left or right side. Try moving your cursor near it - it won't be affected!";
+      setTimeout(logRedParticlePosition, 500); // Log position after half a second
+      return "Giant red particle spawned at left side. Check console for tracking info.";
+    };
+    
+    // Add commands to check status
+    window.checkRedParticle = function() {
+      console.log("🔴 Manual check requested");
+      logRedParticlePosition();
+      return "Red particle status logged to console";
     };
     
     // Start the timer
     startSpecialRedParticleTimer();
     
     // For testing purposes, spawn one right away
-    setTimeout(() => spawnSpecialRedParticle(), 5000); // Spawn first one after 5 seconds
+    setTimeout(() => {
+      console.log("🔴 Initial spawn timeout triggered");
+      spawnSpecialRedParticle();
+    }, 5000); // Spawn first one after 5 seconds
     
     // ======== SPECIAL RED PARTICLE FEATURE - END ========
     
@@ -309,9 +381,17 @@
             particle.pulsePhase = (particle.pulsePhase + 0.05) % (Math.PI * 2);
           }
           
+          // EXTREME neon red particle - impossible to miss
+          
+          // First draw a black border for contrast
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.size + 4, 0, Math.PI * 2);
+          ctx.fill();
+          
           // Super neon red particle with intense glow
-          ctx.fillStyle = `rgba(255, 0, 60, ${particle.opacity})`;
-          ctx.shadowColor = 'rgba(255, 50, 80, 1)'; // More intense shadow for neon glow
+          ctx.fillStyle = 'rgba(255, 0, 60, 1.0)';
+          ctx.shadowColor = 'rgba(255, 0, 80, 1)';
           ctx.shadowBlur = particle.blur + (Math.sin(particle.pulsePhase) * 3);
           
           // Draw the dot with extra glow for neon effect
@@ -319,7 +399,7 @@
           ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
           ctx.fill();
           
-          // Draw a second smaller, brighter core for the neon effect
+          // Draw a second smaller, brighter core 
           ctx.fillStyle = 'rgba(255, 220, 220, 0.9)';
           ctx.beginPath();
           ctx.arc(particle.x, particle.y, particle.size * 0.5, 0, Math.PI * 2);
@@ -370,5 +450,6 @@
     
     console.log("Upward Particles: Animation started");
     console.log("Use 'spawnRedParticle()' in the console to spawn a special red particle for testing");
+    console.log("Use 'checkRedParticle()' to check status of the red particle");
   }
 })();
