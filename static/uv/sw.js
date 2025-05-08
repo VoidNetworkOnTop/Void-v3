@@ -1,7 +1,7 @@
 /*global UVServiceWorker,__uv$config*/
 /*
- * UV Service Worker - Enhanced Edition
- * With specific fixes for slower devices and blank screens
+ * UV Service Worker - Performance Optimized Edition
+ * With focused optimizations for faster game loading and black screen fixes
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -10,31 +10,32 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
-// Configuration with improved settings for reliability
+// Streamlined configuration for better performance
 const CONFIG = {
-  FETCH_TIMEOUT: 180000,       // 3 minute timeout for slow connections
-  RETRY_COUNT: 3,              // Number of retry attempts
-  RETRY_DELAY: 1000,           // Initial delay between retries in ms
+  FETCH_TIMEOUT: 60000,       // 1 minute timeout should be sufficient
+  RETRY_COUNT: 2,              // Reduced number of retries to prevent excessive requests
+  RETRY_DELAY: 500,           // Faster retry delay (milliseconds)
+  ENABLE_CACHE: true,         // Enable resource caching for faster subsequent loads
+  CACHE_NAME: 'uv-game-cache', // Cache name for game resources
+  MAX_CACHE_SIZE: 100 * 1024 * 1024, // 100MB max cache size
+  PARALLEL_LOAD_LIMIT: 8,     // Allow more concurrent requests for asset loading
 };
 
-// Initialize
-console.log('[UV SW] Enhanced service worker initializing');
+// Cache control
+let cacheSize = 0;
 
-// Detect WebGL game content for special handling
+// Initialize
+console.log('[UV SW] Performance-optimized service worker initializing');
+
+// Detect WebGL game content for special handling - simplified version
 function isGameContent(url) {
   if (!url) return false;
   
-  // Common game engines and platforms
-  const gamePatterns = [
-    'unity', 'unitycdn', 'webgl', 'game', 'games', 'play',
-    '3d', 'canvas', 'html5', 'arcade', 'gitlab.io', 
-    'github.io', 'poki.com', 'crazy', 'y8.com'
-  ];
-  
-  return gamePatterns.some(pattern => url.includes(pattern));
+  // Simplified detection focusing on most common game patterns
+  return /unity|webgl|game|play|3d|canvas|html5|arcade|\.io|poki\.com/i.test(url);
 }
 
-// Inject fixes for blank screen and WebGL issues
+// Inject minimal but effective fixes for black screen and WebGL issues
 async function injectGameFixes(response, url) {
   // Only process HTML responses
   const contentType = response.headers.get('content-type');
@@ -54,51 +55,26 @@ async function injectGameFixes(response, url) {
       });
     }
     
-    // Create modified HTML with our fixes
+    // Create modified HTML with essential fixes only
     let modifiedHtml = text;
     
-    // Add early WebGL fixes to head
+    // Add focused WebGL fixes to head - reduced to essential fixes only
     if (modifiedHtml.includes('<head')) {
       const headInsertPos = modifiedHtml.indexOf('<head') + '<head'.length;
       const headEndPos = modifiedHtml.indexOf('>', headInsertPos);
       
       if (headEndPos !== -1) {
         modifiedHtml = modifiedHtml.substring(0, headEndPos + 1) + `
-        <!-- UV Early WebGL Fixes -->
+        <!-- UV Essential WebGL Fixes -->
         <script>
         (function() {
           // Make WebGL detection always return true
-          window.hasWebGL = function() { return true; };
-          window.hasWebGL2 = function() { return true; };
-          window.isWebGLAvailable = function() { return true; };
+          window.hasWebGL = window.hasWebGL2 = window.isWebGLAvailable = function() { return true; };
           
           // Fix navigator user agent reporting
           const originalUserAgent = navigator.userAgent;
           Object.defineProperty(navigator, 'userAgent', {
-            get: function() {
-              return originalUserAgent.replace(/Headless/g, '');
-            }
-          });
-          
-          // Define Unity globals early
-          window.unityInstance = window.unityInstance || {};
-          window.Unity = window.Unity || { 
-            print: function(msg) { console.log('[Unity]', msg); }
-          };
-          
-          // Add early connectivity to common CDNs
-          const commonCDNs = [
-            'cdn.jsdelivr.net',
-            'cdnjs.cloudflare.com',
-            'unpkg.com',
-            'storage.googleapis.com'
-          ];
-          
-          commonCDNs.forEach(domain => {
-            const link = document.createElement('link');
-            link.rel = 'preconnect';
-            link.href = 'https://' + domain;
-            document.head.appendChild(link);
+            get: function() { return originalUserAgent.replace(/Headless/g, ''); }
           });
         })();
         </script>
@@ -106,314 +82,70 @@ async function injectGameFixes(response, url) {
       }
     }
     
-    // Add comprehensive WebGL fixes right before </head>
+    // Add minimal canvas/WebGL fixes right before </head>
     if (modifiedHtml.includes('</head>')) {
       const headClosePos = modifiedHtml.indexOf('</head>');
       
       modifiedHtml = modifiedHtml.substring(0, headClosePos) + `
-      <!-- UV WebGL Fixes -->
+      <!-- UV Core WebGL Fixes -->
       <script>
       (function() {
-        function applyWebGLFixes() {
-          console.log('[UV] Applying WebGL fixes for better compatibility');
+        // Only the essential canvas/WebGL patches
+        const originalGetContext = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function(contextType, contextAttributes) {
+          // Fix for zero-sized canvases
+          if ((this.width === 0 || this.height === 0) && 
+              ['webgl', 'experimental-webgl', 'webgl2'].includes(contextType)) {
+            this.width = this.width || window.innerWidth * 0.8 || 800;
+            this.height = this.height || window.innerHeight * 0.8 || 600;
+          }
           
-          // Override canvas getContext to fix WebGL issues on more devices
-          const originalGetContext = HTMLCanvasElement.prototype.getContext;
-          HTMLCanvasElement.prototype.getContext = function(contextType, contextAttributes) {
-            // Fix for zero-sized canvases
-            if ((this.width === 0 || this.height === 0) && 
-                (contextType === 'webgl' || contextType === 'experimental-webgl' || contextType === 'webgl2')) {
-              console.log('[UV WebGL] Fixing zero-sized canvas');
-              this.width = this.width || window.innerWidth * 0.8 || 800;
-              this.height = this.height || window.innerHeight * 0.8 || 600;
-            }
+          // For WebGL contexts, apply optimizations
+          if (['webgl', 'experimental-webgl', 'webgl2'].includes(contextType)) {
+            contextAttributes = contextAttributes || {};
+            contextAttributes.failIfMajorPerformanceCaveat = false;
+            contextAttributes.powerPreference = 'high-performance';
+            contextAttributes.preserveDrawingBuffer = true;
             
-            // For WebGL contexts, apply optimizations and fallbacks
-            if (contextType === 'webgl' || contextType === 'experimental-webgl' || contextType === 'webgl2') {
-              // Make canvas visible
-              this.style.display = 'block';
-              this.style.visibility = 'visible';
-              
-              // Try with optimized context attributes first
-              contextAttributes = contextAttributes || {};
-              contextAttributes.alpha = contextAttributes.alpha !== false; // Use alpha channel
-              contextAttributes.antialias = contextAttributes.antialias !== false; // Enable antialiasing
-              contextAttributes.depth = contextAttributes.depth !== false; // Enable depth testing
-              contextAttributes.premultipliedAlpha = contextAttributes.premultipliedAlpha !== false;
-              contextAttributes.preserveDrawingBuffer = true; // Important for screenshots and some games
-              contextAttributes.failIfMajorPerformanceCaveat = false; // Critical for slower devices
-              contextAttributes.powerPreference = 'high-performance';
-              
+            const ctx = originalGetContext.call(this, contextType, contextAttributes);
+            if (ctx) return ctx;
+            
+            // Try alternative contexts if primary fails
+            for (const alt of ['webgl', 'experimental-webgl', 'webgl2'].filter(alt => alt !== contextType)) {
               try {
-                // Try to create the context with our optimized attributes
-                const ctx = originalGetContext.call(this, contextType, contextAttributes);
-                if (ctx) {
-                  // Fix missing methods that some games expect
-                  ctx.getShaderPrecisionFormat = ctx.getShaderPrecisionFormat || function() {
-                    return { precision: 23, rangeMin: 127, rangeMax: 127 };
-                  };
-                  
-                  // Success - return the context
-                  return ctx;
-                }
-                
-                // If that failed, try alternative WebGL contexts
-                console.log('[UV WebGL] Primary context creation failed, trying alternatives');
-                const alternatives = ['webgl', 'experimental-webgl', 'webgl2'].filter(alt => alt !== contextType);
-                
-                for (const alt of alternatives) {
-                  try {
-                    console.log('[UV WebGL] Trying alternative:', alt);
-                    const ctx2 = originalGetContext.call(this, alt, contextAttributes);
-                    if (ctx2) {
-                      console.log('[UV WebGL] Alternative context created successfully');
-                      return ctx2;
-                    }
-                  } catch (e) {
-                    console.log('[UV WebGL] Alternative context failed:', e.message);
-                  }
-                }
-                
-                // If all WebGL attempts failed and this is a critical canvas, create a fake context
-                // Some games just need some context to avoid crashing
-                console.warn('[UV WebGL] All WebGL context creation attempts failed');
-                
-                // If we need to create a fake context
-                if (this.id && (this.id.includes('game') || this.id.includes('unity') || this.width > 400)) {
-                  console.log('[UV WebGL] Creating fallback context for critical canvas');
-                  return createFallbackContext(this);
-                }
-              } catch (e) {
-                console.error('[UV WebGL] Error in WebGL initialization:', e);
-                
-                // Last resort, try with no attributes
-                try {
-                  return originalGetContext.call(this, contextType);
-                } catch (e2) {
-                  console.error('[UV WebGL] Final fallback failed:', e2);
-                }
-              }
+                const ctx2 = originalGetContext.call(this, alt, contextAttributes);
+                if (ctx2) return ctx2;
+              } catch (e) {}
             }
-            
-            // For non-WebGL contexts, use original implementation
-            return originalGetContext.call(this, contextType, contextAttributes);
-          };
-          
-          // Create a minimal fallback context to prevent crashing
-          function createFallbackContext(canvas) {
-            return {
-              canvas: canvas,
-              drawingBufferWidth: canvas.width,
-              drawingBufferHeight: canvas.height,
-              getExtension: function() { return null; },
-              getParameter: function() { return 0; },
-              getShaderPrecisionFormat: function() { return { precision: 23, rangeMin: 127, rangeMax: 127 }; },
-              getError: function() { return 0; },
-              getContextAttributes: function() { return {}; },
-              viewport: function() {},
-              clear: function() {},
-              clearColor: function() {},
-              clearDepth: function() {},
-              enable: function() {},
-              disable: function() {},
-              blendFunc: function() {},
-              blendEquation: function() {},
-              createBuffer: function() { return {}; },
-              createProgram: function() { return {}; },
-              createShader: function() { return {}; },
-              createTexture: function() { return {}; }
-            };
           }
           
-          // Fix Unity games specifically
-          function fixUnityGames() {
-            console.log('[UV] Applying Unity-specific fixes');
-            
-            // Unity global objects and functions
-            window.UnityLoader = window.UnityLoader || {
-              instantiate: function(container, url, params) {
-                console.log('[UV Unity] Loading:', url);
-                return { SetFullscreen: function() {} };
-              },
-              SystemInfo: {
-                hasWebGL: true,
-                mobile: false
-              }
-            };
-            
-            window.unityInstance = window.unityInstance || { SendMessage: function() {} };
-            
-            // Add common Unity callback functions
-            window.unityShowBanner = function(text, type) {
-              console.log('[Unity Banner]', text);
-            };
-            
-            window.unityProgress = function(gameInstance, progress) {
-              console.log('[Unity Progress]', progress);
-            };
-            
-            // Force show Unity canvas and container elements
-            setTimeout(function showUnityElements() {
-              // Find and fix Unity elements
-              const unityElements = [
-                document.getElementById('unity-container'),
-                document.getElementById('gameContainer'),
-                document.getElementById('unityContainer'),
-                document.getElementById('unity-canvas'),
-                document.getElementById('canvas'),
-                document.querySelector('[id*="unity"]'),
-                document.querySelector('[id*="game"]'),
-                document.querySelector('[id*="canvas"]'),
-                document.querySelector('canvas')
-              ].filter(Boolean);
-              
-              if (unityElements.length > 0) {
-                console.log('[UV Unity] Found Unity elements:', unityElements.length);
-                
-                unityElements.forEach(element => {
-                  // Make element visible
-                  element.style.visibility = 'visible';
-                  element.style.display = element.nodeName === 'CANVAS' ? 'block' : element.style.display || 'block';
-                  
-                  // Fix canvas sizing
-                  if (element.nodeName === 'CANVAS') {
-                    if (element.width === 0 || element.height === 0) {
-                      element.width = window.innerWidth * 0.8;
-                      element.height = window.innerHeight * 0.8;
-                    }
-                  } else {
-                    // Check for nested canvas
-                    const canvas = element.querySelector('canvas');
-                    if (canvas) {
-                      canvas.style.visibility = 'visible';
-                      canvas.style.display = 'block';
-                      
-                      if (canvas.width === 0 || canvas.height === 0) {
-                        canvas.width = window.innerWidth * 0.8;
-                        canvas.height = window.innerHeight * 0.8;
-                      }
-                    }
-                  }
-                });
-              } else {
-                // Try again later
-                setTimeout(showUnityElements, 1000);
-              }
-            }, 1000);
-          }
-          
-          // Apply Unity-specific fixes
-          fixUnityGames();
-          
-          // Fix page visibility
-          setTimeout(function fixVisibility() {
-            if (document.body) {
-              document.body.style.backgroundColor = document.body.style.backgroundColor || '#000';
-              document.body.style.color = document.body.style.color || '#fff';
-              document.body.style.visibility = 'visible';
-              document.body.style.display = 'block';
-            }
-            
-            // Make all canvases visible
-            document.querySelectorAll('canvas').forEach(canvas => {
-              canvas.style.display = 'block';
-              canvas.style.visibility = 'visible';
-              
-              if (canvas.width === 0 || canvas.height === 0) {
-                canvas.width = canvas.width || window.innerWidth * 0.8 || 800;
-                canvas.height = canvas.height || window.innerHeight * 0.8 || 600;
-              }
-            });
-          }, 500);
-        }
+          // Default fallback
+          return originalGetContext.call(this, contextType, contextAttributes);
+        };
         
-        // Apply fixes immediately
-        applyWebGLFixes();
-        
-        // Also apply after DOMContentLoaded
-        if (document.readyState !== 'complete' && document.readyState !== 'interactive') {
-          document.addEventListener('DOMContentLoaded', applyWebGLFixes);
-        }
-        
-        // Apply again after full load for slower devices
+        // Ensure page and canvases are visible after load
         window.addEventListener('load', function() {
-          setTimeout(applyWebGLFixes, 500);
+          // Force visibility of all canvases
+          document.querySelectorAll('canvas').forEach(canvas => {
+            canvas.style.display = 'block';
+            canvas.style.visibility = 'visible';
+            
+            if (canvas.width === 0 || canvas.height === 0) {
+              canvas.width = canvas.width || window.innerWidth * 0.8 || 800;
+              canvas.height = canvas.height || window.innerHeight * 0.8 || 600;
+            }
+          });
           
-          // And one more time after a longer delay
-          setTimeout(applyWebGLFixes, 2000);
+          // Fix Unity canvas elements specifically
+          const unityElements = [...document.querySelectorAll('[id*="unity"],[id*="game"],[id*="canvas"],canvas')];
+          unityElements.forEach(el => {
+            el.style.visibility = 'visible';
+            el.style.display = el.nodeName === 'CANVAS' ? 'block' : 'block';
+          });
         });
       })();
       </script>
       ` + modifiedHtml.substring(headClosePos);
-    }
-    
-    // Add device-specific optimizations for slower devices before </body>
-    if (modifiedHtml.includes('</body>')) {
-      const bodyClosePos = modifiedHtml.indexOf('</body>');
-      
-      modifiedHtml = modifiedHtml.substring(0, bodyClosePos) + `
-      <!-- UV Device-Specific Optimizations -->
-      <script>
-      (function() {
-        // Wait a bit before applying these fixes to ensure page has loaded
-        setTimeout(function() {
-          // Check if this is a slower device
-          const isSlowDevice = (
-            navigator.hardwareConcurrency < 4 || 
-            /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-          );
-          
-          if (isSlowDevice) {
-            console.log('[UV] Applying optimizations for slower device');
-            
-            // Force visibility of all game elements
-            const gameElements = document.querySelectorAll(
-              'canvas, [id*="game"], [id*="unity"], [class*="game"], [class*="unity"]'
-            );
-            
-            gameElements.forEach(element => {
-              element.style.visibility = 'visible';
-              element.style.display = element.nodeName === 'CANVAS' ? 'block' : 'block';
-            });
-            
-            // Optimize any animations for performance
-            const style = document.createElement('style');
-            style.textContent = `
-              @media (max-width: 768px) {
-                * { 
-                  animation-duration: 0.001s !important;
-                  animation-delay: 0s !important;
-                  transition-duration: 0.001s !important; 
-                }
-              }
-            `;
-            document.head.appendChild(style);
-            
-            // Check if canvas needs to be created
-            if (!document.querySelector('canvas')) {
-              // Some games need a canvas to initialize
-              const canvas = document.createElement('canvas');
-              canvas.width = window.innerWidth * 0.8;
-              canvas.height = window.innerHeight * 0.7;
-              canvas.style.display = 'block';
-              canvas.style.margin = '0 auto';
-              canvas.style.backgroundColor = '#000';
-              document.body.appendChild(canvas);
-              
-              // Initialize WebGL
-              try {
-                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-                if (gl) {
-                  gl.clearColor(0.0, 0.0, 0.0, 1.0);
-                  gl.clear(gl.COLOR_BUFFER_BIT);
-                }
-              } catch(e) {}
-            }
-          }
-        }, 2000); // Wait 2 seconds for page to load
-      })();
-      </script>
-      ` + modifiedHtml.substring(bodyClosePos);
     }
     
     return new Response(modifiedHtml, {
@@ -427,31 +159,67 @@ async function injectGameFixes(response, url) {
   }
 }
 
-// Enhanced fetch with retries
-async function enhancedFetch(event, retries = CONFIG.RETRY_COUNT) {
+// Streamlined fetch with improved performance
+async function enhancedFetch(event) {
+  const url = new URL(event.request.url);
+  const isGame = isGameContent(url.toString());
+  
+  // For game content, set higher priority and streaming optimizations
+  if (isGame) {
+    event.request.importance = 'high';
+  }
+  
+  // Try cache first for GET requests if cache is enabled
+  if (CONFIG.ENABLE_CACHE && event.request.method === 'GET') {
+    try {
+      const cache = await caches.open(CONFIG.CACHE_NAME);
+      const cachedResponse = await cache.match(event.request);
+      
+      if (cachedResponse) {
+        console.log(`[UV SW] Cache hit for: ${url.pathname}`);
+        return cachedResponse;
+      }
+    } catch (cacheError) {
+      console.warn('[UV SW] Cache error:', cacheError);
+    }
+  }
+  
   try {
-    const url = new URL(event.request.url).toString();
-    
     // Process requests through UV
     const response = await sw.fetch(event);
     
+    // For GET requests, cache the response if appropriate
+    if (CONFIG.ENABLE_CACHE && 
+        event.request.method === 'GET' && 
+        response.status === 200) {
+      
+      try {
+        const cache = await caches.open(CONFIG.CACHE_NAME);
+        const clone = response.clone();
+        
+        // Store in cache
+        cache.put(event.request, clone).catch(err => 
+          console.warn('[UV SW] Cache write error:', err));
+      } catch (cacheError) {
+        console.warn('[UV SW] Cache save error:', cacheError);
+      }
+    }
+    
     // For HTML game content, inject WebGL fixes
-    if (isGameContent(url) && response.headers.get('content-type')?.includes('text/html')) {
-      return await injectGameFixes(response, url);
+    if (isGame && response.headers.get('content-type')?.includes('text/html')) {
+      return await injectGameFixes(response, url.toString());
     }
     
     return response;
   } catch (error) {
     console.error(`[UV SW] Fetch error: ${error.message}`);
     
-    // Retry logic
-    if (retries > 0) {
-      console.log(`[UV SW] Retrying (${retries} attempts left)`);
-      await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
-      return enhancedFetch(event, retries - 1);
+    // Retry once more with a clean approach
+    try {
+      return await sw.fetch(event);
+    } catch (retryError) {
+      throw error; // Throw original error if retry also fails
     }
-    
-    throw error;
   }
 }
 
@@ -463,7 +231,7 @@ function createErrorPage(error) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Error Loading Game</title>
+      <title>Game Loading Error</title>
       <style>
         body {
           font-family: Arial, sans-serif;
@@ -482,10 +250,7 @@ function createErrorPage(error) {
           padding: 20px;
           box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         }
-        h2 {
-          margin-top: 0;
-          color: #f44336;
-        }
+        h2 { margin-top: 0; color: #f44336; }
         button {
           padding: 10px 16px;
           background: #2196f3;
@@ -496,18 +261,15 @@ function createErrorPage(error) {
           margin: 5px;
           font-size: 14px;
         }
-        button.secondary {
-          background: #757575;
-        }
       </style>
     </head>
     <body>
       <div class="container">
-        <h2>We're having trouble loading this game</h2>
-        <p>Sorry! This game isn't loading properly. If the issue continues, please visit our support team by going to the home page and clicking the phone icon at the bottom.</p>
+        <h2>Game Loading Error</h2>
+        <p>The game couldn't load properly. This may be due to network issues or compatibility problems.</p>
         <div>
           <button onclick="window.location.reload()">Try Again</button>
-          <button class="secondary" onclick="window.location.href='/'">Go Home</button>
+          <button onclick="window.location.href='/'">Go Home</button>
         </div>
       </div>
     </body>
@@ -518,6 +280,25 @@ function createErrorPage(error) {
   });
 }
 
+// Periodic cache cleanup to prevent excessive storage use
+async function cleanupCache() {
+  try {
+    const cache = await caches.open(CONFIG.CACHE_NAME);
+    const requests = await cache.keys();
+    
+    if (requests.length > 1000) { // Too many items
+      console.log(`[UV SW] Cache cleanup: removing ${requests.length - 500} oldest items`);
+      // Keep the 500 most recent items
+      const toDelete = requests.slice(0, requests.length - 500);
+      for (const request of toDelete) {
+        await cache.delete(request);
+      }
+    }
+  } catch (error) {
+    console.warn('[UV SW] Cache cleanup error:', error);
+  }
+}
+
 // Main fetch handler
 self.addEventListener('fetch', event => {
   // Only handle UV routes
@@ -526,9 +307,10 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // High performance fetch handling
   event.respondWith((async () => {
     try {
-      // Use enhanced fetch with retries
+      // Use enhanced fetch with optimizations
       return await enhancedFetch(event);
     } catch (err) {
       console.error('[UV SW] Fatal error:', err);
@@ -537,14 +319,49 @@ self.addEventListener('fetch', event => {
   })());
 });
 
-// Install handler
+// Install handler with cache setup
 self.addEventListener('install', event => {
-  console.log('[UV SW] Installing enhanced service worker...');
+  console.log('[UV SW] Installing performance-optimized service worker...');
+  
+  // Initialize cache during installation
+  if (CONFIG.ENABLE_CACHE) {
+    event.waitUntil((async () => {
+      try {
+        const cache = await caches.open(CONFIG.CACHE_NAME);
+        console.log('[UV SW] Cache initialized');
+      } catch (error) {
+        console.warn('[UV SW] Cache initialization error:', error);
+      }
+    })());
+  }
+  
   self.skipWaiting();
 });
 
-// Activate handler
+// Activate handler with cache cleanup
 self.addEventListener('activate', event => {
   console.log('[UV SW] Activated');
+  
+  // Clean up old caches
+  if (CONFIG.ENABLE_CACHE) {
+    event.waitUntil((async () => {
+      try {
+        // Delete old caches
+        const cacheNames = await caches.keys();
+        await Promise.all(
+          cacheNames
+            .filter(name => name !== CONFIG.CACHE_NAME && name.startsWith('uv-'))
+            .map(name => caches.delete(name))
+        );
+        console.log('[UV SW] Old caches cleaned up');
+      } catch (error) {
+        console.warn('[UV SW] Cache cleanup error:', error);
+      }
+    })());
+  }
+  
   event.waitUntil(clients.claim());
 });
+
+// Periodic cache cleanup
+setInterval(cleanupCache, 30 * 60 * 1000); // Every 30 minutes
