@@ -1,7 +1,7 @@
 /*global UVServiceWorker,__uv$config*/
 /*
- * UV Service Worker - Lean Performance Edition
- * Optimized for fastest possible game loading with no UI or CSS injection
+ * UV Service Worker - No Extra UI Edition
+ * Only functional fixes without injecting UI elements or custom CSS
  */
 importScripts('uv.bundle.js');
 importScripts('uv.config.js');
@@ -10,10 +10,11 @@ importScripts(__uv$config.sw || 'uv.sw.js');
 // Create the UV service worker
 const sw = new UVServiceWorker();
 
-// Minimal configuration for performance
+// Configuration for game optimization
 const CONFIG = {
-  FETCH_TIMEOUT: 90000,        // 90 second timeout for large games
-  ENABLE_CACHE: true,          // Enable resource caching
+  FETCH_TIMEOUT: 90000,       // 90 second timeout for very large games
+  RETRY_COUNT: 2,             // Number of retry attempts for failed requests
+  ENABLE_CACHE: true,         // Enable resource caching
   CACHE_NAME: 'uv-game-cache', // Cache name for game resources
   // Game markers for detection
   GAME_MARKERS: [
@@ -24,7 +25,7 @@ const CONFIG = {
 };
 
 // Initialize
-console.log('[UV SW] Lean performance service worker initializing');
+console.log('[UV SW] Service worker initializing');
 
 // Detect game content for special handling
 function isGameContent(url) {
@@ -32,49 +33,19 @@ function isGameContent(url) {
   return CONFIG.GAME_MARKERS.some(marker => url.toLowerCase().includes(marker));
 }
 
-// Get resource priority level (1-3, with 1 being highest)
-function getResourcePriority(url) {
-  if (!url) return 3;
-  
-  const urlLower = url.toLowerCase();
-  
-  // Highest priority - core game engine files and frameworks
-  if (urlLower.includes('framework') || 
-      urlLower.includes('engine') || 
-      urlLower.includes('core') || 
-      urlLower.includes('loader') ||
-      urlLower.endsWith('.wasm') || 
-      urlLower.endsWith('.unity3d') || 
-      urlLower.endsWith('.data') || 
-      urlLower.includes('build.js') ||
-      urlLower.includes('main.js')) {
-    return 1;
-  }
-  
-  // Medium priority - other JavaScript, JSON, and game assets
-  if (urlLower.endsWith('.js') || 
-      urlLower.endsWith('.json') || 
-      urlLower.endsWith('.mem')) {
-    return 2;
-  }
-  
-  // Lower priority - everything else
-  return 3;
-}
-
-// Create the minimal essential game compatibility script (no UI or decorative CSS)
-function createEssentialGameScript() {
+// Create functional script that DOESN'T modify game CSS
+function createFunctionalScript() {
   return `
-  // Minimal Game Compatibility Script - No UI or CSS injection
+  // Game Compatibility Script - No UI or CSS modifications
   (function() {
     // Only run once per page
     if (window.GameCompatibilityActive) return;
     window.GameCompatibilityActive = true;
     
-    console.log('[UV] Applying minimal game compatibility fixes');
+    console.log('[UV] Applying game compatibility fixes');
     
-    // WebGL fixes
-    function applyWebGLFixes() {
+    // Fix WebGL issues without changing appearance
+    function fixWebGL() {
       // Fix canvas getContext to ensure WebGL works properly
       const originalGetContext = HTMLCanvasElement.prototype.getContext;
       HTMLCanvasElement.prototype.getContext = function(contextType, contextAttributes) {
@@ -85,7 +56,7 @@ function createEssentialGameScript() {
           this.height = this.height || window.innerHeight * 0.8 || 600;
         }
         
-        // For WebGL contexts, apply only essential optimizations
+        // For WebGL contexts, apply optimizations
         if (['webgl', 'experimental-webgl', 'webgl2'].includes(contextType)) {
           contextAttributes = contextAttributes || {};
           contextAttributes.failIfMajorPerformanceCaveat = false;
@@ -109,26 +80,10 @@ function createEssentialGameScript() {
       };
     }
     
-    // Fix visibility issues without adding decorative CSS
-    function fixGameVisibility() {
-      // Wait until document is ready
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', fixCanvasVisibility);
-        window.addEventListener('load', fixCanvasVisibility);
-      } else {
-        fixCanvasVisibility();
-        // Also try after a short delay to catch dynamically created elements
-        setTimeout(fixCanvasVisibility, 1000);
-        setTimeout(fixCanvasVisibility, 3000);
-      }
-      
-      // Continue checking periodically for late-loading content
-      setInterval(fixCanvasVisibility, 5000);
-    }
-    
+    // Make sure canvases are visible, without changing their styling
     function fixCanvasVisibility() {
-      // Fix canvas visibility - only essential properties, no decorative CSS
       document.querySelectorAll('canvas').forEach(canvas => {
+        // Only fix visibility properties, don't add any styling
         if (canvas.style.display === 'none') canvas.style.display = 'block';
         if (canvas.style.visibility === 'hidden') canvas.style.visibility = 'visible';
         
@@ -139,7 +94,7 @@ function createEssentialGameScript() {
         }
       });
       
-      // Fix game containers - minimal changes, only visibility properties
+      // Show game containers without changing their styling
       const containerSelectors = [
         '#unity-container', '#gameContainer', '#unityContainer', 
         '#canvas', '#game', '#unity-canvas', '#webgl-content',
@@ -149,6 +104,7 @@ function createEssentialGameScript() {
       containerSelectors.forEach(selector => {
         try {
           document.querySelectorAll(selector).forEach(container => {
+            // Only change visibility properties, not styling
             if (container.style.display === 'none') container.style.display = 'block';
             if (container.style.visibility === 'hidden') container.style.visibility = 'visible';
           });
@@ -158,19 +114,27 @@ function createEssentialGameScript() {
       // Remove loading overlays that might be blocking the game
       try {
         document.querySelectorAll('[id*="loading"], [class*="loading"]').forEach(element => {
-          // Only if it's potentially blocking content
           if (element.offsetWidth > 200 && element.offsetHeight > 200) {
-            element.style.display = 'none';
+            // Check if this is actually a loading screen and not game content
+            const isLoadingScreen = 
+              element.id && element.id.toLowerCase().includes('loading') ||
+              (element.className && typeof element.className === 'string' && 
+               element.className.toLowerCase().includes('loading'));
+            
+            if (isLoadingScreen) {
+              element.style.display = 'none';
+            }
           }
         });
       } catch (e) {} // Ignore errors
     }
     
-    // Essential game globals without UI or logging
+    // Setup game globals without UI modifications
     function setupGameGlobals() {
       // Unity global objects
       window.UnityLoader = window.UnityLoader || {
         instantiate: function(container, url, params) {
+          console.log('[Unity Loader] Loading game from:', url);
           return { SetFullscreen: function() {} };
         },
         SystemInfo: {
@@ -184,9 +148,14 @@ function createEssentialGameScript() {
         SetFullscreen: function() {}
       };
       
-      // Silent progress trackers
-      window.unityShowBanner = window.unityShowBanner || function() {};
-      window.unityProgress = window.unityProgress || function() {};
+      // Silent progress handlers that don't modify UI
+      window.unityShowBanner = window.unityShowBanner || function(text, type) {
+        console.log('[Unity Banner]', text);
+      };
+      
+      window.unityProgress = window.unityProgress || function(gameInstance, progress) {
+        console.log('[Unity Progress]', Math.round(progress * 100) + '%');
+      };
       
       // FNAF specific globals
       window.FNaFApp = window.FNaFApp || { 
@@ -208,16 +177,69 @@ function createEssentialGameScript() {
       });
     }
     
-    // Apply the fixes
-    applyWebGLFixes();
-    setupGameGlobals();
-    fixGameVisibility();
+    // Initialize compatibility features
+    function initialize() {
+      // Apply core fixes
+      fixWebGL();
+      setupGameGlobals();
+      
+      // Try to fix visibility issues once the page is loaded
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', fixCanvasVisibility);
+        window.addEventListener('load', fixCanvasVisibility);
+      } else {
+        fixCanvasVisibility();
+      }
+      
+      // Also check for visibility issues after a delay to catch dynamic content
+      setTimeout(fixCanvasVisibility, 2000);
+      setTimeout(fixCanvasVisibility, 5000);
+      
+      // Check for game instance periodically
+      const gameInstanceChecker = setInterval(() => {
+        if (window.gameInstance || window.unityGame || window.unityInstance) {
+          console.log('[Game] Game instance detected');
+          clearInterval(gameInstanceChecker);
+          setTimeout(fixCanvasVisibility, 1000);
+        }
+      }, 1000);
+      
+      // Monitor for new canvases with MutationObserver
+      if (typeof MutationObserver !== 'undefined' && document.body) {
+        const observer = new MutationObserver((mutations) => {
+          let newCanvasFound = false;
+          
+          mutations.forEach(mutation => {
+            mutation.addedNodes.forEach(node => {
+              if (node.tagName === 'CANVAS') {
+                newCanvasFound = true;
+              } else if (node.querySelectorAll) {
+                const canvases = node.querySelectorAll('canvas');
+                if (canvases.length > 0) newCanvasFound = true;
+              }
+            });
+          });
+          
+          if (newCanvasFound) {
+            fixCanvasVisibility();
+          }
+        });
+        
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+      }
+    }
+    
+    // Start the initialization process
+    initialize();
   })();
   `;
 }
 
-// Inject only essential compatibility script, no UI or CSS
-async function injectMinimalCompatibility(response, url) {
+// Inject only functional fixes without UI or custom CSS
+async function injectFunctionalFixes(response, url) {
   // Only process HTML responses
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('text/html')) {
@@ -236,16 +258,16 @@ async function injectMinimalCompatibility(response, url) {
       });
     }
     
-    // Create modified HTML with minimal compatibility script
+    // Create modified HTML with functional script only
     let modifiedHtml = text;
     
-    // Inject our script at the end of head
+    // Add our script at the end of head
     if (modifiedHtml.includes('</head>')) {
       const headClosePos = modifiedHtml.indexOf('</head>');
       
       modifiedHtml = modifiedHtml.substring(0, headClosePos) + `
       <script>
-      ${createEssentialGameScript()}
+      ${createFunctionalScript()}
       </script>
       ` + modifiedHtml.substring(headClosePos);
     }
@@ -261,81 +283,38 @@ async function injectMinimalCompatibility(response, url) {
   }
 }
 
-// Fetch with timeout
-async function fetchWithTimeout(event, timeout) {
+// Fetch with timeout and retry
+async function fetchWithRetry(event, retries = CONFIG.RETRY_COUNT) {
   const url = new URL(event.request.url);
   const isGameRequest = isGameContent(url.toString());
   
-  // Use AbortController for timeout if supported
-  const supportsAbort = typeof AbortController !== 'undefined';
-  let controller;
-  let abortTimeout;
-  
   try {
-    if (supportsAbort) {
-      controller = new AbortController();
-      const signal = controller.signal;
-      
-      // Set timeout
-      abortTimeout = setTimeout(() => {
-        controller.abort();
-      }, timeout);
-      
-      // Clone request with abort signal
-      const modifiedRequest = new Request(event.request, {
-        signal: signal
-      });
-      
-      // Process through UV
-      const response = await sw.fetch({
-        request: modifiedRequest
-      });
-      
-      clearTimeout(abortTimeout);
-      
-      // For game content, inject minimal compatibility script
-      if (isGameRequest && 
-          response.headers.get('content-type')?.includes('text/html')) {
-        return await injectMinimalCompatibility(response, url.toString());
-      }
-      
-      return response;
-    } else {
-      // Fallback for browsers without AbortController
-      const timeoutPromise = new Promise((_, reject) => {
-        abortTimeout = setTimeout(() => {
-          reject(new Error(`Request timed out after ${timeout}ms`));
-        }, timeout);
-      });
-      
-      // Race between fetch and timeout
-      const response = await Promise.race([
-        sw.fetch(event),
-        timeoutPromise
-      ]);
-      
-      clearTimeout(abortTimeout);
-      
-      // For game content, inject minimal compatibility script
-      if (isGameRequest && 
-          response.headers.get('content-type')?.includes('text/html')) {
-        return await injectMinimalCompatibility(response, url.toString());
-      }
-      
-      return response;
+    // Process through UV
+    const response = await sw.fetch(event);
+    
+    // For game content, inject functional fixes only
+    if (isGameRequest && 
+        response.headers.get('content-type')?.includes('text/html')) {
+      return await injectFunctionalFixes(response, url.toString());
     }
+    
+    return response;
   } catch (error) {
-    if (abortTimeout) clearTimeout(abortTimeout);
+    // Retry logic
+    if (retries > 0) {
+      console.log(`[UV SW] Retrying (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return fetchWithRetry(event, retries - 1);
+    }
+    
     throw error;
   }
 }
 
 // Fetch and cache resource
-async function fetchAndCache(event, timeout) {
-  const url = new URL(event.request.url);
-  
+async function fetchAndCache(event) {
   try {
-    const response = await fetchWithTimeout(event, timeout);
+    const response = await fetchWithRetry(event);
     
     // Cache successful GET responses
     if (CONFIG.ENABLE_CACHE && 
@@ -379,46 +358,6 @@ async function fetchAndCache(event, timeout) {
   }
 }
 
-// Enhanced fetch with prioritization
-async function enhancedFetch(event) {
-  const url = new URL(event.request.url);
-  const priority = getResourcePriority(url.toString());
-  
-  // Use a dynamic timeout based on resource priority
-  const timeout = priority === 1 ? CONFIG.FETCH_TIMEOUT : 
-                 priority === 2 ? CONFIG.FETCH_TIMEOUT * 0.75 : 
-                 CONFIG.FETCH_TIMEOUT * 0.5;
-  
-  // For non-critical resources, try cache first
-  if (CONFIG.ENABLE_CACHE && 
-      event.request.method === 'GET' && 
-      priority !== 1) {
-    try {
-      const cache = await caches.open(CONFIG.CACHE_NAME);
-      const cachedResponse = await cache.match(event.request);
-      
-      if (cachedResponse) {
-        // For lowest priority, just return cached version
-        if (priority === 3) {
-          return cachedResponse;
-        }
-        
-        // For medium priority, refresh cache in background but return cached immediately
-        fetchAndCache(event, timeout).catch(() => {
-          // Silent fail
-        });
-        
-        return cachedResponse;
-      }
-    } catch (cacheError) {
-      // Silent fail
-    }
-  }
-  
-  // If not in cache or cache disabled, fetch from network
-  return await fetchAndCache(event, timeout);
-}
-
 // Main fetch handler
 self.addEventListener('fetch', event => {
   // Only handle UV routes
@@ -427,21 +366,41 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // High performance fetch handling
+  // Performance-focused fetch handling
   event.respondWith((async () => {
     try {
-      // Set higher priority for game content
+      // For game content, set higher priority
       if (isGameContent(event.request.url)) {
-        event.request.importance = 'high';
+        if (event.request.importance) {
+          event.request.importance = 'high';
+        }
       }
       
-      return await enhancedFetch(event);
+      // Try cache first for non-HTML requests
+      if (CONFIG.ENABLE_CACHE && 
+          event.request.method === 'GET' &&
+          !event.request.url.endsWith('.html') && 
+          !/text\/html/.test(event.request.headers.get('accept'))) {
+        try {
+          const cache = await caches.open(CONFIG.CACHE_NAME);
+          const cachedResponse = await cache.match(event.request);
+          
+          if (cachedResponse) {
+            // Refresh cache in background without blocking response
+            fetchAndCache(event).catch(() => {}); 
+            return cachedResponse;
+          }
+        } catch (e) {}
+      }
+      
+      // If not in cache or it's an HTML request, fetch from network
+      return await fetchAndCache(event);
     } catch (err) {
       // Try once more with basic approach before giving up
       try {
         return await sw.fetch(event);
       } catch (finalError) {
-        // Create minimal error page only for navigation requests
+        // Only create error page for navigation requests
         if (event.request.mode === 'navigate') {
           return new Response(`
             <!DOCTYPE html>
@@ -477,14 +436,32 @@ self.addEventListener('fetch', event => {
   })());
 });
 
-// Install handler with minimal setup
+// Install handler - just init cache
 self.addEventListener('install', event => {
-  console.log('[UV SW] Installing lean service worker...');
+  console.log('[UV SW] Installing service worker...');
   self.skipWaiting();
 });
 
-// Activate handler
+// Activate handler - claim clients and clean old caches
 self.addEventListener('activate', event => {
-  console.log('[UV SW] Lean service worker activated');
+  console.log('[UV SW] Service worker activated');
+  
+  // Clean up old caches
+  if (CONFIG.ENABLE_CACHE) {
+    event.waitUntil((async () => {
+      try {
+        // Delete old caches
+        const cacheNames = await caches.keys();
+        await Promise.all(
+          cacheNames
+            .filter(name => name !== CONFIG.CACHE_NAME && name.startsWith('uv-'))
+            .map(name => caches.delete(name))
+        );
+      } catch (error) {
+        // Silent fail
+      }
+    })());
+  }
+  
   event.waitUntil(clients.claim());
 });
