@@ -378,9 +378,30 @@
 
     <!-- CSS for hiding DuckDuckGo search elements - UPDATED to target the specific element structure -->
     <style id="ddg-style-injector">
-        /* Target the exact element structure provided by the user */
+        /* Universal header hiding - hide anything that resembles a header */
+        [id*="header"], 
+        [class*="header"], 
+        div[class*="header"],
+        header,
+        nav,
+        .header-wrap,
+        .header__search-wrap,
         #header-non-nav,
         .header__shrink-beyond-min-size,
+        .header__content,
+        
+        /* Every search form */
+        [id*="search"],
+        [class*="search"],
+        form[data-testid*="search"],
+        
+        /* Also burger menus */
+        [id*="menu"],
+        [class*="menu"],
+        [class*="burger"],
+
+        /* Specific DuckDuckGo elements */
+        #header-non-nav,
         .header__search-wrap,
         div.header__search-wrap,
         .header__content.header__search,
@@ -403,12 +424,8 @@
         .search__autocomplete,
         [data-testid="search-autocomplete-menu"],
         #autocompleteList,
-        
-        /* Parent containers */
-        div.header--aside,
+        .header--aside,
         .js-header-aside,
-        
-        /* Also other search elements just in case */
         #search_form_homepage,
         #search_form_homepage_top {
             display: none !important;
@@ -425,6 +442,18 @@
             border: 0 !important;
             width: 0 !important;
             height: 0 !important;
+            transform: translateY(-999px) !important; 
+        }
+
+        /* Add extra space at the top */
+        body {
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+        }
+
+        /* Hide all elements with form tags */
+        form, [role="search"], .searchbox {
+            display: none !important;
         }
     </style>
 
@@ -453,14 +482,13 @@
                         // Add our style to the head
                         html = html.replace('</head>', style + '</head>');
                         
-                        // Try to also use direct HTML manipulation to remove the header element
-                        // Target the exact structure the user provided
-                        const headerNonNavRegex = /<div id="header-non-nav"[\s\S]*?<\/div><\/div><\/div>/g;
-                        html = html.replace(headerNonNavRegex, '');
-                        
-                        // Also try to remove any search-related elements
-                        const searchWrapRegex = /<div class="header__search-wrap[\s\S]*?<\/div><\/div>/g;
-                        html = html.replace(searchWrapRegex, '');
+                        // Remove all headers from the HTML before it loads
+                        html = html.replace(/<header[\s\S]*?<\/header>/gi, '');
+                        html = html.replace(/<div id="header[\s\S]*?<\/div><\/div><\/div>/gi, '');
+                        html = html.replace(/<div class="header[\s\S]*?<\/div><\/div><\/div>/gi, '');
+                        html = html.replace(/<div id="header-non-nav"[\s\S]*?<\/div><\/div><\/div>/gi, '');
+                        html = html.replace(/<nav[\s\S]*?<\/nav>/gi, '');
+                        html = html.replace(/<form[\s\S]*?<\/form>/gi, '');
                     }
                     return html;
                 };
@@ -501,8 +529,8 @@
                 <button class="reload-button" id="overlayReloadBtn">Reload Website</button>
             </div>
             
-            <!-- Proxy iframe -->
-            <iframe id="proxy_frame" allowfullscreen="true" sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"></iframe>
+            <!-- Proxy iframe - FIXED: removed allow-same-origin to prevent sandbox escape warning -->
+            <iframe id="proxy_frame" allowfullscreen="true" sandbox="allow-scripts allow-forms allow-downloads"></iframe>
             
             <!-- Footer -->
             <div class="footer">
@@ -534,11 +562,13 @@
         let loadStartTime = 0;
         let currentUrl = '';
         
-        // FIXED URL DECODER - Completely rewritten to handle all cases
+        // FIXED URL DECODER - Now extracts just search terms from DuckDuckGo queries
         function decodeUVUrl(encodedUrl) {
             if (!encodedUrl) return '';
             
             try {
+                let decodedUrl = '';
+                
                 // Special case: If this is a direct UV prefix URL
                 if (encodedUrl.startsWith('/uv/service/')) {
                     try {
@@ -548,14 +578,13 @@
                         const urlDecoded = decodeURIComponent(encodedPart);
                         // Then decode the base64
                         try {
-                            return atob(urlDecoded);
+                            decodedUrl = atob(urlDecoded);
                         } catch (e) {
                             // If base64 decode fails, try to extract parts that look like URLs
                             const urlMatch = urlDecoded.match(/https?:\/\/[^\s"')]+/);
                             if (urlMatch) {
-                                return urlMatch[0];
+                                decodedUrl = urlMatch[0];
                             }
-                            console.log("URL or Base64 decoding failed:", e);
                         }
                     } catch (e) {
                         console.log("URL decoding failed:", e);
@@ -576,12 +605,12 @@
                             const urlDecoded = decodeURIComponent(encodedPart);
                             try {
                                 // Attempt base64 decode
-                                return atob(urlDecoded);
+                                decodedUrl = atob(urlDecoded);
                             } catch (e) {
                                 // If that fails, look for actual URLs in the string
                                 const urlMatch = urlDecoded.match(/https?:\/\/[^\s"')]+/);
                                 if (urlMatch) {
-                                    return urlMatch[0];
+                                    decodedUrl = urlMatch[0];
                                 }
                             }
                         }
@@ -591,27 +620,29 @@
                 }
                 
                 // Direct base64 detection
-                const base64Regex = /[A-Za-z0-9+/=]{8,}/; // Likely base64 strings
-                const base64Match = encodedUrl.match(base64Regex);
-                
-                if (base64Match && base64Match[0]) {
-                    try {
-                        const decoded = atob(base64Match[0]);
-                        // Check if it looks like a URL
-                        if (decoded.match(/^https?:\/\//)) {
-                            return decoded;
+                if (!decodedUrl && encodedUrl) {
+                    const base64Regex = /[A-Za-z0-9+/=]{8,}/; // Likely base64 strings
+                    const base64Match = encodedUrl.match(base64Regex);
+                    
+                    if (base64Match && base64Match[0]) {
+                        try {
+                            const decoded = atob(base64Match[0]);
+                            // Check if it looks like a URL
+                            if (decoded.match(/^https?:\/\//)) {
+                                decodedUrl = decoded;
+                            }
+                        } catch (e) {
+                            // Ignore base64 decoding errors
                         }
-                    } catch (e) {
-                        // Ignore base64 decoding errors
                     }
                 }
                 
                 // Use UV config decoder as fallback if available
-                if (typeof __uv$config !== 'undefined') {
+                if (!decodedUrl && typeof __uv$config !== 'undefined') {
                     try {
                         if (encodedUrl.includes(__uv$config.prefix)) {
                             const encodedPart = encodedUrl.substring(__uv$config.prefix.length);
-                            return __uv$config.decodeUrl(encodedPart);
+                            decodedUrl = __uv$config.decodeUrl(encodedPart);
                         }
                     } catch (e) {
                         console.log("UV config decode failed:", e);
@@ -619,13 +650,32 @@
                 }
                 
                 // Last resort: Look for any URL patterns in the string
-                const urlMatch = encodedUrl.match(/https?:\/\/[^\s"')]+/);
-                if (urlMatch) {
-                    return urlMatch[0];
+                if (!decodedUrl) {
+                    const urlMatch = encodedUrl.match(/https?:\/\/[^\s"')]+/);
+                    if (urlMatch) {
+                        decodedUrl = urlMatch[0];
+                    } else {
+                        decodedUrl = encodedUrl;
+                    }
                 }
                 
-                // If we get here, we couldn't decode it
-                return encodedUrl;
+                // If it's a DuckDuckGo search, extract just the search term
+                if (decodedUrl.includes('duckduckgo.com') && decodedUrl.includes('q=')) {
+                    try {
+                        // Extract the search query
+                        const searchRegex = /[?&]q=([^&]+)/;
+                        const searchMatch = decodedUrl.match(searchRegex);
+                        
+                        if (searchMatch && searchMatch[1]) {
+                            // Just return the search term without the URL
+                            return decodeURIComponent(searchMatch[1]);
+                        }
+                    } catch (e) {
+                        console.log("Search term extraction failed:", e);
+                    }
+                }
+                
+                return decodedUrl;
             } catch (error) {
                 console.log("All decoding methods failed:", error);
                 return encodedUrl;
@@ -776,7 +826,7 @@
             return "https://duckduckgo.com/?t=h_&q=" + str;
         }
         
-        // Apply DDG search bar hiding CSS directly - UPDATED to target specific elements
+        // Apply DDG search bar hiding CSS directly - Enhanced to be more aggressive
         function injectDDGStyles(iframeWindow) {
             try {
                 if (!iframeWindow || !iframeWindow.document) return;
@@ -788,9 +838,29 @@
                 // Create style element with more aggressive targeting
                 const style = iframeWindow.document.createElement('style');
                 style.textContent = `
-                    /* Target the exact element structure provided by the user */
+                    /* Universal hiding of everything that resembles a header or search */
+                    [id*="header"],
+                    [class*="header"],
+                    div[class*="header"],
+                    header,
+                    nav,
+                    .header-wrap,
+                    .header__search-wrap,
                     #header-non-nav,
                     .header__shrink-beyond-min-size,
+                    .header__content,
+                    
+                    /* Every search form */
+                    [id*="search"],
+                    [class*="search"],
+                    form[data-testid*="search"],
+                    
+                    /* Burger menus and navigation */
+                    [id*="menu"],
+                    [class*="menu"],
+                    [class*="burger"],
+
+                    /* Specific DuckDuckGo elements */
                     .header__search-wrap,
                     div.header__search-wrap,
                     .header__content.header__search,
@@ -813,12 +883,8 @@
                     .search__autocomplete,
                     [data-testid="search-autocomplete-menu"],
                     #autocompleteList,
-                    
-                    /* Parent containers */
-                    div.header--aside,
+                    .header--aside,
                     .js-header-aside,
-                    
-                    /* Also other search elements just in case */
                     #search_form_homepage,
                     #search_form_homepage_top {
                         display: none !important;
@@ -836,6 +902,17 @@
                         width: 0 !important;
                         height: 0 !important;
                     }
+
+                    /* Add extra space at the top */
+                    body {
+                        padding-top: 0 !important;
+                        margin-top: 0 !important;
+                    }
+
+                    /* Hide all elements with form tags */
+                    form, [role="search"], .searchbox {
+                        display: none !important;
+                    }
                 `;
                 
                 // Add class to body
@@ -852,30 +929,28 @@
                     console.log("Could not add style to head", e);
                 }
                 
-                // ENHANCED: Direct removal of elements
+                // ENHANCED: Direct removal of elements with an extreme approach
                 try {
-                    // Remove header-non-nav element (container for search)
+                    // First, remove all elements with "header" in their ID or class
+                    const headerElements = iframeWindow.document.querySelectorAll('[id*="header"], [class*="header"], header, nav, [id*="search"], [class*="search"], form');
+                    headerElements.forEach(el => {
+                        if (el && el.parentNode) {
+                            el.parentNode.removeChild(el);
+                        }
+                    });
+                    
+                    // Specifically target our problematic element
                     const headerNonNav = iframeWindow.document.getElementById('header-non-nav');
-                    if (headerNonNav) {
+                    if (headerNonNav && headerNonNav.parentNode) {
                         headerNonNav.parentNode.removeChild(headerNonNav);
                     }
                     
-                    // Remove header__search-wrap elements
-                    const searchWrapElements = iframeWindow.document.querySelectorAll('.header__search-wrap, div.header__search-wrap');
-                    searchWrapElements.forEach(el => {
-                        el.parentNode.removeChild(el);
-                    });
-                    
-                    // Remove search form
-                    const searchFormElements = iframeWindow.document.querySelectorAll('#search_form, form#search_form, [data-testid="search-form"]');
-                    searchFormElements.forEach(el => {
-                        el.parentNode.removeChild(el);
-                    });
-                    
-                    // Remove any header__content elements
-                    const headerContentElements = iframeWindow.document.querySelectorAll('.header__content');
-                    headerContentElements.forEach(el => {
-                        el.parentNode.removeChild(el);
+                    // Remove all forms - they could contain search
+                    const formElements = iframeWindow.document.querySelectorAll('form');
+                    formElements.forEach(el => {
+                        if (el && el.parentNode) {
+                            el.parentNode.removeChild(el);
+                        }
                     });
                     
                     console.log("Successfully removed DuckDuckGo search elements");
@@ -892,12 +967,31 @@
                                 // Check each added node
                                 mutation.addedNodes.forEach(function(node) {
                                     if (node.nodeType === 1) { // Only process Element nodes
-                                        // Check if this is a search-related element
-                                        if (node.id === 'header-non-nav' || 
-                                            node.classList.contains('header__search-wrap') ||
-                                            node.id === 'search_form') {
+                                        // Find matches with header, search, form, etc.
+                                        const nodeId = node.id || '';
+                                        const nodeClass = node.className || '';
+                                        const nodeTag = node.tagName ? node.tagName.toLowerCase() : '';
+                                        
+                                        if (nodeId.includes('header') || 
+                                            nodeId.includes('search') || 
+                                            nodeClass.includes('header') || 
+                                            nodeClass.includes('search') ||
+                                            nodeTag === 'header' ||
+                                            nodeTag === 'nav' ||
+                                            nodeTag === 'form') {
+                                            
                                             // Remove it immediately
                                             node.parentNode.removeChild(node);
+                                        }
+                                        
+                                        // Also check its children recursively
+                                        if (node.querySelectorAll) {
+                                            const childHeaders = node.querySelectorAll('[id*="header"], [class*="header"], header, nav, [id*="search"], [class*="search"], form');
+                                            childHeaders.forEach(child => {
+                                                if (child && child.parentNode) {
+                                                    child.parentNode.removeChild(child);
+                                                }
+                                            });
                                         }
                                     }
                                 });
@@ -928,38 +1022,53 @@
                 try {
                     if (!iframe || !iframe.contentWindow) return;
                     
-                    // Try to get current URL from iframe
-                    const currentIframeUrl = iframe.contentWindow.location.href;
-                    
-                    // Skip if URL hasn't changed or is about:blank
-                    if (currentIframeUrl === lastProcessedUrl || currentIframeUrl === 'about:blank') {
-                        return;
+                    try {
+                        // Try to get current URL from iframe
+                        const currentIframeUrl = iframe.contentWindow.location.href;
+                        
+                        // Skip if URL hasn't changed or is about:blank
+                        if (currentIframeUrl === lastProcessedUrl || currentIframeUrl === 'about:blank') {
+                            return;
+                        }
+                        
+                        // Update our tracking
+                        lastProcessedUrl = currentIframeUrl;
+                        
+                        // Get the actual URL from the iframe source
+                        let actualUrl = currentIframeUrl;
+                        
+                        // If it's a UV proxied URL, try to decode it
+                        if (currentIframeUrl.includes('/uv/service/') || 
+                            (typeof __uv$config !== 'undefined' && currentIframeUrl.includes(__uv$config.prefix))) {
+                            actualUrl = decodeUVUrl(currentIframeUrl);
+                        }
+                        
+                        // Update search bar if we have a valid URL
+                        if (actualUrl && actualUrl !== 'about:blank') {
+                            document.getElementById('proxy-search').value = actualUrl;
+                            currentUrl = actualUrl;
+                        }
+                        
+                        // Extra check: if on DuckDuckGo, reinject the styles
+                        if (currentIframeUrl.includes('duckduckgo.com')) {
+                            setTimeout(() => injectDDGStyles(iframe.contentWindow), 200);
+                        }
+                    } catch (e) {
+                        // Expected CORS error - can't directly access iframe location
                     }
                     
-                    // Update our tracking
-                    lastProcessedUrl = currentIframeUrl;
-                    
-                    // Get the actual URL from the iframe source
-                    let actualUrl = currentIframeUrl;
-                    
-                    // If it's a UV proxied URL, try to decode it
-                    if (currentIframeUrl.includes('/uv/service/') || 
-                        (typeof __uv$config !== 'undefined' && currentIframeUrl.includes(__uv$config.prefix))) {
-                        actualUrl = decodeUVUrl(currentIframeUrl);
-                    }
-                    
-                    // Update search bar if we have a valid URL
-                    if (actualUrl && actualUrl !== 'about:blank') {
-                        document.getElementById('proxy-search').value = actualUrl;
-                        currentUrl = actualUrl;
-                    }
-                    
-                    // Extra check: if on DuckDuckGo, reinject the styles
-                    if (currentIframeUrl.includes('duckduckgo.com')) {
-                        setTimeout(() => injectDDGStyles(iframe.contentWindow), 200);
+                    // Regardless of CORS, try to inject styles if we're on DDG
+                    // This uses the src attribute which is always accessible
+                    if (iframe.src.includes('duckduckgo.com')) {
+                        try {
+                            injectDDGStyles(iframe.contentWindow);
+                        } catch (e) {
+                            // Silent fail
+                        }
                     }
                 } catch (e) {
-                    // Expected CORS error - can't directly access iframe location
+                    // Other errors
+                    console.log("Error in URL monitoring:", e);
                 }
             }, 1000);
         }
@@ -1038,16 +1147,20 @@
             // Run an interval to continuously inject the style to handle dynamic page changes
             setInterval(() => {
                 try {
-                    if (iframe && iframe.contentWindow && iframe.contentWindow.document) {
-                        const currentUrl = iframe.contentWindow.location.href;
-                        if (currentUrl.includes('duckduckgo.com')) {
-                            injectDDGStyles(iframe.contentWindow);
+                    if (iframe.src.includes('duckduckgo.com')) {
+                        try {
+                            if (iframe.contentWindow && iframe.contentWindow.document) {
+                                injectDDGStyles(iframe.contentWindow);
+                            }
+                        } catch (e) {
+                            // Silent fail - expected CORS error
                         }
                     }
                 } catch (e) {
-                    // CORS expected
+                    // Other errors
+                    console.log("Error in style injection interval:", e);
                 }
-            }, 1000);
+            }, 500); // Run more frequently to ensure headers stay hidden
             
             // Start monitoring URL changes
             monitorUrlChanges();
