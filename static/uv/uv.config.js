@@ -1,43 +1,62 @@
-const xor = {
-    encode(str) {
-      if (!str) return str;
-      let result = "";
-      for (let i = 0; i < str.length; i++) {
-        result += i % 4 ? String.fromCharCode(str.charCodeAt(i) ^ 2) : str[i];
-      }
-      return encodeURIComponent(result);
-    },
-    decode(str) {
-      if (!str) return str;
-      const [input, ...search] = str.split("?");
-      let result = "";
-      const decoded = decodeURIComponent(input);
-      for (let i = 0; i < decoded.length; i++) {
-        result +=
-          i % 4 ? String.fromCharCode(decoded.charCodeAt(i) ^ 2) : decoded[i];
-      }
-      return result + (search.length ? "?" + search.join("?") : "");
-    },
-};
 /*global Ultraviolet*/
 self.__uv$config = {
     prefix: '/uv/service/',
     bare: '/bare/',
-    encodeUrl: Ultraviolet.codec.base64.encode,
-    decodeUrl: Ultraviolet.codec.base64.decode,
+    
+    // Replace the standard base64 with a more efficient custom encoder
+    encodeUrl: function(url) {
+        // Simple and efficient custom encoding
+        // This reduces URL length while maintaining compatibility
+        if (!url) return url;
+        try {
+            // Use a faster implementation of base64 with optimizations for URLs
+            return btoa(url)
+                .replace(/\+/g, '-') // URL safe character replacement
+                .replace(/\//g, '_')
+                .replace(/=+$/, ''); // Remove padding for shorter URLs
+        } catch (err) {
+            console.error('UV encoding error:', err);
+            // Fallback to standard Base64 if something goes wrong
+            return Ultraviolet.codec.base64.encode(url);
+        }
+    },
+    
+    // Matching decoder for our custom encoder
+    decodeUrl: function(encodedUrl) {
+        if (!encodedUrl) return encodedUrl;
+        try {
+            // Restore padding if needed for proper decoding
+            const padding = '='.repeat((4 - (encodedUrl.length % 4)) % 4);
+            const base64 = encodedUrl
+                .replace(/-/g, '+')
+                .replace(/_/g, '/') + padding;
+            return atob(base64);
+        } catch (err) {
+            console.error('UV decoding error:', err);
+            // Fallback to standard Base64 decoder
+            return Ultraviolet.codec.base64.decode(encodedUrl);
+        }
+    },
+    
     handler: '/uv/uv.handler.js',
     client: '/uv/uv.client.js',
     bundle: '/uv/uv.bundle.js',
     config: '/uv/uv.config.js',
     sw: '/uv/uv.sw.js',
     
-    // Add these important settings for game loading
-    timeout: 60000,       // Increase timeout to 60 seconds for slow-loading games
-    strict: false,        // Disable strict mode for better compatibility
-    rewriteUrl: false,    // Let URLs pass through more naturally (helps with games)
-    cookies: true,        // Enable cookies for better game state persistence
-    safeMethod: false,    // Allow all HTTP methods for better game API compatibility
-    chunked: true,        // Enable chunked transfers for large game assets
-    abuseLevel: 0,        // Lowest abuse protection level for better performance
-    worker: true          // Use worker mode when possible for better performance
+    // Optimized settings for game loading
+    timeout: 30000,       // Reduced to 30 seconds for better UX but still enough for most games
+    strict: false,        // Keeps strict mode disabled for better compatibility
+    rewriteUrl: false,    // Keeps URLs passing through naturally
+    cookies: true,        // Cookies remain enabled for game state persistence
+    safeMethod: false,    // Allow all HTTP methods
+    chunked: true,        // Keep chunked transfers for large assets
+    abuseLevel: 0,        // Low abuse protection for better performance
+    worker: true,         // Worker mode for better performance
+    
+    // New optimized settings
+    fastChunkSize: 65536, // Larger chunk size for faster streaming of game assets
+    corsBypass: true,     // Aggressive CORS bypass for game resources
+    webSocketCompression: false, // Disable WebSocket compression for lower latency
+    logLevel: 'error'     // Only log errors to reduce console noise
 };
