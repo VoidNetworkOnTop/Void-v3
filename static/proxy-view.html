@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>google.com</title>
+    <title>Web Proxy</title>
     <!-- Critical hints to prioritize content display -->
     <meta http-equiv="Page-Speed" content="High">
     <meta name="priority" content="high">
@@ -534,67 +534,101 @@
         let loadStartTime = 0;
         let currentUrl = '';
         
-        // IMPROVED: Enhanced URL decoder that handles various encoding formats
+        // FIXED URL DECODER - Completely rewritten to handle all cases
         function decodeUVUrl(encodedUrl) {
             if (!encodedUrl) return '';
             
             try {
-                // First try: Standard UV decoding if it's a UV service URL
-                if (encodedUrl.includes('uv/service/')) {
-                    const urlParts = encodedUrl.split('uv/service/');
-                    if (urlParts.length > 1) {
-                        // Get just the base64 part
-                        const base64Part = urlParts[1].split('?')[0]; // Remove query parameters if any
-                        
+                // Special case: If this is a direct UV prefix URL
+                if (encodedUrl.startsWith('/uv/service/')) {
+                    try {
+                        // Extract the encoded part and properly decode it
+                        const encodedPart = encodedUrl.substring('/uv/service/'.length);
+                        // First decode any URL encoding
+                        const urlDecoded = decodeURIComponent(encodedPart);
+                        // Then decode the base64
                         try {
-                            // Decode base64
-                            const decoded = atob(base64Part);
-                            return decoded;
+                            return atob(urlDecoded);
                         } catch (e) {
-                            console.log("Error decoding base64 part:", e);
+                            // If base64 decode fails, try to extract parts that look like URLs
+                            const urlMatch = urlDecoded.match(/https?:\/\/[^\s"')]+/);
+                            if (urlMatch) {
+                                return urlMatch[0];
+                            }
+                            console.log("URL or Base64 decoding failed:", e);
                         }
-                    }
-                }
-                
-                // Second try: Using UV's config decoder if available
-                if (typeof __uv$config !== 'undefined' && encodedUrl.includes(__uv$config.prefix)) {
-                    try {
-                        const encodedPart = encodedUrl.substring(__uv$config.prefix.length);
-                        return __uv$config.decodeUrl(encodedPart);
                     } catch (e) {
-                        console.log("UV decode error:", e);
+                        console.log("URL decoding failed:", e);
                     }
                 }
                 
-                // Third try: Decode URL-encoded parameters
-                if (encodedUrl.includes('%')) {
+                // Look for URL parameters containing encoded URLs
+                const urlParams = new URLSearchParams(window.location.search);
+                const urlParam = urlParams.get('url');
+                
+                if (urlParam && urlParam.includes('/uv/service/')) {
                     try {
-                        return decodeURIComponent(encodedUrl);
+                        // Extract the encoded part after /uv/service/
+                        const parts = urlParam.split('/uv/service/');
+                        if (parts.length > 1) {
+                            const encodedPart = parts[1];
+                            // Decode any URL encoding
+                            const urlDecoded = decodeURIComponent(encodedPart);
+                            try {
+                                // Attempt base64 decode
+                                return atob(urlDecoded);
+                            } catch (e) {
+                                // If that fails, look for actual URLs in the string
+                                const urlMatch = urlDecoded.match(/https?:\/\/[^\s"')]+/);
+                                if (urlMatch) {
+                                    return urlMatch[0];
+                                }
+                            }
+                        }
                     } catch (e) {
-                        console.log("URL decode error:", e);
+                        console.log("URL parameter decoding failed:", e);
                     }
                 }
                 
-                // Fourth try: Find and decode anything that looks like base64 encoded http/https
-                const base64Pattern = /aHR0[a-zA-Z0-9+/=]+/;
-                const match = encodedUrl.match(base64Pattern);
+                // Direct base64 detection
+                const base64Regex = /[A-Za-z0-9+/=]{8,}/; // Likely base64 strings
+                const base64Match = encodedUrl.match(base64Regex);
                 
-                if (match && match[0]) {
+                if (base64Match && base64Match[0]) {
                     try {
-                        const decoded = atob(match[0]);
-                        if (decoded.startsWith('http')) {
+                        const decoded = atob(base64Match[0]);
+                        // Check if it looks like a URL
+                        if (decoded.match(/^https?:\/\//)) {
                             return decoded;
                         }
                     } catch (e) {
-                        console.log("Base64 decode error:", e);
+                        // Ignore base64 decoding errors
                     }
                 }
                 
-                // If no decoding worked, return the original URL
+                // Use UV config decoder as fallback if available
+                if (typeof __uv$config !== 'undefined') {
+                    try {
+                        if (encodedUrl.includes(__uv$config.prefix)) {
+                            const encodedPart = encodedUrl.substring(__uv$config.prefix.length);
+                            return __uv$config.decodeUrl(encodedPart);
+                        }
+                    } catch (e) {
+                        console.log("UV config decode failed:", e);
+                    }
+                }
+                
+                // Last resort: Look for any URL patterns in the string
+                const urlMatch = encodedUrl.match(/https?:\/\/[^\s"')]+/);
+                if (urlMatch) {
+                    return urlMatch[0];
+                }
+                
+                // If we get here, we couldn't decode it
                 return encodedUrl;
             } catch (error) {
-                console.error("Error in decodeUVUrl:", error);
-                return encodedUrl; // Return original URL on error
+                console.log("All decoding methods failed:", error);
+                return encodedUrl;
             }
         }
         
@@ -905,11 +939,19 @@
                     // Update our tracking
                     lastProcessedUrl = currentIframeUrl;
                     
-                    // Decode and update search bar with current URL
-                    const decodedUrl = decodeUVUrl(currentIframeUrl);
-                    if (decodedUrl && decodedUrl !== 'about:blank') {
-                        document.getElementById('proxy-search').value = decodedUrl;
-                        currentUrl = decodedUrl;
+                    // Get the actual URL from the iframe source
+                    let actualUrl = currentIframeUrl;
+                    
+                    // If it's a UV proxied URL, try to decode it
+                    if (currentIframeUrl.includes('/uv/service/') || 
+                        (typeof __uv$config !== 'undefined' && currentIframeUrl.includes(__uv$config.prefix))) {
+                        actualUrl = decodeUVUrl(currentIframeUrl);
+                    }
+                    
+                    // Update search bar if we have a valid URL
+                    if (actualUrl && actualUrl !== 'about:blank') {
+                        document.getElementById('proxy-search').value = actualUrl;
+                        currentUrl = actualUrl;
                     }
                     
                     // Extra check: if on DuckDuckGo, reinject the styles
@@ -940,14 +982,22 @@
                 loadingScreen.style.display = 'flex';
                 startProgressUpdates();
                 
-                // Try to decode the URL for display in the search bar
-                const decodedUrl = decodeUVUrl(proxyUrl);
+                // Decode the URL showing what site is being accessed
+                let decodedUrl;
+                
+                // Try decoding with our function first
+                try {
+                    decodedUrl = decodeUVUrl(proxyUrl);
+                    console.log('Proxy URL:', proxyUrl);
+                    console.log('Decoded URL:', decodedUrl);
+                } catch (e) {
+                    console.log('Error decoding URL:', e);
+                    decodedUrl = proxyUrl;
+                }
+                
+                // Set the search bar value to the decoded URL
                 document.getElementById('proxy-search').value = decodedUrl;
                 currentUrl = decodedUrl;
-                
-                // Debug logging
-                console.log('Proxy URL:', proxyUrl);
-                console.log('Decoded URL:', decodedUrl);
                 
                 // Load URL into iframe
                 iframe.src = proxyUrl;
@@ -969,10 +1019,14 @@
                     if (iframe.contentWindow) {
                         const loadedUrl = iframe.contentWindow.location.href;
                         if (loadedUrl !== 'about:blank') {
-                            // Decode and update search bar with current URL
-                            const decodedUrl = decodeUVUrl(loadedUrl);
-                            document.getElementById('proxy-search').value = decodedUrl;
-                            currentUrl = decodedUrl;
+                            try {
+                                // Decode and update search bar with the current URL
+                                const decodedUrl = decodeUVUrl(loadedUrl);
+                                document.getElementById('proxy-search').value = decodedUrl;
+                                currentUrl = decodedUrl;
+                            } catch (e) {
+                                console.log('Error decoding loaded URL:', e);
+                            }
                         }
                     }
                 } catch (e) {
