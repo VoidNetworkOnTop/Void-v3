@@ -9,26 +9,51 @@ const server = http.createServer();
 const dirname = process.cwd();
 const PORT = 8080;
 
-// Global cache-busting middleware - ADD THIS FOR INSTANT UPDATES
+// Generate a unique version identifier based on timestamp
+// This changes every time the server starts
+const VERSION = Date.now().toString();
+console.log(`Server starting with version: ${VERSION}`);
+
+// AGGRESSIVE CACHE-BUSTING MIDDLEWARE
 app.use((req, res, next) => {
-  const path = req.path.toLowerCase();
+  // Force no caching for ALL responses
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
   
-  // No caching for HTML, JS, and JSON files (content that changes frequently)
-  if (
-    path.endsWith('.html') || 
-    path.endsWith('.js') || 
-    path.endsWith('.json') ||
-    path === '/' ||
-    !path.includes('.')  // Routes without file extensions (likely dynamic content)
-  ) {
-    // Prevent caching for these types
-    res.setHeader('Cache-Control', 'no-cache, must-revalidate, max-age=0');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-  } else {
-    // Allow caching for other static assets (images, CSS, fonts, etc.)
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
-  }
+  // Ensure we never get 304 Not Modified responses
+  res.setHeader('Last-Modified', new Date().toUTCString());
+  
+  // Continue to next middleware
+  next();
+});
+
+// HTML CONTENT TRANSFORMER - ADD VERSION TO SCRIPTS AND CSS
+app.use((req, res, next) => {
+  // Only process HTML responses
+  const originalSend = res.send;
+  
+  res.send = function(body) {
+    // Only modify HTML responses
+    if (typeof body === 'string' && res.get('Content-Type')?.includes('text/html')) {
+      // Add version parameter to script and CSS links
+      body = body.replace(/(src|href)="([^"]+\.(js|css))"/g, `$1="$2?v=${VERSION}"`);
+      
+      // Add meta tags to prevent caching
+      const metaTags = `
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <meta http-equiv="Pragma" content="no-cache">
+        <meta http-equiv="Expires" content="0">
+      `;
+      
+      // Insert meta tags into head
+      body = body.replace('</head>', `${metaTags}</head>`);
+    }
+    
+    // Call the original send function
+    return originalSend.call(this, body);
+  };
   
   next();
 });
@@ -69,6 +94,9 @@ if (enableUvCaching) {
     if (req.path.startsWith('/uv/') && req.method === 'GET') {
       const filePath = path.join(dirname, "static", req.path);
       
+      // Extract base path without query parameters
+      const basePath = req.path.split('?')[0];
+      
       // Check if we have it cached
       if (uvCache.has(filePath)) {
         const { content, contentType } = uvCache.get(filePath);
@@ -79,7 +107,7 @@ if (enableUvCaching) {
       // Not cached, try to read file
       try {
         const content = fs.readFileSync(filePath);
-        const ext = path.extname(filePath).toLowerCase();
+        const ext = path.extname(basePath).toLowerCase();
         let contentType = 'application/javascript';
         
         if (ext === '.css') contentType = 'text/css';
@@ -101,52 +129,88 @@ if (enableUvCaching) {
   });
 }
 
-// Images get priority 
-app.use(express.static("img")) // IMGS GET PRIORITY BI
+// Custom middleware to add version parameter to static file URLs
+app.use((req, res, next) => {
+  // For HTML files, use our custom send function
+  // For JS and CSS files, let them pass through with the cache headers set earlier
+  next();
+});
 
-// Set up routes with optimized cache headers
+// Images get priority 
+app.use(express.static("img"));
+
+// MODIFIED: Send files using a custom function to prevent caching
+function sendFileWithVersion(res, filePath) {
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.status(404).send('Not found');
+      return;
+    }
+    
+    // Set headers
+    res.setHeader('Content-Type', 'text/html');
+    // Send the file content
+    res.send(data);
+  });
+}
+
+// Routes - using custom file sender
 app.get("/ga", function (req, res) {
-  res.sendFile(path.join(dirname, "static/games.html"));
+  sendFileWithVersion(res, path.join(dirname, "static/games.html"));
 });
 
 app.get("/rga", function(req, res) {
-  res.sendFile(path.join(dirname, "static/rga.html"));
+  sendFileWithVersion(res, path.join(dirname, "static/rga.html"));
 });
 
 app.get("/learn", function (req, res) {
-  res.sendFile(path.join(dirname, "static/proxy.html"));
+  sendFileWithVersion(res, path.join(dirname, "static/proxy.html"));
 });
 
 app.get("/app", function (req, res) {
-  res.sendFile(path.join(dirname, "static/apps.html"));
+  sendFileWithVersion(res, path.join(dirname, "static/apps.html"));
 });
 
 app.get("/credits", function (req, res) {
-  res.sendFile(path.join(dirname, "static/credits.html"));
+  sendFileWithVersion(res, path.join(dirname, "static/credits.html"));
 });
 
 app.get("/voidurls", function (req, res) {
-  res.sendFile(path.join(dirname, "static/voidurls.html"));
+  sendFileWithVersion(res, path.join(dirname, "static/voidurls.html"));
 });
 
 app.get("/settings", function (req, res) {
-  res.sendFile(path.join(dirname, "static/settings.html"));
+  sendFileWithVersion(res, path.join(dirname, "static/settings.html"));
 });
 
 app.get("/chat", function (req, res) {
-  res.sendFile(path.join(dirname, "static/chat.html"));
+  sendFileWithVersion(res, path.join(dirname, "static/chat.html"));
 });
 
 app.get("/voidgpt", function (req, res) {
-  res.sendFile(path.join(dirname, "static/voidgpt.html"));
+  sendFileWithVersion(res, path.join(dirname, "static/voidgpt.html"));
 });
 
-// Static files
-app.use(express.static(path.join(dirname, "static")));
+// VERSIONED STATIC FILES - Add version query parameter to all static files
+app.use((req, res, next) => {
+  const staticHandler = express.static(path.join(dirname, "static"), {
+    // Explicitly set caching to none for static files
+    etag: false,
+    lastModified: false,
+    maxAge: 0,
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  });
+  
+  staticHandler(req, res, next);
+});
 
 // 404 handler
 app.get('*', function(req, res) {
-  res.sendFile(path.join(dirname, "static/404.html"));
+  sendFileWithVersion(res, path.join(dirname, "static/404.html"));
 });
 
 // Handle WebSocket upgrade requests
@@ -169,5 +233,5 @@ server.on("request", (req, res) => {
 
 // Start server
 server.listen({port: PORT, host: '0.0.0.0'}, () => {
-  console.log("Listening on port " + PORT + " (IPv4 and IPv6)");
+  console.log(`Server v${VERSION} listening on port ${PORT} (IPv4 and IPv6)`);
 });
