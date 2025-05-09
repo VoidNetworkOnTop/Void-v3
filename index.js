@@ -3,6 +3,7 @@ import express from 'express';
 import http from 'node:http';
 import path from "node:path";
 import fs from "node:fs";
+import crypto from 'node:crypto';
 
 const app = express();
 const server = http.createServer();
@@ -10,9 +11,84 @@ const dirname = process.cwd();
 const PORT = 8080;
 
 // Generate a cache buster value each time the server starts
-// This ensures all clients get fresh content after a server restart
 const CACHE_BUSTER = Date.now();
 console.log(`Server started with cache buster: ${CACHE_BUSTER}`);
+
+// Hash storage for all files
+const fileHashes = {};
+
+// Throttle control for file watching to prevent excessive CPU usage
+const fileProcessQueue = new Set();
+let processingQueue = false;
+
+// Calculate hash for a single file
+function calculateFileHash(filePath, relativePath) {
+  try {
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      const fileContent = fs.readFileSync(filePath);
+      const hash = crypto.createHash('md5').update(fileContent).digest('hex');
+      fileHashes[relativePath] = hash;
+      return hash;
+    }
+  } catch (error) {
+    console.error(`Error hashing file ${filePath}:`, error.message);
+  }
+  return null;
+}
+
+// Calculate hashes for all files in a directory
+function calculateDirectoryHashes(directory, baseDirectory = null) {
+  baseDirectory = baseDirectory || directory;
+  
+  try {
+    const entries = fs.readdirSync(directory, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      const fullPath = path.join(directory, entry.name);
+      
+      if (entry.isDirectory()) {
+        // Skip node_modules to avoid excessive processing
+        if (entry.name === 'node_modules') continue;
+        
+        // Recursively process subdirectories
+        calculateDirectoryHashes(fullPath, baseDirectory);
+      } else if (entry.isFile()) {
+        // Calculate relative path for use as key
+        const relativePath = '/' + path.relative(baseDirectory, fullPath).replace(/\\/g, '/');
+        calculateFileHash(fullPath, relativePath);
+      }
+    }
+  } catch (error) {
+    console.error(`Error processing directory ${directory}:`, error.message);
+  }
+}
+
+// Process the file change queue to limit CPU usage
+function processFileQueue() {
+  if (processingQueue || fileProcessQueue.size === 0) return;
+  
+  processingQueue = true;
+  const filesToProcess = [...fileProcessQueue];
+  fileProcessQueue.clear();
+  
+  console.log(`Processing ${filesToProcess.length} changed files...`);
+  
+  for (const file of filesToProcess) {
+    calculateFileHash(file.fullPath, file.relativePath);
+  }
+  
+  processingQueue = false;
+  
+  // Process any new files that were added while we were processing
+  if (fileProcessQueue.size > 0) {
+    setTimeout(processFileQueue, 50);
+  }
+}
+
+// Calculate initial hashes for all static files
+console.log("Calculating initial file hashes...");
+calculateDirectoryHashes(path.join(dirname, "static"));
+console.log(`Calculated hashes for ${Object.keys(fileHashes).length} files`);
 
 // Try to load local config if it exists
 let bareServerOptions = {};
@@ -42,12 +118,24 @@ if (serverSettings.headersTimeout) {
   server.headersTimeout = serverSettings.headersTimeout;
 }
 
+// Function to get the hash for a file path, normalizing the path format
+function getFileHash(filePath) {
+  // Normalize path format (using forward slashes)
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  
+  // If path doesn't start with /, add it
+  const hashedPath = normalizedPath.startsWith('/') ? normalizedPath : '/' + normalizedPath;
+  
+  return fileHashes[hashedPath] || CACHE_BUSTER;
+}
+
 // ==== GLOBAL CACHE-BUSTING MIDDLEWARE ====
-// This middleware sets aggressive no-cache headers for all responses
+// This middleware sets appropriate cache headers for all responses
 app.use((req, res, next) => {
-  // Skip cache-busting for bare server requests and certain static assets
+  // IMPORTANT: Skip cache-busting for service and bare paths
   if (
     req.path.startsWith('/bare/') ||
+    req.path.includes('/service/') ||
     req.path.includes('.woff') ||
     req.path.includes('.woff2') ||
     req.path.includes('.ttf') ||
@@ -56,16 +144,23 @@ app.use((req, res, next) => {
     return next();
   }
   
-  // Set aggressive no-cache headers for everything else
+  // For all other files, set no-cache headers
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
   
-  // Generate a unique ETag for each request to prevent 304 responses
-  res.setHeader('ETag', `W/"${CACHE_BUSTER}-${Math.random().toString(36).substring(2)}"`);
+  // Get file hash based on request path for accurate ETag
+  const fileHash = getFileHash(req.path);
   
-  // Set Last-Modified to current time to prevent If-Modified-Since caching
-  res.setHeader('Last-Modified', new Date().toUTCString());
+  // Set ETag based on file content hash
+  res.setHeader('ETag', `"${fileHash}"`);
+  
+  // Check if browser sent If-None-Match header for conditional request
+  const ifNoneMatch = req.headers['if-none-match'];
+  if (ifNoneMatch === `"${fileHash}"`) {
+    // File hasn't changed, send 304 Not Modified
+    return res.status(304).end();
+  }
   
   next();
 });
@@ -73,9 +168,10 @@ app.use((req, res, next) => {
 // ==== HTML CONTENT TRANSFORMER ====
 // This middleware modifies HTML responses to add cache-busting parameters to all resources
 app.use((req, res, next) => {
-  // Skip for non-HTML requests and bare server requests
+  // Skip for non-HTML requests, bare server requests, and service paths
   if (
     req.path.startsWith('/bare/') ||
+    req.path.includes('/service/') ||
     req.path.endsWith('.js') ||
     req.path.endsWith('.css') ||
     req.path.endsWith('.png') ||
@@ -107,25 +203,61 @@ app.use((req, res, next) => {
       
       try {
         // Add cache-busting parameter to all resource URLs in the HTML
+        // BUT SKIP any service paths to prevent 404 errors
         const modifiedContent = content
-          // Add to script src attributes
+          // Add to script src attributes (skipping service paths)
           .replace(/(<script[^>]+src=["'])([^"']+)(["'])/gi, (match, prefix, url, suffix) => {
-            const separator = url.includes('?') ? '&' : '?';
-            return `${prefix}${url}${separator}v=${CACHE_BUSTER}${suffix}`;
+            // Skip service and bare paths
+            if (url.includes('/service/') || url.includes('/bare/')) {
+              return match;
+            }
+            
+            // For local paths, use their file hash for perfect cache busting
+            if (url.startsWith('/') && !url.startsWith('//')) {
+              // Extract the url path without query string
+              const urlPath = url.split('?')[0];
+              const hash = getFileHash(urlPath);
+              const separator = url.includes('?') ? '&' : '?';
+              return `${prefix}${url}${separator}v=${hash}${suffix}`;
+            }
+            
+            // For external resources, leave unchanged
+            return match;
           })
           // Add to link href attributes (CSS)
           .replace(/(<link[^>]+href=["'])([^"']+)(["'])/gi, (match, prefix, url, suffix) => {
-            // Only add to CSS files, not to icons or other link types
-            if (url.endsWith('.css') || match.includes('stylesheet')) {
-              const separator = url.includes('?') ? '&' : '?';
-              return `${prefix}${url}${separator}v=${CACHE_BUSTER}${suffix}`;
+            // Skip service and bare paths
+            if (url.includes('/service/') || url.includes('/bare/')) {
+              return match;
+            }
+            
+            // For local paths, use their file hash
+            if (url.startsWith('/') && !url.startsWith('//')) {
+              // Only add to CSS files, not to icons or other link types
+              if (url.endsWith('.css') || match.includes('stylesheet')) {
+                const urlPath = url.split('?')[0];
+                const hash = getFileHash(urlPath);
+                const separator = url.includes('?') ? '&' : '?';
+                return `${prefix}${url}${separator}v=${hash}${suffix}`;
+              }
             }
             return match;
           })
-          // Add to img src attributes
+          // Add to img src attributes (skipping service paths)
           .replace(/(<img[^>]+src=["'])([^"']+)(["'])/gi, (match, prefix, url, suffix) => {
-            const separator = url.includes('?') ? '&' : '?';
-            return `${prefix}${url}${separator}v=${CACHE_BUSTER}${suffix}`;
+            // Skip service and bare paths
+            if (url.includes('/service/') || url.includes('/bare/')) {
+              return match;
+            }
+            
+            // For local paths, use their file hash
+            if (url.startsWith('/') && !url.startsWith('//')) {
+              const urlPath = url.split('?')[0];
+              const hash = getFileHash(urlPath);
+              const separator = url.includes('?') ? '&' : '?';
+              return `${prefix}${url}${separator}v=${hash}${suffix}`;
+            }
+            return match;
           })
           // Add no-cache meta tags to head
           .replace(/<head>/i, '<head>\n<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">\n<meta http-equiv="Pragma" content="no-cache">\n<meta http-equiv="Expires" content="0">');
@@ -144,59 +276,101 @@ app.use((req, res, next) => {
   next();
 });
 
-// ==== UV FILE HANDLER ====
-// Optimized handler for UV files with caching disabled
+// ==== OPTIMIZED FILE HANDLER ====
+// Custom handler for static files with content-based ETags
 app.use((req, res, next) => {
-  // Only process UV files
-  if (!req.path.startsWith('/uv/') || req.method !== 'GET') {
+  // Skip for service and bare paths
+  if (
+    req.path.startsWith('/bare/') ||
+    req.path.includes('/service/')
+  ) {
+    return next();
+  }
+  
+  // Only handle GET requests for static files
+  if (req.method !== 'GET' || req.path === '/') {
     return next();
   }
   
   const filePath = path.join(dirname, "static", req.path);
   
   try {
-    // Read file directly
-    const content = fs.readFileSync(filePath);
-    const ext = path.extname(req.path).toLowerCase();
-    
-    // Set appropriate content type
-    let contentType = 'application/javascript';
-    if (ext === '.css') contentType = 'text/css';
-    if (ext === '.html') contentType = 'text/html';
-    if (ext === '.json') contentType = 'application/json';
-    
-    // Set headers and send response
-    res.setHeader('Content-Type', contentType);
-    // Add cache buster to content itself (for JavaScript files)
-    if (ext === '.js') {
-      let jsContent = content.toString('utf8');
-      // Add a unique cache-busting comment at the top of the file
-      jsContent = `/* Cache buster: ${CACHE_BUSTER} */\n${jsContent}`;
-      res.send(jsContent);
-    } else {
-      res.send(content);
+    // Check if file exists
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+      return next();
     }
     
+    // Read file directly
+    const fileContents = fs.readFileSync(filePath);
+    
+    // Calculate hash if not already done
+    if (!fileHashes[req.path]) {
+      const hash = crypto.createHash('md5').update(fileContents).digest('hex');
+      fileHashes[req.path] = hash;
+    }
+    
+    // Get content type based on extension
+    const ext = path.extname(req.path).toLowerCase();
+    let contentType = 'application/octet-stream';
+    
+    // Set content type based on file extension
+    switch(ext) {
+      case '.html': contentType = 'text/html'; break;
+      case '.js': contentType = 'application/javascript'; break;
+      case '.css': contentType = 'text/css'; break;
+      case '.json': contentType = 'application/json'; break;
+      case '.png': contentType = 'image/png'; break;
+      case '.jpg': 
+      case '.jpeg': contentType = 'image/jpeg'; break;
+      case '.gif': contentType = 'image/gif'; break;
+      case '.svg': contentType = 'image/svg+xml'; break;
+      case '.ico': contentType = 'image/x-icon'; break;
+      case '.woff': contentType = 'font/woff'; break;
+      case '.woff2': contentType = 'font/woff2'; break;
+      case '.ttf': contentType = 'font/ttf'; break;
+    }
+    
+    // Set headers
+    res.setHeader('Content-Type', contentType);
+    
+    // For fonts, allow caching
+    if (['.woff', '.woff2', '.ttf', '.eot'].includes(ext)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+    } else {
+      // For other files, set no-cache
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+    
+    // Set ETag based on file content hash
+    const etag = `"${fileHashes[req.path]}"`;
+    res.setHeader('ETag', etag);
+    
+    // Check if browser sent If-None-Match header for conditional request
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch === etag) {
+      // File hasn't changed, send 304 Not Modified
+      return res.status(304).end();
+    }
+    
+    // Send the file content
+    return res.send(fileContents);
   } catch (error) {
-    // File not found, continue to next middleware
+    // File not found or error reading file, continue to next middleware
     return next();
   }
 });
 
-// ==== STATIC FILE MIDDLEWARE ====
-// Configure static middleware with cache busting
-
-// Images get priority 
-app.use(express.static("img", {
-  etag: false,          // Disable ETag generation
-  lastModified: false,  // Disable Last-Modified header
-  setHeaders: (res, path) => {
-    // Set no-cache headers for all image files
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
+// ==== BARE SERVER ROUTING - HIGHEST PRIORITY ====
+// Handle bare server requests directly
+app.use((req, res, next) => {
+  if (bare.shouldRoute(req)) {
+    bare.routeRequest(req, res);
+  } else {
+    next();
   }
-}));
+});
 
 // ==== HTML ROUTES WITH CACHE BUSTING ====
 // All routes that serve HTML files
@@ -242,26 +416,20 @@ app.get("/", function(req, res) {
   res.sendFile(path.join(dirname, "static/index.html"));
 });
 
-// ==== STATIC FILES WITH CACHE BUSTING ====
-// Serve all static files with cache busting
+// ==== STATIC FILES FALLBACK ====
+// Only used if our optimized handler doesn't catch something
 app.use(express.static(path.join(dirname, "static"), {
-  etag: false,          // Disable ETag generation
-  lastModified: false,  // Disable Last-Modified header
-  setHeaders: (res, path) => {
-    // Don't set no-cache headers for fonts
-    if (path.endsWith('.woff') || path.endsWith('.woff2') || path.endsWith('.ttf') || path.endsWith('.eot')) {
-      return;
-    }
-    
-    // Set no-cache headers for all other static files
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-  }
+  etag: false,         // We handle ETags ourselves
+  lastModified: false  // We don't use Last-Modified
 }));
 
 // ==== 404 HANDLER ====
-app.get('*', function(req, res) {
+app.get('*', function(req, res, next) {
+  // Skip the 404 page for service paths to prevent breaking proxied sites
+  if (req.path.includes('/service/') || req.path.startsWith('/uv/service/')) {
+    return next();
+  }
+  
   res.status(404);
   res.sendFile(path.join(dirname, "static/404.html"));
 });
@@ -285,7 +453,46 @@ server.on("request", (req, res) => {
   }
 });
 
+// Set up file watcher for the entire static directory
+// This will detect any file changes and update hashes automatically
+try {
+  const staticDir = path.join(dirname, "static");
+  console.log(`Setting up file watcher for ${staticDir}...`);
+  
+  fs.watch(staticDir, { recursive: true }, (eventType, filename) => {
+    if (!filename) return;
+    
+    // Construct full and relative paths
+    const fullPath = path.join(staticDir, filename);
+    const relativePath = '/' + filename.replace(/\\/g, '/');
+    
+    // Skip certain files/directories to prevent excessive processing
+    if (
+      filename.includes('node_modules') || 
+      filename.includes('.git') ||
+      filename.startsWith('.') ||
+      filename.endsWith('.tmp') ||
+      filename.endsWith('.log')
+    ) {
+      return;
+    }
+    
+    // Add to processing queue
+    fileProcessQueue.add({ fullPath, relativePath });
+    
+    // Start processing queue if not already processing
+    if (!processingQueue) {
+      setTimeout(processFileQueue, 50);
+    }
+  });
+  
+  console.log("File watching enabled - changes will be detected automatically");
+} catch (err) {
+  console.error("Error setting up file watcher:", err.message);
+  console.log("File watching NOT enabled - server restart required for changes");
+}
+
 // Start server
 server.listen({port: PORT, host: '0.0.0.0'}, () => {
-  console.log(`Server listening on port ${PORT} (IPv4 and IPv6) - Cache Buster: ${CACHE_BUSTER}`);
+  console.log(`Server listening on port ${PORT} (IPv4 and IPv6) - Instant file updates enabled`);
 });
