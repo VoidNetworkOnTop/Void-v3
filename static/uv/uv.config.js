@@ -3,13 +3,11 @@ self.__uv$config = {
     prefix: '/uv/service/',
     bare: '/bare/',
     
-    // Replace the standard base64 with a more efficient custom encoder
+    // Use more efficient URL encoding that produces shorter URLs
     encodeUrl: function(url) {
-        // Simple and efficient custom encoding
-        // This reduces URL length while maintaining compatibility
         if (!url) return url;
         try {
-            // Use a faster implementation of base64 with optimizations for URLs
+            // URL-safe base64 encoding
             return btoa(url)
                 .replace(/\+/g, '-') // URL safe character replacement
                 .replace(/\//g, '_')
@@ -38,25 +36,36 @@ self.__uv$config = {
         }
     },
     
+    // Standard UV config paths
     handler: '/uv/uv.handler.js',
     client: '/uv/uv.client.js',
     bundle: '/uv/uv.bundle.js',
     config: '/uv/uv.config.js',
     sw: '/uv/uv.sw.js',
     
-    // Optimized settings for game loading
-    timeout: 30000,       // Reduced to 30 seconds for better UX but still enough for most games
-    strict: false,        // Keeps strict mode disabled for better compatibility
-    rewriteUrl: false,    // Keeps URLs passing through naturally
-    cookies: true,        // Cookies remain enabled for game state persistence
-    safeMethod: false,    // Allow all HTTP methods
-    chunked: true,        // Keep chunked transfers for large assets
-    abuseLevel: 0,        // Low abuse protection for better performance
-    worker: true,         // Worker mode for better performance
+    // Performance and reliability settings
+    timeout: 60000,         // 60 second timeout for slow connections
+    strict: false,          // Disable strict mode for better compatibility
+    rewriteUrl: false,      // Don't rewrite URLs (preserves original paths)
+    cookies: true,          // Enable cookies for better persistence
+    safeMethod: false,      // Allow all HTTP methods
+    chunked: true,          // Enable chunked transfers for better performance
+    abuseLevel: 0,          // Minimal abuse protection for speed
+    corsPlugin: true,       // Ensure CORS is properly bypassed
     
-    // New optimized settings
-    fastChunkSize: 65536, // Larger chunk size for faster streaming of game assets
-    corsBypass: true,     // Aggressive CORS bypass for game resources
+    // Connection optimizations
+    fastStream: true,       // Enable faster streaming
     webSocketCompression: false, // Disable WebSocket compression for lower latency
-    logLevel: 'error'     // Only log errors to reduce console noise
+    
+    // Request priorities for games
+    headers: {
+        request: {
+            "DNT": "1",  // Do Not Track
+            "Upgrade-Insecure-Requests": "1",
+            "Priority": "u=1, i"  // High priority
+        },
+        response: {
+            "X-Content-Type-Options": "nosniff"
+        }
+    }
 };
