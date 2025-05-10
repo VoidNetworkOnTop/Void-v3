@@ -14,92 +14,11 @@ const PORT = 8080;
 const CACHE_BUSTER = Date.now();
 console.log(`Server started with cache buster: ${CACHE_BUSTER}`);
 
-// ==== UNIVERSAL IMAGE HANDLER WITH FALLBACK ====
-// This will serve either the real image if found, or a transparent fallback
-app.use((req, res, next) => {
-  // Process only image files
-  if (req.path.match(/\.(png|jpg|jpeg|gif|webp|avif|svg|ico)$/i)) {
-    // Get the filename without path
-    const filename = path.basename(req.path);
-    
-    // Map possible paths to check - trying ALL possible locations
-    const pathsToCheck = [
-      path.join(dirname, "static", req.path),                                   // Standard path
-      path.join(dirname, "static", "img", "gameimg", filename),                 // Games images path
-      path.join(dirname, "static", "img", filename),                            // Direct img folder
-      path.join(dirname, "static", "assets", "img", filename),                  // Assets path
-      path.join(dirname, "static", "assets", filename),                         // Direct assets folder
-      path.join(dirname, "static", "images", filename),                         // Images folder
-      path.join(dirname, "static", "icons", filename),                          // Icons folder
-      path.join(dirname, "static", filename),                                   // Root static folder 
-      // Try lowercase version (Linux is case-sensitive)
-      path.join(dirname, "static", req.path.toLowerCase()),                     // Lowercase full path
-      path.join(dirname, "static", "img", "gameimg", filename.toLowerCase()),   // Lowercase in gameimg
-      path.join(dirname, "static", "img", filename.toLowerCase())               // Lowercase in img
-    ];
-    
-    // Get the file extension to determine content type
-    const ext = path.extname(req.path).toLowerCase();
-    let contentType = 'application/octet-stream';
-    
-    // Set proper content type
-    switch(ext) {
-      case '.png': contentType = 'image/png'; break;
-      case '.jpg': 
-      case '.jpeg': contentType = 'image/jpeg'; break;
-      case '.gif': contentType = 'image/gif'; break;
-      case '.svg': contentType = 'image/svg+xml'; break;
-      case '.ico': contentType = 'image/x-icon'; break;
-      case '.webp': contentType = 'image/webp'; break;
-      case '.avif': contentType = 'image/avif'; break;
-    }
-    
-    // Check each possible path
-    for (const imagePath of pathsToCheck) {
-      if (fs.existsSync(imagePath) && fs.statSync(imagePath).isFile()) {
-        // Set content type and send file
-        res.setHeader('Content-Type', contentType);
-        return res.sendFile(imagePath);
-      }
-    }
-    
-    // If we get here, the image was not found - return a transparent image instead of 404
-    res.setHeader('Content-Type', contentType);
-    
-    // Create a transparent image based on the requested type
-    if (ext === '.svg') {
-      // SVG transparent pixel
-      const svgContent = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>';
-      return res.send(svgContent);
-    } else if (ext === '.jpg' || ext === '.jpeg') {
-      // JPEG transparent pixel (actually white since JPEG doesn't support transparency)
-      const jpegPixel = Buffer.from([
-        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x00, 0x48,
-        0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xC2, 0x00, 0x0B, 0x08, 0x00, 0x01, 0x00, 0x01, 0x01, 0x01, 0x11, 0x00,
-        0xFF, 0xC4, 0x00, 0x14, 0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x01, 0x3F, 0x10
-      ]);
-      return res.send(jpegPixel);
-    } else {
-      // Default to PNG transparent pixel for all other formats
-      const pngPixel = Buffer.from([
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
-        0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
-        0x42, 0x60, 0x82
-      ]);
-      return res.send(pngPixel);
-    }
-  }
-  
-  // Not an image request, continue to next middleware
-  next();
-});
+// ==== PRIORITIZE IMAGE DIRECTORIES FIRST ====
+// This will check these directories in order for image files
+app.use(express.static(path.join(dirname, "static/img/gameimg"))); // Game images get top priority
+app.use(express.static(path.join(dirname, "static/img"))); // Then check regular img folder
+app.use(express.static(path.join(dirname, "static/assets/img"))); // Then assets/img folder
 
 // Hash storage for all files
 const fileHashes = {};
@@ -363,93 +282,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ==== OPTIMIZED FILE HANDLER ====
-// Custom handler for static files with content-based ETags
-app.use((req, res, next) => {
-  // Skip for service and bare paths
-  if (
-    req.path.startsWith('/bare/') ||
-    req.path.includes('/service/')
-  ) {
-    return next();
-  }
-  
-  // Only handle GET requests for static files
-  if (req.method !== 'GET' || req.path === '/') {
-    return next();
-  }
-  
-  const filePath = path.join(dirname, "static", req.path);
-  
-  try {
-    // Check if file exists
-    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-      return next();
-    }
-    
-    // Read file directly
-    const fileContents = fs.readFileSync(filePath);
-    
-    // Calculate hash if not already done
-    if (!fileHashes[req.path]) {
-      const hash = crypto.createHash('md5').update(fileContents).digest('hex');
-      fileHashes[req.path] = hash;
-    }
-    
-    // Get content type based on extension
-    const ext = path.extname(req.path).toLowerCase();
-    let contentType = 'application/octet-stream';
-    
-    // Set content type based on file extension
-    switch(ext) {
-      case '.html': contentType = 'text/html'; break;
-      case '.js': contentType = 'application/javascript'; break;
-      case '.css': contentType = 'text/css'; break;
-      case '.json': contentType = 'application/json'; break;
-      case '.png': contentType = 'image/png'; break;
-      case '.jpg': 
-      case '.jpeg': contentType = 'image/jpeg'; break;
-      case '.gif': contentType = 'image/gif'; break;
-      case '.svg': contentType = 'image/svg+xml'; break;
-      case '.ico': contentType = 'image/x-icon'; break;
-      case '.woff': contentType = 'font/woff'; break;
-      case '.woff2': contentType = 'font/woff2'; break;
-      case '.ttf': contentType = 'font/ttf'; break;
-    }
-    
-    // Set headers
-    res.setHeader('Content-Type', contentType);
-    
-    // For fonts, allow caching
-    if (['.woff', '.woff2', '.ttf', '.eot'].includes(ext)) {
-      res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
-    } else {
-      // For other files, set no-cache
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-    }
-    
-    // Set ETag based on file content hash
-    const etag = `"${fileHashes[req.path]}"`;
-    res.setHeader('ETag', etag);
-    
-    // Check if browser sent If-None-Match header for conditional request
-    const ifNoneMatch = req.headers['if-none-match'];
-    if (ifNoneMatch === etag) {
-      // File hasn't changed, send 304 Not Modified
-      return res.status(304).end();
-    }
-    
-    // Send the file content
-    return res.send(fileContents);
-  } catch (error) {
-    // File not found or error reading file, continue to next middleware
-    return next();
-  }
-});
-
-// ==== BARE SERVER ROUTING - HIGHEST PRIORITY ====
+// ==== BARE SERVER ROUTING ====
 // Handle bare server requests directly
 app.use((req, res, next) => {
   if (bare.shouldRoute(req)) {
@@ -504,21 +337,13 @@ app.get("/", function(req, res) {
 });
 
 // ==== STATIC FILES FALLBACK ====
-// Only used if our optimized handler doesn't catch something
-app.use(express.static(path.join(dirname, "static"), {
-  etag: false,         // We handle ETags ourselves
-  lastModified: false  // We don't use Last-Modified
-}));
+// Serve remaining static files from the static directory
+app.use(express.static(path.join(dirname, "static")));
 
-// ==== MODIFIED 404 HANDLER ====
-// Updated to skip image requests
-app.use('*', function(req, res, next) {
-  // Skip the 404 page for service paths and image requests to prevent returning HTML
-  if (
-    req.path.includes('/service/') || 
-    req.path.startsWith('/uv/service/') ||
-    req.path.match(/\.(png|jpg|jpeg|gif|webp|avif|svg|ico)$/i)  // Skip images
-  ) {
+// ==== 404 HANDLER ====
+app.get('*', function(req, res) {
+  // Skip the 404 page for service paths to prevent breaking proxied sites
+  if (req.path.includes('/service/') || req.path.startsWith('/uv/service/')) {
     return next();
   }
   
