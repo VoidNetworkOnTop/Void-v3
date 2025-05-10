@@ -14,8 +14,39 @@ const PORT = 8080;
 const CACHE_BUSTER = Date.now();
 console.log(`Server started with cache buster: ${CACHE_BUSTER}`);
 
-// ==== ADD THIS SINGLE LINE AT THE BEGINNING ====
-// Simple static file server - this should be placed BEFORE all other middleware
+// ==== DIRECT IMAGE HANDLER - ADD THIS ====
+// This middleware directly handles image requests before anything else can interfere
+app.use((req, res, next) => {
+  // Only process image files
+  if (req.path.match(/\.(png|jpg|jpeg|gif|webp|avif|svg|ico)$/i)) {
+    const imagePath = path.join(dirname, "static", req.path);
+    
+    // Check if the file exists
+    if (fs.existsSync(imagePath) && fs.statSync(imagePath).isFile()) {
+      const ext = path.extname(req.path).toLowerCase();
+      let contentType = 'application/octet-stream';
+      
+      // Set proper content type
+      switch(ext) {
+        case '.png': contentType = 'image/png'; break;
+        case '.jpg': 
+        case '.jpeg': contentType = 'image/jpeg'; break;
+        case '.gif': contentType = 'image/gif'; break;
+        case '.svg': contentType = 'image/svg+xml'; break;
+        case '.ico': contentType = 'image/x-icon'; break;
+        case '.webp': contentType = 'image/webp'; break;
+        case '.avif': contentType = 'image/avif'; break;
+      }
+      
+      // Set content type and send file
+      res.setHeader('Content-Type', contentType);
+      return res.sendFile(imagePath);
+    }
+  }
+  next();
+});
+
+// Standard static file serving as backup
 app.use(express.static(path.join(dirname, "static")));
 
 // Hash storage for all files
