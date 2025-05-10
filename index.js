@@ -14,13 +14,11 @@ const PORT = 8080;
 const CACHE_BUSTER = Date.now();
 console.log(`Server started with cache buster: ${CACHE_BUSTER}`);
 
-// ==== IMPROVED DIRECT IMAGE HANDLER ====
-// This middleware ONLY handles image requests and serves them properly
+// ==== UNIVERSAL IMAGE HANDLER WITH FALLBACK ====
+// This will serve either the real image if found, or a transparent fallback
 app.use((req, res, next) => {
-  // Only process image files
+  // Process only image files
   if (req.path.match(/\.(png|jpg|jpeg|gif|webp|avif|svg|ico)$/i)) {
-    console.log(`Image requested: ${req.path}`);
-    
     // Get the filename without path
     const filename = path.basename(req.path);
     
@@ -33,63 +31,70 @@ app.use((req, res, next) => {
       path.join(dirname, "static", "assets", filename),                         // Direct assets folder
       path.join(dirname, "static", "images", filename),                         // Images folder
       path.join(dirname, "static", "icons", filename),                          // Icons folder
+      path.join(dirname, "static", filename),                                   // Root static folder 
       // Try lowercase version (Linux is case-sensitive)
-      path.join(dirname, "static", "img", "gameimg", filename.toLowerCase()),
-      path.join(dirname, "static", "img", filename.toLowerCase())
+      path.join(dirname, "static", req.path.toLowerCase()),                     // Lowercase full path
+      path.join(dirname, "static", "img", "gameimg", filename.toLowerCase()),   // Lowercase in gameimg
+      path.join(dirname, "static", "img", filename.toLowerCase())               // Lowercase in img
     ];
     
-    // Log all paths we're checking
-    console.log("Checking paths for image:");
-    pathsToCheck.forEach(p => console.log(`- ${p}`));
+    // Get the file extension to determine content type
+    const ext = path.extname(req.path).toLowerCase();
+    let contentType = 'application/octet-stream';
+    
+    // Set proper content type
+    switch(ext) {
+      case '.png': contentType = 'image/png'; break;
+      case '.jpg': 
+      case '.jpeg': contentType = 'image/jpeg'; break;
+      case '.gif': contentType = 'image/gif'; break;
+      case '.svg': contentType = 'image/svg+xml'; break;
+      case '.ico': contentType = 'image/x-icon'; break;
+      case '.webp': contentType = 'image/webp'; break;
+      case '.avif': contentType = 'image/avif'; break;
+    }
     
     // Check each possible path
     for (const imagePath of pathsToCheck) {
       if (fs.existsSync(imagePath) && fs.statSync(imagePath).isFile()) {
-        console.log(`SUCCESS! Found image at: ${imagePath}`);
-        
-        // Get the file extension to determine content type
-        const ext = path.extname(req.path).toLowerCase();
-        let contentType = 'application/octet-stream';
-        
-        // Set proper content type
-        switch(ext) {
-          case '.png': contentType = 'image/png'; break;
-          case '.jpg': 
-          case '.jpeg': contentType = 'image/jpeg'; break;
-          case '.gif': contentType = 'image/gif'; break;
-          case '.svg': contentType = 'image/svg+xml'; break;
-          case '.ico': contentType = 'image/x-icon'; break;
-          case '.webp': contentType = 'image/webp'; break;
-          case '.avif': contentType = 'image/avif'; break;
-        }
-        
         // Set content type and send file
         res.setHeader('Content-Type', contentType);
         return res.sendFile(imagePath);
       }
     }
     
-    // If we got here, the image wasn't found in any of the checked locations
-    // Let's add a more helpful error message with debugging info
-    console.log(`ERROR: Image not found in any location: ${req.path}`);
+    // If we get here, the image was not found - return a transparent image instead of 404
+    res.setHeader('Content-Type', contentType);
     
-    // Try to list contents of gameimg directory to help debug
-    try {
-      const gameImgDir = path.join(dirname, "static", "img", "gameimg");
-      if (fs.existsSync(gameImgDir) && fs.statSync(gameImgDir).isDirectory()) {
-        console.log(`Contents of ${gameImgDir}:`);
-        const files = fs.readdirSync(gameImgDir);
-        files.slice(0, 20).forEach(file => console.log(`- ${file}`));
-        if (files.length > 20) console.log(`... and ${files.length - 20} more files`);
-      } else {
-        console.log(`Directory doesn't exist: ${gameImgDir}`);
-      }
-    } catch (error) {
-      console.error(`Error listing directory:`, error.message);
+    // Create a transparent image based on the requested type
+    if (ext === '.svg') {
+      // SVG transparent pixel
+      const svgContent = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>';
+      return res.send(svgContent);
+    } else if (ext === '.jpg' || ext === '.jpeg') {
+      // JPEG transparent pixel (actually white since JPEG doesn't support transparency)
+      const jpegPixel = Buffer.from([
+        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x00, 0x48,
+        0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xC2, 0x00, 0x0B, 0x08, 0x00, 0x01, 0x00, 0x01, 0x01, 0x01, 0x11, 0x00,
+        0xFF, 0xC4, 0x00, 0x14, 0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x01, 0x3F, 0x10
+      ]);
+      return res.send(jpegPixel);
+    } else {
+      // Default to PNG transparent pixel for all other formats
+      const pngPixel = Buffer.from([
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+        0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+        0x42, 0x60, 0x82
+      ]);
+      return res.send(pngPixel);
     }
-    
-    // Return a proper image 404 response without HTML
-    return res.status(404).send('Image not found');
   }
   
   // Not an image request, continue to next middleware
