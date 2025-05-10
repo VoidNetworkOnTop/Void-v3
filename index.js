@@ -15,39 +15,50 @@ const CACHE_BUSTER = Date.now();
 console.log(`Server started with cache buster: ${CACHE_BUSTER}`);
 
 // ==== DIRECT IMAGE HANDLER - ADD THIS ====
-// This middleware directly handles image requests before anything else can interfere
+// This middleware ONLY handles image requests and serves them properly
 app.use((req, res, next) => {
   // Only process image files
   if (req.path.match(/\.(png|jpg|jpeg|gif|webp|avif|svg|ico)$/i)) {
-    const imagePath = path.join(dirname, "static", req.path);
+    // Map possible paths to check - this handles variations in where images might be stored
+    const pathsToCheck = [
+      path.join(dirname, "static", req.path),                                     // Standard path
+      path.join(dirname, "static", "img", "gameimg", path.basename(req.path)),    // Games images path
+      path.join(dirname, "static", "assets", "img", path.basename(req.path))      // Assets path
+    ];
     
-    // Check if the file exists
-    if (fs.existsSync(imagePath) && fs.statSync(imagePath).isFile()) {
-      const ext = path.extname(req.path).toLowerCase();
-      let contentType = 'application/octet-stream';
-      
-      // Set proper content type
-      switch(ext) {
-        case '.png': contentType = 'image/png'; break;
-        case '.jpg': 
-        case '.jpeg': contentType = 'image/jpeg'; break;
-        case '.gif': contentType = 'image/gif'; break;
-        case '.svg': contentType = 'image/svg+xml'; break;
-        case '.ico': contentType = 'image/x-icon'; break;
-        case '.webp': contentType = 'image/webp'; break;
-        case '.avif': contentType = 'image/avif'; break;
+    // Check each possible path
+    for (const imagePath of pathsToCheck) {
+      if (fs.existsSync(imagePath) && fs.statSync(imagePath).isFile()) {
+        // Get the file extension to determine content type
+        const ext = path.extname(req.path).toLowerCase();
+        let contentType = 'application/octet-stream';
+        
+        // Set proper content type
+        switch(ext) {
+          case '.png': contentType = 'image/png'; break;
+          case '.jpg': 
+          case '.jpeg': contentType = 'image/jpeg'; break;
+          case '.gif': contentType = 'image/gif'; break;
+          case '.svg': contentType = 'image/svg+xml'; break;
+          case '.ico': contentType = 'image/x-icon'; break;
+          case '.webp': contentType = 'image/webp'; break;
+          case '.avif': contentType = 'image/avif'; break;
+        }
+        
+        // Set content type and send file
+        res.setHeader('Content-Type', contentType);
+        return res.sendFile(imagePath);
       }
-      
-      // Set content type and send file
-      res.setHeader('Content-Type', contentType);
-      return res.sendFile(imagePath);
     }
+    
+    // If we got here, the image wasn't found in any of the checked locations
+    // Return a proper image 404 response without HTML
+    return res.status(404).send('Image not found');
   }
+  
+  // Not an image request, continue to next middleware
   next();
 });
-
-// Standard static file serving as backup
-app.use(express.static(path.join(dirname, "static")));
 
 // Hash storage for all files
 const fileHashes = {};
@@ -458,10 +469,15 @@ app.use(express.static(path.join(dirname, "static"), {
   lastModified: false  // We don't use Last-Modified
 }));
 
-// ==== 404 HANDLER ====
-app.get('*', function(req, res, next) {
-  // Skip the 404 page for service paths to prevent breaking proxied sites
-  if (req.path.includes('/service/') || req.path.startsWith('/uv/service/')) {
+// ==== MODIFIED 404 HANDLER ====
+// Updated to skip image requests
+app.use('*', function(req, res, next) {
+  // Skip the 404 page for service paths and image requests to prevent returning HTML
+  if (
+    req.path.includes('/service/') || 
+    req.path.startsWith('/uv/service/') ||
+    req.path.match(/\.(png|jpg|jpeg|gif|webp|avif|svg|ico)$/i)  // Skip images
+  ) {
     return next();
   }
   
