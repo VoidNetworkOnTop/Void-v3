@@ -422,6 +422,10 @@ app.use(express.static(path.join(dirname, "static"), {
   etag: false,         // We handle ETags ourselves
   lastModified: false  // We don't use Last-Modified
 }));
+app.use('/img', express.static(path.join(dirname, "img"), {
+  etag: false,
+  lastModified: false
+}));
 
 // ==== 404 HANDLER ====
 app.get('*', function(req, res, next) {
