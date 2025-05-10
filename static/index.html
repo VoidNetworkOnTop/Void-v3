@@ -1085,10 +1085,13 @@ function markStage(stage) {
     });
 </script>
 
-<!-- Enhanced Games Loading and Header/Footer Inclusion with better error handling -->
+<!-- Enhanced Games Loading and Header/Footer Inclusion with better error handling and FIXED IMAGE FALLBACK -->
 <script type="module">
     try {
         const gamesList = document.getElementById("gamesList");
+        
+        // Data URI for a simple fallback icon (gray square with game controller icon)
+        const FALLBACK_ICON = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjMzMzIiByeD0iOCIvPgo8cGF0aCBkPSJNMjQgMjRoMTZ2NGgtMTZ6IiBmaWxsPSIjNjY2Ii8+CjxwYXRoIGQ9Ik0zMCAyMGg0djE2aC00eiIgZmlsbD0iIzY2NiIvPgo8Y2lyY2xlIGN4PSI0NCIgY3k9IjMyIiByPSI0IiBmaWxsPSIjNjY2Ii8+CjxjaXJjbGUgY3g9IjIwIiBjeT0iMzIiIHI9IjQiIGZpbGw9IiM2NjYiLz4KPC9zdmc+';
         
         // Enhanced wait for UV config with timeout
         await new Promise(resolve => {
@@ -1158,23 +1161,51 @@ function markStage(stage) {
         if (games.length === 0) {
             games.push({
                 title: 'Games temporarily unavailable',
-                imgSrc: '/assets/images/placeholder.png',
+                imgSrc: FALLBACK_ICON,
                 link: '#'
             });
         }
 
-        // Load game function with error handling
+        // Load game function with FIXED error handling for images
         function loadGame(game) {
             try {
                 const gameElement = document.createElement("div");
                 gameElement.className = "game-item";
-                gameElement.innerHTML = `<div class="game-icon">
-                        <img src="${game.imgSrc || '/assets/images/game-placeholder.png'}" 
-                             alt="${game.title || 'Game'} icon"
-                             onerror="this.src='/assets/images/game-placeholder.png'">
-                    </div>
+                
+                // Create image element first
+                const img = document.createElement('img');
+                img.alt = (game.title || 'Game') + ' icon';
+                
+                // Handle image loading with proper fallback
+                let imageLoadAttempted = false;
+                
+                function setImageSrc() {
+                    if (!imageLoadAttempted) {
+                        imageLoadAttempted = true;
+                        img.src = game.imgSrc || FALLBACK_ICON;
+                    } else {
+                        // This prevents infinite loop - if the fallback fails, don't try again
+                        img.src = FALLBACK_ICON;
+                        img.style.background = 'rgba(255, 255, 255, 0.1)';
+                    }
+                }
+                
+                img.onerror = function() {
+                    if (!this.src.startsWith('data:') && imageLoadAttempted) {
+                        // If the current src is not already our fallback and we've tried once
+                        this.src = FALLBACK_ICON;
+                    }
+                };
+                
+                // Initial image load
+                setImageSrc();
+                
+                gameElement.innerHTML = `<div class="game-icon"></div>
                     <h3 class="game-title">${game.title || 'Unnamed Game'}</h3>
                 `;
+                
+                // Insert the image into the game-icon div
+                gameElement.querySelector('.game-icon').appendChild(img);
                 
                 // Update click handler with error handling
                 gameElement.onclick = async () => {
