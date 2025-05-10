@@ -299,6 +299,11 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/7_KB7ktxTYY29d_TQnnEk1-oo-2c69hMAtp1AWvIwWoSaky4Xp68WbeBeDueKUqCvvNadYIACMeKxILJ3YnybGscdD7gR_qzRUBsd58JR3fXZbYx4f1bg_yy--Glph-CdSq-6uN-vqifMwHox-hX8tNHoE5FC5c6CtWMhNa6olBW1vl7jkCZJb0-Jl5pInBWDS-Os5NK?key=yj4V8pHW144VjA9YlEbf1Q",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://medv.io/bit-planes/")
 },
+{
+    title: "Connect 4", 
+    imgSrc: "https://lh7-us.googleusercontent.com/5VfCfVupllfGOuK_XfTGctmjzxDktjv_lgYD12Xsf1wFaojcRVkt_R32sq9arCHdWMYCm-KT4C6KX4u3ZLIoM-tZMwrJmeqEHecVeGw3TGB80gr4XQvw9Z7wwLmhAveD9KSRN9Zew4A2lisD3HbK3n7QHRlnxvu8C0OJl_rubtdbWNqsVNIt8Gc61yCt4cJNMMv3E3gH?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://files.twoplayergames.org/files/games/mobile/o1/Connect_4/index.html")
+},
 
     
    ];
