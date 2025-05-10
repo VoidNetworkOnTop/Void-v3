@@ -4,363 +4,352 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>edpuzzle.com</title>
+    <script src="/assets/js/particles.js"></script>
+
+<!-- Enhanced Error Handling Script -->
+<script>
+window.onerror = function(msg, url, lineNo, columnNo, error) {
+    console.error('Error: ', msg, 'Script: ', url, 'Line: ', lineNo, 'Column: ', columnNo, 'Error object: ', error);
+    if (window.loadingDebugInfo) {
+        window.loadingDebugInfo.errors.push({msg, url, lineNo, columnNo, error});
+    }
+    return false;
+};
+
+window.loadingDebugInfo = {
+    started: Date.now(),
+    stages: {},
+    errors: []
+};
+
+function markStage(stage) {
+    window.loadingDebugInfo.stages[stage] = Date.now() - window.loadingDebugInfo.started;
+    console.log(`Stage: ${stage} completed at ${window.loadingDebugInfo.stages[stage]}ms`);
+}
+</script>
+
+<script>
+// Void Network Popup Script - Limited to 2 shows per user
+(function() {
+  // Function to check if we should show the popup
+  function shouldShowPopup() {
+    try {
+      // Get current show count from localStorage (default to 0 if not set)
+      var showCount = localStorage.getItem('voidNetworkPopupShown') || 0;
+      
+      // Convert to number
+      showCount = parseInt(showCount, 10);
+      
+      // Only show if less than 2 times
+      return showCount < 2;
+    } catch (e) {
+      // If localStorage is not available (private browsing mode, etc.)
+      // Use a session variable as fallback
+      if (typeof window.voidNetworkPopupShown === 'undefined') {
+        window.voidNetworkPopupShown = 0;
+      }
+      return window.voidNetworkPopupShown < 2;
+    }
+  }
+  
+  // Function to increment the show counter
+  function incrementShowCount() {
+    try {
+      // Get current count
+      var showCount = localStorage.getItem('voidNetworkPopupShown') || 0;
+      showCount = parseInt(showCount, 10);
+      
+      // Increment and save
+      showCount++;
+      localStorage.setItem('voidNetworkPopupShown', showCount);
+    } catch (e) {
+      // Fallback to session variable
+      if (typeof window.voidNetworkPopupShown === 'undefined') {
+        window.voidNetworkPopupShown = 0;
+      }
+      window.voidNetworkPopupShown++;
+    }
+  }
+  
+  // Create the popup when the DOM is fully loaded
+  function createVoidNetworkPopup() {
+    // Check if we should show the popup
+    if (!shouldShowPopup()) {
+      return; // Exit if we've already shown it twice
+    }
     
-    <!-- Preload critical scripts for better performance -->
-    <link rel="preload" href="/config.js" as="script">
-    <link rel="preload" href="/global.js" as="script">
-    <link rel="preload" href="/uv/uv.bundle.js" as="script">
-    <link rel="preload" href="/uv/uv.config.js" as="script">
-    <link rel="preload" href="/assets/js/particles.js" as="script">
-    <link rel="preload" href="/assets/json/games.js" as="script">
-    <link rel="preload" href="/assets/json/games2.js" as="script">
+    // Increment the show counter
+    incrementShowCount();
     
-    <!-- Preload UV Service Worker -->
-    <link rel="preload" href="/uv/sw.js" as="script">
+    // Create elements
+    var overlay = document.createElement('div');
+    var popup = document.createElement('div');
+    var closeBtn = document.createElement('div');
+    var title = document.createElement('h1');
+    var message = document.createElement('p');
+    var list = document.createElement('ul');
+    
+    // Set styles for overlay (blurred background)
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.backgroundColor = 'rgba(0,0,0,0.7)';
+    overlay.style.backdropFilter = 'blur(8px)';
+    overlay.style.zIndex = '100000';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.opacity = '0';
+    overlay.style.transition = 'opacity 0.5s ease';
+    
+    // Set styles for popup
+    popup.style.position = 'relative';
+    popup.style.width = '90%';
+    popup.style.maxWidth = '500px';
+    popup.style.backgroundColor = '#000';
+    popup.style.color = '#fff';
+    popup.style.borderRadius = '12px';
+    popup.style.padding = '30px';
+    popup.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.1), 0 0 15px rgba(255,255,255,0.3), 0 0 30px rgba(255,255,255,0.2)';
+    popup.style.transform = 'scale(0.8)';
+    popup.style.opacity = '0';
+    popup.style.transition = 'transform 0.5s ease, opacity 0.5s ease';
+    popup.style.overflow = 'hidden';
+    popup.style.fontFamily = 'Arial, sans-serif';
+    popup.id = 'void-network-popup';
+    
+    // Add glow animation
+    var style = document.createElement('style');
+    style.textContent = '@keyframes pulse-glow { 0% { box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 0 15px rgba(255,255,255,0.2), 0 0 30px rgba(255,255,255,0.1); } 50% { box-shadow: 0 0 0 1px rgba(255,255,255,0.2), 0 0 20px rgba(255,255,255,0.4), 0 0 40px rgba(255,255,255,0.3); } 100% { box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 0 15px rgba(255,255,255,0.2), 0 0 30px rgba(255,255,255,0.1); } } #void-network-popup { animation: pulse-glow 3s infinite ease-in-out; }';
+    document.head.appendChild(style);
+    
+    // Set styles for close button
+    closeBtn.style.position = 'absolute';
+    closeBtn.style.top = '15px';
+    closeBtn.style.right = '15px';
+    closeBtn.style.width = '24px';
+    closeBtn.style.height = '24px';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.style.display = 'flex';
+    closeBtn.style.alignItems = 'center';
+    closeBtn.style.justifyContent = 'center';
+    closeBtn.style.borderRadius = '50%';
+    closeBtn.style.backgroundColor = 'rgba(255,255,255,0.1)';
+    closeBtn.style.transition = 'background-color 0.3s ease';
+    closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 1L1 13" stroke="white" stroke-width="2" stroke-linecap="round"/><path d="M1 1L13 13" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>';
+    
+    // Hover effect for close button
+    closeBtn.onmouseover = function() {
+      this.style.backgroundColor = 'rgba(255,255,255,0.2)';
+    };
+    closeBtn.onmouseout = function() {
+      this.style.backgroundColor = 'rgba(255,255,255,0.1)';
+    };
+    
+    // Set styles for title
+    title.style.fontSize = '28px';
+    title.style.fontWeight = 'bold';
+    title.style.margin = '0 0 20px 0';
+    title.style.paddingBottom = '15px';
+    title.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+    title.style.textAlign = 'center';
+    title.style.letterSpacing = '1px';
+    title.style.color = '#fff';
+    title.style.textShadow = '0 0 10px rgba(255,255,255,0.5)';
+    title.textContent = 'VOID NETWORK IS BACK!';
+    
+    // Set styles for message
+    message.style.fontSize = '16px';
+    message.style.marginBottom = '20px';
+    message.style.lineHeight = '1.5';
+    message.style.opacity = '0.9';
+    message.style.textAlign = 'center';
+    message.textContent = 'We\'ve made significant improvements to enhance your experience:';
+    
+    // Set styles for feature list
+    list.style.listStyleType = 'none';
+    list.style.padding = '0';
+    list.style.margin = '0';
+    
+    // Create features with enhanced descriptions
+    var features = [
+      'Enhanced VPS infrastructure for lightning-fast game loading times',
+      'Completely rebuilt UV configuration to eliminate all 404 errors',
+      'Upgraded VoidGPT with improved response accuracy and speed',
+      'Modernized server hardware for better reliability and performance'
+    ];
+    
+    // Add features to list
+    features.forEach(function(feature) {
+      var item = document.createElement('li');
+      item.style.padding = '10px 0';
+      item.style.marginBottom = '8px';
+      item.style.display = 'flex';
+      item.style.alignItems = 'flex-start';
+      item.style.opacity = '0';
+      item.style.transform = 'translateY(10px)';
+      item.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+      
+      // Add checkmark icon
+      item.innerHTML = '<div style="min-width: 24px; height: 24px; margin-right: 10px; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13.3332 4L5.99984 11.3333L2.6665 8" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span>' + feature + '</span>';
+      
+      list.appendChild(item);
+    });
+    
+    // Assemble the popup
+    popup.appendChild(closeBtn);
+    popup.appendChild(title);
+    popup.appendChild(message);
+    popup.appendChild(list);
+    overlay.appendChild(popup);
+    document.body.appendChild(overlay);
+    
+    // Animation timing
+    setTimeout(function() {
+      overlay.style.opacity = '1';
+      popup.style.opacity = '1';
+      popup.style.transform = 'scale(1)';
+      
+      // Animate list items sequentially
+      var items = list.querySelectorAll('li');
+      for(var i = 0; i < items.length; i++) {
+        (function(index) {
+          setTimeout(function() {
+            items[index].style.opacity = '1';
+            items[index].style.transform = 'translateY(0)';
+          }, 200 + (index * 100));
+        })(i);
+      }
+    }, 300);
+    
+    // Close popup function
+    function closePopup() {
+      popup.style.transform = 'scale(0.8)';
+      popup.style.opacity = '0';
+      overlay.style.opacity = '0';
+      
+      setTimeout(function() {
+        if (document.body.contains(overlay)) {
+          document.body.removeChild(overlay);
+        }
+      }, 500);
+    }
+    
+    // Close on X button click
+    closeBtn.addEventListener('click', closePopup);
+    
+    // Close on overlay click
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) {
+        closePopup();
+      }
+    });
+  }
+  
+  // Execute when DOM is loaded
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', createVoidNetworkPopup);
+  } else {
+    createVoidNetworkPopup();
+  }
+})();
+</script>
+
+<!-- Prevent browser caching with meta tags -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
+<!-- Inject this script to modify all links to include cache-busting -->
+<script type="text/javascript">
+  document.addEventListener('DOMContentLoaded', function() {
+    try {
+      // Generate a unique timestamp for this page load
+      const timestamp = Date.now();
+      
+      // Add cache-busting parameter to all links to internal pages
+      document.querySelectorAll('a').forEach(link => {
+        try {
+          // Only modify internal links
+          if (link.href && link.href.startsWith(window.location.origin)) {
+            // Add cache-busting parameter
+            const url = new URL(link.href);
+            url.searchParams.set('cb', timestamp);
+            link.href = url.toString();
+          }
+        } catch (e) {
+          console.warn('Failed to add cache-busting to link:', link.href, e);
+        }
+      });
+      
+      // Override fetch to add cache-busting parameter
+      const originalFetch = window.fetch;
+      window.fetch = function(resource, init) {
+        if (typeof resource === 'string' && resource.startsWith(window.location.origin)) {
+          try {
+            // Add cache-busting parameter to internal requests
+            const url = new URL(resource, window.location.origin);
+            url.searchParams.set('cb', timestamp);
+            resource = url.toString();
+          } catch (e) {
+            console.warn('Failed to add cache-busting to fetch:', resource, e);
+          }
+        }
+        return originalFetch.call(this, resource, init);
+      };
+      
+      // Override XMLHttpRequest to add cache-busting parameter
+      const originalOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+        if (typeof url === 'string' && url.startsWith(window.location.origin)) {
+          try {
+            // Add cache-busting parameter to internal requests
+            const urlObj = new URL(url, window.location.origin);
+            urlObj.searchParams.set('cb', timestamp);
+            url = urlObj.toString();
+          } catch (e) {
+            console.warn('Failed to add cache-busting to XHR:', url, e);
+          }
+        }
+        return originalOpen.call(this, method, url, ...rest);
+      };
+      
+      console.log(`Cache buster active for this session: ${timestamp}`);
+    } catch (error) {
+      console.error('Cache-busting script error:', error);
+    }
+  });
+</script>
     
     <!-- Favicon -->
     <link rel="shortcut icon" href="./assets/favicon.png" type="image/png">
+    
+    <!-- Preload UV Service Worker -->
+    <link rel="preload" href="/uv/sw.js" as="script">
+    <link rel="preload" href="/uv/uv.bundle.js" as="script">
+    <link rel="preload" href="/uv/uv.config.js" as="script">
+    
+    <!-- Preload critical resources for better performance -->
+    <link rel="preload" href="/config.js" as="script">
+    <link rel="preload" href="/global.js" as="script">
+    <link rel="preload" href="/assets/json/games.js" as="script">
+    <link rel="preload" href="/assets/json/games2.js" as="script">
     
     <!-- Stylesheets -->
     <link rel="stylesheet" href="/assets/css/styles.css">
     <link rel="stylesheet" href="/assets/css/index.css">
     
-    <!-- Critical error handling setup -->
-    <script>
-    window.onerror = function(msg, url, lineNo, columnNo, error) {
-        console.error('Error: ', msg, 'Script: ', url, 'Line: ', lineNo, 'Column: ', columnNo, 'Error object: ', error);
-        if (window.loadingDebugInfo) {
-            window.loadingDebugInfo.errors.push({msg, url, lineNo, columnNo, error});
-        }
-        return false;
-    };
-    
-    window.loadingDebugInfo = {
-        started: Date.now(),
-        stages: {},
-        errors: []
-    };
-    
-    function markStage(stage) {
-        window.loadingDebugInfo.stages[stage] = Date.now() - window.loadingDebugInfo.started;
-        console.log(`Stage: ${stage} completed at ${window.loadingDebugInfo.stages[stage]}ms`);
-    }
-    
-    // Device detection for optimization
-    window.deviceInfo = {
-        isSlowDevice: navigator.hardwareConcurrency <= 4,
-        isChromeOS: navigator.userAgent.includes('CrOS'),
-        isLowMemory: navigator.deviceMemory && navigator.deviceMemory <= 2,
-        connection: navigator.connection ? navigator.connection.effectiveType : 'unknown'
-    };
-    </script>
-    
-    <!-- Load critical scripts synchronously -->
-    <script src="/config.js"></script>
-    <script src="/global.js"></script>
-    <script src="uv/uv.bundle.js"></script>
-    <script src="uv/uv.config.js"></script>
-    
-    <!-- Void Network Popup Script with better error handling -->
-    <script>
-    // Void Network Popup Script - Limited to 2 shows per user
-    (function() {
-      // Function to check if we should show the popup
-      function shouldShowPopup() {
-        try {
-          // Get current show count from localStorage (default to 0 if not set)
-          var showCount = localStorage.getItem('voidNetworkPopupShown') || 0;
-          
-          // Convert to number
-          showCount = parseInt(showCount, 10);
-          
-          // Only show if less than 2 times
-          return showCount < 2;
-        } catch (e) {
-          // If localStorage is not available (private browsing mode, etc.)
-          // Use a session variable as fallback
-          if (typeof window.voidNetworkPopupShown === 'undefined') {
-            window.voidNetworkPopupShown = 0;
-          }
-          return window.voidNetworkPopupShown < 2;
-        }
-      }
-      
-      // Function to increment the show counter
-      function incrementShowCount() {
-        try {
-          // Get current count
-          var showCount = localStorage.getItem('voidNetworkPopupShown') || 0;
-          showCount = parseInt(showCount, 10);
-          
-          // Increment and save
-          showCount++;
-          localStorage.setItem('voidNetworkPopupShown', showCount);
-        } catch (e) {
-          // Fallback to session variable
-          if (typeof window.voidNetworkPopupShown === 'undefined') {
-            window.voidNetworkPopupShown = 0;
-          }
-          window.voidNetworkPopupShown++;
-        }
-      }
-      
-      // Create the popup when the DOM is fully loaded
-      function createVoidNetworkPopup() {
-        // Check if we should show the popup
-        if (!shouldShowPopup()) {
-          return; // Exit if we've already shown it twice
-        }
-        
-        // Increment the show counter
-        incrementShowCount();
-        
-        // Create elements
-        var overlay = document.createElement('div');
-        var popup = document.createElement('div');
-        var closeBtn = document.createElement('div');
-        var title = document.createElement('h1');
-        var message = document.createElement('p');
-        var list = document.createElement('ul');
-        
-        // Set styles for overlay (blurred background)
-        overlay.style.position = 'fixed';
-        overlay.style.top = '0';
-        overlay.style.left = '0';
-        overlay.style.width = '100%';
-        overlay.style.height = '100%';
-        overlay.style.backgroundColor = 'rgba(0,0,0,0.7)';
-        overlay.style.backdropFilter = 'blur(8px)';
-        overlay.style.zIndex = '100000';
-        overlay.style.display = 'flex';
-        overlay.style.alignItems = 'center';
-        overlay.style.justifyContent = 'center';
-        overlay.style.opacity = '0';
-        overlay.style.transition = 'opacity 0.5s ease';
-        
-        // Set styles for popup
-        popup.style.position = 'relative';
-        popup.style.width = '90%';
-        popup.style.maxWidth = '500px';
-        popup.style.backgroundColor = '#000';
-        popup.style.color = '#fff';
-        popup.style.borderRadius = '12px';
-        popup.style.padding = '30px';
-        popup.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.1), 0 0 15px rgba(255,255,255,0.3), 0 0 30px rgba(255,255,255,0.2)';
-        popup.style.transform = 'scale(0.8)';
-        popup.style.opacity = '0';
-        popup.style.transition = 'transform 0.5s ease, opacity 0.5s ease';
-        popup.style.overflow = 'hidden';
-        popup.style.fontFamily = 'Arial, sans-serif';
-        popup.id = 'void-network-popup';
-        
-        // Add glow animation
-        var style = document.createElement('style');
-        style.textContent = '@keyframes pulse-glow { 0% { box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 0 15px rgba(255,255,255,0.2), 0 0 30px rgba(255,255,255,0.1); } 50% { box-shadow: 0 0 0 1px rgba(255,255,255,0.2), 0 0 20px rgba(255,255,255,0.4), 0 0 40px rgba(255,255,255,0.3); } 100% { box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 0 15px rgba(255,255,255,0.2), 0 0 30px rgba(255,255,255,0.1); } } #void-network-popup { animation: pulse-glow 3s infinite ease-in-out; }';
-        document.head.appendChild(style);
-        
-        // Set styles for close button
-        closeBtn.style.position = 'absolute';
-        closeBtn.style.top = '15px';
-        closeBtn.style.right = '15px';
-        closeBtn.style.width = '24px';
-        closeBtn.style.height = '24px';
-        closeBtn.style.cursor = 'pointer';
-        closeBtn.style.display = 'flex';
-        closeBtn.style.alignItems = 'center';
-        closeBtn.style.justifyContent = 'center';
-        closeBtn.style.borderRadius = '50%';
-        closeBtn.style.backgroundColor = 'rgba(255,255,255,0.1)';
-        closeBtn.style.transition = 'background-color 0.3s ease';
-        closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 1L1 13" stroke="white" stroke-width="2" stroke-linecap="round"/><path d="M1 1L13 13" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>';
-        
-        // Hover effect for close button
-        closeBtn.onmouseover = function() {
-          this.style.backgroundColor = 'rgba(255,255,255,0.2)';
-        };
-        closeBtn.onmouseout = function() {
-          this.style.backgroundColor = 'rgba(255,255,255,0.1)';
-        };
-        
-        // Set styles for title
-        title.style.fontSize = '28px';
-        title.style.fontWeight = 'bold';
-        title.style.margin = '0 0 20px 0';
-        title.style.paddingBottom = '15px';
-        title.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-        title.style.textAlign = 'center';
-        title.style.letterSpacing = '1px';
-        title.style.color = '#fff';
-        title.style.textShadow = '0 0 10px rgba(255,255,255,0.5)';
-        title.textContent = 'VOID NETWORK IS BACK!';
-        
-        // Set styles for message
-        message.style.fontSize = '16px';
-        message.style.marginBottom = '20px';
-        message.style.lineHeight = '1.5';
-        message.style.opacity = '0.9';
-        message.style.textAlign = 'center';
-        message.textContent = 'We\'ve made significant improvements to enhance your experience:';
-        
-        // Set styles for feature list
-        list.style.listStyleType = 'none';
-        list.style.padding = '0';
-        list.style.margin = '0';
-        
-        // Create features with enhanced descriptions
-        var features = [
-          'Enhanced VPS infrastructure for lightning-fast game loading times',
-          'Completely rebuilt UV configuration to eliminate all 404 errors',
-          'Upgraded VoidGPT with improved response accuracy and speed',
-          'Modernized server hardware for better reliability and performance'
-        ];
-        
-        // Add features to list
-        features.forEach(function(feature) {
-          var item = document.createElement('li');
-          item.style.padding = '10px 0';
-          item.style.marginBottom = '8px';
-          item.style.display = 'flex';
-          item.style.alignItems = 'flex-start';
-          item.style.opacity = '0';
-          item.style.transform = 'translateY(10px)';
-          item.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-          
-          // Add checkmark icon
-          item.innerHTML = '<div style="min-width: 24px; height: 24px; margin-right: 10px; display: flex; align-items: center; justify-content: center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13.3332 4L5.99984 11.3333L2.6665 8" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span>' + feature + '</span>';
-          
-          list.appendChild(item);
-        });
-        
-        // Assemble the popup
-        popup.appendChild(closeBtn);
-        popup.appendChild(title);
-        popup.appendChild(message);
-        popup.appendChild(list);
-        overlay.appendChild(popup);
-        document.body.appendChild(overlay);
-        
-        // Animation timing
-        setTimeout(function() {
-          overlay.style.opacity = '1';
-          popup.style.opacity = '1';
-          popup.style.transform = 'scale(1)';
-          
-          // Animate list items sequentially
-          var items = list.querySelectorAll('li');
-          for(var i = 0; i < items.length; i++) {
-            (function(index) {
-              setTimeout(function() {
-                items[index].style.opacity = '1';
-                items[index].style.transform = 'translateY(0)';
-              }, 200 + (index * 100));
-            })(i);
-          }
-        }, 300);
-        
-        // Close popup function
-        function closePopup() {
-          popup.style.transform = 'scale(0.8)';
-          popup.style.opacity = '0';
-          overlay.style.opacity = '0';
-          
-          setTimeout(function() {
-            if (document.body.contains(overlay)) {
-              document.body.removeChild(overlay);
-            }
-          }, 500);
-        }
-        
-        // Close on X button click
-        closeBtn.addEventListener('click', closePopup);
-        
-        // Close on overlay click
-        overlay.addEventListener('click', function(e) {
-          if (e.target === overlay) {
-            closePopup();
-          }
-        });
-      }
-      
-      // Execute when DOM is loaded
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', createVoidNetworkPopup);
-      } else {
-        createVoidNetworkPopup();
-      }
-    })();
-    </script>
-
-    <!-- Prevent browser caching with meta tags -->
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-
-    <!-- Cache-busting script with better error handling -->
-    <script type="text/javascript">
-      document.addEventListener('DOMContentLoaded', function() {
-        try {
-          // Generate a unique timestamp for this page load
-          const timestamp = Date.now();
-          
-          // Add cache-busting parameter to all links to internal pages
-          document.querySelectorAll('a').forEach(link => {
-            try {
-              // Only modify internal links
-              if (link.href && link.href.startsWith(window.location.origin)) {
-                // Add cache-busting parameter
-                const url = new URL(link.href);
-                url.searchParams.set('cb', timestamp);
-                link.href = url.toString();
-              }
-            } catch (e) {
-              console.warn('Failed to add cache-busting to link:', link.href, e);
-            }
-          });
-          
-          // Override fetch to add cache-busting parameter
-          const originalFetch = window.fetch;
-          window.fetch = function(resource, init) {
-            if (typeof resource === 'string' && resource.startsWith(window.location.origin)) {
-              try {
-                // Add cache-busting parameter to internal requests
-                const url = new URL(resource, window.location.origin);
-                url.searchParams.set('cb', timestamp);
-                resource = url.toString();
-              } catch (e) {
-                console.warn('Failed to add cache-busting to fetch:', resource, e);
-              }
-            }
-            return originalFetch.call(this, resource, init);
-          };
-          
-          // Override XMLHttpRequest to add cache-busting parameter
-          const originalOpen = XMLHttpRequest.prototype.open;
-          XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-            if (typeof url === 'string' && url.startsWith(window.location.origin)) {
-              try {
-                // Add cache-busting parameter to internal requests
-                const urlObj = new URL(url, window.location.origin);
-                urlObj.searchParams.set('cb', timestamp);
-                url = urlObj.toString();
-              } catch (e) {
-                console.warn('Failed to add cache-busting to XHR:', url, e);
-              }
-            }
-            return originalOpen.call(this, method, url, ...rest);
-          };
-          
-          console.log(`Cache buster active for this session: ${timestamp}`);
-        } catch (error) {
-          console.error('Cache-busting script error:', error);
-        }
-      });
-    </script>
-    
-    <!-- Load other scripts with error handling -->
-    <script src="/assets/js/particles.js" onerror="console.error('Failed to load particles.js')"></script>
+    <!-- Scripts -->
+    <script src="/config.js" onerror="console.error('Failed to load config.js')"></script>
+    <script src="/global.js" onerror="console.error('Failed to load global.js')"></script>
+    <script src="uv/uv.bundle.js" onerror="console.error('Failed to load uv.bundle.js')"></script>
+    <script src="uv/uv.config.js" onerror="console.error('Failed to load uv.config.js')"></script>
     <script src="/assets/js/footer2.js" onerror="console.error('Failed to load footer2.js')"></script>
     <script src="/assets/js/favicon-handler.js" onerror="console.error('Failed to load favicon-handler.js')"></script>
-    <script src="https://partner.senty.com.au/partner-445be54d.js" onerror="console.error('Failed to load senty partner script')" async></script>
+    <script src="https://partner.senty.com.au/partner-445be54d.js" async onerror="console.error('Failed to load senty partner script')"></script>
+    <script src="https://partner.senty.com.au/partner-445be54d.js" async onerror="console.error('Failed to load senty partner script (duplicate)')"></script>
 
     <!-- Comprehensive GA4 Tracking Solution -->
     <script>
@@ -736,34 +725,6 @@
         text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
     }
 
-    .error-message {
-        color: #ff6b6b;
-        padding: 1rem;
-        text-align: center;
-        background: rgba(255, 107, 107, 0.1);
-        border-radius: 8px;
-        margin: 1rem;
-    }
-
-    .debug-info {
-        position: fixed;
-        bottom: 10px;
-        right: 10px;
-        background: rgba(0, 0, 0, 0.8);
-        color: #fff;
-        padding: 5px 10px;
-        font-size: 12px;
-        border-radius: 4px;
-        z-index: 10000;
-        display: none;
-    }
-
-    .loading-placeholder {
-        color: #888;
-        text-align: center;
-        padding: 2rem;
-    }
-
     @media (max-width: 768px) {
         .games-box {
             width: 95%;
@@ -812,231 +773,297 @@
             </div>
 
             <div class="scrollable-content">
-                <div class="games-grid" id="gamesList">
-                    <div class="loading-placeholder">Loading games...</div>
-                </div>
+                <div class="games-grid" id="gamesList"></div>
             </div>
         </div>
     </div>
 
     <div id="footer"></div>
-    
-    <!-- Debug info for troubleshooting -->
-    <div class="debug-info" id="debugInfo">
-        <div>Loading: <span id="loadingStage">Initializing...</span></div>
-        <div>Time: <span id="loadingTime">0ms</span></div>
-        <div>Device: <span id="deviceInfo"></span></div>
-    </div>
 
-    <!-- Loading Overlay with improved styles -->
-    <div id="loadingOverlay">
-        <div id="loadingContainer">
-            <div id="loadingLogo">
-                <img src="https://lh7-us.googleusercontent.com/5Fbqj024fM1jyET0B-xC-r_j93ktHdB5dYlB80U7oxpfzefa3nFPjxwdbgE9LgwVN6URIpbowiYLJg376qRm2cPd3eD8h0ot8aeosM6xb2uZaWLIATnAah--MUM1RNliv8znm8Yv2VTfPR5n_1JpwzarFulfpQ" alt="Logo">
-            </div>
-            <div id="loadingText">Loading<span class="dots"></span></div>
-            <div id="loadingBar">
-                <div id="progressFill"></div>
-            </div>
+<!-- Loading Styles -->
+<style id="loading-style">
+    #loadingOverlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #000 0%, #1a1a1a 100%);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 999999;
+        transition: opacity 1s ease-in-out;
+    }
+
+    #loadingContainer {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 30px;
+    }
+
+    #loadingLogo {
+        width: 250px;
+        height: 250px;
+        perspective: 1000px;
+    }
+
+    #loadingLogo img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        border-radius: 40px;
+        box-shadow: 0 15px 35px rgba(255,255,255,0.2);
+        animation: wave-and-float 2.5s ease-in-out infinite;
+        transition: transform 0.3s ease;
+    }
+
+    #loadingText {
+        color: #fff;
+        font-size: 1.5rem;
+        letter-spacing: 3px;
+        font-weight: 300;
+        opacity: 0.8;
+    }
+
+    .dots::after {
+        content: '.';
+        display: inline-block;
+        animation: pulsing-dots 1.4s infinite;
+    }
+
+    #loadingBar {
+        width: 400px;
+        height: 10px;
+        background-color: rgba(255,255,255,0.1);
+        border-radius: 20px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    #progressFill {
+        width: 0;
+        height: 100%;
+        background: linear-gradient(
+            90deg, 
+            rgba(255,255,255,0.1) 0%, 
+            rgba(255,255,255,0.5) 50%, 
+            rgba(255,255,255,0.1) 100%
+        );
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite linear;
+        transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @keyframes wave-and-float {
+        0%, 100% { transform: translateY(0) rotate(-5deg); }
+        50% { transform: translateY(-20px) rotate(5deg); }
+    }
+
+    @keyframes pulsing-dots {
+        0%, 20% { content: '.'; }
+        33%, 53% { content: '..'; }
+        66%, 100% { content: '...'; }
+    }
+
+    @keyframes shimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+
+    .fade-out {
+        opacity: 0;
+        pointer-events: none;
+    }
+</style>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay">
+    <div id="loadingContainer">
+        <div id="loadingLogo">
+            <img src="https://lh7-us.googleusercontent.com/5Fbqj024fM1jyET0B-xC-r_j93ktHdB5dYlB80U7oxpfzefa3nFPjxwdbgE9LgwVN6URIpbowiYLJg376qRm2cPd3eD8h0ot8aeosM6xb2uZaWLIATnAah--MUM1RNliv8znm8Yv2VTfPR5n_1JpwzarFulfpQ" alt="Logo">
+        </div>
+        <div id="loadingText">Loading<span class="dots"></span></div>
+        <div id="loadingBar">
+            <div id="progressFill"></div>
         </div>
     </div>
+</div>
 
-    <!-- Enhanced Loading Script with better error handling -->
-    <script>
+<!-- Enhanced Loading Script with better error handling -->
+<script>
     document.addEventListener('DOMContentLoaded', () => {
         const loadingOverlay = document.getElementById('loadingOverlay');
         const progressFill = document.getElementById('progressFill');
-        const debugInfo = document.getElementById('debugInfo');
-        const loadingStage = document.getElementById('loadingStage');
-        const loadingTime = document.getElementById('loadingTime');
-        const deviceInfoEl = document.getElementById('deviceInfo');
         
-        // Show debug info on slower devices or ChromeOS
-        if (window.deviceInfo.isSlowDevice || window.deviceInfo.isChromeOS || window.deviceInfo.isLowMemory) {
-            debugInfo.style.display = 'block';
-            deviceInfoEl.textContent = `${window.deviceInfo.isChromeOS ? 'ChromeOS' : ''} ${window.deviceInfo.connection}`;
-        }
-        
-        let progress = 0;
-        let loadingStarted = false;
-        
-        function updateProgress(stage) {
-            if (!loadingStage || !loadingTime) return;
-            
-            markStage(stage);
-            loadingStage.textContent = stage;
-            loadingTime.textContent = `${Date.now() - window.loadingDebugInfo.started}ms`;
-            
-            // Progressive loading stages with better timing
-            switch(stage) {
-                case 'DOM_LOADED': progress = 10; break;
-                case 'SCRIPTS_LOADED': progress = 30; break;
-                case 'SERVICE_WORKER_READY': progress = 50; break;
-                case 'HEADER_FOOTER_LOADED': progress = 70; break;
-                case 'GAMES_LOADED': progress = 90; break;
-                case 'COMPLETE': progress = 100; break;
-                case 'ERROR': 
-                    progress = 100;
-                    loadingText.textContent = 'Error occurred - continuing...';
-                    break;
-            }
-            
-            progressFill.style.width = `${progress}%`;
-            
-            if (progress >= 100) {
-                setTimeout(() => {
-                    loadingOverlay.classList.add('fade-out');
-                    setTimeout(() => {
-                        if (loadingOverlay.parentNode) {
-                            loadingOverlay.remove();
-                        }
-                    }, 1000);
-                }, 500);
-            }
-        }
-        
-        // Start the loading process
-        updateProgress('DOM_LOADED');
-        
-        // Timeout fallback to ensure loading screen doesn't hang
-        setTimeout(() => {
-            if (loadingOverlay && !loadingOverlay.classList.contains('fade-out')) {
-                console.warn('Loading timeout reached, forcing completion');
-                updateProgress('COMPLETE');
-            }
-        }, 15000); // 15 second timeout for very slow connections
-    });
-    </script>
+        // Progress animation with better error handling
+        function animateProgress() {
+            let progress = 0;
+            const maxProgress = 100;
+            const speed = 0.5;
 
-    <!-- Enhanced Service Worker Registration with Proper Error Handling -->
-    <script>
-    document.addEventListener('DOMContentLoaded', async () => {
-        try {
-            markStage('SERVICE_WORKER_START');
-            
-            const stockSW = "/uv/sw.js";
-            const swScope = "/uv/"; 
-            const swAllowedHostnames = ["localhost", "127.0.0.1"];
-            
-            // Function to register service worker with timeout and retry
-            async function registerServiceWorkerWithRetry(retries = 3) {
-                for (let attempt = 1; attempt <= retries; attempt++) {
-                    try {
-                        // Check if service workers are supported
-                        if (!('serviceWorker' in navigator)) {
-                            console.error("Service workers are not supported in this browser");
-                            return false;
-                        }
+            function updateProgress() {
+                try {
+                    if (progress < maxProgress) {
+                        progress += speed;
+                        progressFill.style.width = `${Math.min(progress, maxProgress)}%`;
                         
-                        // Check if we're on HTTPS or allowed development hostnames
-                        if (location.protocol !== 'https:' && !swAllowedHostnames.includes(location.hostname)) {
-                            console.warn("Service workers require HTTPS (except on localhost/127.0.0.1)");
-                            return false;
-                        }
-                        
-                        console.log(`Attempt ${attempt}/${retries}: Registering UV service worker with scope:`, swScope);
-                        
-                        // Register the service worker with timeout
-                        const registration = await Promise.race([
-                            navigator.serviceWorker.register(stockSW, { 
-                                scope: swScope,
-                                updateViaCache: 'none'
-                            }),
-                            new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker registration timeout')), 5000))
-                        ]);
-                        
-                        // Wait for the service worker to be ready with timeout
-                        await Promise.race([
-                            navigator.serviceWorker.ready,
-                            new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker ready timeout')), 5000))
-                        ]);
-                        
-                        // If we have an active service worker, send it a message to skip waiting
-                        if (registration.active) {
-                            registration.active.postMessage({ type: 'SKIP_WAITING' });
-                        }
-                        
-                        console.log('UV service worker successfully registered with scope:', registration.scope);
-                        window.__uv$serviceWorkerRegistered = true;
-                        markStage('SERVICE_WORKER_READY');
-                        
-                        return true;
-                    } catch (error) {
-                        console.warn(`Attempt ${attempt}/${retries} failed:`, error);
-                        
-                        if (attempt < retries) {
-                            // Wait before retry with exponential backoff
-                            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                        if (progress < maxProgress) {
+                            requestAnimationFrame(updateProgress);
+                        } else {
+                            // Final checks and removal
+                            setTimeout(() => {
+                                loadingOverlay.classList.add('fade-out');
+                                loadingOverlay.addEventListener('transitionend', () => {
+                                    if (loadingOverlay.parentNode) {
+                                        loadingOverlay.remove();
+                                    }
+                                });
+                            }, 500);
                         }
                     }
+                } catch (error) {
+                    console.error('Progress animation error:', error);
+                    // Force completion on error
+                    loadingOverlay.classList.add('fade-out');
                 }
-                
-                // All attempts failed, but don't block the page
-                console.error('All service worker registration attempts failed');
-                markStage('SERVICE_WORKER_ERROR');
-                
-                // Continue without service worker
-                return false;
             }
-            
-            // Start service worker registration
-            await registerServiceWorkerWithRetry();
-            
-        } catch (error) {
-            console.error('Critical error in service worker registration:', error);
-            markStage('SERVICE_WORKER_ERROR');
-        }
-    });
-    </script>
 
-    <!-- Enhanced Games Loading and Header/Footer Inclusion with Maximum Error Handling -->
-    <script type="module">
-    (async function() {
-        const gamesList = document.getElementById("gamesList");
-        let headerLoaded = false;
-        let footerLoaded = false;
-        let gamesLoaded = false;
-        let attempts = 0;
-        const maxAttempts = 3;
-        
-        // Helper function to load external HTML with retries and timeouts
-        async function safeLoadHTML(url, elementId, retries = 3) {
-            for (let attempt = 1; attempt <= retries; attempt++) {
+            // Ensure initial visibility
+            progressFill.style.width = '1%';
+            requestAnimationFrame(updateProgress);
+        }
+
+        // Ensure all critical resources are loaded with timeout
+        function waitForCriticalResources() {
+            const startTime = Date.now();
+            const timeout = 10000; // 10 second timeout
+            
+            const criticalChecks = [
+                () => window.CONFIG !== undefined,
+                () => window.loadHTML !== undefined,
+                () => window.__uv$config !== undefined,
+                () => {
+                    try {
+                        return window.gamesData || window.games2Data;
+                    } catch {
+                        return false;
+                    }
+                }
+            ];
+
+            function checkResources() {
                 try {
-                    console.log(`Attempt ${attempt}/${retries}: Loading ${url} into #${elementId}`);
-                    
-                    // Add timeout and retry logic
-                    const fetchPromise = fetch(url, {
-                        cache: 'no-cache',
-                        headers: {
-                            'Cache-Control': 'no-cache, no-store, must-revalidate',
-                            'Pragma': 'no-cache'
+                    const allLoaded = criticalChecks.every(check => {
+                        try {
+                            return check();
+                        } catch {
+                            return false;
                         }
                     });
                     
-                    const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error(`Timeout loading ${url} (attempt ${attempt})`)), 5000)
-                    );
-                    
-                    const response = await Promise.race([fetchPromise, timeoutPromise]);
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status} for ${url}`);
-                    }
-                    
-                    const html = await response.text();
-                    const element = document.getElementById(elementId);
-                    
-                    if (element) {
-                        element.innerHTML = html;
-                        console.log(`Successfully loaded ${url} into #${elementId}`);
-                        return true;
+                    if (allLoaded || Date.now() - startTime > timeout) {
+                        animateProgress();
                     } else {
-                        console.error(`Element #${elementId} not found`);
-                        return false;
+                        // If not loaded, check again after a short delay
+                        setTimeout(checkResources, 100);
                     }
                 } catch (error) {
-                    console.error(`Attempt ${attempt}/${retries} failed loading ${url}:`, error);
+                    console.error('Resource checking error:', error);
+                    animateProgress();
+                }
+            }
+
+            // Start initial check
+            checkResources();
+        }
+
+        // Kick off the loading process
+        waitForCriticalResources();
+
+        // Ensure loading bar is visible even if resources are cached
+        window.addEventListener('load', () => {
+            try {
+                if (loadingOverlay && !loadingOverlay.classList.contains('fade-out')) {
+                    animateProgress();
+                }
+            } catch (error) {
+                console.error('Window load error:', error);
+            }
+        });
+        
+        // Safety timeout to prevent infinite loading
+        setTimeout(() => {
+            try {
+                if (loadingOverlay && !loadingOverlay.classList.contains('fade-out')) {
+                    console.warn('Loading timeout reached, forcing completion');
+                    loadingOverlay.classList.add('fade-out');
+                }
+            } catch (error) {
+                console.error('Safety timeout error:', error);
+            }
+        }, 15000);
+    });
+</script>
+
+<!-- Enhanced Service Worker Registration with timeout and retry -->
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const stockSW = "/uv/sw.js";
+        const swScope = "/uv/"; 
+        const swAllowedHostnames = ["localhost", "127.0.0.1"];
+        
+        // Function to preload and register the service worker with timeout and retry
+        async function preloadServiceWorker(retries = 3) {
+            for (let attempt = 1; attempt <= retries; attempt++) {
+                try {
+                    // Check if service workers are supported
+                    if (!('serviceWorker' in navigator)) {
+                        console.error("Service workers are not supported in this browser");
+                        return false;
+                    }
+                    
+                    // Check if we're on HTTPS or allowed development hostnames
+                    if (location.protocol !== 'https:' && !swAllowedHostnames.includes(location.hostname)) {
+                        console.warn("Service workers require HTTPS (except on localhost/127.0.0.1)");
+                        return false;
+                    }
+                    
+                    console.log(`Attempt ${attempt}/${retries}: Registering UV service worker with scope:`, swScope);
+                    
+                    // Register the service worker with timeout
+                    const registration = await Promise.race([
+                        navigator.serviceWorker.register(stockSW, { 
+                            scope: swScope,
+                            updateViaCache: 'none'
+                        }),
+                        new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Service worker registration timeout')), 5000)
+                        )
+                    ]);
+                    
+                    // Wait for the service worker to be ready with timeout
+                    await Promise.race([
+                        navigator.serviceWorker.ready,
+                        new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error('Service worker ready timeout')), 5000)
+                        )
+                    ]);
+                    
+                    // If we have an active service worker, send it a message to skip waiting
+                    if (registration.active) {
+                        registration.active.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                    
+                    console.log('UV service worker successfully registered with scope:', registration.scope);
+                    window.__uv$serviceWorkerRegistered = true;
+                    markStage('SERVICE_WORKER_READY');
+                    
+                    return true;
+                } catch (error) {
+                    console.error(`Service worker registration attempt ${attempt}/${retries} failed:`, error);
                     
                     if (attempt < retries) {
                         // Wait before retry with exponential backoff
@@ -1045,296 +1072,237 @@
                 }
             }
             
-            // All attempts failed, show fallback content
-            const element = document.getElementById(elementId);
-            if (element) {
-                element.innerHTML = elementId === 'header' ? 
-                    '<div style="text-align: center; color: #888; padding: 1rem;">Header temporarily unavailable</div>' :
-                    '<div style="text-align: center; color: #888; padding: 1rem;">Footer temporarily unavailable</div>';
-            }
+            // All attempts failed, but don't block the page
+            console.error('All service worker registration attempts failed');
+            markStage('SERVICE_WORKER_ERROR');
+            
+            // Continue without service worker
             return false;
         }
         
-        // Helper function to load game data with extensive retries
-        async function loadGameData(retries = 3) {
-            for (let attempt = 1; attempt <= retries; attempt++) {
-                try {
-                    console.log(`Attempt ${attempt}/${retries}: Loading game data`);
-                    
-                    // Try to wait for UV config if needed
-                    let uvConfigReady = false;
-                    if (typeof window.__uv$config === 'undefined') {
-                        uvConfigReady = await new Promise(resolve => {
-                            let attempts = 0;
-                            const checkUV = setInterval(() => {
-                                if (window.__uv$config || attempts > 30) {
-                                    clearInterval(checkUV);
-                                    resolve(!!window.__uv$config);
-                                }
-                                attempts++;
-                            }, 100);
-                        });
-                    } else {
-                        uvConfigReady = true;
-                    }
-                    
-                    if (!uvConfigReady) {
-                        console.warn('UV config not loaded, continuing anyway...');
-                    }
-                    
-                    // Dynamic import with timeout
-                    const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error(`Import timeout (attempt ${attempt})`)), 8000)
-                    );
-                    
-                    const [gamesModule, games2Module] = await Promise.race([
-                        Promise.all([
-                            import('/assets/json/games.js').catch(err => {
-                                console.warn('Failed to load games.js:', err);
-                                return { gamesData: [] };
-                            }),
-                            import('/assets/json/games2.js').catch(err => {
-                                console.warn('Failed to load games2.js:', err);
-                                return { games2Data: [] };
-                            })
-                        ]),
-                        timeoutPromise
-                    ]);
-                    
-                    const games = [
-                        ...(gamesModule.gamesData || []),
-                        ...(games2Module.games2Data || [])
-                    ];
-                    
-                    if (games.length === 0 && attempt < retries) {
-                        throw new Error('No games loaded, retrying...');
-                    }
-                    
-                    console.log(`Successfully loaded ${games.length} games`);
-                    return games;
-                } catch (error) {
-                    console.error(`Game data attempt ${attempt}/${retries} failed:`, error);
-                    
-                    if (attempt < retries) {
-                        // Wait before retry with exponential backoff
-                        await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
-                    }
-                }
-            }
-            
-            // All attempts failed, return minimal fallback data
-            console.error('All game data loading attempts failed, using fallback');
-            return [
-                {
-                    title: 'Games temporarily unavailable',
-                    imgSrc: '/assets/images/placeholder.png',
-                    link: '#'
-                },
-                {
-                    title: 'Please refresh the page',
-                    imgSrc: '/assets/images/placeholder.png',
-                    link: 'javascript:window.location.reload()'
-                }
-            ];
-        }
+        // Start preloading the service worker
+        preloadServiceWorker();
+    });
+</script>
+
+<!-- Enhanced Games Loading and Header/Footer Inclusion with better error handling -->
+<script type="module">
+    try {
+        const gamesList = document.getElementById("gamesList");
         
-        // Function to create game element with error handling
-        function createGameElement(game) {
-            const gameElement = document.createElement("div");
-            gameElement.className = "game-item";
+        // Enhanced wait for UV config with timeout
+        await new Promise(resolve => {
+            let attempts = 0;
+            const maxAttempts = 50; // 5 seconds
             
-            // Handle missing image with fallback
-            const imgSrc = game.imgSrc || '/assets/images/game-placeholder.png';
-            
-            gameElement.innerHTML = `
-                <div class="game-icon">
-                    <img src="${imgSrc}" 
-                         alt="${game.title || 'Game'} icon" 
-                         loading="lazy"
-                         onerror="this.src='/assets/images/game-placeholder.png'">
-                </div>
-                <h3 class="game-title">${game.title || 'Unnamed Game'}</h3>
-            `;
-            
-            // Enhanced click handler with loading state and error handling
-            gameElement.onclick = async () => {
-                if (game.link === '#' || game.link === 'javascript:window.location.reload()') {
-                    if (game.link === 'javascript:window.location.reload()') {
-                        window.location.reload();
-                    }
-                    return;
-                }
-                
-                try {
-                    // Show loading state
-                    const loadingOverlay = document.getElementById('loadingOverlay');
-                    if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
-                        loadingOverlay.classList.remove('fade-out');
-                        document.getElementById('loadingText').textContent = 'Preparing game...';
-                        const progressFill = document.getElementById('progressFill');
-                        if (progressFill) {
-                            progressFill.style.width = '0%';
-                            
-                            // Animate progress
-                            await new Promise(resolve => {
-                                let progress = 0;
-                                const interval = setInterval(() => {
-                                    progress += 5;
-                                    progressFill.style.width = `${Math.min(progress, 90)}%`;
-                                    if (progress >= 90) {
-                                        clearInterval(interval);
-                                        resolve();
-                                    }
-                                }, 50);
-                            });
+            if (window.__uv$config) {
+                resolve();
+            } else {
+                const checkUV = setInterval(() => {
+                    attempts++;
+                    if (window.__uv$config || attempts >= maxAttempts) {
+                        clearInterval(checkUV);
+                        if (!window.__uv$config) {
+                            console.warn('UV config not loaded after timeout, continuing anyway...');
                         }
+                        resolve();
                     }
-                    
-                    const targetUrl = `/Classes.html?game=${encodeURIComponent(game.link)}&t=${Date.now()}`;
-                    
-                    // Preload the target page
-                    const link = document.createElement('link');
-                    link.rel = 'prefetch';
-                    link.href = targetUrl;
-                    document.head.appendChild(link);
-                    
-                    // Navigate to game
-                    window.location.href = targetUrl;
-                } catch (error) {
-                    console.error('Error navigating to game:', error);
-                    
-                    // Hide loading overlay on error
-                    const loadingOverlay = document.getElementById('loadingOverlay');
-                    if (loadingOverlay) {
-                        loadingOverlay.classList.add('fade-out');
-                    }
-                }
-            };
-            
-            return gameElement;
-        }
+                }, 100);
+            }
+        });
+
+        // Load games data with retry mechanism
+        let gamesData = [];
+        let games2Data = [];
         
-        // Function to render games with search functionality
-        function renderGames(games, searchTerm = '') {
-            gamesList.innerHTML = '';
-            
+        for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-                const filteredGames = games.filter(game => 
-                    game.title && game.title.toLowerCase().includes(searchTerm.toLowerCase())
-                );
+                console.log(`Attempt ${attempt}: Loading games data`);
                 
-                if (filteredGames.length === 0) {
-                    gamesList.innerHTML = '<div style="color: #888; text-align: center; padding: 2rem;">No games found</div>';
-                    return;
+                const [gamesModule, games2Module] = await Promise.all([
+                    import("/assets/json/games.js").catch(err => {
+                        console.warn('Failed to load games.js:', err);
+                        return { gamesData: [] };
+                    }),
+                    import("/assets/json/games2.js").catch(err => {
+                        console.warn('Failed to load games2.js:', err);
+                        return { games2Data: [] };
+                    })
+                ]);
+                
+                gamesData = gamesModule.gamesData || [];
+                games2Data = games2Module.games2Data || [];
+                
+                // If both are empty and we have more attempts, retry
+                if (gamesData.length === 0 && games2Data.length === 0 && attempt < 3) {
+                    console.warn(`Both game files empty, retrying in ${attempt}s...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                    continue;
                 }
                 
-                filteredGames.forEach(game => {
-                    try {
-                        gamesList.appendChild(createGameElement(game));
-                    } catch (error) {
-                        console.error('Error creating game element:', error);
-                    }
-                });
+                break; // Success, exit retry loop
             } catch (error) {
-                console.error('Error rendering games:', error);
-                gamesList.innerHTML = '<div class="error-message">Error displaying games</div>';
+                console.error(`Attempt ${attempt} failed:`, error);
+                if (attempt === 3) {
+                    // Final attempt failed, use empty arrays
+                    gamesData = [];
+                    games2Data = [];
+                }
             }
         }
         
-        // Main loading sequence with comprehensive error handling
-        try {
-            markStage('SCRIPTS_LOADED');
-            
-            // Load header and footer in parallel with retries
-            const headerPromise = safeLoadHTML("/assets/html/header.html", "header", 3)
-                .then(success => {
-                    headerLoaded = true;
-                    markStage('HEADER_LOADED');
-                    return success;
-                })
-                .catch(error => {
-                    console.error('Header loading failed completely:', error);
-                    return false;
-                });
+        // Combine all games
+        const games = [...gamesData, ...games2Data];
+        
+        // Fallback games if everything failed
+        if (games.length === 0) {
+            games.push({
+                title: 'Games temporarily unavailable',
+                imgSrc: '/assets/images/placeholder.png',
+                link: '#'
+            });
+        }
+
+        // Load game function with error handling
+        function loadGame(game) {
+            try {
+                const gameElement = document.createElement("div");
+                gameElement.className = "game-item";
+                gameElement.innerHTML = `<div class="game-icon">
+                        <img src="${game.imgSrc || '/assets/images/game-placeholder.png'}" 
+                             alt="${game.title || 'Game'} icon"
+                             onerror="this.src='/assets/images/game-placeholder.png'">
+                    </div>
+                    <h3 class="game-title">${game.title || 'Unnamed Game'}</h3>
+                `;
                 
-            const footerPromise = safeLoadHTML("/assets/html/footer.html", "footer", 3)
-                .then(success => {
-                    footerLoaded = true;
-                    markStage('FOOTER_LOADED');
-                    return success;
-                })
-                .catch(error => {
-                    console.error('Footer loading failed completely:', error);
-                    return false;
-                });
-            
-            // Load games data in parallel
-            const gamesPromise = loadGameData(3);
-            
-            // Wait for header and footer (don't block on games)
-            await Promise.all([headerPromise, footerPromise]);
-            markStage('HEADER_FOOTER_LOADED');
-            
-            // Update loading progress
-            const loadingStageEl = document.querySelector('#debugInfo #loadingStage');
-            if (loadingStageEl) loadingStageEl.textContent = 'HEADER_FOOTER_LOADED';
-            
-            // Load and render games
-            const gamesData = await gamesPromise;
-            markStage('GAMES_LOADED');
-            gamesLoaded = true;
-            
-            // Render games
-            renderGames(gamesData);
-            
-            // Setup search functionality with debounce
-            const searchInput = document.getElementById("searchGames");
-            if (searchInput) {
-                let searchTimeout;
-                searchInput.addEventListener("input", function(e) {
-                    clearTimeout(searchTimeout);
-                    searchTimeout = setTimeout(() => {
-                        try {
-                            renderGames(gamesData, this.value);
-                        } catch (error) {
-                            console.error('Search error:', error);
+                // Update click handler with error handling
+                gameElement.onclick = async () => {
+                    try {
+                        // Show loading overlay if available
+                        const loadingOverlay = document.getElementById('loadingOverlay');
+                        if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
+                            loadingOverlay.classList.remove('fade-out');
+                            document.getElementById('loadingText').textContent = 'Preparing game...';
+                            document.getElementById('progressFill').style.width = '0%';
                         }
-                    }, 300);
-                });
+                        
+                        try {
+                            // Progress animation
+                            const progressFill = document.getElementById('progressFill');
+                            if (progressFill) {
+                                progressFill.style.width = '30%';
+                                await new Promise(resolve => setTimeout(resolve, 100));
+                                progressFill.style.width = '60%';
+                                await new Promise(resolve => setTimeout(resolve, 100));
+                                progressFill.style.width = '100%';
+                                await new Promise(resolve => setTimeout(resolve, 200));
+                            }
+                        } catch (error) {
+                            console.error('Error in loading animation:', error);
+                        } finally {
+                            // Navigate to the game
+                            window.location.href = `/Classes.html?game=${encodeURIComponent(game.link)}`;
+                        }
+                    } catch (error) {
+                        console.error('Error clicking game:', error);
+                        // Hide loading overlay on error
+                        const loadingOverlay = document.getElementById('loadingOverlay');
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('fade-out');
+                        }
+                    }
+                };
+                
+                gamesList.appendChild(gameElement);
+            } catch (error) {
+                console.error('Error loading game element:', error);
             }
-            
-            markStage('COMPLETE');
-            const loadingStageEl2 = document.querySelector('#debugInfo #loadingStage');
-            if (loadingStageEl2) loadingStageEl2.textContent = 'COMPLETE';
-            
+        }
+
+        // Render games with error handling
+        try {
+            if (Array.isArray(games)) {
+                games.forEach(game => {
+                    try {
+                        loadGame(game);
+                    } catch (error) {
+                        console.error('Error loading individual game:', error);
+                    }
+                });
+            } else {
+                console.error("Games is not an array:", games);
+                gamesList.innerHTML = '<div style="color: white;">Error: Games data is not in the correct format</div>';
+            }
         } catch (error) {
-            console.error("Critical error during page load:", error);
-            
-            // Display error message to user
+            console.error('Error rendering games:', error);
+            gamesList.innerHTML = '<div style="color: white;">Error loading games list</div>';
+        }
+
+        // Search functionality with error handling
+        try {
+            document.getElementById("searchGames").addEventListener("keyup", function(e) {
+                try {
+                    gamesList.innerHTML = '';
+                    const searchTerm = this.value.toLowerCase();
+                    for (const game of games) {
+                        if (game.title && game.title.toLowerCase().includes(searchTerm)) {
+                            loadGame(game);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Search error:', error);
+                }
+            });
+        } catch (error) {
+            console.error('Search setup error:', error);
+        }
+        
+        // Load header and footer with retry mechanism
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                await loadHTML("/assets/html/header.html", "header");
+                await loadHTML("/assets/html/footer.html", "footer");
+                markStage('HEADER_FOOTER_LOADED');
+                break;
+            } catch (error) {
+                console.error(`Header/Footer loading attempt ${attempt} failed:`, error);
+                if (attempt === 3) {
+                    console.error('Failed to load header/footer after all attempts');
+                } else {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+        }
+        
+        markStage('COMPLETE');
+        
+    } catch (error) {
+        console.error("Critical error loading games:", error);
+        const gamesList = document.getElementById("gamesList");
+        if (gamesList) {
             gamesList.innerHTML = `
-                <div class="error-message">
-                    <h3>Sorry, there was an error loading the page.</h3>
-                    <p>Please refresh the page or try again later.</p>
+                <div style="color: #ff6b6b; text-align: center; padding: 2rem;">
+                    <h3>Error loading games</h3>
+                    <p>${error.message}</p>
                     <button onclick="window.location.reload()" 
-                            style="padding: 8px 16px; background: #fff; color: #000; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">
+                            style="padding: 8px 16px; background: #fff; color: #000; border: none; border-radius: 4px; cursor: pointer;">
                         Refresh Page
                     </button>
-                    ${window.deviceInfo.isChromeOS ? '<p style="margin-top: 10px; font-size: 0.9em;">ChromeOS users: This is a known issue. Please try refreshing or clearing your browser cache.</p>' : ''}
                 </div>
             `;
-            
-            // Still try to show header/footer if they haven't loaded
-            if (!headerLoaded) {
-                safeLoadHTML("/assets/html/header.html", "header", 1).catch(() => {});
-            }
-            if (!footerLoaded) {
-                safeLoadHTML("/assets/html/footer.html", "footer", 1).catch(() => {});
-            }
-            
-            markStage('ERROR');
         }
-    })();
-    </script>
+        
+        // Still try to load header/footer
+        try {
+            loadHTML("/assets/html/header.html", "header");
+            loadHTML("/assets/html/footer.html", "footer");
+        } catch (headerFooterError) {
+            console.error('Failed to load header/footer after critical error:', headerFooterError);
+        }
+    }
+</script>
+
 
 </body>
 </html>
