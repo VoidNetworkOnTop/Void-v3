@@ -14,6 +14,10 @@ const PORT = 8080;
 const CACHE_BUSTER = Date.now();
 console.log(`Server started with cache buster: ${CACHE_BUSTER}`);
 
+// ==== ADD THIS SINGLE LINE AT THE BEGINNING ====
+// Simple static file server - this should be placed BEFORE all other middleware
+app.use(express.static(path.join(dirname, "static")));
+
 // Hash storage for all files
 const fileHashes = {};
 
