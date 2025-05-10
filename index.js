@@ -21,6 +21,104 @@ const fileHashes = {};
 const fileProcessQueue = new Set();
 let processingQueue = false;
 
+// ==== DEBUG MIDDLEWARE ====
+// Add debug logging for image requests
+app.use((req, res, next) => {
+  // Only log image requests to avoid console clutter
+  if (req.path.includes('/img/')) {
+    console.log(`Debug - Image requested: ${req.path}`);
+    
+    // Check if file exists
+    const imgPath = path.join(dirname, req.path);
+    const exists = fs.existsSync(imgPath);
+    console.log(`Debug - Image path: ${imgPath}, exists: ${exists}`);
+    
+    // If it exists, log file size
+    if (exists) {
+      try {
+        const stats = fs.statSync(imgPath);
+        console.log(`Debug - File size: ${stats.size} bytes, isFile: ${stats.isFile()}`);
+      } catch (err) {
+        console.log(`Debug - Error checking file stats: ${err.message}`);
+      }
+    }
+  }
+  next();
+});
+
+// ==== DIRECT IMAGE HANDLER (HIGH PRIORITY) ====
+// Direct image handler - must come before other handlers
+app.get('/img/*', (req, res) => {
+  const imgPath = path.join(dirname, req.path);
+  
+  // Log what we're doing
+  console.log(`Serving image: ${req.path} from ${imgPath}`);
+  
+  // Check if file exists
+  if (!fs.existsSync(imgPath)) {
+    console.log(`Image not found: ${imgPath}`);
+    return res.status(404).send('Image not found');
+  }
+  
+  // Check if it's a file
+  if (!fs.statSync(imgPath).isFile()) {
+    console.log(`Not a file: ${imgPath}`);
+    return res.status(404).send('Not a file');
+  }
+  
+  // Determine content type
+  const ext = path.extname(imgPath).toLowerCase();
+  let contentType = 'application/octet-stream';
+  
+  switch(ext) {
+    case '.png': contentType = 'image/png'; break;
+    case '.jpg': 
+    case '.jpeg': contentType = 'image/jpeg'; break;
+    case '.gif': contentType = 'image/gif'; break;
+    case '.svg': contentType = 'image/svg+xml'; break;
+    case '.webp': contentType = 'image/webp'; break;
+    case '.ico': contentType = 'image/x-icon'; break;
+    default: contentType = 'application/octet-stream';
+  }
+  
+  // Set proper content type
+  res.setHeader('Content-Type', contentType);
+  
+  // Calculate hash for the file if not already done
+  if (!fileHashes[req.path]) {
+    try {
+      const fileContent = fs.readFileSync(imgPath);
+      const hash = crypto.createHash('md5').update(fileContent).digest('hex');
+      fileHashes[req.path] = hash;
+    } catch (err) {
+      console.error(`Error calculating hash for ${imgPath}:`, err.message);
+    }
+  }
+  
+  // Set ETag if we have a hash
+  if (fileHashes[req.path]) {
+    const etag = `"${fileHashes[req.path]}"`;
+    res.setHeader('ETag', etag);
+    
+    // Handle conditional requests
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch === etag) {
+      return res.status(304).end();
+    }
+  }
+  
+  // Set caching headers - allow caching for images
+  res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+  
+  // Send the file directly - no routing to other handlers
+  res.sendFile(imgPath, (err) => {
+    if (err) {
+      console.log(`Error sending image: ${err.message}`);
+      res.status(500).send('Error serving image');
+    }
+  });
+});
+
 // Calculate hash for a single file
 function calculateFileHash(filePath, relativePath) {
   try {
@@ -88,9 +186,16 @@ function processFileQueue() {
 // Calculate initial hashes for all static files
 console.log("Calculating initial file hashes...");
 calculateDirectoryHashes(path.join(dirname, "static"));
-// ADDITION: Calculate hashes for img directory
-console.log("Calculating hashes for img directory...");
-calculateDirectoryHashes(path.join(dirname, "img"), path.join(dirname, "img"));
+
+// Calculate hashes for img directory if it exists
+const imgDirPath = path.join(dirname, "img");
+if (fs.existsSync(imgDirPath) && fs.statSync(imgDirPath).isDirectory()) {
+  console.log("Calculating hashes for img directory...");
+  calculateDirectoryHashes(imgDirPath, dirname);
+} else {
+  console.warn(`Warning: img directory not found at ${imgDirPath}`);
+}
+
 console.log(`Calculated hashes for ${Object.keys(fileHashes).length} files`);
 
 // Try to load local config if it exists
@@ -135,10 +240,11 @@ function getFileHash(filePath) {
 // ==== GLOBAL CACHE-BUSTING MIDDLEWARE ====
 // This middleware sets appropriate cache headers for all responses
 app.use((req, res, next) => {
-  // IMPORTANT: Skip cache-busting for service and bare paths
+  // IMPORTANT: Skip cache-busting for service and bare paths and images
   if (
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
+    req.path.startsWith('/img/') ||   // Skip for image files
     req.path.includes('.woff') ||
     req.path.includes('.woff2') ||
     req.path.includes('.ttf') ||
@@ -175,6 +281,7 @@ app.use((req, res, next) => {
   if (
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
+    req.path.startsWith('/img/') ||   // Skip for image files
     req.path.endsWith('.js') ||
     req.path.endsWith('.css') ||
     req.path.endsWith('.png') ||
@@ -282,10 +389,11 @@ app.use((req, res, next) => {
 // ==== OPTIMIZED FILE HANDLER ====
 // Custom handler for static files with content-based ETags
 app.use((req, res, next) => {
-  // Skip for service and bare paths
+  // Skip for service, bare, and img paths
   if (
     req.path.startsWith('/bare/') ||
-    req.path.includes('/service/')
+    req.path.includes('/service/') ||
+    req.path.startsWith('/img/')    // Skip img paths - handled by dedicated handler
   ) {
     return next();
   }
@@ -295,81 +403,6 @@ app.use((req, res, next) => {
     return next();
   }
   
-  // MODIFICATION: Check if this is an /img path first
-  if (req.path.startsWith('/img/')) {
-    const filePath = path.join(dirname, req.path); // Direct path to img folder in root
-    
-    try {
-      // Check if file exists
-      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-        return next();
-      }
-      
-      // Read file directly
-      const fileContents = fs.readFileSync(filePath);
-      
-      // Calculate hash if not already done
-      if (!fileHashes[req.path]) {
-        const hash = crypto.createHash('md5').update(fileContents).digest('hex');
-        fileHashes[req.path] = hash;
-      }
-      
-      // Get content type based on extension
-      const ext = path.extname(req.path).toLowerCase();
-      let contentType = 'application/octet-stream';
-      
-      // Set content type based on file extension
-      switch(ext) {
-        case '.html': contentType = 'text/html'; break;
-        case '.js': contentType = 'application/javascript'; break;
-        case '.css': contentType = 'text/css'; break;
-        case '.json': contentType = 'application/json'; break;
-        case '.png': contentType = 'image/png'; break;
-        case '.jpg': 
-        case '.jpeg': contentType = 'image/jpeg'; break;
-        case '.gif': contentType = 'image/gif'; break;
-        case '.svg': contentType = 'image/svg+xml'; break;
-        case '.ico': contentType = 'image/x-icon'; break;
-        case '.webp': contentType = 'image/webp'; break;
-        case '.woff': contentType = 'font/woff'; break;
-        case '.woff2': contentType = 'font/woff2'; break;
-        case '.ttf': contentType = 'font/ttf'; break;
-      }
-      
-      // Set headers
-      res.setHeader('Content-Type', contentType);
-      
-      // For fonts, allow caching
-      if (['.woff', '.woff2', '.ttf', '.eot'].includes(ext)) {
-        res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
-      } else {
-        // For other files, set no-cache
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-      }
-      
-      // Set ETag based on file content hash
-      const etag = `"${fileHashes[req.path]}"`;
-      res.setHeader('ETag', etag);
-      
-      // Check if browser sent If-None-Match header for conditional request
-      const ifNoneMatch = req.headers['if-none-match'];
-      if (ifNoneMatch === etag) {
-        // File hasn't changed, send 304 Not Modified
-        return res.status(304).end();
-      }
-      
-      // Send the file content
-      return res.send(fileContents);
-    } catch (error) {
-      console.error(`Error serving img file ${req.path}:`, error.message);
-      // File not found or error reading file, continue to next middleware
-      return next();
-    }
-  }
-  
-  // Original static file handler for non-img paths
   const filePath = path.join(dirname, "static", req.path);
   
   try {
@@ -441,14 +474,7 @@ app.use((req, res, next) => {
   }
 });
 
-// ==== EXPLICIT IMG FOLDER HANDLER ====
-// Adding a fallback static handler for the img directory
-app.use('/img', express.static(path.join(dirname, "img"), {
-  etag: false,         // We handle ETags ourselves
-  lastModified: false  // We don't use Last-Modified
-}));
-
-// ==== BARE SERVER ROUTING - HIGHEST PRIORITY ====
+// ==== BARE SERVER ROUTING ====
 // Handle bare server requests directly
 app.use((req, res, next) => {
   if (bare.shouldRoute(req)) {
@@ -460,7 +486,6 @@ app.use((req, res, next) => {
 
 // ==== HTML ROUTES WITH CACHE BUSTING ====
 // All routes that serve HTML files
-
 app.get("/ga", function (req, res) {
   res.sendFile(path.join(dirname, "static/games.html"));
 });
@@ -505,14 +530,18 @@ app.get("/", function(req, res) {
 // ==== STATIC FILES FALLBACK ====
 // Only used if our optimized handler doesn't catch something
 app.use(express.static(path.join(dirname, "static"), {
-  etag: false,         // We handle ETags ourselves
-  lastModified: false  // We don't use Last-Modified
+  etag: false,        // We handle ETags ourselves
+  lastModified: false // We don't use Last-Modified
 }));
 
 // ==== 404 HANDLER ====
 app.get('*', function(req, res, next) {
   // Skip the 404 page for service paths to prevent breaking proxied sites
-  if (req.path.includes('/service/') || req.path.startsWith('/uv/service/')) {
+  if (
+    req.path.includes('/service/') || 
+    req.path.startsWith('/uv/service/') ||
+    req.path.startsWith('/img/')  // Skip 404 for image paths
+  ) {
     return next();
   }
   
@@ -571,35 +600,37 @@ try {
     }
   });
   
-  // ADDITION: Watch the img directory as well
+  // Watch the img directory as well if it exists
   const imgDir = path.join(dirname, "img");
-  console.log(`Setting up file watcher for ${imgDir}...`);
-  
-  fs.watch(imgDir, { recursive: true }, (eventType, filename) => {
-    if (!filename) return;
+  if (fs.existsSync(imgDir) && fs.statSync(imgDir).isDirectory()) {
+    console.log(`Setting up file watcher for ${imgDir}...`);
     
-    // Construct full and relative paths
-    const fullPath = path.join(imgDir, filename);
-    const relativePath = '/img/' + filename.replace(/\\/g, '/');
-    
-    // Skip certain files/directories
-    if (
-      filename.includes('.git') ||
-      filename.startsWith('.') ||
-      filename.endsWith('.tmp') ||
-      filename.endsWith('.log')
-    ) {
-      return;
-    }
-    
-    // Add to processing queue
-    fileProcessQueue.add({ fullPath, relativePath });
-    
-    // Start processing queue if not already processing
-    if (!processingQueue) {
-      setTimeout(processFileQueue, 50);
-    }
-  });
+    fs.watch(imgDir, { recursive: true }, (eventType, filename) => {
+      if (!filename) return;
+      
+      // Construct full and relative paths
+      const fullPath = path.join(imgDir, filename);
+      const relativePath = '/img/' + filename.replace(/\\/g, '/');
+      
+      // Skip certain files/directories
+      if (
+        filename.includes('.git') ||
+        filename.startsWith('.') ||
+        filename.endsWith('.tmp') ||
+        filename.endsWith('.log')
+      ) {
+        return;
+      }
+      
+      // Add to processing queue
+      fileProcessQueue.add({ fullPath, relativePath });
+      
+      // Start processing queue if not already processing
+      if (!processingQueue) {
+        setTimeout(processFileQueue, 50);
+      }
+    });
+  }
   
   console.log("File watching enabled - changes will be detected automatically");
 } catch (err) {
