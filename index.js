@@ -88,6 +88,9 @@ function processFileQueue() {
 // Calculate initial hashes for all static files
 console.log("Calculating initial file hashes...");
 calculateDirectoryHashes(path.join(dirname, "static"));
+// ADDITION: Calculate hashes for img directory
+console.log("Calculating hashes for img directory...");
+calculateDirectoryHashes(path.join(dirname, "img"), path.join(dirname, "img"));
 console.log(`Calculated hashes for ${Object.keys(fileHashes).length} files`);
 
 // Try to load local config if it exists
@@ -292,6 +295,81 @@ app.use((req, res, next) => {
     return next();
   }
   
+  // MODIFICATION: Check if this is an /img path first
+  if (req.path.startsWith('/img/')) {
+    const filePath = path.join(dirname, req.path); // Direct path to img folder in root
+    
+    try {
+      // Check if file exists
+      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        return next();
+      }
+      
+      // Read file directly
+      const fileContents = fs.readFileSync(filePath);
+      
+      // Calculate hash if not already done
+      if (!fileHashes[req.path]) {
+        const hash = crypto.createHash('md5').update(fileContents).digest('hex');
+        fileHashes[req.path] = hash;
+      }
+      
+      // Get content type based on extension
+      const ext = path.extname(req.path).toLowerCase();
+      let contentType = 'application/octet-stream';
+      
+      // Set content type based on file extension
+      switch(ext) {
+        case '.html': contentType = 'text/html'; break;
+        case '.js': contentType = 'application/javascript'; break;
+        case '.css': contentType = 'text/css'; break;
+        case '.json': contentType = 'application/json'; break;
+        case '.png': contentType = 'image/png'; break;
+        case '.jpg': 
+        case '.jpeg': contentType = 'image/jpeg'; break;
+        case '.gif': contentType = 'image/gif'; break;
+        case '.svg': contentType = 'image/svg+xml'; break;
+        case '.ico': contentType = 'image/x-icon'; break;
+        case '.webp': contentType = 'image/webp'; break;
+        case '.woff': contentType = 'font/woff'; break;
+        case '.woff2': contentType = 'font/woff2'; break;
+        case '.ttf': contentType = 'font/ttf'; break;
+      }
+      
+      // Set headers
+      res.setHeader('Content-Type', contentType);
+      
+      // For fonts, allow caching
+      if (['.woff', '.woff2', '.ttf', '.eot'].includes(ext)) {
+        res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+      } else {
+        // For other files, set no-cache
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+      
+      // Set ETag based on file content hash
+      const etag = `"${fileHashes[req.path]}"`;
+      res.setHeader('ETag', etag);
+      
+      // Check if browser sent If-None-Match header for conditional request
+      const ifNoneMatch = req.headers['if-none-match'];
+      if (ifNoneMatch === etag) {
+        // File hasn't changed, send 304 Not Modified
+        return res.status(304).end();
+      }
+      
+      // Send the file content
+      return res.send(fileContents);
+    } catch (error) {
+      console.error(`Error serving img file ${req.path}:`, error.message);
+      // File not found or error reading file, continue to next middleware
+      return next();
+    }
+  }
+  
+  // Original static file handler for non-img paths
   const filePath = path.join(dirname, "static", req.path);
   
   try {
@@ -325,6 +403,7 @@ app.use((req, res, next) => {
       case '.gif': contentType = 'image/gif'; break;
       case '.svg': contentType = 'image/svg+xml'; break;
       case '.ico': contentType = 'image/x-icon'; break;
+      case '.webp': contentType = 'image/webp'; break;
       case '.woff': contentType = 'font/woff'; break;
       case '.woff2': contentType = 'font/woff2'; break;
       case '.ttf': contentType = 'font/ttf'; break;
@@ -361,6 +440,13 @@ app.use((req, res, next) => {
     return next();
   }
 });
+
+// ==== EXPLICIT IMG FOLDER HANDLER ====
+// Adding a fallback static handler for the img directory
+app.use('/img', express.static(path.join(dirname, "img"), {
+  etag: false,         // We handle ETags ourselves
+  lastModified: false  // We don't use Last-Modified
+}));
 
 // ==== BARE SERVER ROUTING - HIGHEST PRIORITY ====
 // Handle bare server requests directly
@@ -422,10 +508,6 @@ app.use(express.static(path.join(dirname, "static"), {
   etag: false,         // We handle ETags ourselves
   lastModified: false  // We don't use Last-Modified
 }));
-app.use('/img', express.static(path.join(dirname, "img"), {
-  etag: false,
-  lastModified: false
-}));
 
 // ==== 404 HANDLER ====
 app.get('*', function(req, res, next) {
@@ -457,8 +539,7 @@ server.on("request", (req, res) => {
   }
 });
 
-// Set up file watcher for the entire static directory
-// This will detect any file changes and update hashes automatically
+// Set up file watcher for the entire static directory and img directory
 try {
   const staticDir = path.join(dirname, "static");
   console.log(`Setting up file watcher for ${staticDir}...`);
@@ -473,6 +554,36 @@ try {
     // Skip certain files/directories to prevent excessive processing
     if (
       filename.includes('node_modules') || 
+      filename.includes('.git') ||
+      filename.startsWith('.') ||
+      filename.endsWith('.tmp') ||
+      filename.endsWith('.log')
+    ) {
+      return;
+    }
+    
+    // Add to processing queue
+    fileProcessQueue.add({ fullPath, relativePath });
+    
+    // Start processing queue if not already processing
+    if (!processingQueue) {
+      setTimeout(processFileQueue, 50);
+    }
+  });
+  
+  // ADDITION: Watch the img directory as well
+  const imgDir = path.join(dirname, "img");
+  console.log(`Setting up file watcher for ${imgDir}...`);
+  
+  fs.watch(imgDir, { recursive: true }, (eventType, filename) => {
+    if (!filename) return;
+    
+    // Construct full and relative paths
+    const fullPath = path.join(imgDir, filename);
+    const relativePath = '/img/' + filename.replace(/\\/g, '/');
+    
+    // Skip certain files/directories
+    if (
       filename.includes('.git') ||
       filename.startsWith('.') ||
       filename.endsWith('.tmp') ||
