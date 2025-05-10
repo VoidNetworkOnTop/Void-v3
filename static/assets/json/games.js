@@ -1,133 +1,133 @@
 const gamesData = [
     {
         title: "Agar.io",
-        imgSrc: "gameimg/Agario.png",
+        imgSrc: "/img/gameimg/Agario.png",
         link: __uv$config.prefix + __uv$config.encodeUrl("https://advanced-channeler.02.gz-associates.com/?t=tmm-agario-minigame")
     },
 {
     title: "Among us",
-    imgSrc: "gameimg/Amoungus.png",
+    imgSrc: "/img/gameimg/Amoungus.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://ovo-game.github.io/o/among-us") 
 }, 
 {
     title: "Slow Roads",
-    imgSrc: "gameimg/SlowRoads.png",
+    imgSrc: "/img//img/gameimg/SlowRoads.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://lizard-foil-pincushion.glitch.me") 
 },
 {
     title: "Swoop",
-    imgSrc: "gameimg/swoop.jpeg",
+    imgSrc: "/img//img/gameimg/swoop.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://games.cdn.famobi.com/html5games/s/swooop/v1/?fg_domain=play.famobi.com&fg_aid=A-SILVERGAMES&fg_uid=89459199-3905-4687-b993-158f437a0e11&fg_pid=8a24e5f2-94a8-4593-b4e5-81cc68f524c8&fg_beat=881&original_ref=https%3A%2F%2Fwww.silvergames.com%2F")
 },
 {
     title: "Gun Night",
-    imgSrc: "gameimg/gunnight.jpeg",
+    imgSrc: "/img/gameimg/gunnight.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://html5.gamedistribution.com/rvvASMiM/91717eef3f1d4dfabc910ea4f3ea9c74/index.html?gd_sdk_referrer_url=https%3A%2F%2Fkevin.games%2Fgunnight-io&gd_zone_config=eyJwYXJlbnRVUkwiOiJodHRwczovL2tldmluLmdhbWVzL2d1bm5pZ2h0LWlvIiwicGFyZW50RG9tYWluIjoia2V2aW4uZ2FtZXMiLCJ0b3BEb21haW4iOiJrZXZpbi5nYW1lcyIsImhhc0ltcHJlc3Npb24iOnRydWUsImxvYWRlckVuYWJsZWQiOnRydWUsImhvc3QiOiJodG1sNS5nYW1lZGlzdHJpYnV0aW9uLmNvbSIsInZlcnNpb24iOiIxLjUuMTcifQ%253D%253D") 
 },
 {
     title: "Suika Game",
-    imgSrc: "gameimg/suikagame.jpeg",
+    imgSrc: "/img/gameimg/suikagame.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://suikagame.com")
 }, 
 {
     title: "Stickman Parkour",
-    imgSrc: "gameimg/stickmanparkour.png",
+    imgSrc: "/img/gameimg/stickmanparkour.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://games.crazygames.com/en_US/stickman-parkour-master/index.html?v=1.296")
 }, 
 {
     title: "Moto X3M 1",
-    imgSrc: "gameimg/motox3m.jpeg",
+    imgSrc: "/img/gameimg/motox3m.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.friv.com/z/games/motox3m/game.html")
 },
 {
     title: "Moto X3M 2",
-    imgSrc: "gameimg/motox3m2.jpeg",
+    imgSrc: "/img/gameimg/motox3m2.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.friv.com/z/games/motox3m2origins/game.html")
 },
 {
     title: "Moto X3M 3",
-    imgSrc: "gameimg/motox3m3.png",
+    imgSrc: "/img/gameimg/motox3m3.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.friv.com/z/games/motox3m3origins/game.html")
 },
 {
     title: "Moto X3M Summer",
-    imgSrc: "gameimg/Motox3msummer.jpeg",
+    imgSrc: "/img/gameimg/Motox3msummer.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://moto-x3m.net/pool-party/")
 }, 
 {
     title: "Moto X3M Halloween",
-    imgSrc: "gameimg/motox3mha.png",
+    imgSrc: "/img/gameimg/motox3mha.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://moto-x3m.net/spooky-land/")
 },
 {
     title: "Moto X3M Winter", 
-    imgSrc: "gameimg/motox3mwinter.jpeg",
+    imgSrc: "/img/gameimg/motox3mwinter.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://moto-x3m.net/winter/")  
 },
 {
     title: "Balls N Bricks",
-    imgSrc: "gameimg/Ballsnbricks.png",
+    imgSrc: "/img/gameimg/Ballsnbricks.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.miniplay.com/embed/bricks-and-balls")
 }, 
 {
     title: "Javlien Fighting",
-    imgSrc: "gameimg/image_10.png",
+    imgSrc: "/img/gameimg/image_10.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://kbhgames.com/game/javelin-fighting")
 }, 
 {
     title: "Spacebar Clicker", 
-    imgSrc: "gameimg/spacebarclicker.jpg",
+    imgSrc: "/img/gameimg/spacebarclicker.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.arealme.com/spacebar-clicker/en/")
 },
 {
     title: "Slope",
-    imgSrc: "gameimg/slopegame.webp",
+    imgSrc: "/img/gameimg/slopegame.webp",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://kazwire.com/cdn/game/static/slope/index.html")
 
 },
 {
     title: "1v1.lol",
-    imgSrc: "gameimg/1v1lol.png",
+    imgSrc: "/img/gameimg/1v1lol.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://1v1.school")
 },
 {
     title: "Happy Wheels",
-    imgSrc: "gameimg/happywheels.jpg",
+    imgSrc: "/img/gameimg/happywheels.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://games-online.io/game/HappyWheels/")
 },
 {
     title: "Apple worm", 
-    imgSrc: "gameimg/appleworm.png",
+    imgSrc: "/img/gameimg/appleworm.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://apple-worm.github.io/apple-worm/")
 }, 
 {
     title: "G</x>un Mayhem", 
-    imgSrc: "gameimg/gunmayhem.jpeg",
+    imgSrc: "/img/gameimg/gunmayhem.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://gunmayhem.io/game/gun-mayhem/")
 },
 {
     title: "Snow Rider", 
-    imgSrc: "gameimg/snowrider.webp",
+    imgSrc: "/img/gameimg/snowrider.webp",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://itsvijaysingh.github.io/Snow-Rider3D/")
 }, 
 {
     title: "Happy Glass",
-    imgSrc: "gameimg/happyglass.avif",
+    imgSrc: "/img/gameimg/happyglass.avif",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://games.crazygames.com/en_US/happy-glass/index.html")
 },
 {
     title: "M</x>inec</x>raft",
-    imgSrc: "gameimg/minecraft.avif",
+    imgSrc: "/img/gameimg/minecraft.avif",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://eaglercraft.com/mc/1.8.8/")
 }, 
 {
     title: "Dino Game", 
-    imgSrc: "gameimg/dinogame.avif",
+    imgSrc: "/img/gameimg/dinogame.avif",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://games.crazygames.com/en_US/chrome-dino/index.html?v=1.298")
 }, 
 {
     title: "BitLife", 
-    imgSrc: "gameimg/bitlife.png",
+    imgSrc: "/img/gameimg/bitlife.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://ubg365.github.io/bitlife-life-simulator/play.html")
 }, 
 {
@@ -137,12 +137,12 @@ const gamesData = [
 }, 
 {
     title: "Id</x>le Brea</x>kout", 
-    imgSrc: "gameimg/idle-breakout-logo.jpg",
+    imgSrc: "/img/gameimg/idle-breakout-logo.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/49029/")
 },
 {
     title: "Wordle Unlimited", 
-    imgSrc: "gameimg/wordle.jpg",
+    imgSrc: "/img/gameimg/wordle.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://wordleunlimited.org")
 },
 {
@@ -162,7 +162,7 @@ const gamesData = [
 },
 {
     title: "Cu</x>t T</x>he R</x>ope", 
-    imgSrc: "gameimg/CutTheRope.jpg",
+    imgSrc: "/img/gameimg/CutTheRope.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://17440050909322948705.playables.usercontent.goog/v/assets/index.html")
 },
 {
@@ -182,7 +182,7 @@ const gamesData = [
 },
 {
     title: "Squ</x>areX 2: eXt</x>reme", 
-    imgSrc: "gameimg/SquareX.png",
+    imgSrc: "/img/gameimg/SquareX.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/51216/")
 },
 {
@@ -192,17 +192,17 @@ const gamesData = [
 },
 {
     title: "Sc</x>ribble", 
-    imgSrc: "gameimg/scribble.webp",
+    imgSrc: "/img/gameimg/scribble.webp",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/49827/")
 },
 {
     title: "Slice Master", 
-    imgSrc: "gameimg/slice-master-1.jpg",
+    imgSrc: "/img/gameimg/slice-master-1.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/50815/")
 },
 {
     title: "Infinite Craft", 
-    imgSrc: "gameimg/infinitecraft.webp",
+    imgSrc: "/img/gameimg/infinitecraft.webp",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://infinite-craft.pages.dev/embed")
 },
 {
@@ -212,7 +212,7 @@ const gamesData = [
 },
 {
     title: "Mr. Mine", 
-    imgSrc: "gameimg/mrmine.jpg",
+    imgSrc: "/img/gameimg/mrmine.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/48544/")
 },
 {
@@ -222,12 +222,12 @@ const gamesData = [
 },
 {
     title: "Time Sho</x>oter 2", 
-    imgSrc: "gameimg/TimeShooter2.jpg",
+    imgSrc: "/img/gameimg/TimeShooter2.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://watchdocumentaries.com/wp-content/uploads/games/time-shooter-2/")
 },
 {
     title: "Gu</x>n Str</x>ike Runner", 
-    imgSrc: "gameimg/gunstrikerunner.png",
+    imgSrc: "/img/gameimg/gunstrikerunner.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://games.crazygames.com/en_US/gun-strike-runner/index.html?v=1.301")
 },
 {
@@ -247,182 +247,182 @@ const gamesData = [
 },
 {
     title: "Tomb Of The Mask", 
-    imgSrc: "gameimg/tombofthemask.png",
+    imgSrc: "/img/gameimg/tombofthemask.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://images-opensocial.googleusercontent.com/gadgets/ifr?container=ig&url=https://cdn.jsdelivr.net/gh/sk1bx/element@9cccb2fafb569c963501a5d818472b561121cea6/totm.xml")
 },
 {
     title: "OvO", 
-    imgSrc: "gameimg/OVO.png",
+    imgSrc: "/img/gameimg/OVO.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/50208/")
 },
 {
     title: "Poly Track", 
-    imgSrc: "gameimg/polytrack.png",
+    imgSrc: "/img/gameimg/polytrack.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/polytrackfix/polytrack/")
 },
 {
     title: "The Impossible Quiz", 
-    imgSrc: "gameimg/theimpossiblequiz.png",
+    imgSrc: "/img/gameimg/theimpossiblequiz.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://thepizzaedition.github.io/iquiz/")
 },
 {
     title: "Tunnel Rush", 
-    imgSrc: "gameimg/tunnelrush2.png",
+    imgSrc: "/img/gameimg/tunnelrush2.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://tunnelrush.app/iframe/index.html")
 },
 {
     title: "Tanuki Sunset", 
-    imgSrc: "gameimg/tanukisunset.png",
+    imgSrc: "/img/gameimg/tanukisunset.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://calculatorgames.github.io/sunset/")
 },
 {
     title: "Vex 8", 
-    imgSrc: "gameimg/vex8.png",
+    imgSrc: "/img/gameimg/vex8.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/Vex8/")
 },
 {
     title: "Rooftop Snipers", 
-    imgSrc: "gameimg/rooftopsnipers.png",
+    imgSrc: "/img/gameimg/rooftopsnipers.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://rooftop-snipers.github.io/file/")
 },
 {
     title: "Paper Plane", 
-    imgSrc: "gameimg/paperplane.png",
+    imgSrc: "/img/gameimg/paperplane.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://app-175623.games.s3.yandex.net/175623/lxgi3oj96sq65o45rxnxakwuglgx7fr8/index.html")
 },
 {
     title: "Cluster Rush", 
-    imgSrc: "gameimg/clusterrush.png",
+    imgSrc: "/img/gameimg/clusterrush.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://smdgames.github.io/mathgames66/7462e5fd-cbf3-4484-91ad-ad8574157409/content/w8.snokido.com/games/unity-webgl/cluster-rush/index.html")
 },
 {
     title: "FNAF", 
-    imgSrc: "gameimg/fnaf.png",
+    imgSrc: "/img/gameimg/fnaf.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/gmz/fnaf/index.html")
 },
 {
     title: "Gun Spin", 
-    imgSrc: "gameimg/gunspin.png",
+    imgSrc: "/img/gameimg/gunspin.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://gun-spin.github.io/file/")
 },
 {
     title: "Stack Tris", 
-    imgSrc: "gameimg/stacktris.png",
+    imgSrc: "/img/gameimg/stacktris.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://abinbins.github.io/a6/stacktris/")
 },
 {
     title: "Neon Swing", 
-    imgSrc: "gameimg/neonswing.png",
+    imgSrc: "/img/gameimg/neonswing.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://mazahackasgan.github.io/neon-swing/")
 },
 {
     title: "Drive Mad", 
-    imgSrc: "gameimg/drivemad.png",
+    imgSrc: "/img/gameimg/drivemad.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://ubg77.github.io/game131022/drive-mad/")
 },
 {
     title: "CoreBall", 
-    imgSrc: "gameimg/coreball.jpg",
+    imgSrc: "/img/gameimg/coreball.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.monkey-type.org/games/coreballiframe")
 },
 {
     title: "Pixel Shooter", 
-    imgSrc: "gameimg/pixelshooter.webp",
+    imgSrc: "/img/gameimg/pixelshooter.webp",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://images-opensocial.googleusercontent.com/gadgets/ifr?url=https://googleusercontent.b-cdn.net/pixel-shooter/ps.xml&container=ig")
 },
 {
     title: "Basketball Stars", 
-    imgSrc: "gameimg/basketballstars.png",
+    imgSrc: "/img/gameimg/basketballstars.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://images-opensocial.googleusercontent.com/gadgets/ifr?url=https://cdn.jsdelivr.net/gh/bobydob/JSEngine@c0c9f32fd575688ff4b14309e9acf19b73f15e2a/build/bs/bs.xml&container=ig")
 },
 {
     title: "FNAF 2", 
-    imgSrc: "gameimg/fnaf2.webp",
+    imgSrc: "/img/gameimg/fnaf2.webp",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/gmz/fnaf2/index.html")
 },
 {
     title: "FNAF 3", 
-    imgSrc: "gameimg/fnaf3.webp",
+    imgSrc: "/img/gameimg/fnaf3.webp",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/gmz/fnaf3/index.html")
 },
 {
     title: "FNAF 4", 
-    imgSrc: "gameimg/fnaf4.webp",
+    imgSrc: "/img/gameimg/fnaf4.webp",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/gmz/fnaf4/index.html")
 },
 {
     title: "FNAF 5", 
-    imgSrc: "gameimg/fnaf5.webp",
+    imgSrc: "/img/gameimg/fnaf5.webp",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/FNAF5/")
 },
 {
     title: "Monkey Mart", 
-    imgSrc: "gameimg/monkeymark.png",
+    imgSrc: "/img/gameimg/monkeymark.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://ubggo.github.io/ub-games/monkeymart/")
 },
 {
     title: "Flappy Bird", 
-    imgSrc: "gameimg/flappybird.jpg",
+    imgSrc: "/img/gameimg/flappybird.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://flappybirdgame.github.io/file/")
 },
 {
     title: "FNF", 
-    imgSrc: "gameimg/fnf.jpg",
+    imgSrc: "/img/gameimg/fnf.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://game.fnfhub.net/26860/")
 },
 {
     title: "A Little To The Left", 
-    imgSrc: "gameimg/alittletotheleft.jpg",
+    imgSrc: "/img/gameimg/alittletotheleft.jpg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.freewebarcade.com/html5/unity/alittletotheleft/index.html")
 },
 {
     title: "Silk", 
-    imgSrc: "gameimg/silk.jpeg",
+    imgSrc: "/img/gameimg/silk.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("http://weavesilk.com")
 },
 {
     title: "Poppy Playtime", 
-    imgSrc: "gameimg/poppyplaytime.jpeg",
+    imgSrc: "/img/gameimg/poppyplaytime.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://lagged.com/games/poppyplaytime2/")
 },
 {
     title: "Drift Boss", 
-    imgSrc: "gameimg/drift-boss1.png",
+    imgSrc: "/img/gameimg/drift-boss1.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.mathplayground.com/drift-boss-v3/index.html")
 },
 {
     title: "Block Blast", 
-    imgSrc: "gameimg/blockblast.jpeg",
+    imgSrc: "/img/gameimg/blockblast.jpeg",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://reunbozdo.github.io")
 },
 {
     title: "Surviver.io", 
-    imgSrc: "gameimg/survivor.png",
+    imgSrc: "/img/gameimg/survivor.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("//html5.gamedistribution.com/rvvASMiM/f1c451e586c04b4c8cba01b0c50d9090/index.html?gd_sdk_referrer_url=https%3A%2F%2Fwww.miniplay.com%2Fgame%2Fsurvivor-io&mp_api_as3_url=https%3A%2F%2Fssl.minijuegosgratis.com%2Flechuck%2Fas3%2Flatest.swf&mp_api_as3_url_bck=https%3A%2F%2Fapi.minijuegos.com%2Flechuck%2Fclient-as%2F&mp_api_id=5418&mp_api_js_url=https%3A%2F%2Fssl.minijuegosgratis.com%2Flechuck%2Fjs%2Flatest.js&mp_api_js_url_bck=https%3A%2F%2Fapi.minijuegos.com%2Flechuck%2Fclient-js%2F&mp_assets=https%3A%2F%2Fs2.minijuegosgratis.com%2F&mp_embed=0&mp_game_id=243226&mp_game_uid=survivor-io&mp_game_url=https%3A%2F%2Fwww.miniplay.com%2Fembed%2Fsurvivor-io&mp_int=1&mp_locale=en_US&mp_player_type=IFRAME&mp_site_https_url=https%3A%2F%2Fwww.miniplay.com%2F&mp_site_name=miniplay.com&mp_site_url=https%3A%2F%2Fwww.miniplay.com%2F&mp_timezone=America%2FNew_York&mp_view_type=&mini_signature=977a38e9593efe366a077777384e2a07&xdm_e=https%3A%2F%2Fwww.miniplay.com&xdm_c=default3861&xdm_p=1&gd_zone_config=eyJwYXJlbnRVUkwiOiJodHRwczovL3d3dy5taW5pcGxheS5jb20vZ2FtZS9zdXJ2aXZvci1pbyIsInBhcmVudERvbWFpbiI6Im1pbmlwbGF5LmNvbSIsInRvcERvbWFpbiI6Im1pbmlwbGF5LmNvbSIsImhhc0ltcHJlc3Npb24iOmZhbHNlLCJsb2FkZXJFbmFibGVkIjp0cnVlLCJob3N0IjoiaHRtbDUuZ2FtZWRpc3RyaWJ1dGlvbi5jb20iLCJ2ZXJzaW9uIjoiMS41LjE3In0%253D")
 },
 {
     title: "Subway Surfers", 
-    imgSrc: "gameimg/subway-surfers.png",
+    imgSrc: "/img/gameimg/subway-surfers.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://77pen.github.io/p8/subway-surfers-newyork/")
 },
 {
     title: "Temple Run", 
-    imgSrc: "gameimg/templerun.png",
+    imgSrc: "/img/gameimg/templerun.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://23azostore.github.io/s8/temple-run-2")
 },
 {
     title: "Google Snake", 
-    imgSrc: "gameimg/google-snake-icon-filled-256.png",
+    imgSrc: "/img/gameimg/google-snake-icon-filled-256.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://googlesnakemods.com/v/4/")
 },
 {
     title: "Drift Hunters", 
-    imgSrc: "gameimg/drifthunters.png",
+    imgSrc: "/img/gameimg/drifthunters.png",
     link: "/local games/Drift Hunters/Drift Hunters.html"
 },
 {
     title: "Ngon", 
-    imgSrc: "gameimg/ngon_title.gif",
+    imgSrc: "/img/gameimg/ngon_title.gif",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://landgreen.github.io/n-gon/")
 },
 {
