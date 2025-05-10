@@ -14,21 +14,39 @@ const PORT = 8080;
 const CACHE_BUSTER = Date.now();
 console.log(`Server started with cache buster: ${CACHE_BUSTER}`);
 
-// ==== DIRECT IMAGE HANDLER - ADD THIS ====
+// ==== IMPROVED DIRECT IMAGE HANDLER ====
 // This middleware ONLY handles image requests and serves them properly
 app.use((req, res, next) => {
   // Only process image files
   if (req.path.match(/\.(png|jpg|jpeg|gif|webp|avif|svg|ico)$/i)) {
-    // Map possible paths to check - this handles variations in where images might be stored
+    console.log(`Image requested: ${req.path}`);
+    
+    // Get the filename without path
+    const filename = path.basename(req.path);
+    
+    // Map possible paths to check - trying ALL possible locations
     const pathsToCheck = [
-      path.join(dirname, "static", req.path),                                     // Standard path
-      path.join(dirname, "static", "img", "gameimg", path.basename(req.path)),    // Games images path
-      path.join(dirname, "static", "assets", "img", path.basename(req.path))      // Assets path
+      path.join(dirname, "static", req.path),                                   // Standard path
+      path.join(dirname, "static", "img", "gameimg", filename),                 // Games images path
+      path.join(dirname, "static", "img", filename),                            // Direct img folder
+      path.join(dirname, "static", "assets", "img", filename),                  // Assets path
+      path.join(dirname, "static", "assets", filename),                         // Direct assets folder
+      path.join(dirname, "static", "images", filename),                         // Images folder
+      path.join(dirname, "static", "icons", filename),                          // Icons folder
+      // Try lowercase version (Linux is case-sensitive)
+      path.join(dirname, "static", "img", "gameimg", filename.toLowerCase()),
+      path.join(dirname, "static", "img", filename.toLowerCase())
     ];
+    
+    // Log all paths we're checking
+    console.log("Checking paths for image:");
+    pathsToCheck.forEach(p => console.log(`- ${p}`));
     
     // Check each possible path
     for (const imagePath of pathsToCheck) {
       if (fs.existsSync(imagePath) && fs.statSync(imagePath).isFile()) {
+        console.log(`SUCCESS! Found image at: ${imagePath}`);
+        
         // Get the file extension to determine content type
         const ext = path.extname(req.path).toLowerCase();
         let contentType = 'application/octet-stream';
@@ -52,6 +70,24 @@ app.use((req, res, next) => {
     }
     
     // If we got here, the image wasn't found in any of the checked locations
+    // Let's add a more helpful error message with debugging info
+    console.log(`ERROR: Image not found in any location: ${req.path}`);
+    
+    // Try to list contents of gameimg directory to help debug
+    try {
+      const gameImgDir = path.join(dirname, "static", "img", "gameimg");
+      if (fs.existsSync(gameImgDir) && fs.statSync(gameImgDir).isDirectory()) {
+        console.log(`Contents of ${gameImgDir}:`);
+        const files = fs.readdirSync(gameImgDir);
+        files.slice(0, 20).forEach(file => console.log(`- ${file}`));
+        if (files.length > 20) console.log(`... and ${files.length - 20} more files`);
+      } else {
+        console.log(`Directory doesn't exist: ${gameImgDir}`);
+      }
+    } catch (error) {
+      console.error(`Error listing directory:`, error.message);
+    }
+    
     // Return a proper image 404 response without HTML
     return res.status(404).send('Image not found');
   }
