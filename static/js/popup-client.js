@@ -1,21 +1,43 @@
 // Popup client script - loads Socket.IO and handles popup display
 (function() {
+  // Get the current domain and determine the popup service URL
+  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const popupServiceUrl = isLocal ? 'http://localhost:8081' : `${window.location.protocol}//${window.location.hostname}:8081`;
+  
   // Load Socket.IO if not already loaded
   if (typeof io === 'undefined') {
     const script = document.createElement('script');
-    script.src = 'http://localhost:8081/socket.io/socket.io.js';
+    script.src = `${popupServiceUrl}/socket.io/socket.io.js`;
     script.onload = initializePopupClient;
+    script.onerror = function() {
+      console.error('Failed to load Socket.IO script');
+    };
     document.head.appendChild(script);
   } else {
     initializePopupClient();
   }
   
   function initializePopupClient() {
+    console.log('Attempting to connect to popup service at:', popupServiceUrl);
+    
     // Connect to popup service
-    const socket = io('http://localhost:8081');
+    const socket = io(popupServiceUrl);
+    
+    socket.on('connect', function() {
+      console.log('Connected to popup service');
+    });
+    
+    socket.on('disconnect', function() {
+      console.log('Disconnected from popup service');
+    });
+    
+    socket.on('connect_error', function(error) {
+      console.error('Connection error:', error);
+    });
     
     // Listen for popup messages
     socket.on('popup_message', function(data) {
+      console.log('Received popup message:', data.message);
       showPopup(data.message);
     });
     
