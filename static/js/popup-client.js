@@ -1,14 +1,15 @@
 // Popup client script - loads Socket.IO and handles popup display
 (function() {
   // Use the proxy path for production - this goes through Caddy
-  const popupServiceUrl = window.location.origin + '/popup-service';
+  const popupServiceUrl = window.location.origin;
+  const popupServicePath = '/popup-service/socket.io/';
   
-  console.log('Connecting to popup service at:', popupServiceUrl);
+  console.log('Connecting to popup service at:', popupServiceUrl + popupServicePath);
   
   // Load Socket.IO if not already loaded
   if (typeof io === 'undefined') {
     const script = document.createElement('script');
-    script.src = `${popupServiceUrl}/socket.io/socket.io.js`;
+    script.src = `${popupServiceUrl}/popup-service/socket.io/socket.io.js`;
     script.onload = initializePopupClient;
     script.onerror = function() {
       console.error('Failed to load Socket.IO script from:', script.src);
@@ -21,8 +22,10 @@
   function initializePopupClient() {
     console.log('Initializing popup client...');
     
-    // Connect to popup service
-    const socket = io(popupServiceUrl);
+    // Connect to popup service with the correct path
+    const socket = io(popupServiceUrl, {
+      path: popupServicePath
+    });
     
     socket.on('connect', function() {
       console.log('✓ Connected to popup service');
