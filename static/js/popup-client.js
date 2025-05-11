@@ -1,8 +1,9 @@
 // Popup client script - loads Socket.IO and handles popup display
 (function() {
-  // Get the current domain and determine the popup service URL
-  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const popupServiceUrl = isLocal ? 'http://localhost:8081' : `${window.location.protocol}//${window.location.hostname}:8081`;
+  // Use the proxy path for production - this goes through Caddy
+  const popupServiceUrl = window.location.origin + '/popup-service';
+  
+  console.log('Connecting to popup service at:', popupServiceUrl);
   
   // Load Socket.IO if not already loaded
   if (typeof io === 'undefined') {
@@ -10,7 +11,7 @@
     script.src = `${popupServiceUrl}/socket.io/socket.io.js`;
     script.onload = initializePopupClient;
     script.onerror = function() {
-      console.error('Failed to load Socket.IO script');
+      console.error('Failed to load Socket.IO script from:', script.src);
     };
     document.head.appendChild(script);
   } else {
@@ -18,13 +19,13 @@
   }
   
   function initializePopupClient() {
-    console.log('Attempting to connect to popup service at:', popupServiceUrl);
+    console.log('Initializing popup client...');
     
     // Connect to popup service
     const socket = io(popupServiceUrl);
     
     socket.on('connect', function() {
-      console.log('Connected to popup service');
+      console.log('✓ Connected to popup service');
     });
     
     socket.on('disconnect', function() {
