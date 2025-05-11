@@ -52,42 +52,70 @@
       if (!popupContainer) {
         popupContainer = document.createElement('div');
         popupContainer.id = 'popup-container';
-        popupContainer.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999;';
+        popupContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999; width: 350px;';
         document.body.appendChild(popupContainer);
       }
       
       // Create popup element
       const popup = document.createElement('div');
       popup.style.cssText = `
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 25px 35px;
-        border-radius: 12px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-        max-width: 400px;
-        text-align: center;
-        animation: fadeInScale 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        background: #000;
+        color: #fff;
+        padding: 25px 30px;
+        border-radius: 8px;
+        box-shadow: 0 0 20px rgba(255,255,255,0.3), 0 0 40px rgba(255,255,255,0.2), 0 0 60px rgba(255,255,255,0.1);
+        margin-bottom: 15px;
+        width: 100%;
+        box-sizing: border-box;
+        animation: slideInDown 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+        border: 1px solid rgba(255,255,255,0.2);
         position: relative;
+        overflow: hidden;
       `;
+      
+      // Create glowing border effect
+      const glowBorder = document.createElement('div');
+      glowBorder.style.cssText = `
+        position: absolute;
+        top: -2px;
+        left: -2px;
+        right: -2px;
+        bottom: -2px;
+        border: 2px solid rgba(255,255,255,0.5);
+        border-radius: 10px;
+        opacity: 0;
+        animation: borderGlow 3s ease-in-out infinite;
+      `;
+      popup.appendChild(glowBorder);
       
       // Create close button
       const closeBtn = document.createElement('button');
       closeBtn.innerHTML = '×';
       closeBtn.style.cssText = `
         position: absolute;
-        top: 10px;
+        top: 12px;
         right: 15px;
         background: none;
         border: none;
-        color: rgba(255,255,255,0.8);
+        color: rgba(255,255,255,0.7);
         font-size: 24px;
         cursor: pointer;
         line-height: 20px;
-        transition: color 0.2s;
+        transition: color 0.2s, transform 0.2s;
+        z-index: 1;
       `;
-      closeBtn.onmouseover = () => closeBtn.style.color = 'white';
-      closeBtn.onmouseout = () => closeBtn.style.color = 'rgba(255,255,255,0.8)';
-      closeBtn.onclick = () => popup.remove();
+      closeBtn.onmouseover = () => {
+        closeBtn.style.color = '#fff';
+        closeBtn.style.transform = 'scale(1.1)';
+      };
+      closeBtn.onmouseout = () => {
+        closeBtn.style.color = 'rgba(255,255,255,0.7)';
+        closeBtn.style.transform = 'scale(1)';
+      };
+      closeBtn.onclick = () => {
+        popup.style.animation = 'slideOutUp 0.3s ease-out forwards';
+        setTimeout(() => popup.remove(), 300);
+      };
       popup.appendChild(closeBtn);
       
       // Create message element
@@ -95,6 +123,8 @@
       messageEl.style.margin = '0';
       messageEl.style.fontSize = '16px';
       messageEl.style.lineHeight = '1.6';
+      messageEl.style.paddingRight = '30px';
+      messageEl.style.textShadow = '0 0 10px rgba(255,255,255,0.1)';
       messageEl.textContent = message;
       popup.appendChild(messageEl);
       
@@ -104,7 +134,7 @@
       // Auto-remove after 8 seconds
       setTimeout(() => {
         if (popup.parentNode) {
-          popup.style.animation = 'fadeOut 0.3s ease-out forwards';
+          popup.style.animation = 'slideOutUp 0.3s ease-out forwards';
           setTimeout(() => popup.remove(), 300);
         }
       }, 8000);
@@ -114,25 +144,49 @@
   // Add CSS for animations
   const style = document.createElement('style');
   style.textContent = `
-    @keyframes fadeInScale {
+    @keyframes slideInDown {
       from { 
         opacity: 0; 
-        transform: translate(-50%, -50%) scale(0.8);
+        transform: translateY(-100%);
       }
       to { 
         opacity: 1; 
-        transform: translate(-50%, -50%) scale(1);
+        transform: translateY(0);
       }
     }
     
-    @keyframes fadeOut {
+    @keyframes slideOutUp {
       from { 
         opacity: 1; 
-        transform: translate(-50%, -50%) scale(1);
+        transform: translateY(0);
       }
       to { 
         opacity: 0; 
-        transform: translate(-50%, -50%) scale(0.8);
+        transform: translateY(-100%);
+      }
+    }
+    
+    @keyframes borderGlow {
+      0% { 
+        opacity: 0;
+        box-shadow: 0 0 5px rgba(255,255,255,0.2);
+      }
+      50% { 
+        opacity: 1;
+        box-shadow: 0 0 20px rgba(255,255,255,0.4), 0 0 30px rgba(255,255,255,0.3);
+      }
+      100% { 
+        opacity: 0;
+        box-shadow: 0 0 5px rgba(255,255,255,0.2);
+      }
+    }
+    
+    /* Responsive design for mobile */
+    @media (max-width: 480px) {
+      #popup-container {
+        left: 10px !important;
+        right: 10px !important;
+        width: auto !important;
       }
     }
   `;
