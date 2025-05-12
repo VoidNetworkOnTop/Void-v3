@@ -129,22 +129,19 @@ function getFileHash(filePath) {
   return fileHashes[hashedPath] || CACHE_BUSTER;
 }
 
-// ==== VOID VC ACCESS PROXY MIDDLEWARE ====
-// This middleware checks if the request path starts with '/voidvcaccess'
+// ==== VC SUBDOMAIN PROXY MIDDLEWARE ====
+// This middleware checks if the request is coming from a 'vc.' subdomain
 // and proxies the request to the specified IP address
 app.use((req, res, next) => {
-  // Check if the path starts with '/voidvcaccess'
-  if (req.path.startsWith('/voidvcaccess')) {
-    // Remove '/voidvcaccess' from the path when forwarding to target
-    const targetPath = req.url.replace('/voidvcaccess', '');
-    // If the resulting path is empty, set it to '/' to avoid errors
-    const finalPath = targetPath === '' ? '/' : targetPath;
-    
-    // Proxy the request to the target IP with the modified path
+  const host = req.headers.host || '';
+  
+  // Check if the host starts with 'vc.'
+  if (host.startsWith('vc.')) {
+    // Proxy the request to the target IP while maintaining the path and query
     const options = {
       hostname: '202.61.253.205',
       port: 80,
-      path: finalPath,
+      path: req.url,
       method: req.method,
       headers: {
         ...req.headers,
@@ -183,7 +180,7 @@ app.use((req, res, next) => {
     return; // End middleware chain for this request
   }
   
-  // Continue with normal processing for other paths
+  // Continue with normal processing for non-vc domains
   next();
 });
 
