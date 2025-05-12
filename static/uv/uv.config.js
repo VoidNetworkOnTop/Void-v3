@@ -44,7 +44,7 @@ self.__uv$config = {
     sw: '/uv/uv.sw.js',
     
     // Performance and reliability settings
-    timeout: 60000,         // 60 second timeout for slow connections
+    timeout: 120000,        // Increased timeout for Firebase long connections
     strict: false,          // Disable strict mode for better compatibility
     rewriteUrl: false,      // Don't rewrite URLs (preserves original paths)
     cookies: true,          // Enable cookies for better persistence
@@ -57,7 +57,22 @@ self.__uv$config = {
     fastStream: true,       // Enable faster streaming
     webSocketCompression: false, // Disable WebSocket compression for lower latency
     
-    // Request priorities for games
+    // Firebase-specific optimizations
+    webSocket: true,        // Explicitly enable WebSocket support
+    
+    // Allow Firebase domains without rewriting
+    hostnames: [
+        'firebaseio.com',
+        'firebase.google.com',
+        'firebase.googleapis.com',
+        'firebasestorage.googleapis.com',
+        'identitytoolkit.googleapis.com'
+    ],
+    
+    // Prioritize WebSocket connections
+    wsClientMaxPayload: 1048576, // 1MB for Firebase data
+    
+    // Request priorities for games and firebase
     headers: {
         request: {
             "DNT": "1",  // Do Not Track
