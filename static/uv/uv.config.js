@@ -3,9 +3,38 @@ self.__uv$config = {
     prefix: '/uv/service/',
     bare: '/bare/',
     
-    // Regular URL encoding/decoding
-    encodeUrl: Ultraviolet.codec.xor.encode,
-    decodeUrl: Ultraviolet.codec.xor.decode,
+    // Use more efficient URL encoding that produces shorter URLs
+    encodeUrl: function(url) {
+        if (!url) return url;
+        try {
+            // URL-safe base64 encoding
+            return btoa(url)
+                .replace(/\+/g, '-') // URL safe character replacement
+                .replace(/\//g, '_')
+                .replace(/=+$/, ''); // Remove padding for shorter URLs
+        } catch (err) {
+            console.error('UV encoding error:', err);
+            // Fallback to standard Base64 if something goes wrong
+            return Ultraviolet.codec.base64.encode(url);
+        }
+    },
+    
+    // Matching decoder for our custom encoder
+    decodeUrl: function(encodedUrl) {
+        if (!encodedUrl) return encodedUrl;
+        try {
+            // Restore padding if needed for proper decoding
+            const padding = '='.repeat((4 - (encodedUrl.length % 4)) % 4);
+            const base64 = encodedUrl
+                .replace(/-/g, '+')
+                .replace(/_/g, '/') + padding;
+            return atob(base64);
+        } catch (err) {
+            console.error('UV decoding error:', err);
+            // Fallback to standard Base64 decoder
+            return Ultraviolet.codec.base64.decode(encodedUrl);
+        }
+    },
     
     // Standard UV config paths
     handler: '/uv/uv.handler.js',
@@ -14,74 +43,75 @@ self.__uv$config = {
     config: '/uv/uv.config.js',
     sw: '/uv/uv.sw.js',
     
-    // Critical settings for Firebase compatibility
-    handler: {
-        // Specific handlers for Firebase
-        firebaseio: {
-            response: (data) => {
-                // Preserve content type
-                if (data.headers.get('content-type')?.includes('application/json')) {
-                    data.headers.set('content-type', 'application/json');
-                }
-                return data;
-            }
-        }
-    },
-    
-    // Critical Firebase URL patterns to intercept and handle correctly
-    rewriteUrls: [
-        // Make sure Firebase long-polling requests work
-        {
-            source: /^(https?:\/\/.*?firebaseio\.com\/.*?\.lp.*?)$/,
-            query: true, // preserve query strings
-            rewrite: "$1",
-            custom: true
-        }
-    ],
-    
-    // Specify patterns that should bypass the normal proxy for direct connection
-    directPatterns: [
-        /^(https?:\/\/.*?\.firebase.*?\.com.*?)$/,
-        /^(https?:\/\/.*?\.google-analytics\.com.*?)$/,
-        /^(https?:\/\/.*?\.googleapis\.com.*?)$/
-    ],
-    
-    // Performance and compatibility settings
-    timeout: 60000,         // 60 second timeout for slow connections
+    // Performance and reliability settings
+    timeout: 120000,        // 2 minute timeout for Firebase long connections
     strict: false,          // Disable strict mode for better compatibility
     rewriteUrl: false,      // Don't rewrite URLs (preserves original paths)
-    cookies: true,          // Enable cookies for proper Firebase authentication
-    cors: true,             // Enable CORS fixes
-    cacheControl: true,     // Enable cache control
-    passKeys: true,         // Pass keys for Firebase WebRTC
+    cookies: true,          // Enable cookies for better persistence
+    safeMethod: false,      // Allow all HTTP methods
+    chunked: true,          // Enable chunked transfers for better performance
+    abuseLevel: 0,          // Minimal abuse protection for speed
+    corsPlugin: true,       // Ensure CORS is properly bypassed
     
-    // Skip rewriting for certain domains
-    skipRewrite: [
-        '.firebaseio.com',
+    // Firebase-specific configurations
+    webSocket: true,        // Explicitly enable WebSocket support
+    fastStream: true,       // Enable faster streaming
+    webSocketDirectConnect: true, // Direct WebSocket connection when possible
+    wsClientDirectConnect: true,  // Client direct connection for WebSocket
+    wsClientMaxPayload: 5242880,  // 5MB buffer for WebSocket payloads
+    
+    // Critical MIME type handling fix
+    mimeType: {
+        // Ensure .lp requests from Firebase are handled as proper MIME types
+        '.lp': 'application/json',
+        'firebaseio.com': 'application/json',
+        'googleapis.com': 'application/json'
+    },
+    
+    // Handle Firebase domains specially
+    hostnames: [
+        'firebaseio.com',
+        'firebase.googleapis.com',
+        'identitytoolkit.googleapis.com',
+        'securetoken.googleapis.com',
+        'voidvc-303a9-default-rtdb.firebaseio.com'
+    ],
+    
+    // Disable blockCORS for Firebase domains
+    unblock: [
+        'firebaseio.com',
+        'firebase.googleapis.com',
+        'www.gstatic.com',
         '.googleapis.com'
     ],
     
-    // Firebase headers that need preservation
+    // Special request handling for WebSocket connections
     headers: {
-        // Preserve these request headers for Firebase
         request: {
-            // Allow the necessary headers for Firebase long-polling
-            "Connection": "keep-alive",
-            "Accept": "*/*",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Content-Type": "$req-content-type", // Preserve content type
-            "Origin": "$url-origin",
-            "Referer": "$url-referer",
-            "User-Agent": "$req-user-agent",
-            "X-Firebase-GMPID": "$req-x-firebase-gmpid",
-            "X-Firebase-AppCheck": "$req-x-firebase-appcheck",
-            "X-Firebase-Auth": "$req-x-firebase-auth"
+            "DNT": "1",  // Do Not Track
+            "Upgrade-Insecure-Requests": "1",
+            "Priority": "u=1, i",  // High priority
+            // Ensure WebSocket connections are allowed
+            "Connection": "keep-alive, Upgrade", 
+            "Upgrade": "$req-upgrade",
+            "Sec-WebSocket-Extensions": "$req-sec-websocket-extensions"
         },
-        // Preserve these response headers from Firebase
         response: {
-            "Access-Control-Allow-Origin": "*",
-            "Content-Type": "$res-content-type", // Important to preserve
-            "Content-Length": "$res-content-length"
+            "X-Content-Type-Options": "nosniff",
+            // Preserve content type
+            "Content-Type": "$res-content-type"
+        },
+        preserve: {
+            // Preserve WebSocket headers
+            'websocket': [
+                'Upgrade',
+                'Connection',
+                'Sec-WebSocket-Accept',
+                'Sec-WebSocket-Extensions',
+                'Sec-WebSocket-Key',
+                'Sec-WebSocket-Protocol',
+                'Sec-WebSocket-Version'
+            ]
         }
     }
 };
