@@ -44,7 +44,7 @@ self.__uv$config = {
     sw: '/uv/uv.sw.js',
     
     // Performance and reliability settings
-    timeout: 120000,        // Increased timeout for Firebase long connections
+    timeout: 120000,        // 2 minute timeout for Firebase long connections
     strict: false,          // Disable strict mode for better compatibility
     rewriteUrl: false,      // Don't rewrite URLs (preserves original paths)
     cookies: true,          // Enable cookies for better persistence
@@ -53,34 +53,65 @@ self.__uv$config = {
     abuseLevel: 0,          // Minimal abuse protection for speed
     corsPlugin: true,       // Ensure CORS is properly bypassed
     
-    // Connection optimizations
-    fastStream: true,       // Enable faster streaming
-    webSocketCompression: false, // Disable WebSocket compression for lower latency
-    
-    // Firebase-specific optimizations
+    // Firebase-specific configurations
     webSocket: true,        // Explicitly enable WebSocket support
+    fastStream: true,       // Enable faster streaming
+    webSocketDirectConnect: true, // Direct WebSocket connection when possible
+    wsClientDirectConnect: true,  // Client direct connection for WebSocket
+    wsClientMaxPayload: 5242880,  // 5MB buffer for WebSocket payloads
     
-    // Allow Firebase domains without rewriting
+    // Critical MIME type handling fix
+    mimeType: {
+        // Ensure .lp requests from Firebase are handled as proper MIME types
+        '.lp': 'application/json',
+        'firebaseio.com': 'application/json',
+        'googleapis.com': 'application/json'
+    },
+    
+    // Handle Firebase domains specially
     hostnames: [
         'firebaseio.com',
-        'firebase.google.com',
         'firebase.googleapis.com',
-        'firebasestorage.googleapis.com',
-        'identitytoolkit.googleapis.com'
+        'identitytoolkit.googleapis.com',
+        'securetoken.googleapis.com',
+        'voidvc-303a9-default-rtdb.firebaseio.com'
     ],
     
-    // Prioritize WebSocket connections
-    wsClientMaxPayload: 1048576, // 1MB for Firebase data
+    // Disable blockCORS for Firebase domains
+    unblock: [
+        'firebaseio.com',
+        'firebase.googleapis.com',
+        'www.gstatic.com',
+        '.googleapis.com'
+    ],
     
-    // Request priorities for games and firebase
+    // Special request handling for WebSocket connections
     headers: {
         request: {
             "DNT": "1",  // Do Not Track
             "Upgrade-Insecure-Requests": "1",
-            "Priority": "u=1, i"  // High priority
+            "Priority": "u=1, i",  // High priority
+            // Ensure WebSocket connections are allowed
+            "Connection": "keep-alive, Upgrade", 
+            "Upgrade": "$req-upgrade",
+            "Sec-WebSocket-Extensions": "$req-sec-websocket-extensions"
         },
         response: {
-            "X-Content-Type-Options": "nosniff"
+            "X-Content-Type-Options": "nosniff",
+            // Preserve content type
+            "Content-Type": "$res-content-type"
+        },
+        preserve: {
+            // Preserve WebSocket headers
+            'websocket': [
+                'Upgrade',
+                'Connection',
+                'Sec-WebSocket-Accept',
+                'Sec-WebSocket-Extensions',
+                'Sec-WebSocket-Key',
+                'Sec-WebSocket-Protocol',
+                'Sec-WebSocket-Version'
+            ]
         }
     }
 };
