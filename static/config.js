@@ -7,7 +7,8 @@ const htmlConfig = {
     termPath: "/terminal.html",
     reqPath: "/rga",
     chatPath: "/chat",
-    voaiPath "/voidgpt"
+    voaiPath "/voidgpt".
+    vovcPath "/voidgpt"
 }
 
 const siteConfig = {
