@@ -129,17 +129,55 @@ function getFileHash(filePath) {
   return fileHashes[hashedPath] || CACHE_BUSTER;
 }
 
-// ==== VC SUBDOMAIN REDIRECT MIDDLEWARE ====
+// ==== VC SUBDOMAIN PROXY MIDDLEWARE ====
 // This middleware checks if the request is coming from a 'vc.' subdomain
-// and redirects to the specified IP address
+// and proxies the request to the specified IP address
 app.use((req, res, next) => {
   const host = req.headers.host || '';
   
   // Check if the host starts with 'vc.'
   if (host.startsWith('vc.')) {
-    // Redirect to the specified IP address while maintaining the path and query
-    const targetUrl = `http://202.61.253.205${req.url}`;
-    return res.redirect(targetUrl);
+    // Proxy the request to the target IP while maintaining the path and query
+    const options = {
+      hostname: '202.61.253.205',
+      port: 80,
+      path: req.url,
+      method: req.method,
+      headers: {
+        ...req.headers,
+        host: '202.61.253.205', // Update the host header to the target
+      }
+    };
+    
+    // Create a proxy request
+    const proxyReq = http.request(options, (proxyRes) => {
+      // Copy status code
+      res.statusCode = proxyRes.statusCode;
+      
+      // Copy headers
+      Object.keys(proxyRes.headers).forEach(key => {
+        res.setHeader(key, proxyRes.headers[key]);
+      });
+      
+      // Stream the response back to the client
+      proxyRes.pipe(res);
+    });
+    
+    // Handle errors in the proxy request
+    proxyReq.on('error', (error) => {
+      console.error('Proxy request error:', error);
+      res.statusCode = 500;
+      res.end('Proxy Error: Could not connect to target server');
+    });
+    
+    // If there's a request body, forward it to the target
+    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+      req.pipe(proxyReq);
+    } else {
+      proxyReq.end();
+    }
+    
+    return; // End middleware chain for this request
   }
   
   // Continue with normal processing for non-vc domains
