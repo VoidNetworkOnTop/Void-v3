@@ -129,64 +129,6 @@ function getFileHash(filePath) {
   return fileHashes[hashedPath] || CACHE_BUSTER;
 }
 
-// ==== VOID VC ACCESS PROXY MIDDLEWARE ====
-// This middleware checks if the request path starts with '/voidvcaccess'
-// and proxies the request to the specified IP address
-app.use((req, res, next) => {
-  // Check if the path starts with '/voidvcaccess'
-  if (req.path.startsWith('/voidvcaccess')) {
-    // Remove '/voidvcaccess' from the path when forwarding to target
-    const targetPath = req.url.replace('/voidvcaccess', '');
-    // If the resulting path is empty, set it to '/' to avoid errors
-    const finalPath = targetPath === '' ? '/' : targetPath;
-    
-    // Proxy the request to the target IP with the modified path
-    const options = {
-      hostname: '202.61.253.205',
-      port: 80,
-      path: finalPath,
-      method: req.method,
-      headers: {
-        ...req.headers,
-        host: '202.61.253.205', // Update the host header to the target
-      }
-    };
-    
-    // Create a proxy request
-    const proxyReq = http.request(options, (proxyRes) => {
-      // Copy status code
-      res.statusCode = proxyRes.statusCode;
-      
-      // Copy headers
-      Object.keys(proxyRes.headers).forEach(key => {
-        res.setHeader(key, proxyRes.headers[key]);
-      });
-      
-      // Stream the response back to the client
-      proxyRes.pipe(res);
-    });
-    
-    // Handle errors in the proxy request
-    proxyReq.on('error', (error) => {
-      console.error('Proxy request error:', error);
-      res.statusCode = 500;
-      res.end('Proxy Error: Could not connect to target server');
-    });
-    
-    // If there's a request body, forward it to the target
-    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
-      req.pipe(proxyReq);
-    } else {
-      proxyReq.end();
-    }
-    
-    return; // End middleware chain for this request
-  }
-  
-  // Continue with normal processing for other paths
-  next();
-});
-
 // ==== GLOBAL CACHE-BUSTING MIDDLEWARE ====
 // This middleware sets appropriate cache headers for all responses
 app.use((req, res, next) => {
