@@ -129,6 +129,23 @@ function getFileHash(filePath) {
   return fileHashes[hashedPath] || CACHE_BUSTER;
 }
 
+// ==== VC SUBDOMAIN REDIRECT MIDDLEWARE ====
+// This middleware checks if the request is coming from a 'vc.' subdomain
+// and redirects to the specified IP address
+app.use((req, res, next) => {
+  const host = req.headers.host || '';
+  
+  // Check if the host starts with 'vc.'
+  if (host.startsWith('vc.')) {
+    // Redirect to the specified IP address while maintaining the path and query
+    const targetUrl = `http://202.61.253.205${req.url}`;
+    return res.redirect(targetUrl);
+  }
+  
+  // Continue with normal processing for non-vc domains
+  next();
+});
+
 // ==== GLOBAL CACHE-BUSTING MIDDLEWARE ====
 // This middleware sets appropriate cache headers for all responses
 app.use((req, res, next) => {
