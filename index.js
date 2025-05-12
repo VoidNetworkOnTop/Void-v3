@@ -411,6 +411,10 @@ app.get("/voidgpt", function (req, res) {
   res.sendFile(path.join(dirname, "static/voidgpt.html"));
 });
 
+app.get("/voidvc", function (req, res) {
+  res.sendFile(path.join(dirname, "static/void-vc.html"));
+});
+
 // Main index page route - special handling for the homepage
 app.get("/", function(req, res) {
   res.sendFile(path.join(dirname, "static/index.html"));
