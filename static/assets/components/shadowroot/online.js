@@ -11,19 +11,26 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
+const auth = firebase.auth();
 
 // DOM Elements
 const onlineLanding = document.getElementById('online-landing');
 const createOnlineRoom = document.getElementById('create-online-room');
+const adminLogin = document.getElementById('admin-login');
 const roomsList = document.getElementById('rooms-list');
 const onlineChatRoom = document.getElementById('online-chat-room');
 const hostOnlineBtn = document.getElementById('host-online-btn');
 const browseRoomsBtn = document.getElementById('browse-rooms-btn');
+const adminLoginBtn = document.getElementById('admin-login-btn');
 const backToMainOnline = document.getElementById('back-to-main-online');
 const roomNameInput = document.getElementById('room-name-input');
 const onlineParticipantCount = document.getElementById('online-participant-count');
 const createOnlineRoomBtn = document.getElementById('create-online-room-btn');
 const backFromCreateOnline = document.getElementById('back-from-create-online');
+const adminEmailInput = document.getElementById('admin-email');
+const adminPasswordInput = document.getElementById('admin-password');
+const adminLoginSubmit = document.getElementById('admin-login-submit');
+const backFromAdminLogin = document.getElementById('back-from-admin-login');
 const roomsContainer = document.getElementById('rooms-container');
 const refreshRoomsBtn = document.getElementById('refresh-rooms-btn');
 const backFromRooms = document.getElementById('back-from-rooms');
@@ -37,6 +44,7 @@ const audioContainer = document.getElementById('audio-container');
 // Global variables
 let currentRoom = null;
 let isHost = false;
+let isAdmin = false;
 let localStream = null;
 let peerConnections = {};
 let currentUserId = generateUserId();
@@ -86,8 +94,44 @@ browseRoomsBtn.addEventListener('click', async () => {
     }
 });
 
+adminLoginBtn.addEventListener('click', () => {
+    onlineLanding.classList.add('hidden');
+    adminLogin.classList.remove('hidden');
+});
+
 backToMainOnline.addEventListener('click', () => {
     window.location.href = 'index.html';
+});
+
+adminLoginSubmit.addEventListener('click', () => {
+    const email = adminEmailInput.value.trim();
+    const password = adminPasswordInput.value.trim();
+    
+    if (!email || !password) {
+        alert('Please enter both email and password');
+        return;
+    }
+    
+    auth.signInWithEmailAndPassword(email, password)
+        .then((userCredential) => {
+            // Successfully signed in
+            isAdmin = true;
+            adminLogin.classList.add('hidden');
+            onlineLanding.classList.remove('hidden');
+            showNotification('Logged in as admin');
+            
+            // Clear form fields for security
+            adminEmailInput.value = '';
+            adminPasswordInput.value = '';
+        })
+        .catch((error) => {
+            alert(`Login failed: ${error.message}`);
+        });
+});
+
+backFromAdminLogin.addEventListener('click', () => {
+    adminLogin.classList.add('hidden');
+    onlineLanding.classList.remove('hidden');
 });
 
 createOnlineRoomBtn.addEventListener('click', createNewOnlineRoom);
@@ -98,6 +142,49 @@ onlineMuteBtn.addEventListener('click', toggleMute);
 onlineLeaveBtn.addEventListener('click', leaveRoom);
 
 // Functions
+async function adminDeleteRoom(roomId) {
+    if (!isAdmin) return;
+    
+    if (confirm('Are you sure you want to delete this room? All participants will be kicked.')) {
+        await database.ref(`public-rooms/${roomId}`).remove();
+        showNotification('Room deleted');
+        loadPublicRooms();
+    }
+}
+
+async function adminBanUserIp(userId) {
+    if (!isAdmin) return;
+    
+    // Get the user's IP
+    const userIpSnapshot = await database.ref(`user-ips/${userId}`).once('value');
+    const userIp = userIpSnapshot.val();
+    
+    if (!userIp) {
+        alert('Could not find IP address for this user.');
+        return;
+    }
+    
+    if (confirm(`Are you sure you want to ban user with IP ${userIp} for 10 minutes?`)) {
+        // Set 10-minute ban
+        const banEnd = Date.now() + (10 * 60 * 1000); // 10 minutes
+        await database.ref(`ip-bans/${userIp.replace(/\./g, '-')}`).set({
+            until: banEnd,
+            reason: 'Admin ban',
+            timestamp: Date.now()
+        });
+        
+        // Kick the user from their current room
+        if (currentRoom) {
+            await database.ref(`public-rooms/${currentRoom}/kicked/${userId}`).set(true);
+            setTimeout(async () => {
+                await database.ref(`public-rooms/${currentRoom}/participants/${userId}`).remove();
+            }, 100);
+        }
+        
+        showNotification(`User banned for 10 minutes`);
+    }
+}
+
 function generateUserId() {
     return Math.random().toString(36).substr(2, 9);
 }
@@ -339,7 +426,8 @@ async function createNewOnlineRoom() {
         participants: {
             [currentUserId]: {
                 joined: true,
-                muted: false
+                muted: false,
+                isAdmin: isAdmin
             }
         }
     });
@@ -367,8 +455,8 @@ async function joinOnlineRoom(roomId, roomName) {
         return;
     }
     
-    // Check if room is full
-    if (room.currentParticipants >= room.maxParticipants) {
+    // Check if room is full (admins can bypass this check)
+    if (!isAdmin && room.currentParticipants >= room.maxParticipants) {
         alert('Room is full');
         return;
     }
@@ -376,7 +464,8 @@ async function joinOnlineRoom(roomId, roomName) {
     // Join the room
     await database.ref(`public-rooms/${roomId}/participants/${currentUserId}`).set({
         joined: true,
-        muted: false
+        muted: false,
+        isAdmin: isAdmin // Mark this participant as admin
     });
     
     // Update participant count
@@ -384,6 +473,9 @@ async function joinOnlineRoom(roomId, roomName) {
     
     // Setup WebRTC and enter room
     setupWebRTC();
+    
+    // Hide all screens and show chat room
+    adminLogin.classList.add('hidden');
     roomsList.classList.add('hidden');
     onlineChatRoom.classList.remove('hidden');
     onlineRoomTitle.textContent = roomName;
@@ -411,12 +503,22 @@ async function loadPublicRooms() {
         if (room.status === 'active' && room.currentParticipants > 0) {
             const roomElement = document.createElement('div');
             roomElement.className = 'room-item';
+            
+            let buttons = `<button class="join-room-btn" onclick="joinOnlineRoom('${roomId}', '${filterBadWords(room.name).replace(/'/g, "\\'")}')">Join</button>`;
+            
+            // Add delete button for admins
+            if (isAdmin) {
+                buttons += `<button class="delete-room-btn" onclick="adminDeleteRoom('${roomId}')">×</button>`;
+            }
+            
             roomElement.innerHTML = `
                 <div class="room-info">
                     <h3>${filterBadWords(room.name)}</h3>
                     <p>${room.currentParticipants}/${room.maxParticipants} participants</p>
                 </div>
-                <button class="join-room-btn" onclick="joinOnlineRoom('${roomId}', '${filterBadWords(room.name).replace(/'/g, "\\'")}')">Join</button>
+                <div class="room-buttons">
+                    ${buttons}
+                </div>
             `;
             roomsContainer.appendChild(roomElement);
         }
@@ -488,7 +590,8 @@ async function toggleMute() {
 }
 
 async function kickParticipant(participantId) {
-    if (!isHost || participantId === currentUserId) return;
+    // Allow host or admin to kick
+    if ((!isHost && !isAdmin) || participantId === currentUserId) return;
     
     if (confirm('Are you sure you want to kick this participant?')) {
         // Mark them as kicked first
@@ -498,7 +601,9 @@ async function kickParticipant(participantId) {
         const roomSnapshot = await database.ref(`public-rooms/${currentRoom}`).once('value');
         const room = roomSnapshot.val();
         if (room) {
-            await database.ref(`public-rooms/${currentRoom}/currentParticipants`).set(room.currentParticipants - 1);
+            await database.ref(`public-rooms/${currentRoom}/currentParticipants`).set(
+                Math.max(0, room.currentParticipants - 1)
+            );
         }
         
         // Wait a moment then remove them
@@ -696,7 +801,7 @@ function createPeerConnection(participantId) {
         }
     };
     
-    // Handle incoming streams
+// Handle incoming streams
     pc.ontrack = event => {
         // Add participant to UI if not already added
         addParticipantUI(participantId, false);
@@ -860,13 +965,24 @@ function addParticipantUI(participantId, isLocal) {
         
         participantEl.appendChild(nameLabel);
         
-        // Add kick button for host (except for own participant)
-        if (isHost && !isLocal) {
+        // Add kick button for host or admin (except for own participant)
+        if ((isHost || isAdmin) && !isLocal) {
             const kickBtn = document.createElement('button');
             kickBtn.className = 'kick-btn';
             kickBtn.innerHTML = '×';
+            kickBtn.title = 'Kick user';
             kickBtn.onclick = () => kickParticipant(participantId);
             participantEl.appendChild(kickBtn);
+        }
+        
+        // Add ban button for admins (except for own participant)
+        if (isAdmin && !isLocal) {
+            const banBtn = document.createElement('button');
+            banBtn.className = 'ban-btn';
+            banBtn.innerHTML = '🔨';
+            banBtn.title = 'Ban user for 10 minutes';
+            banBtn.onclick = () => adminBanUserIp(participantId);
+            participantEl.appendChild(banBtn);
         }
         
         // Add report button for all users (except for own participant)
@@ -1027,5 +1143,7 @@ async function leaveRoom() {
     loadPublicRooms();
 }
 
-// Make joinOnlineRoom function globally accessible
+// Make functions globally accessible
 window.joinOnlineRoom = joinOnlineRoom;
+window.adminDeleteRoom = adminDeleteRoom;
+window.adminBanUserIp = adminBanUserIp;
