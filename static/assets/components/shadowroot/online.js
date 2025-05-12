@@ -12,28 +12,6 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
-// Force Firebase to use HTTP long-polling instead of WebSockets
-database.goOnline();
-firebase.database.INTERNAL.forceRestClient = true;
-
-// Add these lines to disable WebSocket connections when in proxy
-const originalWebSocket = window.WebSocket;
-if (window.location.href.includes('/uv/')) {
-    // We're running inside a UV proxy, replace WebSocket with a non-functional version
-    // This forces Firebase to fall back to HTTP mode
-    window.WebSocket = function() {
-        const ws = {};
-        setTimeout(() => {
-            if (ws.onerror) ws.onerror(new Error("WebSocket disabled in proxy mode"));
-        }, 100);
-        return ws;
-    };
-    window.WebSocket.CLOSING = originalWebSocket.CLOSING;
-    window.WebSocket.CLOSED = originalWebSocket.CLOSED;
-    window.WebSocket.CONNECTING = originalWebSocket.CONNECTING;
-    window.WebSocket.OPEN = originalWebSocket.OPEN;
-}
-
 // DOM Elements
 const onlineLanding = document.getElementById('online-landing');
 const createOnlineRoom = document.getElementById('create-online-room');
