@@ -936,12 +936,136 @@
         const maxRetries = 3;
         const debugMode = true; // Enable console logging
         
+        // Define variables to hold game data
+        let gamesData = [];
+        let games2Data = [];
+        
         // Debug logging function
         function logDebug(message) {
             if (!debugMode) return;
             console.log(`%c[Game Debug] %c${message}`, 
                 'color: #4a6ed3; font-weight: bold;', 
                 'color: #333;');
+        }
+        
+        /**
+         * Load game data from external JavaScript files
+         */
+        function loadGameData() {
+            logDebug("📚 Loading game data from external files");
+            
+            // Function to dynamically load a script
+            function loadScript(url, callback) {
+                const script = document.createElement('script');
+                script.type = 'text/javascript';
+                script.src = url;
+                
+                // Handle script load event
+                script.onload = function() {
+                    logDebug(`✅ Loaded script: ${url}`);
+                    if (callback) callback();
+                };
+                
+                // Handle script error
+                script.onerror = function() {
+                    logDebug(`❌ Error loading script: ${url}`);
+                    if (callback) callback(new Error(`Failed to load ${url}`));
+                };
+                
+                // Add script to document
+                document.head.appendChild(script);
+            }
+            
+            // Load both game data files and set up their data
+            loadScript('/assets/json/games.js', function(error) {
+                if (!error && typeof window.gamesData !== 'undefined') {
+                    gamesData = window.gamesData;
+                    logDebug(`📊 Loaded ${gamesData.length} games from games.js`);
+                } else {
+                    logDebug("⚠️ Failed to load games.js or gamesData not defined");
+                    // Use default empty array if loading fails
+                    gamesData = [];
+                }
+                
+                // Load the second games file
+                loadScript('/assets/json/games2.js', function(error) {
+                    if (!error && typeof window.games2Data !== 'undefined') {
+                        games2Data = window.games2Data;
+                        logDebug(`📊 Loaded ${games2Data.length} games from games2.js`);
+                    } else {
+                        logDebug("⚠️ Failed to load games2.js or games2Data not defined");
+                        // Use the games2Data from the first paste if available
+                        if (typeof games2Data !== 'undefined' && Array.isArray(games2Data)) {
+                            logDebug(`📊 Using ${games2Data.length} games from embedded data`);
+                        } else {
+                            games2Data = [];
+                        }
+                    }
+                    
+                    // Initialize game database with loaded data
+                    initializeGameDB();
+                });
+            });
+        }
+
+        /**
+         * Initialize game database with loaded data
+         */
+        function initializeGameDB() {
+            // Combine both game arrays
+            const allGames = [...gamesData, ...games2Data];
+            
+            logDebug(`🎮 Initializing GameDB with ${allGames.length} total games`);
+            
+            if (allGames.length === 0) {
+                logDebug("⚠️ No games found in data sources, using fallback games");
+            }
+            
+            // Create or update the GameDB object
+            window.GameDB = window.GameDB || {};
+            
+            // Convert game format if needed and ensure each game has an ID
+            const processedGames = allGames.map((game, index) => {
+                return {
+                    id: game.id || `game-${index}`,
+                    title: game.title || 'Unknown Game',
+                    imgSrc: game.imgSrc || '/img/gameimg/default.png',
+                    link: game.link || '#'
+                };
+            });
+            
+            // Add game retrieval methods
+            window.GameDB.getAllGames = function() {
+                return processedGames;
+            };
+            
+            window.GameDB.getRandomGames = function(currentUrl, count = 3) {
+                // Filter out current game if URL provided
+                const filteredGames = currentUrl 
+                    ? processedGames.filter(game => game.link !== currentUrl)
+                    : [...processedGames];
+                    
+                // Shuffle and return requested number of games
+                return window.GameDB.shuffleArray(filteredGames).slice(0, count);
+            };
+            
+            window.GameDB.getGameByUrl = function(url) {
+                return processedGames.find(game => game.link === url);
+            };
+            
+            window.GameDB.shuffleArray = function(array) {
+                return [...array].sort(() => Math.random() - 0.5);
+            };
+            
+            // Initialize game stats if available
+            if (window.GlobalGameStats && typeof window.GlobalGameStats.initialize === 'function') {
+                window.GlobalGameStats.initialize(processedGames);
+            }
+            
+            // Refresh game suggestions if we're on a game page
+            if (typeof loadGameSuggestions === 'function') {
+                loadGameSuggestions();
+            }
         }
         
         // Setup service worker communication
@@ -1602,54 +1726,6 @@
             // Record load start time
             loadStartTime = Date.now();
             
-            // Initialize fake game database if real one isn't available
-            if (!window.GameDB || typeof window.GameDB.getRandomGames !== 'function') {
-                logDebug("⚠️ GameDB not available - creating fallback");
-                
-                // Create a minimal fallback GameDB
-                window.GameDB = window.GameDB || {};
-                
-                // Basic fallback games
-                const fallbackGames = [
-                    {
-                        id: 'fallback1',
-                        title: "2048",
-                        imgSrc: "/img/gameimg/2048.jpg",
-                        link: "/uv/service/aHR0cHM6Ly9wbGF5MjA0OC5jbw=="
-                    },
-                    {
-                        id: 'fallback2',
-                        title: "Slope",
-                        imgSrc: "/img/gameimg/slope.jpg", 
-                        link: "/uv/service/aHR0cHM6Ly9zbG9wZS1nYW1lLmNvbQ=="
-                    },
-                    {
-                        id: 'fallback3',
-                        title: "Tetris",
-                        imgSrc: "/img/gameimg/tetris.jpg",
-                        link: "/uv/service/aHR0cHM6Ly90ZXRyaXMuY29tL3BsYXktdGV0cmlz"
-                    }
-                ];
-                
-                // Add fallback functions
-                window.GameDB.getRandomGames = function(currentUrl, count = 3) {
-                    // Return random games excluding current game
-                    return fallbackGames
-                        .filter(game => game.link !== currentUrl)
-                        .sort(() => Math.random() - 0.5)
-                        .slice(0, count);
-                };
-                
-                window.GameDB.getGameByUrl = function(url) {
-                    return fallbackGames.find(game => game.link === url);
-                };
-                
-                // Add additional GameDB methods if needed
-                window.GameDB.shuffleArray = function(array) {
-                    return [...array].sort(() => Math.random() - 0.5);
-                };
-            }
-            
             // Record the game in stats system if available
             if (window.GameDB && window.GlobalGameStats) {
                 const gameInfo = window.GameDB.getGameByUrl(gameUrl);
@@ -1700,7 +1776,7 @@
                 let randomGames;
                 
                 if (window.GameDB && typeof window.GameDB.getRandomGames === 'function') {
-                    randomGames = window.GameDB.getRandomGames(originalGameUrl, 3);
+                    randomGames = window.GameDB.getRandomGames(originalGameUrl, 5); // Increased to 5 suggestions
                 } else {
                     // Fallback in case getRandomGames is not available
                     randomGames = [
@@ -1927,7 +2003,10 @@
             // Setup service worker messaging for high traffic detection
             setupServiceWorkerMessaging();
             
-            // Start loading the game
+            // Load game data first, then start loading the game
+            loadGameData();
+            
+            // Start loading the game (GameDB will be initialized later when data is loaded)
             loadGame(originalGameUrl);
         });
         
