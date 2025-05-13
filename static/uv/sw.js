@@ -12,16 +12,16 @@ const sw = new UVServiceWorker();
 
 // Configuration for maximum performance
 const CONFIG = {
-  FETCH_TIMEOUT: 180000,      // 3 minute timeout for slow connections
-  RETRY_COUNT: 4,             // More retry attempts
-  RETRY_DELAY: 1000,          // Initial delay between retries in ms
+  FETCH_TIMEOUT: 240000,      // 4 minute timeout for slower connections (increased from 3)
+  RETRY_COUNT: 6,             // More retry attempts (increased from 4)
+  RETRY_DELAY: 800,           // Initial delay between retries in ms (reduced for faster recovery)
   ENABLE_CACHE: true,         // Enable resource caching
   CACHE_NAME: 'uv-game-cache', // Cache name for game resources
-  MAX_CACHE_SIZE: 500,        // Increased maximum number of items to cache
-  MAX_CACHE_AGE: 3600000 * 48, // Cache expiration (48 hours)
+  MAX_CACHE_SIZE: 750,        // Increased maximum number of items to cache (from 500)
+  MAX_CACHE_AGE: 3600000 * 72, // Cache expiration (72 hours, increased from 48)
   PREFETCH_DEPENDENCIES: true, // Prefetch related resources
   AGGRESSIVE_CACHING: true,   // More aggressive caching strategy
-  EARLY_REVEAL: true,         // Show game content earlier (may show loading screens)
+  EARLY_REVEAL: false,        // Changed to false - don't show game content until ready
   DISABLE_INTEGRITY_CHECKS: true, // Disable integrity checks for faster loading
   
   // Resources that should be cached aggressively
@@ -44,9 +44,9 @@ const CONFIG = {
     'cloudfront.net', 'amazonaws.com', 'googleusercontent.com'
   ],
   
-  // Track active connections
-  MAX_CONCURRENT_CONNECTIONS: 75,
-  CONNECTION_TIMEOUT: 30000,  // 30 seconds
+  // Track active connections - INCREASED FOR HIGH TRAFFIC
+  MAX_CONCURRENT_CONNECTIONS: 250,  // Significantly increased from 75
+  CONNECTION_TIMEOUT: 45000,  // 45 seconds (increased from 30)
   
   // Resource loading priorities
   PRIORITIES: {
@@ -54,52 +54,147 @@ const CONFIG = {
     HIGH: ['js', 'json', 'css'],
     MEDIUM: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'woff'],
     LOW: ['wav', 'mp3', 'ogg']
+  },
+  
+  // High traffic mode settings - NEW
+  HIGH_TRAFFIC: {
+    ENABLED: false,           // Auto-detected based on connection count
+    THRESHOLD: 150,           // Number of active connections to trigger high traffic mode
+    CONNECTION_LIMIT: 350,    // Higher limit during high traffic mode
+    AGGRESSIVE_CLEANUP: true, // More aggressive connection cleanup
+    PRIORITIZE_HTML: true,    // Prioritize HTML responses over other resource types
+    SKIP_PREFETCH: true,      // Skip prefetching in high traffic mode
+    SIMPLER_LOADING: true     // Use simpler loading screens with fewer animations
   }
 };
 
-// Connection tracking
+// Connection tracking with improved high traffic handling
 const connections = {
   active: new Map(),
   pending: new Set(),
   completed: new Set(),
   
+  // Stats tracking - NEW
+  stats: {
+    total: 0,
+    successful: 0,
+    failed: 0,
+    retried: 0,
+    averageTime: 0,
+    highWaterMark: 0,
+    lastHighTrafficMode: 0
+  },
+  
   add(url, promise) {
     this.pending.add(url);
+    const startTime = Date.now();
+    this.stats.total++;
     
-    // Monitor completion
-    promise.finally(() => {
+    // Check if we should enter high traffic mode
+    this.checkHighTrafficMode();
+    
+    // Monitor completion with better error handling
+    promise.then(() => {
+      this.stats.successful++;
+      const duration = Date.now() - startTime;
+      // Update average time with weighted approach
+      this.stats.averageTime = this.stats.averageTime * 0.95 + duration * 0.05;
+    }).catch(() => {
+      this.stats.failed++;
+    }).finally(() => {
       this.pending.delete(url);
       this.completed.add(url);
       
-      // Remove from completed after a delay
+      // Remove from completed after a delay (reduced in high traffic mode)
+      const completedTimeout = CONFIG.HIGH_TRAFFIC.ENABLED ? 5000 : 10000;
       setTimeout(() => {
         this.completed.delete(url);
-      }, 10000);
+      }, completedTimeout);
     });
     
     // Track active connection
     this.active.set(url, {
-      timestamp: Date.now(),
+      timestamp: startTime,
       promise
     });
     
-    // Clean up old connections
+    // Update high water mark if needed
+    if (this.active.size > this.stats.highWaterMark) {
+      this.stats.highWaterMark = this.active.size;
+    }
+    
+    // Clean up old connections (more aggressively in high traffic mode)
     this.cleanup();
     
     return promise;
   },
   
+  // Check if we should enter or exit high traffic mode
+  checkHighTrafficMode() {
+    const now = Date.now();
+    const activeCount = this.active.size;
+    
+    // Enter high traffic mode if we exceed the threshold
+    if (!CONFIG.HIGH_TRAFFIC.ENABLED && activeCount > CONFIG.HIGH_TRAFFIC.THRESHOLD) {
+      CONFIG.HIGH_TRAFFIC.ENABLED = true;
+      CONFIG.MAX_CONCURRENT_CONNECTIONS = CONFIG.HIGH_TRAFFIC.CONNECTION_LIMIT;
+      this.stats.lastHighTrafficMode = now;
+      console.log(`[UV SW] Entering high traffic mode (${activeCount} connections)`);
+      
+      // Broadcast high traffic mode to clients
+      this.broadcastHighTrafficMode(true);
+    } 
+    // Exit after at least 30 seconds if connections drop significantly
+    else if (CONFIG.HIGH_TRAFFIC.ENABLED && 
+             now - this.stats.lastHighTrafficMode > 30000 &&
+             activeCount < CONFIG.HIGH_TRAFFIC.THRESHOLD / 2) {
+      CONFIG.HIGH_TRAFFIC.ENABLED = false;
+      CONFIG.MAX_CONCURRENT_CONNECTIONS = 250; // Back to normal but still higher than original
+      console.log(`[UV SW] Exiting high traffic mode (${activeCount} connections)`);
+      
+      // Broadcast high traffic mode ended to clients
+      this.broadcastHighTrafficMode(false);
+    }
+  },
+  
+  // Broadcast high traffic mode status to clients
+  broadcastHighTrafficMode(isHighTraffic) {
+    // Only run in browser context with self.clients
+    try {
+      if (self.clients) {
+        self.clients.matchAll().then(clients => {
+          clients.forEach(client => {
+            client.postMessage({
+              type: 'HIGH_TRAFFIC_MODE',
+              enabled: isHighTraffic,
+              connections: this.active.size,
+              stats: this.stats
+            });
+          });
+        }).catch(err => {
+          console.error('[UV SW] Error broadcasting high traffic mode:', err);
+        });
+      }
+    } catch (err) {
+      // Ignore errors - the broadcast is optional
+    }
+  },
+  
   cleanup() {
     const now = Date.now();
     
+    // Adjust cleanup behavior based on traffic mode
+    const connectionTimeout = CONFIG.HIGH_TRAFFIC.ENABLED ? 
+      CONFIG.CONNECTION_TIMEOUT / 2 : CONFIG.CONNECTION_TIMEOUT;
+    
     // Remove expired connections
     for (const [url, data] of this.active.entries()) {
-      if (now - data.timestamp > CONFIG.CONNECTION_TIMEOUT) {
+      if (now - data.timestamp > connectionTimeout) {
         this.active.delete(url);
       }
     }
     
-    // Ensure we don't exceed max connections
+    // Ensure we don't exceed max connections - more aggressive in high traffic mode
     if (this.active.size > CONFIG.MAX_CONCURRENT_CONNECTIONS) {
       // Find oldest non-critical connections to remove
       const connections = Array.from(this.active.entries())
@@ -110,10 +205,22 @@ const connections = {
                  !this.pending.has(url);
         });
       
+      // Calculate how many to remove
+      let removeCount = this.active.size - CONFIG.MAX_CONCURRENT_CONNECTIONS;
+      
+      // In high traffic mode, remove more to stay well under the limit
+      if (CONFIG.HIGH_TRAFFIC.ENABLED && CONFIG.HIGH_TRAFFIC.AGGRESSIVE_CLEANUP) {
+        removeCount = Math.ceil(removeCount * 1.25); // Remove 25% more than needed
+      }
+      
       // Remove oldest connections to get under limit
-      const toRemove = connections.slice(0, this.active.size - CONFIG.MAX_CONCURRENT_CONNECTIONS);
+      const toRemove = connections.slice(0, removeCount);
       for (const [url] of toRemove) {
         this.active.delete(url);
+      }
+      
+      if (toRemove.length > 0) {
+        console.log(`[UV SW] Cleaned up ${toRemove.length} old connections (traffic mode: ${CONFIG.HIGH_TRAFFIC.ENABLED ? 'high' : 'normal'})`);
       }
     }
   },
@@ -124,6 +231,17 @@ const connections = {
   
   isCompleted(url) {
     return this.completed.has(url);
+  },
+  
+  // Get current connection stats - NEW
+  getStats() {
+    return {
+      ...this.stats,
+      active: this.active.size,
+      pending: this.pending.size,
+      completed: this.completed.size,
+      highTrafficMode: CONFIG.HIGH_TRAFFIC.ENABLED
+    };
   }
 };
 
@@ -259,7 +377,10 @@ async function injectGameFixes(response, url) {
     // Create modified HTML with our fixes
     let modifiedHtml = text;
     
-    // Add advanced loading optimizations to head
+    // Determine if we should use simpler loading screens in high traffic mode
+    const useSimpleLoading = CONFIG.HIGH_TRAFFIC.ENABLED && CONFIG.HIGH_TRAFFIC.SIMPLER_LOADING;
+    
+    // Add advanced loading optimizations to head - IMPROVED FOR HIGH TRAFFIC
     if (modifiedHtml.includes('<head')) {
       const headInsertPos = modifiedHtml.indexOf('<head') + '<head'.length;
       const headEndPos = modifiedHtml.indexOf('>', headInsertPos);
@@ -267,10 +388,8 @@ async function injectGameFixes(response, url) {
       if (headEndPos !== -1) {
         modifiedHtml = modifiedHtml.substring(0, headEndPos + 1) + `
         <script>
-        /* Advanced Game Loading Optimizations */
+        /* Advanced Game Loading Optimizations - High Traffic Edition */
         (function() {
-          console.log('Game loading optimizations activated');
-          
           // Track loading state
           window.__gameLoading = {
             start: Date.now(),
@@ -280,6 +399,8 @@ async function injectGameFixes(response, url) {
             criticalResourcesLoaded: false,
             readyStates: [],
             errors: [],
+            highTrafficMode: ${CONFIG.HIGH_TRAFFIC.ENABLED}, // Pass high traffic mode status
+            useSimpleLoading: ${useSimpleLoading}, // Use simpler loading screens in high traffic
             
             // Monitor loading progress
             recordState: function(state) {
@@ -293,7 +414,8 @@ async function injectGameFixes(response, url) {
                 window.parent.postMessage({
                   type: 'GAME_LOADING',
                   state: state,
-                  time: Date.now() - this.start
+                  time: Date.now() - this.start,
+                  highTrafficMode: this.highTrafficMode
                 }, '*');
               } catch(e) {}
             },
@@ -305,12 +427,13 @@ async function injectGameFixes(response, url) {
                 time: Date.now() - this.start
               });
               
-              // Send error to parent
+              // Send error to parent with current mode
               try {
                 window.parent.postMessage({
                   type: 'GAME_ERROR',
                   error: error.toString(),
-                  time: Date.now() - this.start
+                  time: Date.now() - this.start,
+                  highTrafficMode: this.highTrafficMode
                 }, '*');
               } catch(e) {}
             },
@@ -320,11 +443,12 @@ async function injectGameFixes(response, url) {
               this.criticalResourcesLoaded = true;
               this.recordState('critical-resources-loaded');
               
-              // Send ready state to parent
+              // Send ready state to parent with high traffic flag
               try {
                 window.parent.postMessage({
                   type: 'GAME_CRITICAL_READY',
-                  time: Date.now() - this.start
+                  time: Date.now() - this.start,
+                  highTrafficMode: this.highTrafficMode
                 }, '*');
               } catch(e) {}
             },
@@ -339,12 +463,37 @@ async function injectGameFixes(response, url) {
                 try {
                   window.parent.postMessage({
                     type: 'GAME_READY',
-                    time: Date.now() - this.start
+                    time: Date.now() - this.start,
+                    highTrafficMode: this.highTrafficMode,
+                    resourceStats: {
+                      total: this.resources.size,
+                      loaded: this.resourcesLoaded,
+                      errors: this.errors.length
+                    }
                   }, '*');
                 } catch(e) {}
               }
             }
           };
+
+          // Handler for high traffic mode updates from service worker
+          navigator.serviceWorker.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'HIGH_TRAFFIC_MODE') {
+              window.__gameLoading.highTrafficMode = event.data.enabled;
+              window.__gameLoading.useSimpleLoading = event.data.enabled && ${CONFIG.HIGH_TRAFFIC.SIMPLER_LOADING};
+              
+              // Notify parent of mode change
+              try {
+                window.parent.postMessage({
+                  type: 'HIGH_TRAFFIC_UPDATE',
+                  enabled: event.data.enabled,
+                  stats: event.data.stats
+                }, '*');
+              } catch(e) {}
+              
+              console.log('High traffic mode ' + (event.data.enabled ? 'enabled' : 'disabled'));
+            }
+          });
           
           // Record initial state
           window.__gameLoading.recordState('init');
@@ -354,6 +503,12 @@ async function injectGameFixes(response, url) {
           // 1. PRELOAD CRITICAL RESOURCES
           // Add preload hints for common game dependencies
           function addPreloadHints() {
+            // Skip in high traffic mode if configured
+            if (window.__gameLoading.highTrafficMode && ${CONFIG.HIGH_TRAFFIC.SKIP_PREFETCH}) {
+              console.log('Skipping preload hints in high traffic mode');
+              return;
+            }
+            
             const criticalResources = [
               { type: 'script', hint: 'preload', ext: 'wasm', as: 'fetch', crossorigin: 'anonymous' },
               { type: 'script', hint: 'preload', ext: 'framework.js', as: 'script' },
@@ -414,16 +569,21 @@ async function injectGameFixes(response, url) {
                 this.height = this.height || window.innerHeight * 0.8 || 600;
               }
               
-              // Optimize WebGL contexts
+              // Optimize WebGL contexts - even more aggressive in high traffic mode
               if (['webgl', 'experimental-webgl', 'webgl2'].includes(contextType)) {
                 contextAttributes = contextAttributes || {};
                 contextAttributes.failIfMajorPerformanceCaveat = false;
                 contextAttributes.powerPreference = 'high-performance';
-                contextAttributes.preserveDrawingBuffer = true;
-                contextAttributes.antialias = false; // Disable antialiasing initially for faster loading
+                contextAttributes.preserveDrawingBuffer = window.__gameLoading.highTrafficMode ? false : true;
+                contextAttributes.antialias = false; // Disable antialiasing for faster loading
                 contextAttributes.depth = true;
                 contextAttributes.stencil = false; // Only enable if needed
                 contextAttributes.alpha = true;
+                
+                // In high traffic mode, reduce quality further
+                if (window.__gameLoading.highTrafficMode) {
+                  contextAttributes.precision = 'lowp'; // Use lower precision in high traffic
+                }
                 
                 const ctx = originalGetContext.call(this, contextType, contextAttributes);
                 if (ctx) {
@@ -443,12 +603,15 @@ async function injectGameFixes(response, url) {
                       } catch(e) {}
                     };
                     
-                    // After 5 seconds, try to enable better quality
+                    // After 8 seconds in normal mode, 15 in high traffic mode, try to enable better quality
                     setTimeout(function() {
                       try {
-                        ctx.enableAntiAlias();
+                        // Only improve quality if not in high traffic mode
+                        if (!window.__gameLoading.highTrafficMode) {
+                          ctx.enableAntiAlias();
+                        }
                       } catch(e) {}
-                    }, 5000);
+                    }, window.__gameLoading.highTrafficMode ? 15000 : 8000);
                   } catch(e) {
                     // Ignore errors in optimization
                   }
@@ -473,8 +636,8 @@ async function injectGameFixes(response, url) {
           // Install optimizations right away
           optimizeWebGL();
           
-          // 3. OPTIMIZE RESOURCE LOADING
-          // Resource loader optimization
+          // 3. OPTIMIZE RESOURCE LOADING - IMPROVED
+          // Resource loader optimization with high traffic awareness
           const originalFetch = window.fetch;
           window.fetch = function(resource, options) {
             try {
@@ -492,28 +655,34 @@ async function injectGameFixes(response, url) {
               options = options || {};
               
               // Set priority based on resource type
+              let resourcePriority = 'low';
               if (resourceUrl.includes('wasm') || 
                   resourceUrl.includes('framework') || 
                   resourceUrl.includes('loader') || 
                   resourceUrl.includes('data') ||
                   resourceUrl.includes('unity')) {
+                resourcePriority = 'high';
                 options.priority = 'high';
               }
               
               // For non-critical resources, use cache when possible
-              if (!options.priority || options.priority !== 'high') {
+              if (resourcePriority !== 'high') {
                 options.cache = options.cache || 'force-cache';
               }
               
               // Add shorter timeout for faster failure recovery
+              // Use even shorter timeouts in high traffic mode
               const controller = new AbortController();
               const signal = controller.signal;
               options.signal = signal;
               
-              // Set appropriate timeout based on importance
+              // Set appropriate timeout based on importance and traffic mode
+              const highTrafficFactor = window.__gameLoading.highTrafficMode ? 1.5 : 1;
               const timeout = setTimeout(() => {
                 controller.abort();
-              }, options.priority === 'high' ? 60000 : 30000);
+              }, resourcePriority === 'high' ? 
+                 60000 * highTrafficFactor : 
+                 30000 * highTrafficFactor);
                 
               // Execute the original fetch
               const fetchPromise = originalFetch.call(this, resource, options);
@@ -533,6 +702,44 @@ async function injectGameFixes(response, url) {
                   });
                   
                   window.__gameLoading.resourcesLoaded++;
+                  
+                  // Check if we've loaded critical resources
+                  const isCriticalResource = 
+                    resourceUrl.includes('framework.js') ||
+                    resourceUrl.includes('loader.js') ||
+                    resourceUrl.includes('unity') ||
+                    resourceUrl.includes('game') ||
+                    resourceUrl.includes('wasm');
+                    
+                  if (isCriticalResource && !window.__gameLoading.criticalResourcesLoaded) {
+                    // Check if most critical resources are loaded
+                    const criticalTotal = 
+                      Array.from(window.__gameLoading.resources.entries())
+                        .filter(([url]) => 
+                          url.includes('framework.js') ||
+                          url.includes('loader.js') ||
+                          url.includes('unity') ||
+                          url.includes('game') ||
+                          url.includes('wasm')
+                        ).length;
+                        
+                    const criticalLoaded = 
+                      Array.from(window.__gameLoading.resources.entries())
+                        .filter(([url, data]) => 
+                          (url.includes('framework.js') ||
+                           url.includes('loader.js') ||
+                           url.includes('unity') ||
+                           url.includes('game') ||
+                           url.includes('wasm')) && 
+                          data.status === 'loaded'
+                        ).length;
+                    
+                    // Mark critical when we have at least 3 critical resources loaded
+                    // or when at least 80% of detected critical resources are loaded
+                    if (criticalLoaded >= 3 || (criticalTotal > 0 && criticalLoaded / criticalTotal >= 0.8)) {
+                      window.__gameLoading.markCritical();
+                    }
+                  }
                 } else {
                   window.__gameLoading.resources.set(resourceUrl, {
                     startTime: startTime,
@@ -565,14 +772,14 @@ async function injectGameFixes(response, url) {
             }
           };
           
-          // 4. OPTIMIZE IMAGE LOADING
+          // 4. OPTIMIZE IMAGE LOADING - IMPROVED FOR HIGH TRAFFIC
           // Replace Image constructor for optimized loading
           const OriginalImage = window.Image;
           window.Image = function(width, height) {
             const img = new OriginalImage(width, height);
             
-            // Add loading priority
-            img.loading = 'lazy';
+            // Add loading priority - lazy in high traffic mode, eager otherwise
+            img.loading = window.__gameLoading.highTrafficMode ? 'lazy' : 'eager';
             
             // Intercept src setter
             const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
@@ -588,6 +795,11 @@ async function injectGameFixes(response, url) {
                     status: 'loading',
                     type: 'image'
                   });
+                }
+                
+                // In high traffic mode, add a flag to know this is a dynamic image
+                if (window.__gameLoading.highTrafficMode) {
+                  this.setAttribute('data-dynamic', 'true');
                 }
                 
                 // Apply original setter
@@ -617,8 +829,8 @@ async function injectGameFixes(response, url) {
             return img;
           };
           
-          // 5. SCRIPT LOADING OPTIMIZATION
-          // Optimize script loading and execution
+          // 5. SCRIPT LOADING OPTIMIZATION - IMPROVED
+          // Optimize script loading and execution with high traffic awareness
           const originalCreateElement = document.createElement;
           document.createElement = function(tagName) {
             const element = originalCreateElement.apply(this, arguments);
@@ -635,8 +847,22 @@ async function injectGameFixes(response, url) {
                       value.includes('unity') ||
                       value.includes('game')) {
                     this.setAttribute('fetchpriority', 'high');
-                    // Force async to get parallel loading but prioritize execution
-                    this.setAttribute('async', '');
+                    
+                    // In high traffic mode, we still need async but will
+                    // use a more controlled approach
+                    if (window.__gameLoading.highTrafficMode) {
+                      // High traffic mode: defer non-critical scripts
+                      if (!value.includes('framework') && 
+                          !value.includes('loader')) {
+                        this.setAttribute('defer', '');
+                      } else {
+                        // Critical scripts: use async for parallel loading
+                        this.setAttribute('async', '');
+                      }
+                    } else {
+                      // Normal mode: force async to get parallel loading
+                      this.setAttribute('async', '');
+                    }
                     
                     // Track script loading
                     if (window.__gameLoading) {
@@ -675,7 +901,9 @@ async function injectGameFixes(response, url) {
             
             // Add loading="lazy" to images that aren't critical
             if (tagName.toLowerCase() === 'img') {
-              element.setAttribute('loading', 'lazy');
+              // In high traffic mode, lazy load all images
+              // In normal mode, only non-critical images
+              element.setAttribute('loading', window.__gameLoading.highTrafficMode ? 'lazy' : 'eager');
               
               // Intercept src attribute setting for tracking
               const originalSetAttribute = element.setAttribute;
@@ -695,9 +923,12 @@ async function injectGameFixes(response, url) {
                                     value.includes('icon') || 
                                     value.includes('logo');
                   
-                  if (isCritical) {
+                  if (isCritical && !window.__gameLoading.highTrafficMode) {
                     this.setAttribute('fetchpriority', 'high');
                     this.removeAttribute('loading'); // Don't lazy-load critical images
+                  } else if (window.__gameLoading.highTrafficMode) {
+                    // In high traffic mode, always lazy load
+                    this.setAttribute('loading', 'lazy');
                   }
                 }
                 return originalSetAttribute.apply(this, arguments);
@@ -724,7 +955,18 @@ async function injectGameFixes(response, url) {
             // Prioritize their loading
             criticalScripts.forEach(script => {
               script.setAttribute('fetchpriority', 'high');
-              script.async = true; // Use async for parallel loading
+              // In high traffic mode, we still use async but more carefully
+              if (window.__gameLoading.highTrafficMode) {
+                // Only framework and loader should be async in high traffic
+                if (script.src.includes('framework') || 
+                    script.src.includes('loader')) {
+                  script.async = true;
+                } else {
+                  script.defer = true;
+                }
+              } else {
+                script.async = true; // Use async for parallel loading in normal mode
+              }
             });
             
             // Find canvas elements
@@ -755,7 +997,8 @@ async function injectGameFixes(response, url) {
           };
           
           // 7. MONITOR PAGE LOADING STATE AND FORCE VISIBILITY
-          // Periodically check for page states
+          // Periodically check for page states - less frequently in high traffic mode
+          const stateCheckInterval = window.__gameLoading.highTrafficMode ? 200 : 100;
           let checkStatesInterval = setInterval(function() {
             // Record current state
             window.__gameLoading.recordState('check-' + document.readyState);
@@ -765,8 +1008,12 @@ async function injectGameFixes(response, url) {
               prioritizeCriticalResources();
               
               // Call again after a delay to catch dynamically added resources
-              setTimeout(prioritizeCriticalResources, 1000);
-              setTimeout(prioritizeCriticalResources, 3000);
+              // Longer delays in high traffic mode
+              const secondPriorityDelay = window.__gameLoading.highTrafficMode ? 2000 : 1000;
+              const thirdPriorityDelay = window.__gameLoading.highTrafficMode ? 6000 : 3000;
+              
+              setTimeout(prioritizeCriticalResources, secondPriorityDelay);
+              setTimeout(prioritizeCriticalResources, thirdPriorityDelay);
               
               // Mark critical resources as loaded
               window.__gameLoading.markCritical();
@@ -776,12 +1023,14 @@ async function injectGameFixes(response, url) {
                 clearInterval(checkStatesInterval);
                 
                 // Wait a bit longer for any final resources
+                // Even longer in high traffic mode
+                const completeDelay = window.__gameLoading.highTrafficMode ? 4000 : 2000;
                 setTimeout(function() {
                   window.__gameLoading.markComplete();
-                }, 2000);
+                }, completeDelay);
               }
             }
-          }, 100);
+          }, stateCheckInterval);
           
           // 8. DETECT AND RESPOND TO PAGE LOADING EVENTS
           // Detect page load
@@ -794,10 +1043,12 @@ async function injectGameFixes(response, url) {
             }
             
             // Final check for resources after window load
+            // Longer delay in high traffic mode
+            const finalDelay = window.__gameLoading.highTrafficMode ? 4000 : 2000;
             setTimeout(function() {
               prioritizeCriticalResources();
               window.__gameLoading.markComplete();
-            }, 2000);
+            }, finalDelay);
           });
           
           // 9. HANDLE ERRORS GRACEFULLY
@@ -815,6 +1066,8 @@ async function injectGameFixes(response, url) {
           
           // 10. FORCE TIMEOUT VISIBILITY
           // After a certain time, force game visibility regardless of loading state
+          // Longer timeout in high traffic mode
+          const visibilityTimeout = window.__gameLoading.highTrafficMode ? 20000 : 10000;
           setTimeout(function() {
             console.log('Forcing game visibility after timeout');
             
@@ -856,10 +1109,11 @@ async function injectGameFixes(response, url) {
             try {
               window.parent.postMessage({
                 type: 'GAME_FORCE_VISIBLE',
-                time: performance.now()
+                time: performance.now(),
+                highTrafficMode: window.__gameLoading.highTrafficMode
               }, '*');
             } catch(e) {}
-          }, 10000); // Force visibility after 10 seconds
+          }, visibilityTimeout);
         })();
         </script>
         ` + modifiedHtml.substring(headEndPos + 1);
@@ -872,7 +1126,7 @@ if (modifiedHtml.includes('</body>')) {
   
   modifiedHtml = modifiedHtml.substring(0, bodyClosePos) + `
   <script>
-  /* Game Rendering and Visibility Fixes */
+  /* Game Rendering and Visibility Fixes - High Traffic Edition */
   (function() {
     // Function to fix visibility issues
     function fixVisibility() {
@@ -933,15 +1187,25 @@ if (modifiedHtml.includes('</body>')) {
     window.unityShowBanner = window.unityShowBanner || function() {};
     window.unityProgress = window.unityProgress || function() {};
     
+    // Track high traffic mode
+    const isHighTrafficMode = window.__gameLoading && window.__gameLoading.highTrafficMode;
+    
     // Run visibility fixes with multiple attempts for reliability
+    // More attempts with longer intervals in high traffic mode
     let fixCount = 0;
+    const maxFixes = isHighTrafficMode ? 8 : 5;
     
     function runFixes() {
       fixCount++;
       fixVisibility();
       
-      if (fixCount < 5) {
-        setTimeout(runFixes, fixCount * 1000);
+      if (fixCount < maxFixes) {
+        // Progressive timing - longer intervals in high traffic mode
+        const interval = isHighTrafficMode ? 
+          fixCount * 1500 : // 1.5s, 3s, 4.5s, etc. in high traffic
+          fixCount * 1000;  // 1s, 2s, 3s, etc. in normal mode
+        
+        setTimeout(runFixes, interval);
       }
     }
     
@@ -951,6 +1215,16 @@ if (modifiedHtml.includes('</body>')) {
     } else {
       runFixes();
     }
+    
+    // Listen for high traffic mode updates
+    window.addEventListener('message', function(event) {
+      if (event.data && event.data.type === 'HIGH_TRAFFIC_UPDATE') {
+        console.log('High traffic mode update received by visibility fixes');
+        // Run visibility fixes again when mode changes
+        fixCount = 0;
+        runFixes();
+      }
+    });
   })();
   </script>
   ` + modifiedHtml.substring(bodyClosePos);
@@ -971,8 +1245,13 @@ return new Response(modifiedHtml, {
   }
 }
 
-// Prefetch related resources for a given URL
+// Prefetch related resources for a given URL with high traffic awareness
 async function prefetchRelatedResources(url, originalResponse) {
+  // Skip prefetching in high traffic mode
+  if (CONFIG.HIGH_TRAFFIC.ENABLED && CONFIG.HIGH_TRAFFIC.SKIP_PREFETCH) {
+    return;
+  }
+  
   if (!CONFIG.PREFETCH_DEPENDENCIES || !url || !originalResponse) {
     return;
   }
@@ -1014,11 +1293,13 @@ async function prefetchRelatedResources(url, originalResponse) {
     // Prefetch critical resources first, then others
     const resources = [...criticalResources, ...resourceUrls.filter(r => !criticalResources.includes(r))];
     
-    // Limit to a reasonable number
-    const uniqueResources = [...new Set(resources)].slice(0, 10);
+    // Limit to a reasonable number - even fewer in high traffic
+    const maxPrefetch = CONFIG.HIGH_TRAFFIC.ENABLED ? 5 : 10;
+    const uniqueResources = [...new Set(resources)].slice(0, maxPrefetch);
     
-    // Prefetch in background
-    for (const resourceUrl of uniqueResources) {
+    // Prefetch in background with staggered delays in high traffic mode
+    for (let i = 0; i < uniqueResources.length; i++) {
+      const resourceUrl = uniqueResources[i];
       try {
         let fullUrl;
         
@@ -1039,6 +1320,11 @@ async function prefetchRelatedResources(url, originalResponse) {
         if (connections.isPending(fullUrl) || connections.isCompleted(fullUrl)) {
           continue;
         }
+        
+        // Calculate delay - staggered in high traffic mode
+        const delay = CONFIG.HIGH_TRAFFIC.ENABLED ? 
+          50 + (i * 200) : // Staggered delays in high traffic
+          50;              // Constant small delay in normal traffic
         
         // Prefetch with low priority and cache
         setTimeout(() => {
@@ -1066,7 +1352,7 @@ async function prefetchRelatedResources(url, originalResponse) {
             }
           })
           .catch(() => {}); // Ignore errors in prefetch
-        }, 50);
+        }, delay);
       } catch (e) {
         // Ignore errors in prefetch URL handling
       }
@@ -1093,29 +1379,32 @@ async function enhancedFetch(event, retries = CONFIG.RETRY_COUNT) {
       
       if (cachedResponse) {
         // Return cached response immediately, but update cache in background
-        fetch(event.request.url, { 
-          method: event.request.method, 
-          headers: event.request.headers,
-          cache: 'reload', // Force revalidation
-          priority: getResourcePriority(url) // Set priority based on resource type
-        })
-        .then(freshResponse => {
-          if (freshResponse && freshResponse.ok) {
-            // Add cache timestamp
-            const headers = new Headers(freshResponse.headers);
-            headers.set('x-cache-timestamp', Date.now().toString());
-            
-            // Update cache with fresh response
-            const clonedResponse = new Response(freshResponse.clone().body, {
-              status: freshResponse.status,
-              statusText: freshResponse.statusText,
-              headers: headers
-            });
-            
-            cache.put(event.request, clonedResponse);
-          }
-        })
-        .catch(() => {}); // Ignore errors in background update
+        // Skip background update in high traffic mode to reduce load
+        if (!CONFIG.HIGH_TRAFFIC.ENABLED) {
+          fetch(event.request.url, { 
+            method: event.request.method, 
+            headers: event.request.headers,
+            cache: 'reload', // Force revalidation
+            priority: getResourcePriority(url) // Set priority based on resource type
+          })
+          .then(freshResponse => {
+            if (freshResponse && freshResponse.ok) {
+              // Add cache timestamp
+              const headers = new Headers(freshResponse.headers);
+              headers.set('x-cache-timestamp', Date.now().toString());
+              
+              // Update cache with fresh response
+              const clonedResponse = new Response(freshResponse.clone().body, {
+                status: freshResponse.status,
+                statusText: freshResponse.statusText,
+                headers: headers
+              });
+              
+              cache.put(event.request, clonedResponse);
+            }
+          })
+          .catch(() => {}); // Ignore errors in background update
+        }
         
         return cachedResponse;
       }
@@ -1129,17 +1418,29 @@ async function enhancedFetch(event, retries = CONFIG.RETRY_COUNT) {
   const controller = new AbortController();
   const signal = controller.signal;
   
-  // Set timeout based on priority
+  // Set timeout based on priority and traffic mode
   const priority = getResourcePriority(url);
+  const highTrafficFactor = CONFIG.HIGH_TRAFFIC.ENABLED ? 1.5 : 1; // 50% longer timeouts in high traffic
+  
+  // Longer timeouts for critical resources
   const timeout = setTimeout(() => {
     controller.abort();
-  }, priority === 'CRITICAL' ? CONFIG.FETCH_TIMEOUT : Math.min(60000, CONFIG.FETCH_TIMEOUT / 2));
+  }, priority === 'CRITICAL' ? 
+     CONFIG.FETCH_TIMEOUT * highTrafficFactor : 
+     Math.min(60000, CONFIG.FETCH_TIMEOUT / 2) * highTrafficFactor);
+  
+  // In high traffic mode, prioritize HTML responses
+  const shouldPrioritize = CONFIG.HIGH_TRAFFIC.ENABLED && 
+                        CONFIG.HIGH_TRAFFIC.PRIORITIZE_HTML &&
+                        (url.endsWith('.html') || url.includes('/games/') || url.includes('/game/'));
   
   try {
     // Process through UV with proper signal
     const options = {
       signal: signal,
-      priority: priority === 'CRITICAL' ? 'high' : (priority === 'HIGH' ? 'high' : 'auto')
+      priority: shouldPrioritize ? 'high' : 
+               (priority === 'CRITICAL' ? 'high' : 
+               (priority === 'HIGH' ? 'high' : 'auto'))
     };
     
     // Process through UV, register as a tracked connection
@@ -1168,8 +1469,8 @@ async function enhancedFetch(event, retries = CONFIG.RETRY_COUNT) {
         // Store in cache
         cache.put(event.request, clonedResponse);
         
-        // Periodically trim cache
-        if (Math.random() < 0.01) { // 1% chance
+        // Periodically trim cache - less often in high traffic mode
+        if (Math.random() < (CONFIG.HIGH_TRAFFIC.ENABLED ? 0.005 : 0.01)) { // 0.5% in high traffic, 1% in normal
           trimCache();
           clearExpiredCache();
         }
@@ -1182,8 +1483,8 @@ async function enhancedFetch(event, retries = CONFIG.RETRY_COUNT) {
     if (isGameContent(url) && response.headers.get('content-type')?.includes('text/html')) {
       const modifiedResponse = await injectGameFixes(response, url);
       
-      // Prefetch related resources in background
-      if (CONFIG.PREFETCH_DEPENDENCIES) {
+      // Prefetch related resources in background (skip in high traffic mode)
+      if (CONFIG.PREFETCH_DEPENDENCIES && !(CONFIG.HIGH_TRAFFIC.ENABLED && CONFIG.HIGH_TRAFFIC.SKIP_PREFETCH)) {
         prefetchRelatedResources(url, response.clone());
       }
       
@@ -1201,6 +1502,10 @@ async function enhancedFetch(event, retries = CONFIG.RETRY_COUNT) {
     if (retries > 0) {
       const delay = CONFIG.RETRY_DELAY * Math.pow(2, CONFIG.RETRY_COUNT - retries);
       console.log(`[UV SW] Retrying (${retries} attempts left) after ${delay}ms`);
+      
+      // Update retry stats
+      connections.stats.retried++;
+      
       await new Promise(resolve => setTimeout(resolve, delay));
       return enhancedFetch(event, retries - 1);
     }
@@ -1223,6 +1528,9 @@ async function enhancedFetch(event, retries = CONFIG.RETRY_COUNT) {
 
 // Simplified error page
 function createErrorPage(error) {
+  // Create a simpler error page in high traffic mode
+  const isHighTraffic = CONFIG.HIGH_TRAFFIC.ENABLED;
+  
   return new Response(`
     <!DOCTYPE html>
     <html>
@@ -1235,17 +1543,32 @@ function createErrorPage(error) {
         .container { max-width: 600px; margin: 40px auto; background: #333; border-radius: 8px; padding: 20px; }
         h2 { color: #f44336; margin-top: 0; }
         button { padding: 10px 16px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        ${isHighTraffic ? '.high-traffic { color: #ffeb3b; font-weight: bold; }' : ''}
       </style>
     </head>
     <body>
       <div class="container">
         <h2>Game Loading Error</h2>
+        ${isHighTraffic ? '<p class="high-traffic">Our system is experiencing high traffic right now.</p>' : ''}
         <p>The game couldn't be loaded. This may be due to network issues or temporarily high traffic.</p>
         <div>
           <button onclick="window.location.reload()">Try Again</button>
           <button onclick="window.location.href='/'">Go Home</button>
         </div>
+        ${isHighTraffic ? '<p>Please try again in a few minutes when our servers are less busy.</p>' : ''}
       </div>
+      <script>
+        // Report error to service worker after a short delay
+        setTimeout(function() {
+          try {
+            navigator.serviceWorker.controller.postMessage({
+              type: 'ERROR_REPORT',
+              url: location.href,
+              timestamp: Date.now()
+            });
+          } catch(e) {}
+        }, 1000);
+      </script>
     </body>
     </html>
   `, {
@@ -1341,4 +1664,43 @@ self.addEventListener('activate', event => {
   
   // Claim clients immediately to ensure consistent behavior
   event.waitUntil(clients.claim());
+});
+
+// Message handler for client communication
+self.addEventListener('message', event => {
+  if (!event.data) return;
+  
+  // Handle ping/pong
+  if (event.data.type === 'PING') {
+    try {
+      event.source.postMessage({
+        type: 'PONG',
+        timestamp: event.data.timestamp
+      });
+    } catch (e) {
+      // Silent fail
+    }
+    return;
+  }
+  
+  // Handle error reports
+  if (event.data.type === 'ERROR_REPORT') {
+    console.log(`[UV SW] Error report received for ${event.data.url}`);
+    return;
+  }
+  
+  // Handle status requests
+  if (event.data.type === 'STATUS_REQUEST') {
+    try {
+      event.source.postMessage({
+        type: 'STATUS_RESPONSE',
+        connectionStats: connections.getStats(),
+        highTrafficMode: CONFIG.HIGH_TRAFFIC.ENABLED,
+        timestamp: Date.now()
+      });
+    } catch (e) {
+      // Silent fail
+    }
+    return;
+  }
 });
