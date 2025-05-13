@@ -948,62 +948,72 @@
                 'color: #333;');
         }
         
-        /**
-         * Load game data from external JavaScript files
-         */
-        function loadGameData() {
-            logDebug("📚 Loading game data from external files");
-            
-            // Function to dynamically load a script
-            function loadScript(url, callback) {
-                const script = document.createElement('script');
-                script.type = 'text/javascript';
-                script.src = url;
-                
-                // Handle script load event
-                script.onload = function() {
-                    logDebug(`✅ Loaded script: ${url}`);
-                    if (callback) callback();
-                };
-                
-                // Handle script error
-                script.onerror = function() {
-                    logDebug(`❌ Error loading script: ${url}`);
-                    if (callback) callback(new Error(`Failed to load ${url}`));
-                };
-                
-                // Add script to document
-                document.head.appendChild(script);
+/**
+ * Load game data from external JavaScript files
+ */
+function loadGameData() {
+    logDebug("📚 Loading game data from external files");
+    
+    // Function to fetch file content and extract game data
+    async function fetchGameData(url) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${url}: ${response.status}`);
             }
             
-            // Load both game data files and set up their data
-            loadScript('/assets/json/games.js', function(error) {
-                if (!error && typeof window.gamesData !== 'undefined') {
-                    gamesData = window.gamesData;
-                    logDebug(`📊 Loaded ${gamesData.length} games from games.js`);
-                } else {
-                    logDebug("⚠️ Failed to load games.js or gamesData not defined");
-                    // Use default empty array if loading fails
-                    gamesData = [];
-                }
+            // Get the file content
+            const text = await response.text();
+            
+            // Extract just the array data and skip the export statement
+            // This regex matches everything before the "export" statement
+            const dataPattern = /const\s+(\w+)\s*=\s*(\[[\s\S]*?\]);/;
+            const match = text.match(dataPattern);
+            
+            if (match && match[1] && match[2]) {
+                const arrayName = match[1];
+                const arrayData = match[2];
                 
-                // Load the second games file
-                loadScript('/assets/json/games2.js', function(error) {
-                    if (!error && typeof window.games2Data !== 'undefined') {
-                        games2Data = window.games2Data;
-                        logDebug(`📊 Loaded ${games2Data.length} games from games2.js`);
-                    } else {
-                        logDebug("⚠️ Failed to load games2.js or games2Data not defined");
-                        // Use the games2Data from the first paste if available
-                        if (typeof games2Data !== 'undefined' && Array.isArray(games2Data)) {
-                            logDebug(`📊 Using ${games2Data.length} games from embedded data`);
-                        } else {
-                            games2Data = [];
-                        }
-                    }
-                    
-                    // Initialize game database with loaded data
-                    initializeGameDB();
+                // Safely evaluate the array data
+                try {
+                    // Create a function that will return the evaluated array
+                    const createArray = new Function(`return ${arrayData}`);
+                    return { name: arrayName, data: createArray() };
+                } catch (evalError) {
+                    logDebug(`❌ Error evaluating game data from ${url}: ${evalError.message}`);
+                    return { name: arrayName, data: [] };
+                }
+            }
+            
+            throw new Error(`Could not extract game data from ${url}`);
+        } catch (error) {
+            logDebug(`❌ Error loading game data from ${url}: ${error.message}`);
+            return { name: 'gameData', data: [] };
+        }
+    }
+    
+    // Load both game files using Promise.all for better performance
+    Promise.all([
+        fetchGameData('/assets/json/games.js'),
+        fetchGameData('/assets/json/games2.js')
+    ]).then(results => {
+        // Process results
+        if (results[0] && results[0].data && Array.isArray(results[0].data)) {
+            gamesData = results[0].data;
+            logDebug(`📊 Loaded ${gamesData.length} games from games.js`);
+        }
+        
+        if (results[1] && results[1].data && Array.isArray(results[1].data)) {
+            games2Data = results[1].data;
+            logDebug(`📊 Loaded ${games2Data.length} games from games2.js`);
+        }
+        
+        // Initialize game database with loaded data
+        initializeGameDB();
+    }).catch(error => {
+        logDebug(`❌ Error loading game data: ${error.message}`);
+        // Still initialize with whatever data we have
+        initializeGameDB();
                 });
             });
         }
