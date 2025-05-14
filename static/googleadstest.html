@@ -1,210 +1,24 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>Simple Video Ad Test</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 20px auto;
-            padding: 0 20px;
-        }
-        #mainContainer {
-            position: relative;
-            width: 640px;
-            height: 360px;
-            background-color: #000;
-            margin: 20px auto;
-        }
-        #content, #adContainer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
-        h1 {
-            text-align: center;
-        }
-        button {
-            padding: 10px 15px;
-            margin: 10px;
-            cursor: pointer;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        #log {
-            border: 1px solid #ccc;
-            padding: 10px;
-            height: 200px;
-            overflow-y: auto;
-            margin-top: 20px;
-            font-family: monospace;
-            font-size: 14px;
-            background-color: #f9f9f9;
-        }
-        .error {
-            color: red;
-        }
-        .success {
-            color: green;
-        }
-        .info {
-            color: blue;
-        }
-    </style>
-    <!-- Include the Google IMA SDK for VAST ads -->
-    <script src="//imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+  <title>VAST XML Test</title>
 </head>
 <body>
-    <h1>Video Ad Test Page</h1>
-    
-    <div id="mainContainer">
-        <video id="content" playsinline muted></video>
-        <div id="adContainer"></div>
-    </div>
-    
-    <div style="text-align: center;">
-        <button id="loadYourAd">Load Your Ad</button>
-        <button id="loadTestAd">Load Google Test Ad</button>
-    </div>
-    
-    <div id="log"></div>
-
-    <script>
-        // Log function
-        function log(message, type = 'info') {
-            const logElement = document.getElementById('log');
-            const timestamp = new Date().toLocaleTimeString();
-            const entry = document.createElement('div');
-            entry.className = type;
-            entry.textContent = `[${timestamp}] ${message}`;
-            logElement.appendChild(entry);
-            logElement.scrollTop = logElement.scrollHeight;
-            console.log(`[${type}] ${message}`);
-        }
-        
-        // Available ad tags
-        const adTags = {
-            yourAd: 'https://pubads.g.doubleclick.net/gampad/live/ads?iu=/23289539192/gyat2&description_url=https://voidnetwork.space&tfcd=0&npa=0&sz=640x480&gdfp_req=1&unviewed_position_start=1&output=vast&env=vp&impl=s&correlator=',
-            testAd: 'https://pubads.g.doubleclick.net/gampad/ads?iu=/21775744923/external/single_ad_samples&sz=640x480&cust_params=sample_ct%3Dlinear&ciu_szs=300x250%2C728x90&gdfp_req=1&output=vast&unviewed_position_start=1&env=vp&impl=s&correlator='
-        };
-        
-        // IMA SDK variables
-        let adDisplayContainer;
-        let adsLoader;
-        let adsManager;
-        
-        // Initialize IMA SDK
-        function initializeIMA() {
-            log('Initializing IMA SDK');
-            
-            // Create the ad display container
-            const contentElement = document.getElementById('content');
-            const adContainer = document.getElementById('adContainer');
-            adDisplayContainer = new google.ima.AdDisplayContainer(adContainer, contentElement);
-            
-            // Initialize the container (must be done on user interaction)
-            adDisplayContainer.initialize();
-            
-            // Create ads loader
-            adsLoader = new google.ima.AdsLoader(adDisplayContainer);
-            
-            // Add event listeners
-            adsLoader.addEventListener(
-                google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
-                onAdsManagerLoaded,
-                false);
-            
-            adsLoader.addEventListener(
-                google.ima.AdErrorEvent.Type.AD_ERROR,
-                onAdError,
-                false);
-                
-            // Ensure any existing ads manager is destroyed
-            if (adsManager) {
-                adsManager.destroy();
-                adsManager = null;
-            }
-        }
-        
-        // Request ads using the specified tag
-        function requestAds(adTagUrl) {
-            log(`Requesting ad with tag: ${adTagUrl}`);
-            
-            // Initialize IMA first (will reset if already initialized)
-            initializeIMA();
-            
-            // Create ads request
-            const adsRequest = new google.ima.AdsRequest();
-            adsRequest.adTagUrl = adTagUrl;
-            
-            // Specify ad dimensions
-            adsRequest.linearAdSlotWidth = 640;
-            adsRequest.linearAdSlotHeight = 360;
-            adsRequest.nonLinearAdSlotWidth = 640;
-            adsRequest.nonLinearAdSlotHeight = 150;
-            
-            // Make the request
-            adsLoader.requestAds(adsRequest);
-        }
-        
-        // Event fired when ads manager is loaded
-        function onAdsManagerLoaded(adsManagerLoadedEvent) {
-            log('Ads manager loaded successfully', 'success');
-            
-            // Get the ads manager
-            const contentElement = document.getElementById('content');
-            adsManager = adsManagerLoadedEvent.getAdsManager(contentElement);
-            
-            // Add event listeners for ad events
-            adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () => log('Ad playback started', 'info'));
-            adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () => log('Ad playback completed', 'success'));
-            adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, () => log('All ads completed', 'success'));
-            adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
-            
-            try {
-                // Initialize the ads manager
-                adsManager.init(640, 360, google.ima.ViewMode.NORMAL);
-                
-                // Start playing ads
-                adsManager.start();
-                log('Starting ad playback');
-            } catch (adError) {
-                log(`Ads manager initialization error: ${adError.message}`, 'error');
-            }
-        }
-        
-        // Event fired when there's an ad error
-        function onAdError(adErrorEvent) {
-            const error = adErrorEvent.getError();
-            log(`Ad error: ${error.getMessage()}`, 'error');
-            
-            // Clean up
-            if (adsManager) {
-                adsManager.destroy();
-                adsManager = null;
-            }
-        }
-        
-        // Add button event listeners
-        document.getElementById('loadYourAd').addEventListener('click', function() {
-            log('Loading your ad tag');
-            requestAds(adTags.yourAd);
-        });
-        
-        document.getElementById('loadTestAd').addEventListener('click', function() {
-            log('Loading Google test ad tag');
-            requestAds(adTags.testAd);
-        });
-        
-        log('Page loaded. Click a button to load an ad.', 'info');
-    </script>
+  <h1>VAST XML Test</h1>
+  <pre id="result">Loading...</pre>
+  
+  <script>
+    // Direct VAST request
+    fetch('https://pubads.g.doubleclick.net/gampad/ads?iu=/21775744923/external/single_ad_samples&sz=640x480&output=vast&unviewed_position_start=1&env=vp&impl=s&correlator=')
+      .then(response => response.text())
+      .then(data => {
+        document.getElementById('result').textContent = data.substring(0, 1000) + '...'; // Show first 1000 chars
+        console.log('VAST response received', data);
+      })
+      .catch(error => {
+        document.getElementById('result').textContent = 'Error: ' + error;
+        console.error('Error fetching VAST:', error);
+      });
+  </script>
 </body>
 </html>
