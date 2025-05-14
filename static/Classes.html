@@ -949,10 +949,29 @@
         }
         
         /**
-         * Enhanced game data loading with modern imports and retry mechanism
+         * Enhanced game data loading with UV config check and retries
          */
         function loadGameData() {
             logDebug("📚 Loading game data from external files");
+            
+            // Function to wait for UV config to be ready
+            async function waitForUVConfig(maxWaitTime = 10000) {
+                const startTime = Date.now();
+                
+                // Poll until UV config is available or timeout
+                while (typeof window.__uv$config === 'undefined') {
+                    // Check for timeout
+                    if (Date.now() - startTime > maxWaitTime) {
+                        logDebug("⚠️ Timed out waiting for UV config");
+                        break;
+                    }
+                    
+                    // Wait a bit before checking again
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                return typeof window.__uv$config !== 'undefined';
+            }
             
             // Maximum number of retry attempts
             const maxRetries = 3;
@@ -961,6 +980,17 @@
             async function attemptLoadGameData(retryCount = 0) {
                 try {
                     logDebug(`Attempt ${retryCount + 1}/${maxRetries}: Loading games data`);
+                    
+                    // First, wait for UV config to be ready before trying to import
+                    const uvReady = await waitForUVConfig();
+                    if (!uvReady) {
+                        logDebug("⚠️ UV config not available, continuing anyway");
+                    } else {
+                        logDebug("✅ UV config is ready, proceeding with game data loading");
+                    }
+                    
+                    // Add a small delay to ensure everything is fully initialized
+                    await new Promise(resolve => setTimeout(resolve, 300));
                     
                     // Use dynamic imports to load the game modules
                     const [gamesModule, games2Module] = await Promise.all([
@@ -1012,7 +1042,7 @@
                     }
                     
                     // Last resort - initialize with empty arrays
-                    logDebug(`❌ All ${maxRetries} attempts failed, using empty game arrays`);
+                    logDebug(`❌ All ${maxRetries} attempts failed, using fallback games`);
                     initializeGameDB();
                 }
             }
@@ -2048,11 +2078,17 @@
             // Setup service worker messaging for high traffic detection
             setupServiceWorkerMessaging();
             
-            // Load game data first, then start loading the game
-            loadGameData();
-            
-            // Start loading the game (GameDB will be initialized later when data is loaded)
-            loadGame(originalGameUrl);
+            // First ensure the service worker and UV config are registered
+            // Then load game data, and finally load the game
+            setTimeout(() => {
+                // Load game data first, then start loading the game
+                loadGameData();
+                
+                // Start loading the game with a small delay to ensure GameDB initialization starts
+                setTimeout(() => {
+                    loadGame(originalGameUrl);
+                }, 200);
+            }, 300);
         });
         
         /**
