@@ -2,276 +2,209 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Google IMA Video Ad</title>
+    <title>Simple Video Ad Test</title>
     <style>
         body {
-            margin: 0;
-            padding: 20px;
             font-family: Arial, sans-serif;
-            text-align: center;
-            background-color: #f5f5f5;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 20px;
         }
-        h1 {
-            margin-bottom: 20px;
-        }
-        #video-container {
+        #mainContainer {
             position: relative;
             width: 640px;
-            height: 480px;
-            margin: 0 auto;
+            height: 360px;
             background-color: #000;
-            overflow: hidden;
+            margin: 20px auto;
         }
-        #status {
-            margin-top: 15px;
-            padding: 10px;
-            background-color: #dff0d8;
-            border: 1px solid #d6e9c6;
+        #content, #adContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        h1 {
+            text-align: center;
+        }
+        button {
+            padding: 10px 15px;
+            margin: 10px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
             border-radius: 4px;
-            color: #3c763d;
         }
-        #error-container {
-            margin-top: 15px;
-            padding: 10px;
-            background-color: #f2dede;
-            border: 1px solid #ebccd1;
-            border-radius: 4px;
-            color: #a94442;
-            text-align: left;
-            font-family: monospace;
-            white-space: pre-wrap;
-            display: none;
+        button:hover {
+            background-color: #45a049;
         }
-        .debug-info {
-            margin-top: 20px;
-            text-align: left;
+        #log {
             border: 1px solid #ccc;
             padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            margin-top: 20px;
             font-family: monospace;
-            font-size: 12px;
+            font-size: 14px;
             background-color: #f9f9f9;
         }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+        .info {
+            color: blue;
+        }
     </style>
+    <!-- Include the Google IMA SDK for VAST ads -->
+    <script src="//imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
 </head>
 <body>
     <h1>Video Ad Test Page</h1>
     
-    <div id="video-container">
-        <!-- The iframe will be inserted here by JavaScript -->
+    <div id="mainContainer">
+        <video id="content" playsinline muted></video>
+        <div id="adContainer"></div>
     </div>
     
-    <div id="status">Initializing ad player...</div>
-    <div id="error-container"></div>
-    
-    <div class="debug-info">
-        <h3>Debug Information</h3>
-        <div id="debug-output"></div>
+    <div style="text-align: center;">
+        <button id="loadYourAd">Load Your Ad</button>
+        <button id="loadTestAd">Load Google Test Ad</button>
     </div>
+    
+    <div id="log"></div>
 
     <script>
-        // Configuration
-        const adTagUrl = 'https://pubads.g.doubleclick.net/gampad/live/ads?iu=/23289539192/gyat2&description_url=https://voidnetwork.space&tfcd=0&npa=0&sz=640x480&gdfp_req=1&unviewed_position_start=1&output=vast&env=vp&impl=s&correlator=';
-        
-        // Helper functions
-        function logDebug(message) {
-            console.log(message);
-            const debugOutput = document.getElementById('debug-output');
+        // Log function
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
             const timestamp = new Date().toLocaleTimeString();
-            debugOutput.innerHTML += `<p>[${timestamp}] ${message}</p>`;
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logElement.appendChild(entry);
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(`[${type}] ${message}`);
         }
         
-        function updateStatus(message) {
-            document.getElementById('status').textContent = message;
-        }
+        // Available ad tags
+        const adTags = {
+            yourAd: 'https://pubads.g.doubleclick.net/gampad/live/ads?iu=/23289539192/gyat2&description_url=https://voidnetwork.space&tfcd=0&npa=0&sz=640x480&gdfp_req=1&unviewed_position_start=1&output=vast&env=vp&impl=s&correlator=',
+            testAd: 'https://pubads.g.doubleclick.net/gampad/ads?iu=/21775744923/external/single_ad_samples&sz=640x480&cust_params=sample_ct%3Dlinear&ciu_szs=300x250%2C728x90&gdfp_req=1&output=vast&unviewed_position_start=1&env=vp&impl=s&correlator='
+        };
         
-        function displayError(message) {
-            const errorContainer = document.getElementById('error-container');
-            errorContainer.textContent = "ERROR: " + message;
-            errorContainer.style.display = 'block';
-            
-            document.getElementById('status').style.display = 'none';
-            
-            logDebug("Error: " + message);
-        }
+        // IMA SDK variables
+        let adDisplayContainer;
+        let adsLoader;
+        let adsManager;
         
-        // Create the player iframe with proper permissions
-        function setupPlayerIframe() {
-            updateStatus("Setting up player environment...");
-            logDebug("Creating player iframe");
+        // Initialize IMA SDK
+        function initializeIMA() {
+            log('Initializing IMA SDK');
             
-            const videoContainer = document.getElementById('video-container');
+            // Create the ad display container
+            const contentElement = document.getElementById('content');
+            const adContainer = document.getElementById('adContainer');
+            adDisplayContainer = new google.ima.AdDisplayContainer(adContainer, contentElement);
             
-            // Create an iframe with necessary permissions
-            const iframe = document.createElement('iframe');
-            iframe.id = 'player-iframe';
-            iframe.style.width = '100%';
-            iframe.style.height = '100%';
-            iframe.style.border = 'none';
-            iframe.allowFullscreen = true;
+            // Initialize the container (must be done on user interaction)
+            adDisplayContainer.initialize();
             
-            // Set sandbox attributes to allow scripts but maintain some security
-            iframe.sandbox = 'allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms';
+            // Create ads loader
+            adsLoader = new google.ima.AdsLoader(adDisplayContainer);
             
-            // Add the iframe to the container
-            videoContainer.appendChild(iframe);
+            // Add event listeners
+            adsLoader.addEventListener(
+                google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+                onAdsManagerLoaded,
+                false);
             
-            // Create the player document inside the iframe
-            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-            iframeDoc.open();
-            iframeDoc.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="utf-8">
-                    <style>
-                        body, html { 
-                            margin: 0; 
-                            padding: 0; 
-                            width: 100%; 
-                            height: 100%; 
-                            overflow: hidden;
-                            background-color: #000;
-                        }
-                        #video-element {
-                            width: 100%;
-                            height: 100%;
-                            background-color: #000;
-                        }
-                        #ad-container {
-                            position: absolute;
-                            top: 0;
-                            left: 0;
-                            width: 100%;
-                            height: 100%;
-                        }
-                    </style>
-                    <script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"><\/script>
-                </head>
-                <body>
-                    <video id="video-element" playsinline muted></video>
-                    <div id="ad-container"></div>
-                    
-                    <script>
-                        // Function to communicate with parent window
-                        function sendMessageToParent(type, data) {
-                            window.parent.postMessage({type: type, data: data}, '*');
-                        }
-                        
-                        // Initialize IMA SDK
-                        function initializeIMA() {
-                            try {
-                                sendMessageToParent('status', 'Initializing IMA SDK');
-                                
-                                const videoElement = document.getElementById('video-element');
-                                const adContainer = document.getElementById('ad-container');
-                                
-                                // Create ad display container
-                                const adDisplayContainer = new google.ima.AdDisplayContainer(adContainer, videoElement);
-                                
-                                // Initialize the container (must be done on user interaction for mobile)
-                                adDisplayContainer.initialize();
-                                
-                                // Create ads loader
-                                const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
-                                
-                                // Add event listeners
-                                adsLoader.addEventListener(
-                                    google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
-                                    function(adsManagerLoadedEvent) {
-                                        sendMessageToParent('status', 'Ads manager loaded');
-                                        
-                                        // Get the ads manager
-                                        const adsManager = adsManagerLoadedEvent.getAdsManager(videoElement);
-                                        
-                                        // Add listeners for ad events
-                                        adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, 
-                                            function() { sendMessageToParent('status', 'Ad playback started'); });
-                                        adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, 
-                                            function() { sendMessageToParent('status', 'Ad playback completed'); });
-                                        adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, 
-                                            function() { sendMessageToParent('status', 'All ads completed'); });
-                                        adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, 
-                                            function(e) { sendMessageToParent('error', e.getError().getMessage()); });
-                                        
-                                        try {
-                                            // Initialize the ads manager
-                                            adsManager.init(640, 480, google.ima.ViewMode.NORMAL);
-                                            
-                                            // Start playing ads
-                                            adsManager.start();
-                                            sendMessageToParent('status', 'Starting ad playback');
-                                        } catch (adError) {
-                                            sendMessageToParent('error', 'Ads manager initialization error: ' + adError.message);
-                                        }
-                                    },
-                                    false);
-                                
-                                adsLoader.addEventListener(
-                                    google.ima.AdErrorEvent.Type.AD_ERROR,
-                                    function(adErrorEvent) {
-                                        sendMessageToParent('error', adErrorEvent.getError().getMessage());
-                                    },
-                                    false);
-                                
-                                // Request ads
-                                const adsRequest = new google.ima.AdsRequest();
-                                adsRequest.adTagUrl = '${adTagUrl}';
-                                
-                                // Fix for the description_url issue - add protocol
-                                if (adsRequest.adTagUrl.includes('description_url=voidnetwork.space')) {
-                                    adsRequest.adTagUrl = adsRequest.adTagUrl.replace('description_url=voidnetwork.space', 'description_url=https://voidnetwork.space');
-                                }
-                                
-                                // Specify ad dimensions
-                                adsRequest.linearAdSlotWidth = 640;
-                                adsRequest.linearAdSlotHeight = 480;
-                                adsRequest.nonLinearAdSlotWidth = 640;
-                                adsRequest.nonLinearAdSlotHeight = 480;
-                                
-                                sendMessageToParent('debug', 'Requesting ad with URL: ' + adsRequest.adTagUrl);
-                                adsLoader.requestAds(adsRequest);
-                            } catch (error) {
-                                sendMessageToParent('error', 'IMA initialization error: ' + error.message);
-                            }
-                        }
-                        
-                        // Initialize when the page loads
-                        window.addEventListener('DOMContentLoaded', function() {
-                            sendMessageToParent('status', 'Player iframe loaded, initializing ad system');
-                            initializeIMA();
-                        });
-                    <\/script>
-                </body>
-                </html>
-            `);
-            iframeDoc.close();
-            
-            logDebug("Player iframe created with proper permissions");
-        }
-        
-        // Listen for messages from the iframe
-        window.addEventListener('message', function(event) {
-            if (event.data && event.data.type) {
-                switch(event.data.type) {
-                    case 'status':
-                        updateStatus(event.data.data);
-                        logDebug(event.data.data);
-                        break;
-                    case 'error':
-                        displayError(event.data.data);
-                        break;
-                    case 'debug':
-                        logDebug(event.data.data);
-                        break;
-                }
+            adsLoader.addEventListener(
+                google.ima.AdErrorEvent.Type.AD_ERROR,
+                onAdError,
+                false);
+                
+            // Ensure any existing ads manager is destroyed
+            if (adsManager) {
+                adsManager.destroy();
+                adsManager = null;
             }
+        }
+        
+        // Request ads using the specified tag
+        function requestAds(adTagUrl) {
+            log(`Requesting ad with tag: ${adTagUrl}`);
+            
+            // Initialize IMA first (will reset if already initialized)
+            initializeIMA();
+            
+            // Create ads request
+            const adsRequest = new google.ima.AdsRequest();
+            adsRequest.adTagUrl = adTagUrl;
+            
+            // Specify ad dimensions
+            adsRequest.linearAdSlotWidth = 640;
+            adsRequest.linearAdSlotHeight = 360;
+            adsRequest.nonLinearAdSlotWidth = 640;
+            adsRequest.nonLinearAdSlotHeight = 150;
+            
+            // Make the request
+            adsLoader.requestAds(adsRequest);
+        }
+        
+        // Event fired when ads manager is loaded
+        function onAdsManagerLoaded(adsManagerLoadedEvent) {
+            log('Ads manager loaded successfully', 'success');
+            
+            // Get the ads manager
+            const contentElement = document.getElementById('content');
+            adsManager = adsManagerLoadedEvent.getAdsManager(contentElement);
+            
+            // Add event listeners for ad events
+            adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () => log('Ad playback started', 'info'));
+            adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () => log('Ad playback completed', 'success'));
+            adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, () => log('All ads completed', 'success'));
+            adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
+            
+            try {
+                // Initialize the ads manager
+                adsManager.init(640, 360, google.ima.ViewMode.NORMAL);
+                
+                // Start playing ads
+                adsManager.start();
+                log('Starting ad playback');
+            } catch (adError) {
+                log(`Ads manager initialization error: ${adError.message}`, 'error');
+            }
+        }
+        
+        // Event fired when there's an ad error
+        function onAdError(adErrorEvent) {
+            const error = adErrorEvent.getError();
+            log(`Ad error: ${error.getMessage()}`, 'error');
+            
+            // Clean up
+            if (adsManager) {
+                adsManager.destroy();
+                adsManager = null;
+            }
+        }
+        
+        // Add button event listeners
+        document.getElementById('loadYourAd').addEventListener('click', function() {
+            log('Loading your ad tag');
+            requestAds(adTags.yourAd);
         });
         
-        // Initialize the page
-        document.addEventListener('DOMContentLoaded', function() {
-            logDebug("Page loaded, setting up player");
-            setupPlayerIframe();
+        document.getElementById('loadTestAd').addEventListener('click', function() {
+            log('Loading Google test ad tag');
+            requestAds(adTags.testAd);
         });
+        
+        log('Page loaded. Click a button to load an ad.', 'info');
     </script>
 </body>
 </html>
