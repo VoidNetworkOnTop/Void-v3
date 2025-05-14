@@ -949,76 +949,80 @@
         }
         
         /**
-         * Load game data from external JavaScript files
+         * Enhanced game data loading with modern imports and retry mechanism
          */
         function loadGameData() {
             logDebug("📚 Loading game data from external files");
             
-            // Function to fetch file content and extract game data
-            async function fetchGameData(url) {
+            // Maximum number of retry attempts
+            const maxRetries = 3;
+            
+            // Async function to load game data with retries
+            async function attemptLoadGameData(retryCount = 0) {
                 try {
-                    const response = await fetch(url);
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch ${url}: ${response.status}`);
+                    logDebug(`Attempt ${retryCount + 1}/${maxRetries}: Loading games data`);
+                    
+                    // Use dynamic imports to load the game modules
+                    const [gamesModule, games2Module] = await Promise.all([
+                        import("/assets/json/games.js").catch(err => {
+                            console.warn('Failed to load games.js:', err);
+                            return { gamesData: [] };
+                        }),
+                        import("/assets/json/games2.js").catch(err => {
+                            console.warn('Failed to load games2.js:', err);
+                            return { games2Data: [] };
+                        })
+                    ]);
+                    
+                    // Extract the game data from the modules
+                    if (gamesModule.gamesData && Array.isArray(gamesModule.gamesData)) {
+                        gamesData = gamesModule.gamesData;
+                        logDebug(`📊 Loaded ${gamesData.length} games from games.js`);
                     }
                     
-                    // Get the file content
-                    const text = await response.text();
-                    
-                    // Extract just the array data and skip the export statement
-                    // This regex matches everything before the "export" statement
-                    const dataPattern = /const\s+(\w+)\s*=\s*(\[[\s\S]*?\]);/;
-                    const match = text.match(dataPattern);
-                    
-                    if (match && match[1] && match[2]) {
-                        const arrayName = match[1];
-                        const arrayData = match[2];
-                        
-                        // Safely evaluate the array data
-                        try {
-                            // Create a function that will return the evaluated array
-                            const createArray = new Function(`return ${arrayData}`);
-                            return { name: arrayName, data: createArray() };
-                        } catch (evalError) {
-                            logDebug(`❌ Error evaluating game data from ${url}: ${evalError.message}`);
-                            return { name: arrayName, data: [] };
-                        }
+                    if (games2Module.games2Data && Array.isArray(games2Module.games2Data)) {
+                        games2Data = games2Module.games2Data;
+                        logDebug(`📊 Loaded ${games2Data.length} games from games2.js`);
                     }
                     
-                    throw new Error(`Could not extract game data from ${url}`);
+                    // Check if we need to retry (both arrays empty and retries left)
+                    if (gamesData.length === 0 && games2Data.length === 0 && retryCount < maxRetries - 1) {
+                        logDebug(`⚠️ Both game arrays empty, retrying in ${(retryCount + 1) * 1000}ms...`);
+                        setTimeout(() => attemptLoadGameData(retryCount + 1), (retryCount + 1) * 1000);
+                        return;
+                    }
+                    
+                    // Initialize game database with loaded data
+                    initializeGameDB();
+                    
+                    // If we have suggestions container, refresh the suggestions
+                    const suggestionsElement = document.getElementById('gameSuggestions');
+                    if (suggestionsElement) {
+                        loadGameSuggestions();
+                    }
+                    
                 } catch (error) {
-                    logDebug(`❌ Error loading game data from ${url}: ${error.message}`);
-                    return { name: 'gameData', data: [] };
+                    logDebug(`❌ Error loading game data: ${error.message}`);
+                    
+                    // Retry if we have attempts left
+                    if (retryCount < maxRetries - 1) {
+                        logDebug(`🔄 Retrying in ${(retryCount + 1) * 1000}ms...`);
+                        setTimeout(() => attemptLoadGameData(retryCount + 1), (retryCount + 1) * 1000);
+                        return;
+                    }
+                    
+                    // Last resort - initialize with empty arrays
+                    logDebug(`❌ All ${maxRetries} attempts failed, using empty game arrays`);
+                    initializeGameDB();
                 }
             }
             
-            // Load both game files using Promise.all for better performance
-            Promise.all([
-                fetchGameData('/assets/json/games.js'),
-                fetchGameData('/assets/json/games2.js')
-            ]).then(results => {
-                // Process results
-                if (results[0] && results[0].data && Array.isArray(results[0].data)) {
-                    gamesData = results[0].data;
-                    logDebug(`📊 Loaded ${gamesData.length} games from games.js`);
-                }
-                
-                if (results[1] && results[1].data && Array.isArray(results[1].data)) {
-                    games2Data = results[1].data;
-                    logDebug(`📊 Loaded ${games2Data.length} games from games2.js`);
-                }
-                
-                // Initialize game database with loaded data
-                initializeGameDB();
-            }).catch(error => {
-                logDebug(`❌ Error loading game data: ${error.message}`);
-                // Still initialize with whatever data we have
-                initializeGameDB();
-            });
+            // Start the loading process
+            attemptLoadGameData();
         }
 
         /**
-         * Initialize game database with loaded data
+         * Initialize game database with loaded data - Improved version
          */
         function initializeGameDB() {
             // Combine both game arrays
@@ -1028,20 +1032,42 @@
             
             if (allGames.length === 0) {
                 logDebug("⚠️ No games found in data sources, using fallback games");
+                
+                // Add fallback games if no games were loaded
+                gamesData = [
+                    {
+                        id: 'fallback1',
+                        title: "2048",
+                        imgSrc: "/img/gameimg/2048.jpg",
+                        link: "/uv/service/aHR0cHM6Ly9wbGF5MjA0OC5jbw=="
+                    },
+                    {
+                        id: 'fallback2',
+                        title: "Slope",
+                        imgSrc: "/img/gameimg/slope.jpg", 
+                        link: "/uv/service/aHR0cHM6Ly9zbG9wZS1nYW1lLmNvbQ=="
+                    },
+                    {
+                        id: 'fallback3',
+                        title: "Tetris",
+                        imgSrc: "/img/gameimg/tetris.jpg",
+                        link: "/uv/service/aHR0cHM6Ly90ZXRyaXMuY29tL3BsYXktdGV0cmlz"
+                    }
+                ];
             }
             
             // Create or update the GameDB object
             window.GameDB = window.GameDB || {};
             
             // Convert game format if needed and ensure each game has an ID
-            const processedGames = allGames.map((game, index) => {
+            const processedGames = allGames.length > 0 ? allGames.map((game, index) => {
                 return {
                     id: game.id || `game-${index}`,
                     title: game.title || 'Unknown Game',
                     imgSrc: game.imgSrc || '/img/gameimg/default.png',
                     link: game.link || '#'
                 };
-            });
+            }) : [];
             
             // Add game retrieval methods
             window.GameDB.getAllGames = function() {
@@ -1054,8 +1080,13 @@
                     ? processedGames.filter(game => game.link !== currentUrl)
                     : [...processedGames];
                     
+                // Ensure we have games to shuffle
+                if (filteredGames.length === 0) {
+                    return [];
+                }
+                    
                 // Shuffle and return requested number of games
-                return window.GameDB.shuffleArray(filteredGames).slice(0, count);
+                return window.GameDB.shuffleArray(filteredGames).slice(0, Math.min(count, filteredGames.length));
             };
             
             window.GameDB.getGameByUrl = function(url) {
@@ -1075,6 +1106,8 @@
             if (typeof loadGameSuggestions === 'function') {
                 loadGameSuggestions();
             }
+            
+            logDebug(`✅ GameDB initialized with ${processedGames.length} games`);
         }
         
         // Setup service worker communication
