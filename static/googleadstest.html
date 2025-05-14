@@ -2,12 +2,14 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Google Video Ad</title>
+    <title>Video Ad Implementation</title>
     <style>
         body {
             margin: 0;
-            padding: 0;
+            padding: 20px;
             font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
         }
         #video-container {
             position: relative;
@@ -15,6 +17,8 @@
             height: 480px;
             background-color: #000;
             margin: 0 auto;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
         }
         #video-element {
             width: 100%;
@@ -32,22 +36,38 @@
             height: 100%;
             z-index: 2;
         }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #dff0d8;
+            border: 1px solid #d6e9c6;
+            border-radius: 4px;
+            color: #3c763d;
+        }
         #error-container {
-            color: red;
-            padding: 20px;
-            text-align: center;
-            font-size: 16px;
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f2dede;
+            border: 1px solid #ebccd1;
+            border-radius: 4px;
+            color: #a94442;
+            text-align: left;
             font-family: monospace;
             white-space: pre-wrap;
+            display: none;
         }
     </style>
     <script type="text/javascript" src="//imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
 </head>
 <body>
+    <h1>Video Ad Player</h1>
+    
     <div id="video-container">
         <video id="video-element" playsinline muted></video>
         <div id="ad-container"></div>
     </div>
+    
+    <div id="status">Loading ad...</div>
     <div id="error-container"></div>
 
     <script>
@@ -55,7 +75,20 @@
         function displayError(errorMessage) {
             var errorContainer = document.getElementById('error-container');
             errorContainer.textContent = "ERROR: " + errorMessage;
+            errorContainer.style.display = 'block';
+            
+            var statusElement = document.getElementById('status');
+            statusElement.textContent = "Ad failed to load";
+            statusElement.style.backgroundColor = "#f2dede";
+            statusElement.style.borderColor = "#ebccd1";
+            statusElement.style.color = "#a94442";
+            
             console.error(errorMessage);
+        }
+        
+        function updateStatus(message) {
+            var statusElement = document.getElementById('status');
+            statusElement.textContent = message;
         }
 
         // Initialize IMA SDK
@@ -66,7 +99,7 @@
         var adContainer;
         
         // VAST ad tag URL from Google Ad Manager
-        var adTagUrl = 'https://pubads.g.doubleclick.net/gampad/live/ads?iu=/23289539192/VoidCoinsReward&description_url=http%3A%2F%2Fvoidnetwork.space&tfcd=0&npa=0&sz=640x480&gdfp_req=1&unviewed_position_start=1&output=vast&env=vp&impl=s&correlator=';
+        var adTagUrl = 'https://pubads.g.doubleclick.net/gampad/live/ads?iu=/23289539192/gyat2&description_url=voidnetwork.space&tfcd=0&npa=0&sz=640x480&gdfp_req=1&unviewed_position_start=1&output=vast&env=vp&impl=s&correlator=';
         
         document.addEventListener('DOMContentLoaded', function() {
             try {
@@ -82,6 +115,8 @@
         
         function initializeIMA() {
             try {
+                updateStatus("Initializing ad system...");
+                
                 // Create ad display container
                 adDisplayContainer = new google.ima.AdDisplayContainer(adContainer, videoElement);
                 
@@ -98,6 +133,8 @@
                     onAdError,
                     false);
                 
+                updateStatus("Initializing ad display...");
+                
                 // Initialize the container
                 adDisplayContainer.initialize();
                 
@@ -111,6 +148,7 @@
                 adsRequest.nonLinearAdSlotWidth = 640;
                 adsRequest.nonLinearAdSlotHeight = 480;
                 
+                updateStatus("Requesting ad...");
                 adsLoader.requestAds(adsRequest);
             } catch (error) {
                 displayError("IMA initialization error: " + error.message);
@@ -119,12 +157,16 @@
         
         function onAdsManagerLoaded(adsManagerLoadedEvent) {
             try {
+                updateStatus("Ad loaded, preparing to play...");
+                
                 // Get the ads manager
                 adsManager = adsManagerLoadedEvent.getAdsManager(videoElement);
                 
                 // Add required event listeners
                 adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
                 adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, onAllAdsCompleted);
+                adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, onAdStarted);
+                adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, onAdComplete);
                 
                 // Initialize the ads manager
                 adsManager.init(640, 480, google.ima.ViewMode.NORMAL);
@@ -134,6 +176,14 @@
             } catch (error) {
                 displayError("Ads manager error: " + error.message);
             }
+        }
+        
+        function onAdStarted() {
+            updateStatus("Ad playing now...");
+        }
+        
+        function onAdComplete() {
+            updateStatus("Ad playback complete");
         }
         
         function onAdError(adErrorEvent) {
@@ -148,7 +198,7 @@
         }
         
         function onAllAdsCompleted() {
-            // You can add code here for what happens after all ads complete
+            updateStatus("All ads completed");
         }
         
         // Handle any unexpected errors
