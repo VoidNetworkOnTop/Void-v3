@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Google Video Ad</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        #video-container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            background-color: #000;
+            margin: 0 auto;
+        }
+        #video-element {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        #ad-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+        #error-container {
+            color: red;
+            padding: 20px;
+            text-align: center;
+            font-size: 16px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+    <script type="text/javascript" src="//imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+</head>
+<body>
+    <div id="video-container">
+        <video id="video-element" playsinline muted></video>
+        <div id="ad-container"></div>
+    </div>
+    <div id="error-container"></div>
+
+    <script>
+        // Error display function
+        function displayError(errorMessage) {
+            var errorContainer = document.getElementById('error-container');
+            errorContainer.textContent = "ERROR: " + errorMessage;
+            console.error(errorMessage);
+        }
+
+        // Initialize IMA SDK
+        var adDisplayContainer;
+        var adsLoader;
+        var adsManager;
+        var videoElement;
+        var adContainer;
+        
+        // VAST ad tag URL from Google Ad Manager
+        var adTagUrl = 'https://pubads.g.doubleclick.net/gampad/live/ads?iu=/23289539192/VoidCoinsReward&description_url=http%3A%2F%2Fvoidnetwork.space&tfcd=0&npa=0&sz=640x480&gdfp_req=1&unviewed_position_start=1&output=vast&env=vp&impl=s&correlator=';
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                videoElement = document.getElementById('video-element');
+                adContainer = document.getElementById('ad-container');
+                
+                // Initialize IMA
+                initializeIMA();
+            } catch (error) {
+                displayError("Initialization error: " + error.message);
+            }
+        });
+        
+        function initializeIMA() {
+            try {
+                // Create ad display container
+                adDisplayContainer = new google.ima.AdDisplayContainer(adContainer, videoElement);
+                
+                // Create ads loader
+                adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+                
+                // Add event listeners
+                adsLoader.addEventListener(
+                    google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+                    onAdsManagerLoaded,
+                    false);
+                adsLoader.addEventListener(
+                    google.ima.AdErrorEvent.Type.AD_ERROR,
+                    onAdError,
+                    false);
+                
+                // Initialize the container
+                adDisplayContainer.initialize();
+                
+                // Request ads
+                var adsRequest = new google.ima.AdsRequest();
+                adsRequest.adTagUrl = adTagUrl;
+                
+                // Specify ad dimensions
+                adsRequest.linearAdSlotWidth = 640;
+                adsRequest.linearAdSlotHeight = 480;
+                adsRequest.nonLinearAdSlotWidth = 640;
+                adsRequest.nonLinearAdSlotHeight = 480;
+                
+                adsLoader.requestAds(adsRequest);
+            } catch (error) {
+                displayError("IMA initialization error: " + error.message);
+            }
+        }
+        
+        function onAdsManagerLoaded(adsManagerLoadedEvent) {
+            try {
+                // Get the ads manager
+                adsManager = adsManagerLoadedEvent.getAdsManager(videoElement);
+                
+                // Add required event listeners
+                adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
+                adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, onAllAdsCompleted);
+                
+                // Initialize the ads manager
+                adsManager.init(640, 480, google.ima.ViewMode.NORMAL);
+                
+                // Start playing ads
+                adsManager.start();
+            } catch (error) {
+                displayError("Ads manager error: " + error.message);
+            }
+        }
+        
+        function onAdError(adErrorEvent) {
+            // Display the error on the page
+            var error = adErrorEvent.getError();
+            displayError("Ad error: " + error.getMessage());
+            
+            // Clean up
+            if (adsManager) {
+                adsManager.destroy();
+            }
+        }
+        
+        function onAllAdsCompleted() {
+            // You can add code here for what happens after all ads complete
+        }
+        
+        // Handle any unexpected errors
+        window.onerror = function(message, source, lineno, colno, error) {
+            displayError("JavaScript error: " + message + "\nLine: " + lineno);
+            return true; // Prevents default error handling
+        };
+    </script>
+</body>
+</html>
