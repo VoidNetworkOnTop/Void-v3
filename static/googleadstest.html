@@ -2,42 +2,28 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Video Ad Implementation</title>
+    <title>Google IMA Video Ad</title>
     <style>
         body {
             margin: 0;
             padding: 20px;
             font-family: Arial, sans-serif;
             text-align: center;
-            background-color: #f0f0f0;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            margin-bottom: 20px;
         }
         #video-container {
             position: relative;
             width: 640px;
             height: 480px;
-            background-color: #000;
             margin: 0 auto;
-            border: 1px solid #ccc;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
-        #video-element {
-            width: 100%;
-            height: 100%;
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 1;
-        }
-        #ad-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 2;
+            background-color: #000;
+            overflow: hidden;
         }
         #status {
-            margin-top: 20px;
+            margin-top: 15px;
             padding: 10px;
             background-color: #dff0d8;
             border: 1px solid #d6e9c6;
@@ -45,8 +31,8 @@
             color: #3c763d;
         }
         #error-container {
-            margin-top: 20px;
-            padding: 15px;
+            margin-top: 15px;
+            padding: 10px;
             background-color: #f2dede;
             border: 1px solid #ebccd1;
             border-radius: 4px;
@@ -56,156 +42,236 @@
             white-space: pre-wrap;
             display: none;
         }
+        .debug-info {
+            margin-top: 20px;
+            text-align: left;
+            border: 1px solid #ccc;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            background-color: #f9f9f9;
+        }
     </style>
-    <script type="text/javascript" src="//imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
 </head>
 <body>
-    <h1>Video Ad Player</h1>
+    <h1>Video Ad Test Page</h1>
     
     <div id="video-container">
-        <video id="video-element" playsinline muted></video>
-        <div id="ad-container"></div>
+        <!-- The iframe will be inserted here by JavaScript -->
     </div>
     
-    <div id="status">Loading ad...</div>
+    <div id="status">Initializing ad player...</div>
     <div id="error-container"></div>
+    
+    <div class="debug-info">
+        <h3>Debug Information</h3>
+        <div id="debug-output"></div>
+    </div>
 
     <script>
-        // Error display function
-        function displayError(errorMessage) {
-            var errorContainer = document.getElementById('error-container');
-            errorContainer.textContent = "ERROR: " + errorMessage;
-            errorContainer.style.display = 'block';
-            
-            var statusElement = document.getElementById('status');
-            statusElement.textContent = "Ad failed to load";
-            statusElement.style.backgroundColor = "#f2dede";
-            statusElement.style.borderColor = "#ebccd1";
-            statusElement.style.color = "#a94442";
-            
-            console.error(errorMessage);
+        // Configuration
+        const adTagUrl = 'https://pubads.g.doubleclick.net/gampad/live/ads?iu=/23289539192/gyat2&description_url=https://voidnetwork.space&tfcd=0&npa=0&sz=640x480&gdfp_req=1&unviewed_position_start=1&output=vast&env=vp&impl=s&correlator=';
+        
+        // Helper functions
+        function logDebug(message) {
+            console.log(message);
+            const debugOutput = document.getElementById('debug-output');
+            const timestamp = new Date().toLocaleTimeString();
+            debugOutput.innerHTML += `<p>[${timestamp}] ${message}</p>`;
         }
         
         function updateStatus(message) {
-            var statusElement = document.getElementById('status');
-            statusElement.textContent = message;
+            document.getElementById('status').textContent = message;
         }
-
-        // Initialize IMA SDK
-        var adDisplayContainer;
-        var adsLoader;
-        var adsManager;
-        var videoElement;
-        var adContainer;
         
-        // VAST ad tag URL from Google Ad Manager
-        var adTagUrl = 'https://pubads.g.doubleclick.net/gampad/live/ads?iu=/23289539192/gyat2&description_url=voidnetwork.space&tfcd=0&npa=0&sz=640x480&gdfp_req=1&unviewed_position_start=1&output=vast&env=vp&impl=s&correlator=';
+        function displayError(message) {
+            const errorContainer = document.getElementById('error-container');
+            errorContainer.textContent = "ERROR: " + message;
+            errorContainer.style.display = 'block';
+            
+            document.getElementById('status').style.display = 'none';
+            
+            logDebug("Error: " + message);
+        }
         
-        document.addEventListener('DOMContentLoaded', function() {
-            try {
-                videoElement = document.getElementById('video-element');
-                adContainer = document.getElementById('ad-container');
-                
-                // Initialize IMA
-                initializeIMA();
-            } catch (error) {
-                displayError("Initialization error: " + error.message);
+        // Create the player iframe with proper permissions
+        function setupPlayerIframe() {
+            updateStatus("Setting up player environment...");
+            logDebug("Creating player iframe");
+            
+            const videoContainer = document.getElementById('video-container');
+            
+            // Create an iframe with necessary permissions
+            const iframe = document.createElement('iframe');
+            iframe.id = 'player-iframe';
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = 'none';
+            iframe.allowFullscreen = true;
+            
+            // Set sandbox attributes to allow scripts but maintain some security
+            iframe.sandbox = 'allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms';
+            
+            // Add the iframe to the container
+            videoContainer.appendChild(iframe);
+            
+            // Create the player document inside the iframe
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            iframeDoc.open();
+            iframeDoc.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <style>
+                        body, html { 
+                            margin: 0; 
+                            padding: 0; 
+                            width: 100%; 
+                            height: 100%; 
+                            overflow: hidden;
+                            background-color: #000;
+                        }
+                        #video-element {
+                            width: 100%;
+                            height: 100%;
+                            background-color: #000;
+                        }
+                        #ad-container {
+                            position: absolute;
+                            top: 0;
+                            left: 0;
+                            width: 100%;
+                            height: 100%;
+                        }
+                    </style>
+                    <script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"><\/script>
+                </head>
+                <body>
+                    <video id="video-element" playsinline muted></video>
+                    <div id="ad-container"></div>
+                    
+                    <script>
+                        // Function to communicate with parent window
+                        function sendMessageToParent(type, data) {
+                            window.parent.postMessage({type: type, data: data}, '*');
+                        }
+                        
+                        // Initialize IMA SDK
+                        function initializeIMA() {
+                            try {
+                                sendMessageToParent('status', 'Initializing IMA SDK');
+                                
+                                const videoElement = document.getElementById('video-element');
+                                const adContainer = document.getElementById('ad-container');
+                                
+                                // Create ad display container
+                                const adDisplayContainer = new google.ima.AdDisplayContainer(adContainer, videoElement);
+                                
+                                // Initialize the container (must be done on user interaction for mobile)
+                                adDisplayContainer.initialize();
+                                
+                                // Create ads loader
+                                const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+                                
+                                // Add event listeners
+                                adsLoader.addEventListener(
+                                    google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+                                    function(adsManagerLoadedEvent) {
+                                        sendMessageToParent('status', 'Ads manager loaded');
+                                        
+                                        // Get the ads manager
+                                        const adsManager = adsManagerLoadedEvent.getAdsManager(videoElement);
+                                        
+                                        // Add listeners for ad events
+                                        adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, 
+                                            function() { sendMessageToParent('status', 'Ad playback started'); });
+                                        adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, 
+                                            function() { sendMessageToParent('status', 'Ad playback completed'); });
+                                        adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, 
+                                            function() { sendMessageToParent('status', 'All ads completed'); });
+                                        adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, 
+                                            function(e) { sendMessageToParent('error', e.getError().getMessage()); });
+                                        
+                                        try {
+                                            // Initialize the ads manager
+                                            adsManager.init(640, 480, google.ima.ViewMode.NORMAL);
+                                            
+                                            // Start playing ads
+                                            adsManager.start();
+                                            sendMessageToParent('status', 'Starting ad playback');
+                                        } catch (adError) {
+                                            sendMessageToParent('error', 'Ads manager initialization error: ' + adError.message);
+                                        }
+                                    },
+                                    false);
+                                
+                                adsLoader.addEventListener(
+                                    google.ima.AdErrorEvent.Type.AD_ERROR,
+                                    function(adErrorEvent) {
+                                        sendMessageToParent('error', adErrorEvent.getError().getMessage());
+                                    },
+                                    false);
+                                
+                                // Request ads
+                                const adsRequest = new google.ima.AdsRequest();
+                                adsRequest.adTagUrl = '${adTagUrl}';
+                                
+                                // Fix for the description_url issue - add protocol
+                                if (adsRequest.adTagUrl.includes('description_url=voidnetwork.space')) {
+                                    adsRequest.adTagUrl = adsRequest.adTagUrl.replace('description_url=voidnetwork.space', 'description_url=https://voidnetwork.space');
+                                }
+                                
+                                // Specify ad dimensions
+                                adsRequest.linearAdSlotWidth = 640;
+                                adsRequest.linearAdSlotHeight = 480;
+                                adsRequest.nonLinearAdSlotWidth = 640;
+                                adsRequest.nonLinearAdSlotHeight = 480;
+                                
+                                sendMessageToParent('debug', 'Requesting ad with URL: ' + adsRequest.adTagUrl);
+                                adsLoader.requestAds(adsRequest);
+                            } catch (error) {
+                                sendMessageToParent('error', 'IMA initialization error: ' + error.message);
+                            }
+                        }
+                        
+                        // Initialize when the page loads
+                        window.addEventListener('DOMContentLoaded', function() {
+                            sendMessageToParent('status', 'Player iframe loaded, initializing ad system');
+                            initializeIMA();
+                        });
+                    <\/script>
+                </body>
+                </html>
+            `);
+            iframeDoc.close();
+            
+            logDebug("Player iframe created with proper permissions");
+        }
+        
+        // Listen for messages from the iframe
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type) {
+                switch(event.data.type) {
+                    case 'status':
+                        updateStatus(event.data.data);
+                        logDebug(event.data.data);
+                        break;
+                    case 'error':
+                        displayError(event.data.data);
+                        break;
+                    case 'debug':
+                        logDebug(event.data.data);
+                        break;
+                }
             }
         });
         
-        function initializeIMA() {
-            try {
-                updateStatus("Initializing ad system...");
-                
-                // Create ad display container
-                adDisplayContainer = new google.ima.AdDisplayContainer(adContainer, videoElement);
-                
-                // Create ads loader
-                adsLoader = new google.ima.AdsLoader(adDisplayContainer);
-                
-                // Add event listeners
-                adsLoader.addEventListener(
-                    google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
-                    onAdsManagerLoaded,
-                    false);
-                adsLoader.addEventListener(
-                    google.ima.AdErrorEvent.Type.AD_ERROR,
-                    onAdError,
-                    false);
-                
-                updateStatus("Initializing ad display...");
-                
-                // Initialize the container
-                adDisplayContainer.initialize();
-                
-                // Request ads
-                var adsRequest = new google.ima.AdsRequest();
-                adsRequest.adTagUrl = adTagUrl;
-                
-                // Specify ad dimensions
-                adsRequest.linearAdSlotWidth = 640;
-                adsRequest.linearAdSlotHeight = 480;
-                adsRequest.nonLinearAdSlotWidth = 640;
-                adsRequest.nonLinearAdSlotHeight = 480;
-                
-                updateStatus("Requesting ad...");
-                adsLoader.requestAds(adsRequest);
-            } catch (error) {
-                displayError("IMA initialization error: " + error.message);
-            }
-        }
-        
-        function onAdsManagerLoaded(adsManagerLoadedEvent) {
-            try {
-                updateStatus("Ad loaded, preparing to play...");
-                
-                // Get the ads manager
-                adsManager = adsManagerLoadedEvent.getAdsManager(videoElement);
-                
-                // Add required event listeners
-                adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
-                adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, onAllAdsCompleted);
-                adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, onAdStarted);
-                adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, onAdComplete);
-                
-                // Initialize the ads manager
-                adsManager.init(640, 480, google.ima.ViewMode.NORMAL);
-                
-                // Start playing ads
-                adsManager.start();
-            } catch (error) {
-                displayError("Ads manager error: " + error.message);
-            }
-        }
-        
-        function onAdStarted() {
-            updateStatus("Ad playing now...");
-        }
-        
-        function onAdComplete() {
-            updateStatus("Ad playback complete");
-        }
-        
-        function onAdError(adErrorEvent) {
-            // Display the error on the page
-            var error = adErrorEvent.getError();
-            displayError("Ad error: " + error.getMessage());
-            
-            // Clean up
-            if (adsManager) {
-                adsManager.destroy();
-            }
-        }
-        
-        function onAllAdsCompleted() {
-            updateStatus("All ads completed");
-        }
-        
-        // Handle any unexpected errors
-        window.onerror = function(message, source, lineno, colno, error) {
-            displayError("JavaScript error: " + message + "\nLine: " + lineno);
-            return true; // Prevents default error handling
-        };
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            logDebug("Page loaded, setting up player");
+            setupPlayerIframe();
+        });
     </script>
 </body>
 </html>
