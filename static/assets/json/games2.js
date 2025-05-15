@@ -310,9 +310,9 @@ const games2Data = [
     link: __uv$config.prefix + __uv$config.encodeUrl("https://html5.gamedistribution.com/rvvASMiM/65f1c84c76324e198314706dedd4aa09/index.html?gd_sdk_referrer_url=https%3A%2F%2Fwww.miniplay.com%2Fgame%2Fone-line-drawing-puzzle&mp_assets=https%3A%2F%2Fs2.minijuegosgratis.com%2F&mp_embed=0&mp_game_id=251260&mp_game_uid=one-line-drawing-puzzle&mp_game_url=https%3A%2F%2Fwww.miniplay.com%2Fembed%2Fone-line-drawing-puzzle&mp_int=1&mp_locale=en_US&mp_player_type=IFRAME&mp_site_https_url=https%3A%2F%2Fwww.miniplay.com%2F&mp_site_name=miniplay.com&mp_site_url=https%3A%2F%2Fwww.miniplay.com%2F&mp_timezone=America%2FNew_York&mp_view_type=&gd_zone_config=eyJwYXJlbnRVUkwiOiJodHRwczovL3d3dy5taW5pcGxheS5jb20vZ2FtZS9vbmUtbGluZS1kcmF3aW5nLXB1enpsZSIsInBhcmVudERvbWFpbiI6Im1pbmlwbGF5LmNvbSIsInRvcERvbWFpbiI6Im1pbmlwbGF5LmNvbSIsImhhc0ltcHJlc3Npb24iOmZhbHNlLCJsb2FkZXJFbmFibGVkIjp0cnVlLCJob3N0IjoiaHRtbDUuZ2FtZWRpc3RyaWJ1dGlvbi5jb20iLCJ2ZXJzaW9uIjoiMS41LjE3In0%253D")
 },
   {
-    title: "territorial.io", 
+    title: "terrtitorial.io", 
     imgSrc: "https://lh7-us.googleusercontent.com/nD_XHR5JAnRq3EjZFcU8RkV87cHg3bxkdJYaBJQ657OIWPIR1SzBtBJgNvHrZb5uWgA5fQawDFs_d8S5zOJ8Mc0sHPkQNBEuZGq--aL7ea6hb0bW5BvoJK9jwnbOjK5caRY55rCHnK4nAsR2zb_J-x0AaxgcGLZvvKMkflbGAOKfL2YUwbJBhHJLVtgekL_TETKA",
-    link: "https://territorial.io",
+    link: "https://tterritorial.io",
     proxy: "dynamic" // Good option for this game
   },
     
