@@ -362,42 +362,6 @@ app.use((req, res, next) => {
   }
 });
 
-// ==== SCRAMJET ROUTES - START OF ADDITIONS ====
-// Handle Scramjet static files
-app.get("/scramjet/scramjet.config.js", function (req, res) {
-  res.sendFile(path.join(dirname, "static/scramjet/scramjet.config.js"));
-});
-
-app.get("/scramjet/scramjet.bundle.js", function (req, res) {
-  res.sendFile(path.join(dirname, "static/scramjet/scramjet.bundle.js"));
-});
-
-app.get("/scramjet/sw.js", function (req, res) {
-  res.sendFile(path.join(dirname, "static/scramjet/sw.js"));
-});
-
-app.get("/scramjet/register.js", function (req, res) {
-  res.sendFile(path.join(dirname, "static/scramjet/register.js"));
-});
-
-app.get("/scramjet/helper.js", function (req, res) {
-  res.sendFile(path.join(dirname, "static/scramjet/helper.js"));
-});
-
-// Add a catch-all route for scramjet requests
-app.get("/scramjet/*", function (req, res, next) {
-  // If it's a service worker, config, or other specific file, we've already handled it
-  if (req.path.endsWith('sw.js') || req.path.endsWith('config.js') || 
-      req.path.endsWith('bundle.js') || req.path.endsWith('register.js') ||
-      req.path.endsWith('helper.js')) {
-    return next();
-  }
-  
-  // Otherwise, let the service worker handle it
-  next();
-});
-// ==== SCRAMJET ROUTES - END OF ADDITIONS ====
-
 // ==== BARE SERVER ROUTING - HIGHEST PRIORITY ====
 // Handle bare server requests directly
 app.use((req, res, next) => {
