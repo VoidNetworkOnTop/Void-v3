@@ -1,10 +1,12 @@
-// Scramjet Service Worker with Resource Rewriting
-importScripts('/scramjet/scramjet.config.js');
-importScripts('/scramjet/scramjet.bundle.js');
+// Scramjet Service Worker
+importScripts('./scramjet.config.js');
+importScripts('./scramjet.bundle.js');
+importScripts('./scramjet.shared.js');
+importScripts('./scramjet.wasm.js');
 
 // Handle fetch events
 self.addEventListener('fetch', (event) => {
-  // Handle requests with our prefix
+  // Only handle requests with our prefix
   if (event.request.url.startsWith(self.location.origin + __scramjet$config.prefix)) {
     event.respondWith(handleScramjetRequest(event));
   }
@@ -16,7 +18,7 @@ async function handleScramjetRequest(event) {
     const scramjetPath = new URL(event.request.url).pathname.slice(__scramjet$config.prefix.length);
     const originalUrl = __scramjet.decodeUrl(scramjetPath);
     
-    // We'll use corsanywhere as it tends to handle resources better
+    // We'll use a CORS proxy
     const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(originalUrl)}`;
     
     // Make the request through the proxy
@@ -32,7 +34,13 @@ async function handleScramjetRequest(event) {
         
         // Rewrite HTML to proxy all resources
         const baseUrl = new URL(originalUrl);
-        const rewritten = rewriteHtml(text, baseUrl);
+        const proxyPrefix = `${self.location.origin}${__scramjet$config.prefix}`;
+        const rewritten = __scramjet$utils.rewriteHtml(
+          text,
+          baseUrl,
+          proxyPrefix,
+          __scramjet$config.encodeUrl
+        );
         
         return new Response(rewritten, {
           status: response.status,
@@ -47,7 +55,13 @@ async function handleScramjetRequest(event) {
       else if (contentType.includes('text/css')) {
         const text = await response.text();
         const baseUrl = new URL(originalUrl);
-        const rewritten = rewriteCss(text, baseUrl);
+        const proxyPrefix = `${self.location.origin}${__scramjet$config.prefix}`;
+        const rewritten = __scramjet$utils.rewriteCss(
+          text,
+          baseUrl,
+          proxyPrefix,
+          __scramjet$config.encodeUrl
+        );
         
         return new Response(rewritten, {
           status: response.status,
@@ -106,78 +120,4 @@ async function handleScramjetRequest(event) {
       headers: { 'Content-Type': 'text/html' }
     });
   }
-}
-
-// Function to rewrite HTML content
-function rewriteHtml(html, baseUrl) {
-  // Function to rewrite a URL
-  function rewriteUrl(url) {
-    // Skip empty URLs, data URLs, and javascript URLs
-    if (!url || url.startsWith('data:') || url.startsWith('javascript:') || url.startsWith('#')) {
-      return url;
-    }
-    
-    // Convert relative URLs to absolute
-    let absoluteUrl;
-    try {
-      absoluteUrl = new URL(url, baseUrl).href;
-    } catch (e) {
-      // If we can't parse it, return as is
-      return url;
-    }
-    
-    // Encode the URL for our proxy
-    return `${self.location.origin}${__scramjet$config.prefix}${__scramjet$config.encodeUrl(absoluteUrl)}`;
-  }
-  
-  // Rewrite various attributes
-  return html
-    // Add base tag to ensure relative URLs work properly
-    .replace(/<head>/i, `<head><base href="${baseUrl.href}">`)
-    
-    // Rewrite src attributes
-    .replace(/(<script[^>]+src=["'])([^"']+)(["'])/gi, (match, pre, url, post) => {
-      return `${pre}${rewriteUrl(url)}${post}`;
-    })
-    
-    // Rewrite href attributes in link tags
-    .replace(/(<link[^>]+href=["'])([^"']+)(["'])/gi, (match, pre, url, post) => {
-      return `${pre}${rewriteUrl(url)}${post}`;
-    })
-    
-    // Rewrite img src
-    .replace(/(<img[^>]+src=["'])([^"']+)(["'])/gi, (match, pre, url, post) => {
-      return `${pre}${rewriteUrl(url)}${post}`;
-    })
-    
-    // Rewrite a tags
-    .replace(/(<a[^>]+href=["'])([^"']+)(["'])/gi, (match, pre, url, post) => {
-      return `${pre}${rewriteUrl(url)}${post}`;
-    })
-    
-    // Add a note at the top of the body
-    .replace(/<body/i, `<body style="position:relative;padding-top:30px;"`)
-    .replace(/<body([^>]*)>/i, `<body$1><div style="position:fixed;top:0;left:0;right:0;background:#f0f0f0;color:#333;padding:5px 10px;font-family:Arial,sans-serif;font-size:12px;z-index:9999;text-align:center;">Proxied via Scramjet | <a href="${baseUrl.href}" target="_blank">Open original</a></div>`);
-}
-
-// Function to rewrite CSS content
-function rewriteCss(css, baseUrl) {
-  return css.replace(/url\(['"]?([^'"\)]+)['"]?\)/gi, (match, url) => {
-    // Skip data URLs
-    if (url.startsWith('data:')) {
-      return match;
-    }
-    
-    // Convert to absolute URL
-    let absoluteUrl;
-    try {
-      absoluteUrl = new URL(url, baseUrl).href;
-    } catch (e) {
-      return match;
-    }
-    
-    // Encode for our proxy
-    const proxyUrl = `${self.location.origin}${__scramjet$config.prefix}${__scramjet$config.encodeUrl(absoluteUrl)}`;
-    return `url("${proxyUrl}")`;
-  });
 }
