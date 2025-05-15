@@ -16,43 +16,56 @@ async function handleScramjetRequest(event) {
     const scramjetPath = new URL(event.request.url).pathname.slice(__scramjet$config.prefix.length);
     const originalUrl = __scramjet.decodeUrl(scramjetPath);
     
-    // Get original request details
-    const origRequest = event.request;
+    // We need to use a server-side proxy for this request
+    // Since we don't have that, let's use the Bare server that UV uses
+    const bareUrl = self.location.origin + '/bare/';
     
-    // Create a new request to the target URL with no-cors mode to bypass CORS
-    const request = new Request(originalUrl, {
-      method: origRequest.method,
-      headers: origRequest.headers,
-      body: origRequest.body,
-      mode: 'no-cors', // This is critical for CORS bypass
+    // Create a URL object for easier manipulation
+    const targetUrl = new URL(originalUrl);
+    
+    // Create headers for the Bare server request
+    const headers = new Headers();
+    headers.set('x-bare-url', originalUrl);
+    headers.set('x-bare-host', targetUrl.hostname);
+    headers.set('x-bare-protocol', targetUrl.protocol);
+    headers.set('x-bare-path', targetUrl.pathname + targetUrl.search);
+    headers.set('x-bare-port', targetUrl.port || (targetUrl.protocol === 'https:' ? '443' : '80'));
+    headers.set('x-bare-forward-headers', JSON.stringify(['accept', 'accept-encoding', 'accept-language']));
+    
+    // Copy over original headers that might be useful
+    const originalHeaders = event.request.headers;
+    for (const [name, value] of originalHeaders.entries()) {
+      if (!['host', 'origin', 'referer'].includes(name.toLowerCase())) {
+        headers.set(name, value);
+      }
+    }
+    
+    // Create the request to the Bare server
+    const bareRequest = new Request(bareUrl, {
+      method: event.request.method,
+      headers: headers,
+      body: event.request.body,
+      mode: 'cors',
       credentials: 'omit',
-      redirect: 'follow',
+      redirect: 'follow'
     });
     
-    // Fetch the target URL
-    const response = await fetch(request);
+    // Send the request to the Bare server
+    const response = await fetch(bareRequest);
     
-    // Return the opaque response
-    return response;
+    // Create a new response with appropriate headers
+    const newResponse = new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers
+    });
+    
+    return newResponse;
   } catch (error) {
     console.error('Scramjet error:', error);
-    // Return a better error message
-    return new Response(`Scramjet proxy error: ${error.message}. This may be due to CORS restrictions or network issues.`, { 
+    return new Response(`Scramjet proxy error: ${error.message}`, { 
       status: 500,
-      headers: {
-        'Content-Type': 'text/plain'
-      }
+      headers: { 'Content-Type': 'text/plain' }
     });
   }
 }
-
-// Explicitly handle WebSocket upgrade attempts
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  
-  // Check if it's a WebSocket upgrade request
-  if (event.request.headers.get('Upgrade') === 'websocket') {
-    // Let the browser handle WebSocket connections directly
-    return;
-  }
-});
