@@ -16,51 +16,75 @@ async function handleScramjetRequest(event) {
     const scramjetPath = new URL(event.request.url).pathname.slice(__scramjet$config.prefix.length);
     const originalUrl = __scramjet.decodeUrl(scramjetPath);
     
-    // We need to use a server-side proxy for this request
-    // Since we don't have that, let's use the Bare server that UV uses
-    const bareUrl = self.location.origin + '/bare/';
+    // Parse the original URL
+    const url = new URL(originalUrl);
     
-    // Create a URL object for easier manipulation
-    const targetUrl = new URL(originalUrl);
+    // Determine the request method
+    const method = event.request.method;
     
-    // Create headers for the Bare server request
-    const headers = new Headers();
-    headers.set('x-bare-url', originalUrl);
-    headers.set('x-bare-host', targetUrl.hostname);
-    headers.set('x-bare-protocol', targetUrl.protocol);
-    headers.set('x-bare-path', targetUrl.pathname + targetUrl.search);
-    headers.set('x-bare-port', targetUrl.port || (targetUrl.protocol === 'https:' ? '443' : '80'));
-    headers.set('x-bare-forward-headers', JSON.stringify(['accept', 'accept-encoding', 'accept-language']));
+    // Create a Bare request to the /bare/v1/ endpoint
+    const bareServer = self.location.origin + '/bare/v1/';
     
-    // Copy over original headers that might be useful
+    // Need to create the Bare meta object
+    const bare = {
+      path: url.pathname + url.search,
+      host: url.hostname,
+      protocol: url.protocol,
+      headers: {}
+    };
+    
+    // Copy over original headers
     const originalHeaders = event.request.headers;
     for (const [name, value] of originalHeaders.entries()) {
-      if (!['host', 'origin', 'referer'].includes(name.toLowerCase())) {
-        headers.set(name, value);
+      if (!['host', 'origin'].includes(name.toLowerCase())) {
+        bare.headers[name.toLowerCase()] = value;
       }
     }
     
-    // Create the request to the Bare server
-    const bareRequest = new Request(bareUrl, {
-      method: event.request.method,
-      headers: headers,
-      body: event.request.body,
-      mode: 'cors',
-      credentials: 'omit',
+    // Set proper bare headers
+    bare.headers['host'] = url.hostname;
+    if (url.port) {
+      bare.headers['host'] += ':' + url.port;
+    }
+    
+    // Create the final Bare request
+    const bareRequest = new Request(bareServer, {
+      method: 'GET',
+      headers: {
+        'x-bare-url': originalUrl,
+        'x-bare-headers': JSON.stringify(bare.headers),
+        'x-bare-forward-headers': JSON.stringify(['accept', 'accept-encoding', 'accept-language']),
+      },
       redirect: 'follow'
     });
     
-    // Send the request to the Bare server
+    // Make the request through the Bare server
     const response = await fetch(bareRequest);
     
-    // Create a new response with appropriate headers
-    const newResponse = new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers
+    if (!response.ok) {
+      // If the Bare server response isn't OK, display the error
+      const text = await response.text();
+      throw new Error(`Bare server returned error: ${response.status} ${text}`);
+    }
+    
+    // Extract and process the Bare response headers
+    const responseHeaders = new Headers();
+    const bareHeaders = JSON.parse(response.headers.get('x-bare-headers') || '{}');
+    
+    // Copy Bare headers to our response
+    for (const header in bareHeaders) {
+      if (header !== 'content-encoding' && header !== 'content-length') {
+        responseHeaders.set(header, bareHeaders[header]);
+      }
+    }
+    
+    // Create the final response
+    return new Response(response.body, {
+      status: response.headers.get('x-bare-status'),
+      statusText: response.headers.get('x-bare-status-text'),
+      headers: responseHeaders
     });
     
-    return newResponse;
   } catch (error) {
     console.error('Scramjet error:', error);
     return new Response(`Scramjet proxy error: ${error.message}`, { 
