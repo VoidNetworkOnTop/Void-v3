@@ -4,56 +4,55 @@ importScripts('/scramjet/scramjet.bundle.js');
 
 // Handle fetch events
 self.addEventListener('fetch', (event) => {
-    // Only handle requests with our prefix
-    if (event.request.url.startsWith(self.location.origin + __scramjet$config.prefix)) {
-        event.respondWith(handleScramjetRequest(event));
-    }
+  // Only handle requests with our prefix
+  if (event.request.url.startsWith(self.location.origin + __scramjet$config.prefix)) {
+    event.respondWith(handleScramjetRequest(event));
+  }
 });
 
 async function handleScramjetRequest(event) {
-    try {
-        // Get the original URL from the request
-        const scramjetPath = new URL(event.request.url).pathname.slice(__scramjet$config.prefix.length);
-        const originalUrl = __scramjet.decodeUrl(scramjetPath);
-
-        // Create a new request to the target URL
-        const request = new Request(originalUrl, {
-            method: event.request.method,
-            headers: event.request.headers,
-            body: event.request.body,
-            mode: 'cors',
-            credentials: 'omit',
-            redirect: 'follow',
-        });
-
-        // Fetch the target URL
-        const response = await fetch(request);
-
-        // Create a new response with CORS headers
-        const newResponse = new Response(response.body, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: response.headers
-        });
-
-        return newResponse;
-    } catch (error) {
-        console.error('Scramjet error:', error);
-        return new Response(`Scramjet proxy error: ${error.message}`, { status: 500 });
-    }
+  try {
+    // Get the original URL from the request
+    const scramjetPath = new URL(event.request.url).pathname.slice(__scramjet$config.prefix.length);
+    const originalUrl = __scramjet.decodeUrl(scramjetPath);
+    
+    // Get original request details
+    const origRequest = event.request;
+    
+    // Create a new request to the target URL with no-cors mode to bypass CORS
+    const request = new Request(originalUrl, {
+      method: origRequest.method,
+      headers: origRequest.headers,
+      body: origRequest.body,
+      mode: 'no-cors', // This is critical for CORS bypass
+      credentials: 'omit',
+      redirect: 'follow',
+    });
+    
+    // Fetch the target URL
+    const response = await fetch(request);
+    
+    // Return the opaque response
+    return response;
+  } catch (error) {
+    console.error('Scramjet error:', error);
+    // Return a better error message
+    return new Response(`Scramjet proxy error: ${error.message}. This may be due to CORS restrictions or network issues.`, { 
+      status: 500,
+      headers: {
+        'Content-Type': 'text/plain'
+      }
+    });
+  }
 }
 
-// Handle WebSocket connections
+// Explicitly handle WebSocket upgrade attempts
 self.addEventListener('fetch', (event) => {
-    const url = new URL(event.request.url);
-
-    // Check if it's a WebSocket connection attempt
-    if (url.pathname.startsWith(__scramjet$config.prefix) &&
-        (url.protocol === 'ws:' || url.protocol === 'wss:' ||
-            event.request.headers.get('Upgrade') === 'websocket')) {
-
-        // Let the browser handle WebSocket connections directly
-        // The service worker will be bypassed for these connections
-        return;
-    }
+  const url = new URL(event.request.url);
+  
+  // Check if it's a WebSocket upgrade request
+  if (event.request.headers.get('Upgrade') === 'websocket') {
+    // Let the browser handle WebSocket connections directly
+    return;
+  }
 });
