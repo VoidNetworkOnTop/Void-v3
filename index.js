@@ -4,6 +4,10 @@ import http from 'node:http';
 import path from "node:path";
 import fs from "node:fs";
 import crypto from 'node:crypto';
+import { createProxyMiddleware } from 'http-proxy-middleware';
+
+// Add Aero integration imports
+import { startAeroServer, stopAeroServer, aeroMiddleware, aeroConfig } from './aero-integration.js';
 
 const app = express();
 const server = http.createServer();
@@ -118,6 +122,22 @@ if (serverSettings.headersTimeout) {
   server.headersTimeout = serverSettings.headersTimeout;
 }
 
+// Start Aero server
+let aeroProcess;
+try {
+  aeroProcess = await startAeroServer();
+  console.log(`Aero server started on port ${aeroConfig.port}`);
+} catch (error) {
+  console.error('Failed to start Aero server:', error);
+  console.log('Continuing without Aero support...');
+}
+
+// Use Aero middleware for the /aero path if available
+if (aeroProcess) {
+  app.use('/aero', aeroMiddleware);
+  console.log('Aero proxy middleware configured');
+}
+
 // Function to get the hash for a file path, normalizing the path format
 function getFileHash(filePath) {
   // Normalize path format (using forward slashes)
@@ -160,6 +180,60 @@ app.use((req, res, next) => {
   if (ifNoneMatch === `"${fileHash}"`) {
     // File hasn't changed, send 304 Not Modified
     return res.status(304).end();
+  }
+  
+  next();
+});
+
+// Add route to check proxy status
+app.get('/api/proxy-status', (req, res) => {
+  res.json({
+    uv: {
+      status: 'active',
+      endpoints: ['/bare/'],
+      default: true
+    },
+    aero: {
+      status: aeroProcess ? 'active' : 'inactive',
+      endpoints: aeroProcess ? ['/aero'] : [],
+      default: false
+    }
+  });
+});
+
+// Add script to client-side to detect which proxy to use
+app.use((req, res, next) => {
+  // Only intercept HTML responses
+  if (req.path.endsWith('.html') || req.path === '/' || !req.path.includes('.')) {
+    const originalSend = res.send;
+    
+    res.send = function(body) {
+      if (typeof body === 'string' && body.includes('</head>')) {
+        // Inject proxy configuration
+        const proxyConfigScript = `
+          <script>
+            window.AERO_AVAILABLE = ${aeroProcess ? true : false};
+            window.PROXY_CONFIG = {
+              uv: {
+                enabled: true,
+                prefix: '/bare/',
+                default: true
+              },
+              aero: {
+                enabled: ${aeroProcess ? true : false},
+                prefix: '${aeroConfig.prefix}',
+                default: false
+              }
+            };
+          </script>
+        `;
+        
+        // Insert before closing head tag
+        body = body.replace('</head>', `${proxyConfigScript}\n</head>`);
+      }
+      
+      return originalSend.call(this, body);
+    };
   }
   
   next();
@@ -443,6 +517,9 @@ app.get('*', function(req, res, next) {
 server.on('upgrade', (req, socket, head) => {
   if (bare.shouldRoute(req)) {
     bare.routeUpgrade(req, socket, head);
+  } else if (req.url.startsWith('/aero') && aeroProcess) {
+    // Forward WebSocket connections for Aero
+    aeroMiddleware.upgrade(req, socket, head);
   } else {
     socket.end();
   }
@@ -455,6 +532,22 @@ server.on("request", (req, res) => {
   } else {
     app(req, res);
   }
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('Shutting down...');
+  
+  // Stop Aero server if running
+  if (aeroProcess) {
+    await stopAeroServer(aeroProcess);
+  }
+  
+  // Close the server
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
 });
 
 // Set up file watcher for the entire static directory
