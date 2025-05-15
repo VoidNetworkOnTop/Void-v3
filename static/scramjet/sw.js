@@ -16,74 +16,33 @@ async function handleScramjetRequest(event) {
     const scramjetPath = new URL(event.request.url).pathname.slice(__scramjet$config.prefix.length);
     const originalUrl = __scramjet.decodeUrl(scramjetPath);
     
-    // Parse the original URL
-    const url = new URL(originalUrl);
-    
-    // Determine the request method
+    // Get the request method
     const method = event.request.method;
     
-    // Create a Bare request to the /bare/v1/ endpoint
-    const bareServer = self.location.origin + '/bare/v1/';
+    // Create the request to the Bare server
+    // Instead of trying to recreate the complex UV/Bare protocol,
+    // let's use UV directly since it's already working!
     
-    // Need to create the Bare meta object
-    const bare = {
-      path: url.pathname + url.search,
-      host: url.hostname,
-      protocol: url.protocol,
-      headers: {}
-    };
+    // This is the key insight - we'll leverage your existing UV configuration
+    // but just substitute our decoded URL
     
-    // Copy over original headers
-    const originalHeaders = event.request.headers;
-    for (const [name, value] of originalHeaders.entries()) {
-      if (!['host', 'origin'].includes(name.toLowerCase())) {
-        bare.headers[name.toLowerCase()] = value;
-      }
-    }
+    // Use UV's prefix but our decoded URL
+    const uvEncodedUrl = __uv$config.encodeUrl(originalUrl);
+    const uvUrl = self.location.origin + __uv$config.prefix + uvEncodedUrl;
     
-    // Set proper bare headers
-    bare.headers['host'] = url.hostname;
-    if (url.port) {
-      bare.headers['host'] += ':' + url.port;
-    }
-    
-    // Create the final Bare request
-    const bareRequest = new Request(bareServer, {
-      method: 'GET',
-      headers: {
-        'x-bare-url': originalUrl,
-        'x-bare-headers': JSON.stringify(bare.headers),
-        'x-bare-forward-headers': JSON.stringify(['accept', 'accept-encoding', 'accept-language']),
-      },
-      redirect: 'follow'
+    // Make a standard fetch using UV's encoding
+    const response = await fetch(uvUrl, {
+      method: method,
+      headers: event.request.headers,
+      body: method !== 'GET' && method !== 'HEAD' ? await event.request.blob() : undefined,
+      redirect: 'follow',
+      credentials: 'omit',
+      mode: 'same-origin',
+      cache: 'no-store',
     });
     
-    // Make the request through the Bare server
-    const response = await fetch(bareRequest);
-    
-    if (!response.ok) {
-      // If the Bare server response isn't OK, display the error
-      const text = await response.text();
-      throw new Error(`Bare server returned error: ${response.status} ${text}`);
-    }
-    
-    // Extract and process the Bare response headers
-    const responseHeaders = new Headers();
-    const bareHeaders = JSON.parse(response.headers.get('x-bare-headers') || '{}');
-    
-    // Copy Bare headers to our response
-    for (const header in bareHeaders) {
-      if (header !== 'content-encoding' && header !== 'content-length') {
-        responseHeaders.set(header, bareHeaders[header]);
-      }
-    }
-    
-    // Create the final response
-    return new Response(response.body, {
-      status: response.headers.get('x-bare-status'),
-      statusText: response.headers.get('x-bare-status-text'),
-      headers: responseHeaders
-    });
+    // Return the response from UV
+    return response;
     
   } catch (error) {
     console.error('Scramjet error:', error);
