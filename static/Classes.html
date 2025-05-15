@@ -9,11 +9,6 @@
     <meta name="priority" content="high">
     <script src="/js/popup-client.js"></script>
     
-    <!-- Add Aero Proxy Support - START -->
-    <link rel="stylesheet" href="/assets/css/proxy-styles.css">
-    <script src="/assets/js/proxy-handler.js" type="module"></script>
-    <!-- Add Aero Proxy Support - END -->
-    
     <!-- Inline critical styles -->
     <style>
         /* Import Inter font */
@@ -642,11 +637,9 @@
         }
         
         // Helper function to get game URL from query parameters
-        function getUrlParameter(name) {
-            name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
-            const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
-            const results = regex.exec(location.search);
-            return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+        function getGameUrlFromParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('game');
         }
         
         // Enhanced loading progress calculation
@@ -839,7 +832,7 @@
         // Fast loading function
         function loadGame(gameUrl) {
             if (!gameUrl) {
-                gameUrl = getUrlParameter('game');
+                gameUrl = getGameUrlFromParams();
                 
                 if (!gameUrl) {
                     window.location.href = '/';
@@ -898,7 +891,7 @@
             }
             
             // Store the original game URL right at initialization
-            originalGameUrl = getUrlParameter('game');
+            originalGameUrl = getGameUrlFromParams();
             
             // Event listeners
             iframe.addEventListener('load', function() {
@@ -956,116 +949,10 @@
                 }
             });
             
-            // Start loading the game immediately
+            // Start loading game immediately
             loadGame(originalGameUrl);
         });
     </script>
-
-    <!-- Aero Proxy Integration Script - START -->
-    <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        // Function to get parameters from URL
-        function getUrlParameter(name) {
-          name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
-          const regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
-          const results = regex.exec(location.search);
-          return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
-        }
-        
-        // Function to load game with the appropriate proxy
-        function loadGame() {
-          // Try to get game data from session storage first
-          let gameData = null;
-          try {
-            const storedGameData = sessionStorage.getItem('selectedGame');
-            if (storedGameData) {
-              gameData = JSON.parse(storedGameData);
-            }
-          } catch (e) {
-            console.error('Error parsing stored game data:', e);
-          }
-          
-          // If no stored data, build from URL parameters
-          if (!gameData) {
-            const gameUrl = getUrlParameter('game');
-            const proxyType = getUrlParameter('proxy') || 'uv';
-            const gameTitle = getUrlParameter('title') || 'Game';
-            
-            if (!gameUrl) {
-              console.error('No game URL provided');
-              const loadingText = document.getElementById('loadingText');
-              if (loadingText) loadingText.textContent = 'Error: No game URL provided';
-              return;
-            }
-            
-            gameData = {
-              title: gameTitle,
-              link: gameUrl,
-              proxy: proxyType
-            };
-          }
-          
-          // Start loading animation
-          const progressFill = document.getElementById('loadingProgressBar');
-          if (progressFill) {
-            progressFill.style.width = '30%';
-            setTimeout(() => {
-              progressFill.style.width = '60%';
-            }, 300);
-          }
-          
-          // Use the global proxyHandler to load the game
-          if (window.proxyHandler) {
-            const usedProxy = window.proxyHandler.loadGame(gameData);
-            console.log(`Game loaded using ${usedProxy} proxy`);
-            
-            // Complete the loading progress bar
-            setTimeout(() => {
-              if (progressFill) progressFill.style.width = '100%';
-              
-              // Hide loading screen after a short delay
-              setTimeout(() => {
-                const loadingScreen = document.getElementById('loadingScreen');
-                if (loadingScreen) loadingScreen.style.display = 'none';
-              }, 500);
-            }, 800);
-          } else {
-            console.error('Proxy handler not available');
-            // Fallback to direct loading
-            const iframe = document.getElementById('gframe');
-            if (iframe) iframe.src = gameData.link;
-          }
-        }
-        
-        // Start loading the game
-        loadGame();
-        
-        // Handle reload button
-        const reloadBtn = document.getElementById('reloadBtn');
-        if (reloadBtn) {
-          reloadBtn.addEventListener('click', function() {
-            loadGame();
-          });
-        }
-        
-        // Add proxy info to the footer if available
-        const footer = document.querySelector('.footer');
-        if (footer && window.proxyHandler) {
-          const proxyInfo = document.createElement('div');
-          proxyInfo.style.fontSize = '10px';
-          proxyInfo.style.opacity = '0.7';
-          proxyInfo.style.position = 'absolute';
-          proxyInfo.style.left = '10px';
-          proxyInfo.style.bottom = '5px';
-          
-          const currentProxy = window.proxyHandler.getSavedPreferredProxy();
-          proxyInfo.textContent = `Proxy: ${currentProxy.toUpperCase()}`;
-          
-          footer.appendChild(proxyInfo);
-        }
-      });
-    </script>
-    <!-- Aero Proxy Integration Script - END -->
 
     <!-- Global JavaScript -->
     <script src="/global.js"></script>
