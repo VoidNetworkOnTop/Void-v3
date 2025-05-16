@@ -248,7 +248,7 @@ const gamesData = [
 {
     title: "Tomb Of The Mask", 
     imgSrc: "/img/gameimg/tombofthemask.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://images-opensocial.googleusercontent.com/gadgets/ifr?container=ig&url=https://cdn.jsdelivr.net/gh/sk1bx/element@9cccb2fafb569c963501a5d818472b561121cea6/totm.xml")
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://tombofthe-mask.com/1.embed")
 },
 {
     title: "OvO", 
