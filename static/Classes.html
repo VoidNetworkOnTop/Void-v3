@@ -508,7 +508,7 @@
         <span>High Traffic Mode</span>
     </div>
 
-    <!-- Enhanced Game Loading script optimized for performance -->
+    <!-- Enhanced Game Loading script with improved content verification -->
     <script>
         // Define our variables
         let iframe;
@@ -525,21 +525,11 @@
         let progressUpdateInterval;
         let gameLoaded = false;
         let gameTrueContentLoaded = false;
-        let highTrafficMode = false;
         let retryCount = 0;
         let loadStartTime = 0;
         let loadVerificationAttempts = 0;
         let originalGameUrl = null;
         const maxRetries = 3;
-        const debugMode = false; // Disable debug logging for better performance
-        
-        // Debug logging function
-        function logDebug(message) {
-            if (!debugMode) return;
-            console.log(`%c[Game Debug] %c${message}`, 
-                'color: #4a6ed3; font-weight: bold;', 
-                'color: #333;');
-        }
         
         // Function to focus the game
         function focusGame() {
@@ -608,8 +598,10 @@
             // Reset progress bar
             if (loadingProgressBar) loadingProgressBar.style.width = '0%';
             
-            // Load game immediately
-            loadGame(originalGameUrl || getGameUrlFromParams());
+            // Load game after a short delay
+            setTimeout(() => {
+                loadGame(originalGameUrl || getGameUrlFromParams());
+            }, 100);
         }
         
         // Toggle fullscreen function
@@ -647,7 +639,9 @@
             if (!loadingProgressBar) return;
             
             const timeElapsed = Date.now() - loadStartTime;
-            const expectedLoadTime = 8000; // Faster expected load time
+            
+            // More conservative expected load time
+            const expectedLoadTime = 12000;
             
             // Calculate progress percentage
             let progressPercent = Math.min(100, (timeElapsed / expectedLoadTime) * 100);
@@ -655,10 +649,10 @@
             // Non-linear progress (faster at start, slower near end)
             progressPercent = Math.pow(progressPercent / 100, 0.7) * 100;
             
-            // Set progress bar width
-            loadingProgressBar.style.width = `${Math.min(progressPercent, 99)}%`;
+            // Set progress bar width, max 95% until content confirmed
+            loadingProgressBar.style.width = `${Math.min(progressPercent, 95)}%`;
             
-            // If game loaded, set to 100%
+            // If game loaded and verified, set to 100%
             if (gameTrueContentLoaded) {
                 loadingProgressBar.style.width = '100%';
             }
@@ -679,7 +673,7 @@
             }, 100);
         }
         
-        // Check iframe visibility
+        // Improved iframe content check - more robust
         function checkIframeVisibility() {
             try {
                 // Skip if iframe has no source
@@ -691,43 +685,50 @@
                 // Try to detect content ready state
                 try {
                     if (iframe.contentWindow && iframe.contentWindow.document.readyState === 'complete') {
-                        setTimeout(hideLoadingScreen, 300);
-                        return;
+                        loadVerificationAttempts++;
+                        
+                        // Require multiple successful checks for reliability
+                        if (loadVerificationAttempts >= 2) {
+                            // Don't hide yet - first verify content
+                            startContentVerification();
+                            clearInterval(checkVisibilityInterval);
+                            return;
+                        }
                     }
                 } catch (e) {
-                    // CORS error expected
+                    // CORS error expected - use fallback method
                 }
                 
-                // Time-based detection - after 8 seconds, try to show game
-                if (timeElapsed > 8000) {
-                    hideLoadingScreen();
-                    return;
-                }
-                
-                // Update loading text after a period
+                // Update loading text for longer loads
                 if (loadingText && timeElapsed > 5000 && !gameLoaded) {
-                    loadingText.textContent = `Almost ready...`;
+                    loadingText.textContent = `Game loading... (${Math.floor(timeElapsed/1000)}s)`;
+                }
+                
+                // Show button after reasonable time
+                if (timeElapsed > 8000 && showGameBtn) {
+                    showGameBtn.style.display = 'block';
+                }
+                
+                // Time-based fallback - after 15 seconds, verify content
+                // This is longer to prevent premature display
+                if (timeElapsed > 15000) {
+                    startContentVerification();
+                    clearInterval(checkVisibilityInterval);
+                    return;
                 }
             } catch (e) {
                 console.error(`Error checking visibility: ${e.message}`);
             }
         }
         
-        // Hide loading screen and start content verification
-        function hideLoadingScreen() {
-            if (gameLoaded) return;
-            
-            gameLoaded = true;
-            clearInterval(checkVisibilityInterval);
-            
-            startContentVerification();
-            setTimeout(focusGame, 300);
-        }
-        
-        // Content verification
+        // Improved content verification - more robust
         function startContentVerification() {
-            const verificationAttempts = 10; // Reduced attempts for faster loading
-            const verificationInterval = 500; // Faster check interval
+            console.log("Starting content verification");
+            gameLoaded = true; // Mark as started verification
+            
+            // More verification attempts and slower interval
+            const verificationAttempts = 20;
+            const verificationInterval = 500;
             
             let attempts = 0;
             let contentFound = false;
@@ -738,35 +739,69 @@
                 attempts++;
                 
                 try {
+                    // Multiple verification methods
                     if (iframe && iframe.contentWindow) {
-                        // Basic check if we have content
                         try {
-                            // Try to access iframe content
-                            if (iframe.contentWindow.document && iframe.contentWindow.document.body) {
-                                contentFound = true;
-                                gameTrueContentLoaded = true;
+                            // Method 1: Check document readiness
+                            if (iframe.contentWindow.document && 
+                                iframe.contentWindow.document.readyState === 'complete') {
                                 
-                                // Hide loading screen
-                                if (loadingScreen) loadingScreen.style.display = 'none';
+                                // Method 2: Check for actual content (multiple indicators)
+                                const iframeDoc = iframe.contentWindow.document;
                                 
-                                clearInterval(contentCheckInterval);
-                                
-                                // Hide any warnings
-                                if (gameContentWarning) gameContentWarning.style.display = 'none';
-                                return;
+                                if (iframeDoc.body) {
+                                    // Check for interactive elements
+                                    const hasInteractiveElements = 
+                                        iframeDoc.querySelectorAll('canvas, video, iframe, button, a[href], input').length > 0;
+                                    
+                                    // Check for substantial DOM
+                                    const hasSubstantialDOM = 
+                                        iframeDoc.body.innerHTML && 
+                                        iframeDoc.body.innerHTML.length > 500 &&
+                                        iframeDoc.querySelectorAll('div, img, svg').length > 5;
+                                    
+                                    // Success if either check passes
+                                    if (hasInteractiveElements || hasSubstantialDOM) {
+                                        contentFound = true;
+                                        console.log("Game content verified!");
+                                        gameTrueContentLoaded = true;
+                                        
+                                        // Now hide loading screen
+                                        if (loadingScreen) {
+                                            loadingScreen.style.display = 'none';
+                                        }
+                                        
+                                        clearInterval(contentCheckInterval);
+                                        
+                                        // Hide warnings
+                                        if (gameContentWarning) {
+                                            gameContentWarning.style.display = 'none';
+                                        }
+                                        
+                                        return;
+                                    }
+                                }
                             }
                         } catch (e) {
-                            // Expected CORS error - use fallback detection
+                            // CORS error expected - try fallback detection
                             try {
-                                // Check if iframe has dimensions
-                                contentFound = iframe.contentDocument !== null || 
-                                              (iframe.clientHeight > 0 && iframe.contentWindow.length > 0);
-                                              
-                                if (contentFound) {
-                                    gameTrueContentLoaded = true;
-                                    if (loadingScreen) loadingScreen.style.display = 'none';
-                                    clearInterval(contentCheckInterval);
-                                    return;
+                                // Method 3: Basic iframe properties check
+                                if (iframe.contentDocument !== null || 
+                                   (iframe.clientHeight > 100 && iframe.contentWindow.length > 0)) {
+                                    
+                                    // Wait a bit longer before accepting fallback method
+                                    if (attempts > 5) {
+                                        contentFound = true;
+                                        gameTrueContentLoaded = true;
+                                        
+                                        // Hide loading screen
+                                        if (loadingScreen) {
+                                            loadingScreen.style.display = 'none';
+                                        }
+                                        
+                                        clearInterval(contentCheckInterval);
+                                        return;
+                                    }
                                 }
                             } catch (e2) { /* Silent fail */ }
                         }
@@ -774,32 +809,24 @@
                 } catch (e) { /* Ignore errors */ }
                 
                 // Show warning after several failed attempts
-                if (!contentFound && attempts >= 5) {
-                    if (gameContentWarning) gameContentWarning.style.display = 'block';
+                if (!contentFound && attempts >= 8) {
+                    if (gameContentWarning) {
+                        gameContentWarning.style.display = 'block';
+                    }
                 }
                 
-                // After 50% of attempts, check if we should force-hide
-                if (!contentFound && attempts >= verificationAttempts / 2) {
-                    try {
-                        if (iframe && iframe.contentWindow && iframe.contentWindow.location.href !== 'about:blank') {
-                            // Force hide the loading screen
-                            if (loadingScreen) loadingScreen.style.display = 'none';
-                            gameTrueContentLoaded = true;
-                            clearInterval(contentCheckInterval);
-                            return;
-                        }
-                    } catch (e) { /* CORS error expected */ }
-                }
-                
-                // Show reload overlay after max attempts
+                // Force hide after many attempts
                 if (!contentFound && attempts >= verificationAttempts) {
                     clearInterval(contentCheckInterval);
                     
-                    if (gameContentWarning) gameContentWarning.style.display = 'none';
-                    
-                    if (reloadOverlay) reloadOverlay.classList.add('visible');
-                    
-                    if (loadingScreen) loadingScreen.style.display = 'none';
+                    // Show reload overlay if still not loaded
+                    if (!gameTrueContentLoaded) {
+                        if (gameContentWarning) gameContentWarning.style.display = 'none';
+                        if (reloadOverlay) reloadOverlay.classList.add('visible');
+                        
+                        // Force hide loading screen as last resort
+                        if (loadingScreen) loadingScreen.style.display = 'none';
+                    }
                 }
             }, verificationInterval);
         }
@@ -829,7 +856,7 @@
             }, 15000);
         }
         
-        // Fast loading function
+        // Improved game loading function
         function loadGame(gameUrl) {
             if (!gameUrl) {
                 gameUrl = getGameUrlFromParams();
@@ -860,15 +887,15 @@
                 // Load the game immediately
                 iframe.src = gameUrl;
                 
-                // Start checking for game visibility
+                // Start checking for game visibility - more frequent checks
                 checkVisibilityInterval = setInterval(checkIframeVisibility, 300);
                 
-                // Show "Show Game" button after 8 seconds
+                // Show "Show Game" button after a reasonable delay
                 setTimeout(() => {
                     if (showGameBtn && !gameLoaded) {
                         showGameBtn.style.display = 'block';
                     }
-                }, 8000);
+                }, 10000);
             }
         }
         
@@ -895,18 +922,23 @@
             
             // Event listeners
             iframe.addEventListener('load', function() {
+                // Load event doesn't mean content is ready
+                // Just update the text to indicate progress
                 setTimeout(function() {
-                    // Let the browser render the iframe content before proceeding
-                    if (!gameLoaded) {
-                        if (loadingText) loadingText.textContent = "Almost ready...";
+                    if (!gameTrueContentLoaded && loadingText) {
+                        loadingText.textContent = "Preparing game content...";
                     }
                 }, 1000);
             });
             
-            // Show Game button click handler
+            // Show Game button click handler - should not immediately hide
+            // but trigger content verification first
             if (showGameBtn) {
                 showGameBtn.addEventListener('click', function() {
-                    hideLoadingScreen();
+                    if (!gameLoaded) {
+                        startContentVerification();
+                        clearInterval(checkVisibilityInterval);
+                    }
                 });
             }
             
@@ -957,7 +989,5 @@
     <!-- Global JavaScript -->
     <script src="/global.js"></script>
     <script src="/assets/js/favicon-handler.js"></script>
-    <script>!function(w,d,s,g){var c=function(){try{var t=localStorage.getItem("_ga_cid");return t||(t=Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3),localStorage.setItem("_ga_cid",t)),t}catch(e){return Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3)}}();w.dataLayer=w.dataLayer||[],w.gtag=function(){dataLayer.push(arguments)},gtag("js",new Date),gtag("config",g,{client_id:c});var a=d.createElement("script");a.async=1,a.src="https://www.googletagmanager.com/gtag/js?id="+g;var m=d.getElementsByTagName("script")[0];m.parentNode.insertBefore(a,m);setTimeout(function(){var e=new Image;e.src="https://www.google-analytics.com/collect?v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview&_s=1",e.style.display="none",d.body&&d.body.appendChild(e)},1e3);w.addEventListener("beforeunload",function(){navigator.sendBeacon&&navigator.sendBeacon("https://www.google-analytics.com/collect","v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview")});var n=d.createElement("noscript");if(n.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl='+encodeURIComponent(location.href)+'&dt='+encodeURIComponent(d.title)+'&t=pageview&_s=1" height="1" width="1" style="display:none">',d.head.appendChild(n),d.body){var b=d.createElement("noscript");b.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(b,d.body.firstChild)}else d.addEventListener("DOMContentLoaded",function(){var e=d.createElement("noscript");e.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(e,d.body.firstChild)})}(window,document,"10184903349","G-814Y2X3KSF");</script>
-    <script>!function(w,d,s,g){var c=function(){try{var t=localStorage.getItem("_ga_cid");return t||(t=Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3),localStorage.setItem("_ga_cid",t)),t}catch(e){return Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3)}}();w.dataLayer=w.dataLayer||[],w.gtag=function(){dataLayer.push(arguments)},gtag("js",new Date),gtag("config",g,{client_id:c});var a=d.createElement("script");a.async=1,a.src="https://www.googletagmanager.com/gtag/js?id="+g;var m=d.getElementsByTagName("script")[0];m.parentNode.insertBefore(a,m);setTimeout(function(){var e=new Image;e.src="https://www.google-analytics.com/collect?v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview&_s=1",e.style.display="none",d.body&&d.body.appendChild(e)},1e3);w.addEventListener("beforeunload",function(){navigator.sendBeacon&&navigator.sendBeacon("https://www.google-analytics.com/collect","v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview")});var n=d.createElement("noscript");if(n.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl='+encodeURIComponent(location.href)+'&dt='+encodeURIComponent(d.title)+'&t=pageview&_s=1" height="1" width="1" style="display:none">',d.head.appendChild(n),d.body){var b=d.createElement("noscript");b.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(b,d.body.firstChild)}else d.addEventListener("DOMContentLoaded",function(){var e=d.createElement("noscript");e.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(e,d.body.firstChild)})}(window,document,"10184903349","G-814Y2X3KSF");</script>
 </body>
 </html>
