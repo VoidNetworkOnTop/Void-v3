@@ -4,7 +4,6 @@ import http from 'node:http';
 import path from "node:path";
 import fs from "node:fs";
 import crypto from 'node:crypto';
-import { setupWispServer } from './wisp-server.js';
 
 const app = express();
 const server = http.createServer();
@@ -111,9 +110,6 @@ try {
 // Create bare server with optimized settings if available
 const bare = createBareServer("/bare/", bareServerOptions);
 
-// Setup Wisp server for Scramjet
-const wispHandler = setupWispServer(server);
-
 // Apply server timeouts if configured
 if (serverSettings.keepAliveTimeout) {
   server.keepAliveTimeout = serverSettings.keepAliveTimeout;
@@ -139,7 +135,6 @@ app.use((req, res, next) => {
   // IMPORTANT: Skip cache-busting for service and bare paths
   if (
     req.path.startsWith('/bare/') ||
-    req.path.startsWith('/wisp/') ||
     req.path.includes('/service/') ||
     req.path.includes('.woff') ||
     req.path.includes('.woff2') ||
@@ -176,7 +171,6 @@ app.use((req, res, next) => {
   // Skip for non-HTML requests, bare server requests, and service paths
   if (
     req.path.startsWith('/bare/') ||
-    req.path.startsWith('/wisp/') ||
     req.path.includes('/service/') ||
     req.path.endsWith('.js') ||
     req.path.endsWith('.css') ||
@@ -214,7 +208,7 @@ app.use((req, res, next) => {
           // Add to script src attributes (skipping service paths)
           .replace(/(<script[^>]+src=["'])([^"']+)(["'])/gi, (match, prefix, url, suffix) => {
             // Skip service and bare paths
-            if (url.includes('/service/') || url.includes('/bare/') || url.includes('/wisp/')) {
+            if (url.includes('/service/') || url.includes('/bare/')) {
               return match;
             }
             
@@ -233,7 +227,7 @@ app.use((req, res, next) => {
           // Add to link href attributes (CSS)
           .replace(/(<link[^>]+href=["'])([^"']+)(["'])/gi, (match, prefix, url, suffix) => {
             // Skip service and bare paths
-            if (url.includes('/service/') || url.includes('/bare/') || url.includes('/wisp/')) {
+            if (url.includes('/service/') || url.includes('/bare/')) {
               return match;
             }
             
@@ -252,7 +246,7 @@ app.use((req, res, next) => {
           // Add to img src attributes (skipping service paths)
           .replace(/(<img[^>]+src=["'])([^"']+)(["'])/gi, (match, prefix, url, suffix) => {
             // Skip service and bare paths
-            if (url.includes('/service/') || url.includes('/bare/') || url.includes('/wisp/')) {
+            if (url.includes('/service/') || url.includes('/bare/')) {
               return match;
             }
             
@@ -288,7 +282,6 @@ app.use((req, res, next) => {
   // Skip for service and bare paths
   if (
     req.path.startsWith('/bare/') ||
-    req.path.startsWith('/wisp/') ||
     req.path.includes('/service/')
   ) {
     return next();
@@ -379,24 +372,6 @@ app.use((req, res, next) => {
   }
 });
 
-// ==== SCRAMJET CONFIG ROUTE ====
-// Serve the scramjet configuration
-app.get("/scramjet/config.js", function(req, res) {
-  res.setHeader('Content-Type', 'application/javascript');
-  res.send(`
-    // Scramjet configuration
-    window.__scramjet$config = {
-      prefix: '/service/',
-      wispServer: window.location.protocol === 'https:' ? 'wss://' + window.location.host + '/wisp' : 'ws://' + window.location.host + '/wisp',
-      codec: 'plain',
-      bare: {
-        version: 'v3',
-        path: '/bare/'
-      }
-    };
-  `);
-});
-
 // ==== HTML ROUTES WITH CACHE BUSTING ====
 // All routes that serve HTML files
 
@@ -468,9 +443,6 @@ app.get('*', function(req, res, next) {
 server.on('upgrade', (req, socket, head) => {
   if (bare.shouldRoute(req)) {
     bare.routeUpgrade(req, socket, head);
-  } else if (req.url.startsWith('/wisp') || req.headers['sec-websocket-protocol'] === 'wisp') {
-    // Let the wisp handler handle this
-    // The handler was set up in setupWispServer
   } else {
     socket.end();
   }
@@ -527,5 +499,4 @@ try {
 // Start server
 server.listen({port: PORT, host: '0.0.0.0'}, () => {
   console.log(`Server listening on port ${PORT} (IPv4 and IPv6) - Instant file updates enabled`);
-  console.log(`Bare server available at /bare/ and Wisp server available at /wisp`);
 });
