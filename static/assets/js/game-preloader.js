@@ -1,5 +1,5 @@
-// Intelligent Game Preloader
-// This script will preload game URLs in small batches using browser idle time
+// Intelligent Game Preloader for UV Proxy System
+// This script will preload game URLs through the UV proxy in small batches
 // without causing lag on the main interface
 
 // Configuration
@@ -8,13 +8,15 @@ const PRELOADER_CONFIG = {
   BATCH_SIZE: 3,                   // How many games to preload in each batch
   BATCH_DELAY: 800,                // Delay between batches (ms)
   MAX_CONCURRENT: 2,               // Maximum concurrent preloads
-  MAX_PRELOADED: 20,               // Maximum games to preload in total
+  MAX_PRELOADED: 15,               // Maximum games to preload in total
   PRELOAD_VISIBLE_FIRST: true,     // Prioritize visible games first
   NETWORK_SENSITIVE: true,         // Adapt to network conditions
   RESPECT_DATA_SAVER: true,        // Respect data-saver mode if enabled
   PRELOAD_AFTER_IDLE: 2000,        // Wait for page to be idle (ms)
   USE_SERVICE_WORKER: true,        // Use service worker cache when available
-  HIGH_TRAFFIC_MODE_LIMIT: 5       // Reduced preload limit during high traffic
+  HIGH_TRAFFIC_MODE_LIMIT: 5,      // Reduced preload limit during high traffic
+  UV_PRELOAD_MODE: 'fetch',        // Method to use: 'fetch', 'iframe', or 'link'
+  DEBUG_MODE: false                // Show detailed logs
 };
 
 // Track preloading state
@@ -25,14 +27,45 @@ const preloadState = {
   queue: [],
   highTrafficMode: false,
   visibleGames: new Set(),
-  preloadedGames: new Set()
+  preloadedGames: new Set(),
+  uvConfigLoaded: false,
+  hiddenFrames: []
 };
+
+// Check if UV is available
+function checkUVAvailability() {
+  if (typeof __uv$config !== 'undefined' && __uv$config.prefix && __uv$config.encodeUrl) {
+    preloadState.uvConfigLoaded = true;
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.log('UV configuration detected and ready for preloading');
+    }
+    return true;
+  }
+  
+  // Wait for UV to load if not ready
+  if (!preloadState.uvConfigLoaded) {
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.log('Waiting for UV configuration to load...');
+    }
+    
+    // Try again in a moment
+    setTimeout(checkUVAvailability, 300);
+    return false;
+  }
+  
+  return false;
+}
 
 // Initialize the preloader after page is fully loaded and idle
 function initGamePreloader() {
   if (!PRELOADER_CONFIG.ENABLE_PRELOADING) return;
   
-  console.log('Game preloader initialized');
+  if (PRELOADER_CONFIG.DEBUG_MODE) {
+    console.log('Game preloader initializing...');
+  }
+  
+  // First check if UV is available
+  if (!checkUVAvailability()) return;
   
   // Detect if user has Data Saver enabled
   if (PRELOADER_CONFIG.RESPECT_DATA_SAVER && navigator.connection && navigator.connection.saveData) {
@@ -66,7 +99,9 @@ function initGamePreloader() {
     navigator.serviceWorker.addEventListener('message', function(event) {
       if (event.data && event.data.type === 'HIGH_TRAFFIC_MODE') {
         preloadState.highTrafficMode = event.data.enabled;
-        console.log('High traffic mode update received:', preloadState.highTrafficMode);
+        if (PRELOADER_CONFIG.DEBUG_MODE) {
+          console.log('High traffic mode update received:', preloadState.highTrafficMode);
+        }
       }
     });
   }
@@ -162,13 +197,19 @@ function buildPreloadQueue() {
   // Combine both game arrays
   const allGames = [];
   
-  // Check if game data arrays are available
-  if (typeof gamesData !== 'undefined') {
-    allGames.push(...gamesData);
+  // Check if game data arrays are available in the global scope
+  if (typeof window.gamesData !== 'undefined') {
+    allGames.push(...window.gamesData);
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.log(`Found ${window.gamesData.length} games in gamesData`);
+    }
   }
   
-  if (typeof games2Data !== 'undefined') {
-    allGames.push(...games2Data);
+  if (typeof window.games2Data !== 'undefined') {
+    allGames.push(...window.games2Data);
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.log(`Found ${window.games2Data.length} games in games2Data`);
+    }
   }
   
   // If no games found, try to get them from DOM
@@ -182,6 +223,10 @@ function buildPreloadQueue() {
         allGames.push({ link: href });
       }
     });
+    
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.log(`Found ${allGames.length} games from DOM elements`);
+    }
   }
   
   // Sort games - prioritize visible ones first
@@ -203,7 +248,9 @@ function buildPreloadQueue() {
   
   preloadState.queue = allGames.slice(0, maxToPreload);
   
-  console.log(`Preload queue built with ${preloadState.queue.length} games`);
+  if (PRELOADER_CONFIG.DEBUG_MODE) {
+    console.log(`Preload queue built with ${preloadState.queue.length} games`);
+  }
 }
 
 // Process the next batch of games
@@ -211,7 +258,9 @@ function processNextBatch() {
   // Stop if we've reached our limits
   if (preloadState.completed >= PRELOADER_CONFIG.MAX_PRELOADED || 
       preloadState.queue.length === 0) {
-    console.log(`Preloading completed: ${preloadState.completed} games preloaded`);
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.log(`Preloading completed: ${preloadState.completed} games preloaded`);
+    }
     return;
   }
   
@@ -247,19 +296,157 @@ function preloadGame(gameUrl) {
   preloadState.preloadedGames.add(gameUrl);
   preloadState.inProgress++;
   
-  console.log(`Preloading game: ${gameUrl}`);
+  if (PRELOADER_CONFIG.DEBUG_MODE) {
+    console.log(`Preloading game: ${gameUrl}`);
+  }
   
-  // Choose the appropriate preloading method
-  if (PRELOADER_CONFIG.USE_SERVICE_WORKER && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    // Method 1: Use service worker to cache the URL
-    serviceWorkerPreload(gameUrl);
-  } else {
-    // Method 2: Use link prefetch as fallback
-    linkPrefetch(gameUrl);
+  // Different methods to preload the game through UV
+  switch (PRELOADER_CONFIG.UV_PRELOAD_MODE) {
+    case 'fetch':
+      uvFetchPreload(gameUrl);
+      break;
+    case 'iframe':
+      uvIframePreload(gameUrl);
+      break;
+    case 'link':
+      uvLinkPrefetch(gameUrl);
+      break;
+    default:
+      uvFetchPreload(gameUrl);
   }
 }
 
-// Preload using service worker
+// UV-specific preloading methods
+
+// Method 1: Use fetch to preload
+function uvFetchPreload(url) {
+  // Make sure UV is available
+  if (!preloadState.uvConfigLoaded) {
+    preloadState.inProgress--;
+    setTimeout(() => preloadGame(url), 500);
+    return;
+  }
+  
+  // We'll use fetch to preload the game URL
+  fetch(url, {
+    method: 'HEAD',
+    mode: 'no-cors',
+    cache: 'force-cache',
+    credentials: 'omit',
+    priority: 'low'
+  })
+  .then(response => {
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.log(`Preloaded via fetch: ${url}`);
+    }
+    preloadState.inProgress--;
+    preloadState.completed++;
+  })
+  .catch(error => {
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.warn(`Failed to preload via fetch: ${url}`, error);
+    }
+    preloadState.inProgress--;
+    preloadState.preloadedGames.delete(url);
+    
+    // Try service worker as fallback
+    if (PRELOADER_CONFIG.USE_SERVICE_WORKER && navigator.serviceWorker && navigator.serviceWorker.controller) {
+      serviceWorkerPreload(url);
+    }
+  });
+}
+
+// Method 2: Use hidden iframe to preload
+function uvIframePreload(url) {
+  // Create a hidden iframe to load the game
+  const iframe = document.createElement('iframe');
+  iframe.style.width = '1px';
+  iframe.style.height = '1px';
+  iframe.style.position = 'absolute';
+  iframe.style.left = '-9999px';
+  iframe.style.visibility = 'hidden';
+  iframe.style.opacity = '0';
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.setAttribute('tabindex', '-1');
+  
+  // Set timeout to prevent hanging preloads
+  const timeout = setTimeout(() => {
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.warn(`Preload timeout for: ${url}`);
+    }
+    cleanupIframe();
+  }, 10000);
+  
+  // Cleanup function
+  const cleanupIframe = () => {
+    clearTimeout(timeout);
+    if (document.body.contains(iframe)) {
+      document.body.removeChild(iframe);
+    }
+    
+    // Update preload state
+    preloadState.inProgress--;
+    preloadState.completed++;
+    
+    // Remove from hidden frames list
+    const index = preloadState.hiddenFrames.indexOf(iframe);
+    if (index > -1) {
+      preloadState.hiddenFrames.splice(index, 1);
+    }
+  };
+  
+  // Set up event listeners
+  iframe.onload = () => {
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.log(`Preloaded via iframe: ${url}`);
+    }
+    // Wait a bit before cleanup to ensure resources are loaded
+    setTimeout(cleanupIframe, 1000);
+  };
+  
+  iframe.onerror = () => {
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.warn(`Failed to preload via iframe: ${url}`);
+    }
+    preloadState.preloadedGames.delete(url);
+    cleanupIframe();
+  };
+  
+  // Start loading
+  iframe.src = url;
+  document.body.appendChild(iframe);
+  
+  // Add to list of hidden frames for cleanup
+  preloadState.hiddenFrames.push(iframe);
+}
+
+// Method 3: Use link prefetch (more compatible, but less reliable with UV)
+function uvLinkPrefetch(url) {
+  const link = document.createElement('link');
+  link.rel = 'prefetch';
+  link.href = url;
+  link.as = 'document';
+  
+  link.onload = () => {
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.log(`Preloaded via link prefetch: ${url}`);
+    }
+    preloadState.inProgress--;
+    preloadState.completed++;
+  };
+  
+  link.onerror = () => {
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.warn(`Failed to preload via link prefetch: ${url}`);
+    }
+    preloadState.inProgress--;
+    preloadState.preloadedGames.delete(url);
+  };
+  
+  document.head.appendChild(link);
+}
+
+// Service worker preload method
 function serviceWorkerPreload(url) {
   // Tell the service worker to cache this URL
   if (navigator.serviceWorker.controller) {
@@ -268,6 +455,10 @@ function serviceWorkerPreload(url) {
       url: url
     });
     
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.log(`Requested service worker preload for: ${url}`);
+    }
+    
     // We don't get callbacks from service worker easily, so use a timeout
     setTimeout(() => {
       preloadState.inProgress--;
@@ -275,39 +466,32 @@ function serviceWorkerPreload(url) {
     }, 3000);
   } else {
     // Fallback if service worker isn't ready
-    linkPrefetch(url);
+    uvFetchPreload(url);
   }
 }
 
-// Preload using link prefetch
-function linkPrefetch(url) {
-  const link = document.createElement('link');
-  link.rel = 'prefetch';
-  link.href = url;
-  link.as = 'document';
-  
-  link.onload = () => {
-    console.log(`Preloaded: ${url}`);
-    preloadState.inProgress--;
-    preloadState.completed++;
-  };
-  
-  link.onerror = () => {
-    console.warn(`Failed to preload: ${url}`);
-    preloadState.inProgress--;
-    preloadState.preloadedGames.delete(url);
-  };
-  
-  document.head.appendChild(link);
+// Clean up any hidden frames when needed (e.g., page unload)
+function cleanupHiddenFrames() {
+  preloadState.hiddenFrames.forEach(iframe => {
+    if (document.body.contains(iframe)) {
+      document.body.removeChild(iframe);
+    }
+  });
+  preloadState.hiddenFrames = [];
 }
 
 // Add event listener for high traffic mode
 window.addEventListener('message', function(event) {
   if (event.data && event.data.type === 'HIGH_TRAFFIC_MODE') {
     preloadState.highTrafficMode = event.data.enabled;
-    console.log('Preloader detected high traffic mode:', preloadState.highTrafficMode);
+    if (PRELOADER_CONFIG.DEBUG_MODE) {
+      console.log('Preloader detected high traffic mode:', preloadState.highTrafficMode);
+    }
   }
 });
+
+// Clean up on page unload
+window.addEventListener('beforeunload', cleanupHiddenFrames);
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
