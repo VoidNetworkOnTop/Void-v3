@@ -7,6 +7,19 @@
     <!-- Critical hints to prioritize game display -->
     <meta http-equiv="Page-Speed" content="High">
     <meta name="priority" content="high">
+    
+    <!-- Prevent caching issues that may cause blank screens -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="/uv/uv.bundle.js" as="script">
+    <link rel="preload" href="/uv/uv.config.js" as="script">
+    <link rel="preload" href="/uv/uv.handler.js" as="script">
+    
+    <!-- Load the Chromebook Fix script -->
+    <script src="/js/uv-chromebook-fix.js"></script>
     <script src="/js/popup-client.js"></script>
     
     <!-- Inline critical styles -->
@@ -318,6 +331,23 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
         
+        /* Chromebook-specific fixes */
+        @supports (-webkit-appearance:none) and (not (overflow:-webkit-marquee)) and (not (-ms-ime-align:auto)) and (not (-moz-appearance:none)) {
+            /* These styles target Chrome OS specifically */
+            #gframe {
+                transform: translateZ(0); /* Force hardware acceleration */
+                backface-visibility: hidden;
+                will-change: transform; /* Hint for browser to optimize */
+            }
+            
+            /* Apply specific tweaks for Chrome OS */
+            .chromebook-mode #gframe {
+                /* Chromebook-specific tweaks */
+                position: relative;
+                z-index: 3;
+            }
+        }
+        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -510,6 +540,14 @@
 
     <!-- Enhanced Game Loading script with improved content verification -->
     <script>
+        // Check if running on ChromeOS
+        const isChromebook = navigator.userAgent.includes('CrOS');
+        
+        // Add chromebook-mode class if on ChromeOS
+        if (isChromebook) {
+            document.body.classList.add('chromebook-mode');
+        }
+        
         // Define our variables
         let iframe;
         let loadingScreen;
@@ -534,33 +572,43 @@
         // Function to focus the game
         function focusGame() {
             if (!iframe) return;
-            iframe.focus();
             
-            // Visual feedback
-            const tempHighlight = document.createElement('div');
-            tempHighlight.style.position = 'absolute';
-            tempHighlight.style.top = '0';
-            tempHighlight.style.left = '0';
-            tempHighlight.style.width = '100%';
-            tempHighlight.style.height = 'calc(100% - 40px)';
-            tempHighlight.style.border = '2px solid rgba(100, 180, 255, 0.8)';
-            tempHighlight.style.borderRadius = '22px 22px 0 0';
-            tempHighlight.style.boxShadow = 'inset 0 0 20px rgba(100, 180, 255, 0.3)';
-            tempHighlight.style.pointerEvents = 'none';
-            tempHighlight.style.zIndex = '4';
-            document.querySelector('.game_container').appendChild(tempHighlight);
-            
-            // Remove the highlight after a short delay
-            setTimeout(function() {
-                tempHighlight.style.opacity = '0';
-                tempHighlight.style.transition = 'opacity 0.5s ease';
+            try {
+                iframe.focus();
                 
+                // Visual feedback
+                const tempHighlight = document.createElement('div');
+                tempHighlight.style.position = 'absolute';
+                tempHighlight.style.top = '0';
+                tempHighlight.style.left = '0';
+                tempHighlight.style.width = '100%';
+                tempHighlight.style.height = 'calc(100% - 40px)';
+                tempHighlight.style.border = '2px solid rgba(100, 180, 255, 0.8)';
+                tempHighlight.style.borderRadius = '22px 22px 0 0';
+                tempHighlight.style.boxShadow = 'inset 0 0 20px rgba(100, 180, 255, 0.3)';
+                tempHighlight.style.pointerEvents = 'none';
+                tempHighlight.style.zIndex = '4';
+                document.querySelector('.game_container').appendChild(tempHighlight);
+                
+                // Remove the highlight after a short delay
                 setTimeout(function() {
-                    if (document.body.contains(tempHighlight)) {
-                        tempHighlight.remove();
-                    }
-                }, 500);
-            }, 300);
+                    tempHighlight.style.opacity = '0';
+                    tempHighlight.style.transition = 'opacity 0.5s ease';
+                    
+                    setTimeout(function() {
+                        if (document.body.contains(tempHighlight)) {
+                            tempHighlight.remove();
+                        }
+                    }, 500);
+                }, 300);
+                
+                // Apply Chromebook fixes if available
+                if (window.uvChromebookFix) {
+                    window.uvChromebookFix.fixGameRendering();
+                }
+            } catch (error) {
+                console.error('Focus error:', error);
+            }
         }
         
         // Reload game function - IMPROVED VERSION
@@ -590,7 +638,24 @@
             if (retryBtn) retryBtn.style.display = 'none';
             
             // Reset iframe
-            if (iframe) iframe.src = 'about:blank';
+            if (iframe) {
+                try {
+                    // First try setting about:blank
+                    iframe.src = 'about:blank';
+                    
+                    // Force cleanup
+                    iframe.onload = null;
+                    if (iframe.contentWindow) {
+                        try {
+                            iframe.contentWindow.location.href = 'about:blank';
+                        } catch (e) {
+                            // CORS error expected
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error clearing iframe:', error);
+                }
+            }
             
             // Record load start time
             loadStartTime = Date.now();
@@ -606,7 +671,7 @@
                 setTimeout(() => {
                     setupRecurringGameFixes();
                 }, 5000);
-            }, 100);
+            }, 300);
         }
         
         // Toggle fullscreen function
@@ -635,8 +700,13 @@
         
         // Helper function to get game URL from query parameters
         function getGameUrlFromParams() {
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('game');
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get('game');
+            } catch (error) {
+                console.error('Error getting URL from params:', error);
+                return null;
+            }
         }
         
         // Enhanced loading progress calculation
@@ -646,7 +716,12 @@
             const timeElapsed = Date.now() - loadStartTime;
             
             // More conservative expected load time
-            const expectedLoadTime = 12000;
+            let expectedLoadTime = 12000;
+            
+            // Increase expected load time for Chromebooks
+            if (isChromebook) {
+                expectedLoadTime = 20000;
+            }
             
             // Calculate progress percentage
             let progressPercent = Math.min(100, (timeElapsed / expectedLoadTime) * 100);
@@ -732,7 +807,7 @@
             gameLoaded = true; // Mark as started verification
             
             // More verification attempts and slower interval - INCREASED
-            const verificationAttempts = 30; // Increased from 20
+            const verificationAttempts = isChromebook ? 40 : 30; // More for Chromebooks
             const verificationInterval = 600; // Increased from 500
             
             let attempts = 0;
@@ -780,6 +855,11 @@
                                       console.log("Game content verified!");
                                       gameTrueContentLoaded = true;
                                       
+                                      // Try to fix Chromebook rendering if available
+                                      if (isChromebook && window.uvChromebookFix) {
+                                          window.uvChromebookFix.fixGameRendering();
+                                      }
+                                      
                                       // Now hide loading screen
                                       if (loadingScreen) {
                                         loadingScreen.style.display = 'none';
@@ -791,6 +871,9 @@
                                       if (gameContentWarning) {
                                         gameContentWarning.style.display = 'none';
                                       }
+                                      
+                                      // Focus the game
+                                      focusGame();
                                       
                                       return;
                                     }
@@ -807,6 +890,7 @@
                                           possibleGameElements.forEach(el => {
                                             el.style.display = 'block';
                                             el.style.visibility = 'visible';
+                                            el.style.opacity = '1';
                                           });
                                           console.log("Forced visibility of potential game elements");
                                         }
@@ -847,6 +931,12 @@
                     }
                 }
                 
+                // NEW: Apply Chromebook fix after certain attempts
+                if (isChromebook && attempts === 10 && window.uvChromebookFix) {
+                    console.log("Applying Chromebook-specific fixes");
+                    window.uvChromebookFix.applyChromebookFixes();
+                }
+                
                 // NEW: Keep checking but assume success after a reasonable time
                 if (!contentFound && attempts >= Math.floor(verificationAttempts * 0.8)) {
                     console.log("Assuming game is loaded after extended verification");
@@ -862,6 +952,9 @@
                     if (gameContentWarning) {
                         gameContentWarning.style.display = 'none';
                     }
+                    
+                    // Focus game
+                    focusGame();
                     
                     clearInterval(contentCheckInterval);
                     return;
@@ -886,7 +979,21 @@
                                 if (iframe && iframe.contentWindow && 
                                     (!iframe.contentWindow.document || 
                                      iframe.contentWindow.document.body.innerHTML.length < 50)) {
-                                    if (reloadOverlay) reloadOverlay.classList.add('visible');
+                                    
+                                    // For Chromebooks, try one more fix
+                                    if (isChromebook && window.uvChromebookFix) {
+                                        console.log("Applying emergency Chromebook fix");
+                                        window.uvChromebookFix.applyChromebookFixes();
+                                        
+                                        // Check again after fix is applied
+                                        setTimeout(() => {
+                                            if (!gameTrueContentLoaded && reloadOverlay) {
+                                                reloadOverlay.classList.add('visible');
+                                            }
+                                        }, 2000);
+                                    } else if (reloadOverlay) {
+                                        reloadOverlay.classList.add('visible');
+                                    }
                                 }
                             } catch (e) {
                                 // If we can't access the document, there's likely a real loading issue
@@ -902,7 +1009,7 @@
         function setupRecurringGameFixes() {
             // Run fixes every 3 seconds for the first 30 seconds
             let fixCount = 0;
-            const maxFixes = 10;
+            const maxFixes = isChromebook ? 15 : 10; // More fixes for Chromebooks
             
             function runPeriodicFixes() {
                 fixCount++;
@@ -918,6 +1025,7 @@
                     document.querySelectorAll('canvas, [id*="game"], [id*="unity"], [id*="container"]').forEach(el => {
                         el.style.display = 'block';
                         el.style.visibility = 'visible';
+                        el.style.opacity = '1';
                     });
                 } catch (e) {}
                 
@@ -927,6 +1035,7 @@
                         iframe.contentWindow.document.querySelectorAll('canvas, [id*="game"], [id*="unity"], [id*="container"]').forEach(el => {
                             el.style.display = 'block';
                             el.style.visibility = 'visible';
+                            el.style.opacity = '1';
                         });
                     }
                 } catch (e) {}
@@ -938,6 +1047,11 @@
                         iframe.contentWindow.dispatchEvent(new Event('resize'));
                     }
                 } catch (e) {}
+                
+                // Chromebook-specific fixes
+                if (isChromebook && window.uvChromebookFix && fixCount % 3 === 0) {
+                    window.uvChromebookFix.applyChromebookFixes();
+                }
                 
                 if (fixCount < maxFixes) {
                     setTimeout(runPeriodicFixes, 3000);
@@ -973,6 +1087,33 @@
             }, 15000);
         }
         
+        // Check and register service worker if needed
+        function checkServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    let uvServiceWorkerActive = registrations.some(reg => 
+                        reg.active && (reg.scope.includes('/uv/') || reg.active.scriptURL.includes('uv.sw.js'))
+                    );
+                    
+                    if (!uvServiceWorkerActive) {
+                        console.log('Registering UV service worker');
+                        
+                        // Try to register the service worker
+                        navigator.serviceWorker.register('/uv/sw.js', {
+                            scope: '/uv/',
+                            updateViaCache: 'none'
+                        }).then(registration => {
+                            console.log('Service worker registered successfully');
+                        }).catch(error => {
+                            console.error('Failed to register service worker:', error);
+                        });
+                    }
+                }).catch(error => {
+                    console.error('Error checking service worker registrations:', error);
+                });
+            }
+        }
+        
         // Improved game loading function
         function loadGame(gameUrl) {
             if (!gameUrl) {
@@ -986,6 +1127,9 @@
             
             // Store original URL for reloads
             originalGameUrl = gameUrl;
+            
+            // Check service worker
+            checkServiceWorker();
             
             // Record load start time
             loadStartTime = Date.now();
@@ -1001,7 +1145,21 @@
                 // Show retry button after a delay
                 setTimeout(() => createRetryButton(), 10000);
                 
-                // Load the game immediately
+                // Force hardware acceleration for Chromebooks
+                if (isChromebook && window.uvChromebookFix) {
+                    window.uvChromebookFix.applyChromebookFixes();
+                }
+                
+                // Set up load event listener
+                iframe.onload = function() {
+                    setTimeout(function() {
+                        if (!gameTrueContentLoaded && loadingText) {
+                            loadingText.textContent = "Preparing game content...";
+                        }
+                    }, 1000);
+                };
+                
+                // Load the game
                 iframe.src = gameUrl;
                 
                 // Start checking for game visibility - more frequent checks
@@ -1089,8 +1247,16 @@
                 
                 // Assume game is loaded after forcing visibility
                 gameTrueContentLoaded = true;
+                
+                // Use Chromebook fixes if available
+                if (isChromebook && window.uvChromebookFix) {
+                    window.uvChromebookFix.fixGameRendering();
+                }
+                
+                // Focus game
+                focusGame();
             }
-        }, 15000); // Increased timeout for better compatibility
+        }, isChromebook ? 20000 : 15000); // Longer timeout for Chromebooks
 
         // Initialize when DOM is ready
         document.addEventListener('DOMContentLoaded', function() {
@@ -1174,6 +1340,18 @@
                 }
             });
             
+            // Listen for messages from service worker
+            if (navigator.serviceWorker) {
+                navigator.serviceWorker.addEventListener('message', function(event) {
+                    if (event.data && event.data.type) {
+                        // Show high traffic indicator if needed
+                        if (event.data.type === 'HIGH_TRAFFIC_MODE' && trafficIndicator) {
+                            trafficIndicator.style.display = event.data.enabled ? 'block' : 'none';
+                        }
+                    }
+                });
+            }
+            
             // Start loading game immediately
             loadGame(originalGameUrl);
         });
@@ -1182,7 +1360,5 @@
     <!-- Global JavaScript -->
     <script src="/global.js"></script>
     <script src="/assets/js/favicon-handler.js"></script>
-    <script>!function(w,d,s,g){var c=function(){try{var t=localStorage.getItem("_ga_cid");return t||(t=Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3),localStorage.setItem("_ga_cid",t)),t}catch(e){return Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3)}}();w.dataLayer=w.dataLayer||[],w.gtag=function(){dataLayer.push(arguments)},gtag("js",new Date),gtag("config",g,{client_id:c});var a=d.createElement("script");a.async=1,a.src="https://www.googletagmanager.com/gtag/js?id="+g;var m=d.getElementsByTagName("script")[0];m.parentNode.insertBefore(a,m);setTimeout(function(){var e=new Image;e.src="https://www.google-analytics.com/collect?v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview&_s=1",e.style.display="none",d.body&&d.body.appendChild(e)},1e3);w.addEventListener("beforeunload",function(){navigator.sendBeacon&&navigator.sendBeacon("https://www.google-analytics.com/collect","v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview")});var n=d.createElement("noscript");if(n.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl='+encodeURIComponent(location.href)+'&dt='+encodeURIComponent(d.title)+'&t=pageview&_s=1" height="1" width="1" style="display:none">',d.head.appendChild(n),d.body){var b=d.createElement("noscript");b.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(b,d.body.firstChild)}else d.addEventListener("DOMContentLoaded",function(){var e=d.createElement("noscript");e.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(e,d.body.firstChild)})}(window,document,"10184903349","G-814Y2X3KSF");</script>
-    <script>!function(w,d,s,g){var c=function(){try{var t=localStorage.getItem("_ga_cid");return t||(t=Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3),localStorage.setItem("_ga_cid",t)),t}catch(e){return Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3)}}();w.dataLayer=w.dataLayer||[],w.gtag=function(){dataLayer.push(arguments)},gtag("js",new Date),gtag("config",g,{client_id:c});var a=d.createElement("script");a.async=1,a.src="https://www.googletagmanager.com/gtag/js?id="+g;var m=d.getElementsByTagName("script")[0];m.parentNode.insertBefore(a,m);setTimeout(function(){var e=new Image;e.src="https://www.google-analytics.com/collect?v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview&_s=1",e.style.display="none",d.body&&d.body.appendChild(e)},1e3);w.addEventListener("beforeunload",function(){navigator.sendBeacon&&navigator.sendBeacon("https://www.google-analytics.com/collect","v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview")});var n=d.createElement("noscript");if(n.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl='+encodeURIComponent(location.href)+'&dt='+encodeURIComponent(d.title)+'&t=pageview&_s=1" height="1" width="1" style="display:none">',d.head.appendChild(n),d.body){var b=d.createElement("noscript");b.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(b,d.body.firstChild)}else d.addEventListener("DOMContentLoaded",function(){var e=d.createElement("noscript");e.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(e,d.body.firstChild)})}(window,document,"10184903349","G-814Y2X3KSF");</script>
 </body>
 </html>
