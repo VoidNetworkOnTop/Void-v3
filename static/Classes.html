@@ -563,7 +563,7 @@
             }, 300);
         }
         
-        // Reload game function 
+        // Reload game function - IMPROVED VERSION
         function reloadGame() {
             gameLoaded = false;
             gameTrueContentLoaded = false;
@@ -601,6 +601,11 @@
             // Load game after a short delay
             setTimeout(() => {
                 loadGame(originalGameUrl || getGameUrlFromParams());
+                
+                // Also schedule the recurring game fixes
+                setTimeout(() => {
+                    setupRecurringGameFixes();
+                }, 5000);
             }, 100);
         }
         
@@ -721,17 +726,18 @@
             }
         }
         
-        // Improved content verification - more robust
+        // IMPROVED VERSION: Enhanced content verification for games
         function startContentVerification() {
             console.log("Starting content verification");
             gameLoaded = true; // Mark as started verification
             
-            // More verification attempts and slower interval
-            const verificationAttempts = 20;
-            const verificationInterval = 500;
+            // More verification attempts and slower interval - INCREASED
+            const verificationAttempts = 30; // Increased from 20
+            const verificationInterval = 600; // Increased from 500
             
             let attempts = 0;
             let contentFound = false;
+            let progressiveDetection = false; // Track if we're in progressive detection mode
             
             clearInterval(contentCheckInterval);
             
@@ -750,46 +756,72 @@
                                 const iframeDoc = iframe.contentWindow.document;
                                 
                                 if (iframeDoc.body) {
-                                    // Check for interactive elements
+                                    // IMPROVED: Broader detection for interactive elements with game-specific elements
                                     const hasInteractiveElements = 
-                                        iframeDoc.querySelectorAll('canvas, video, iframe, button, a[href], input').length > 0;
+                                      iframeDoc.querySelectorAll('canvas, video, iframe, button, a[href], input, [id*="game"], [id*="unity"], [class*="game"], [class*="unity"], [class*="webgl"]').length > 0;
                                     
-                                    // Check for substantial DOM
+                                    // IMPROVED: Lower threshold for substantial DOM - allows leaner games
                                     const hasSubstantialDOM = 
-                                        iframeDoc.body.innerHTML && 
-                                        iframeDoc.body.innerHTML.length > 500 &&
-                                        iframeDoc.querySelectorAll('div, img, svg').length > 5;
+                                      iframeDoc.body.innerHTML && 
+                                      iframeDoc.body.innerHTML.length > 200 && // Reduced from 500
+                                      iframeDoc.querySelectorAll('div, img, svg, canvas').length > 3; // Reduced from 5
                                     
-                                    // Success if either check passes
-                                    if (hasInteractiveElements || hasSubstantialDOM) {
-                                        contentFound = true;
-                                        console.log("Game content verified!");
-                                        gameTrueContentLoaded = true;
-                                        
-                                        // Now hide loading screen
-                                        if (loadingScreen) {
-                                            loadingScreen.style.display = 'none';
+                                    // NEW: Check if page has finished loading
+                                    const hasFinishedLoading = 
+                                      !iframeDoc.querySelector('[id*="load"], [class*="load"]') || 
+                                      !Array.from(iframeDoc.querySelectorAll('[id*="load"], [class*="load"]')).some(el => 
+                                        el.style.display !== 'none' && el.style.visibility !== 'hidden' && el.getBoundingClientRect().width > 0
+                                      );
+                                    
+                                    // Success if any check passes
+                                    if (hasInteractiveElements || hasSubstantialDOM || 
+                                        (hasFinishedLoading && attempts > 10)) {
+                                      contentFound = true;
+                                      console.log("Game content verified!");
+                                      gameTrueContentLoaded = true;
+                                      
+                                      // Now hide loading screen
+                                      if (loadingScreen) {
+                                        loadingScreen.style.display = 'none';
+                                      }
+                                      
+                                      clearInterval(contentCheckInterval);
+                                      
+                                      // Hide warnings
+                                      if (gameContentWarning) {
+                                        gameContentWarning.style.display = 'none';
+                                      }
+                                      
+                                      return;
+                                    }
+                                    
+                                    // NEW: Progressive detection - gradually lower our standards the longer we wait
+                                    if (attempts > 15 && !progressiveDetection) {
+                                      progressiveDetection = true;
+                                      console.log("Switching to progressive detection mode");
+                                      
+                                      // Force visibility of possible game containers to help with detection
+                                      try {
+                                        const possibleGameElements = iframeDoc.querySelectorAll('canvas, [id*="game"], [id*="unity"], [id*="container"]');
+                                        if (possibleGameElements.length > 0) {
+                                          possibleGameElements.forEach(el => {
+                                            el.style.display = 'block';
+                                            el.style.visibility = 'visible';
+                                          });
+                                          console.log("Forced visibility of potential game elements");
                                         }
-                                        
-                                        clearInterval(contentCheckInterval);
-                                        
-                                        // Hide warnings
-                                        if (gameContentWarning) {
-                                            gameContentWarning.style.display = 'none';
-                                        }
-                                        
-                                        return;
+                                      } catch (e) {}
                                     }
                                 }
                             }
                         } catch (e) {
                             // CORS error expected - try fallback detection
                             try {
-                                // Method 3: Basic iframe properties check
-                                if (iframe.contentDocument !== null || 
-                                   (iframe.clientHeight > 100 && iframe.contentWindow.length > 0)) {
-                                    
-                                    // Wait a bit longer before accepting fallback method
+                                // Method 3: Basic iframe properties check - MORE FORGIVING
+                                if ((iframe.contentDocument !== null) || 
+                                  (iframe.clientHeight > 50 && iframe.contentWindow)) { // Reduced height requirement
+                                      
+                                    // Wait longer before accepting fallback method
                                     if (attempts > 5) {
                                         contentFound = true;
                                         gameTrueContentLoaded = true;
@@ -808,27 +840,112 @@
                     }
                 } catch (e) { /* Ignore errors */ }
                 
-                // Show warning after several failed attempts
-                if (!contentFound && attempts >= 8) {
+                // Show warning after MORE failed attempts
+                if (!contentFound && attempts >= 12) { // Increased from 8
                     if (gameContentWarning) {
                         gameContentWarning.style.display = 'block';
                     }
                 }
                 
-                // Force hide after many attempts
+                // NEW: Keep checking but assume success after a reasonable time
+                if (!contentFound && attempts >= Math.floor(verificationAttempts * 0.8)) {
+                    console.log("Assuming game is loaded after extended verification");
+                    contentFound = true;
+                    gameTrueContentLoaded = true;
+                    
+                    // Hide loading screen
+                    if (loadingScreen) {
+                        loadingScreen.style.display = 'none';
+                    }
+                    
+                    // Hide warnings
+                    if (gameContentWarning) {
+                        gameContentWarning.style.display = 'none';
+                    }
+                    
+                    clearInterval(contentCheckInterval);
+                    return;
+                }
+                
+                // Only show reload overlay after all attempts as a last resort
                 if (!contentFound && attempts >= verificationAttempts) {
                     clearInterval(contentCheckInterval);
                     
-                    // Show reload overlay if still not loaded
+                    // Give one final chance - many games load just fine but don't trigger detection
                     if (!gameTrueContentLoaded) {
-                        if (gameContentWarning) gameContentWarning.style.display = 'none';
-                        if (reloadOverlay) reloadOverlay.classList.add('visible');
+                        console.log("Final loading chance - assuming load might be successful");
                         
-                        // Force hide loading screen as last resort
+                        // Force hide all warnings and overlays first
+                        if (gameContentWarning) gameContentWarning.style.display = 'none';
                         if (loadingScreen) loadingScreen.style.display = 'none';
+                        
+                        // Wait 3 more seconds before showing reload overlay
+                        setTimeout(() => {
+                            // Only show reload overlay if game is still problematic
+                            try {
+                                if (iframe && iframe.contentWindow && 
+                                    (!iframe.contentWindow.document || 
+                                     iframe.contentWindow.document.body.innerHTML.length < 50)) {
+                                    if (reloadOverlay) reloadOverlay.classList.add('visible');
+                                }
+                            } catch (e) {
+                                // If we can't access the document, there's likely a real loading issue
+                                if (reloadOverlay) reloadOverlay.classList.add('visible');
+                            }
+                        }, 3000);
                     }
                 }
             }, verificationInterval);
+        }
+
+        // NEW HELPER FUNCTION: For recurring game fixes
+        function setupRecurringGameFixes() {
+            // Run fixes every 3 seconds for the first 30 seconds
+            let fixCount = 0;
+            const maxFixes = 10;
+            
+            function runPeriodicFixes() {
+                fixCount++;
+                console.log(`Running periodic game fix check #${fixCount}`);
+                
+                // Hide any warning messages
+                if (gameContentWarning) {
+                    gameContentWarning.style.display = 'none';
+                }
+                
+                // Force visibility of any key game elements again
+                try {
+                    document.querySelectorAll('canvas, [id*="game"], [id*="unity"], [id*="container"]').forEach(el => {
+                        el.style.display = 'block';
+                        el.style.visibility = 'visible';
+                    });
+                } catch (e) {}
+                
+                // Try the same in the iframe
+                try {
+                    if (iframe && iframe.contentWindow && iframe.contentWindow.document) {
+                        iframe.contentWindow.document.querySelectorAll('canvas, [id*="game"], [id*="unity"], [id*="container"]').forEach(el => {
+                            el.style.display = 'block';
+                            el.style.visibility = 'visible';
+                        });
+                    }
+                } catch (e) {}
+                
+                // Dispatch resize event to help games adjust
+                try {
+                    window.dispatchEvent(new Event('resize'));
+                    if (iframe && iframe.contentWindow) {
+                        iframe.contentWindow.dispatchEvent(new Event('resize'));
+                    }
+                } catch (e) {}
+                
+                if (fixCount < maxFixes) {
+                    setTimeout(runPeriodicFixes, 3000);
+                }
+            }
+            
+            // Start the periodic fixes
+            setTimeout(runPeriodicFixes, 5000);
         }
         
         // Create retry button
@@ -898,7 +1015,83 @@
                 }, 10000);
             }
         }
-        
+
+        // After force timeout, make another attempt to show game content
+        // Longer timeout in high traffic mode
+        setTimeout(function() {
+            console.log('Forcing game visibility after timeout');
+            
+            // Find and remove loading screens more aggressively
+            document.querySelectorAll('[id*="loading"], [class*="loading"], [id*="loader"], [class*="loader"]').forEach(element => {
+                if (element.offsetWidth > 50 && element.offsetHeight > 50) { // Reduced from 100x100
+                  if (element.id?.toLowerCase().includes('load') || 
+                      (typeof element.className === 'string' && 
+                       (element.className.toLowerCase().includes('load') || 
+                        element.className.toLowerCase().includes('spinner')))) {
+                    element.style.display = 'none';
+                  }
+                }
+            });
+            
+            // Force visibility of all game elements - EXPANDED LIST
+            const gameElements = [
+                'canvas',
+                '#unity-container', '#gameContainer', '#unityContainer', 
+                '#canvas', '#game', '#unity-canvas', '#webgl-content',
+                '[id*="unity"]', '[id*="game"]', '[id*="canvas"]', '[id*="container"]',
+                '.unity-desktop', '.webgl-content', '.webgl-container',
+                // Added more common game container classes
+                '.game-frame', '.game-area', '.game-container', '.webgl',
+                '.game-wrapper', '.game-player', '#gameArea', '#player'
+            ];
+            
+            gameElements.forEach(selector => {
+                try {
+                  document.querySelectorAll(selector).forEach(element => {
+                    element.style.display = 'block';
+                    element.style.visibility = 'visible';
+                    element.style.opacity = '1';
+                  });
+                } catch(e) {}
+            });
+            
+            // Also try to access the iframe and force visibility there
+            try {
+                if (iframe && iframe.contentWindow && iframe.contentWindow.document) {
+                  gameElements.forEach(selector => {
+                    try {
+                      iframe.contentWindow.document.querySelectorAll(selector).forEach(element => {
+                        element.style.display = 'block';
+                        element.style.visibility = 'visible';
+                        element.style.opacity = '1';
+                      });
+                    } catch(e) {}
+                  });
+                }
+            } catch(e) {}
+            
+            // Force a resize event to trigger game rendering
+            try {
+                window.dispatchEvent(new Event('resize'));
+                if (iframe && iframe.contentWindow) {
+                  iframe.contentWindow.dispatchEvent(new Event('resize'));
+                }
+            } catch(e) {}
+            
+            // Hide any remaining warnings
+            if (gameContentWarning) {
+                gameContentWarning.style.display = 'none';
+            }
+            
+            // Hide loading screen if still visible
+            if (loadingScreen && loadingScreen.style.display !== 'none') {
+                loadingScreen.style.display = 'none';
+                
+                // Assume game is loaded after forcing visibility
+                gameTrueContentLoaded = true;
+            }
+        }, 15000); // Increased timeout for better compatibility
+
         // Initialize when DOM is ready
         document.addEventListener('DOMContentLoaded', function() {
             // Get DOM elements
