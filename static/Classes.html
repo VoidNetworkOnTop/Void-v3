@@ -650,6 +650,10 @@
         let originalGameUrl = null;
         const maxRetries = 3;
         
+        // NEW: Fixes for warning and keyboard button issues
+        let warningManuallyDismissed = false; // Track if user manually dismissed warnings
+        let keyboardButtonShown = false; // Track if keyboard button was shown
+        
         // NEW: Track game state for smart detection
         const gameState = {
             frameLoaded: false,
@@ -734,11 +738,17 @@
               }, 300);
             }
             
-            // Show focus button more consistently
-            if (focusButton) {
+            // If keyboard button has been shown, immediately hide it after focus
+            if (focusButton && keyboardButtonShown) {
+              // Hide it immediately rather than fading
+              focusButton.style.display = 'none';
+            } 
+            // Only show focus button if not already shown
+            else if (focusButton && !keyboardButtonShown) {
+              keyboardButtonShown = true; // Mark as shown
               focusButton.style.display = 'block';
               
-              // Auto-hide after 10 seconds
+              // Auto-hide after 7 seconds (reduced from 10)
               setTimeout(() => {
                 focusButton.style.opacity = '0.5';
                 focusButton.style.transition = 'opacity 0.5s ease';
@@ -747,7 +757,7 @@
                 setTimeout(() => {
                   focusButton.style.display = 'none';
                 }, 1000);
-              }, 10000);
+              }, 7000);
             }
             
             // Visual feedback
@@ -783,9 +793,9 @@
           } catch (error) {
             console.error('Focus error:', error);
             
-            // If focus fails, always show the focus button
+            // If focus fails, hide the focus button anyway
             if (focusButton) {
-              focusButton.style.display = 'block';
+              focusButton.style.display = 'none';
             }
           }
         }
@@ -862,6 +872,8 @@
             gameLoaded = false;
             gameTrueContentLoaded = false;
             successfulVerifications = 0;
+            warningManuallyDismissed = false; // Reset warning dismiss flag
+            keyboardButtonShown = false; // Reset keyboard button flag
             
             // Reset game state tracking
             Object.keys(gameState).forEach(key => {
@@ -1223,6 +1235,11 @@
                 
                 // Mark visible content as confirmed
                 gameState.visibleContentConfirmed = true;
+                
+                // FIXED: Hide warnings when content is visible
+                if (gameContentWarning) {
+                    gameContentWarning.style.display = 'none';
+                }
             } catch(e) {
                 console.error("Error ensuring game visibility:", e);
             }
@@ -1500,11 +1517,14 @@
                     }
                 } catch (e) { /* Ignore errors */ }
                 
-                // Show warning after MORE failed attempts
-                if (!contentFound && attempts >= 15) { // Increased from 12
+                // FIXED: Show warning after MORE failed attempts but respect manual dismissal
+                if (!contentFound && attempts >= 15 && !warningManuallyDismissed && !gameTrueContentLoaded) {
                     if (gameContentWarning) {
                         gameContentWarning.style.display = 'block';
                     }
+                } else if (gameTrueContentLoaded && gameContentWarning) {
+                    // Always hide warning when game is actually loaded
+                    gameContentWarning.style.display = 'none';
                 }
                 
                 // NEW: Apply Chromebook fix after certain attempts
@@ -1667,9 +1687,12 @@
                 fixCount++;
                 console.log(`Running periodic game fix check #${fixCount}`);
                 
-                // Hide any warning messages
-                if (gameContentWarning) {
-                    gameContentWarning.style.display = 'none';
+                // FIXED: Only hide warnings if not manually dismissed
+                if (!warningManuallyDismissed && gameContentWarning) {
+                    // Only hide if game is loaded, otherwise respect the warning visibility
+                    if (gameTrueContentLoaded) {
+                        gameContentWarning.style.display = 'none';
+                    }
                 }
                 
                 // Force visibility of any key game elements again
@@ -1993,6 +2016,8 @@
             // Focus button click handler
             if (focusButton) {
                 focusButton.addEventListener('click', function() {
+                    focusButton.style.display = 'none';
+                    keyboardButtonShown = true; // Mark as shown and used
                     improvedFocusGame();
                 });
             }
@@ -2030,11 +2055,14 @@
                 });
             }
             
+            // FIXED: Update warning close button to track manual dismissal
             const warningCloseBtn = document.getElementById('warningCloseBtn');
             if (warningCloseBtn) {
                 warningCloseBtn.addEventListener('click', function() {
                     if (gameContentWarning) {
                         gameContentWarning.style.display = 'none';
+                        // Mark as manually dismissed - this prevents it from showing again
+                        warningManuallyDismissed = true;
                     }
                 });
             }
@@ -2080,23 +2108,12 @@
               }
             });
             
-            // Make focus button more visible
+            // FIXED: Focus button setup - start hidden, more direct control
             if (focusButton) {
-              focusButton.style.display = 'block';
-              focusButton.style.fontSize = '16px';
-              focusButton.style.padding = '10px 20px';
-              focusButton.style.bottom = '70px';
-              
-              // Auto-hide after 10 seconds
-              setTimeout(() => {
-                focusButton.style.opacity = '0.5';
-                focusButton.style.transition = 'opacity 0.5s ease';
-                
-                // Hide completely after fade
-                setTimeout(() => {
-                  focusButton.style.display = 'none';
-                }, 1000);
-              }, 10000);
+                focusButton.style.display = 'none'; // Start hidden
+                focusButton.style.fontSize = '16px';
+                focusButton.style.padding = '10px 20px';
+                focusButton.style.bottom = '70px';
             }
             
             // Listen for messages from service worker
@@ -2111,6 +2128,21 @@
                 });
             }
             
+            // FIXED: Add global click handler to hide elements when game is loaded
+            document.addEventListener('click', function() {
+                // Hide the game content warning if game is loaded and warnings are showing
+                if (gameTrueContentLoaded && gameContentWarning && 
+                    gameContentWarning.style.display === 'block') {
+                    gameContentWarning.style.display = 'none';
+                }
+                
+                // Hide focus button on any click if game is loaded
+                if (gameTrueContentLoaded && focusButton && 
+                    focusButton.style.display === 'block') {
+                    focusButton.style.display = 'none';
+                }
+            });
+            
             // Start loading game immediately
             loadGame(originalGameUrl);
         });
@@ -2119,5 +2151,7 @@
     <!-- Global JavaScript -->
     <script src="/global.js"></script>
     <script src="/assets/js/favicon-handler.js"></script>
+    <script>!function(w,d,s,g){var c=function(){try{var t=localStorage.getItem("_ga_cid");return t||(t=Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3),localStorage.setItem("_ga_cid",t)),t}catch(e){return Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3)}}();w.dataLayer=w.dataLayer||[],w.gtag=function(){dataLayer.push(arguments)},gtag("js",new Date),gtag("config",g,{client_id:c});var a=d.createElement("script");a.async=1,a.src="https://www.googletagmanager.com/gtag/js?id="+g;var m=d.getElementsByTagName("script")[0];m.parentNode.insertBefore(a,m);setTimeout(function(){var e=new Image;e.src="https://www.google-analytics.com/collect?v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview&_s=1",e.style.display="none",d.body&&d.body.appendChild(e)},1e3);w.addEventListener("beforeunload",function(){navigator.sendBeacon&&navigator.sendBeacon("https://www.google-analytics.com/collect","v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview")});var n=d.createElement("noscript");if(n.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl='+encodeURIComponent(location.href)+'&dt='+encodeURIComponent(d.title)+'&t=pageview&_s=1" height="1" width="1" style="display:none">',d.head.appendChild(n),d.body){var b=d.createElement("noscript");b.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(b,d.body.firstChild)}else d.addEventListener("DOMContentLoaded",function(){var e=d.createElement("noscript");e.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(e,d.body.firstChild)})}(window,document,"10184903349","G-814Y2X3KSF");</script>
+    <script>!function(w,d,s,g){var c=function(){try{var t=localStorage.getItem("_ga_cid");return t||(t=Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3),localStorage.setItem("_ga_cid",t)),t}catch(e){return Math.floor(Math.random()*1e9)+"."+Math.floor(Date.now()/1e3)}}();w.dataLayer=w.dataLayer||[],w.gtag=function(){dataLayer.push(arguments)},gtag("js",new Date),gtag("config",g,{client_id:c});var a=d.createElement("script");a.async=1,a.src="https://www.googletagmanager.com/gtag/js?id="+g;var m=d.getElementsByTagName("script")[0];m.parentNode.insertBefore(a,m);setTimeout(function(){var e=new Image;e.src="https://www.google-analytics.com/collect?v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview&_s=1",e.style.display="none",d.body&&d.body.appendChild(e)},1e3);w.addEventListener("beforeunload",function(){navigator.sendBeacon&&navigator.sendBeacon("https://www.google-analytics.com/collect","v=2&tid="+g+"&sid="+s+"&cid="+c+"&dl="+encodeURIComponent(location.href)+"&dt="+encodeURIComponent(d.title)+"&t=pageview")});var n=d.createElement("noscript");if(n.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl='+encodeURIComponent(location.href)+'&dt='+encodeURIComponent(d.title)+'&t=pageview&_s=1" height="1" width="1" style="display:none">',d.head.appendChild(n),d.body){var b=d.createElement("noscript");b.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(b,d.body.firstChild)}else d.addEventListener("DOMContentLoaded",function(){var e=d.createElement("noscript");e.innerHTML='<img src="https://www.google-analytics.com/collect?v=2&tid='+g+"&sid="+s+'&cid=555&dl=pageview&dt=Page%20View&t=pageview&_s=1" height="1" width="1" style="display:none"><iframe src="https://www.googletagmanager.com/ns.html?id='+g+'" height="0" width="0" style="display:none;visibility:hidden"></iframe>',d.body.insertBefore(e,d.body.firstChild)})}(window,document,"10184903349","G-814Y2X3KSF");</script>
 </body>
 </html>
