@@ -2,7 +2,7 @@ const gamesData = [
     {
         title: "Agar.io",
         imgSrc: "/img/gameimg/Agario.png",
-        link: __uv$config.prefix + __uv$config.encodeUrl("https://advanced-channeler.02.gz-associates.com/?t=tmm-agario-minigame")
+        link: "/local games/Agar.io/index.html"
     },
 {
     title: "Among us",
