@@ -7,7 +7,7 @@ const gamesData = [
 {
     title: "Among us",
     imgSrc: "/img/gameimg/Amoungus.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://ovo-game.github.io/o/among-us") 
+    link: "/local games/among-us/index.html"
 }, 
 {
     title: "Slow Roads",
