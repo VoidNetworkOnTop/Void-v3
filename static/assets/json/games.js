@@ -7,7 +7,7 @@ const gamesData = [
 {
     title: "Among us",
     imgSrc: "/img/gameimg/Amoungus.png",
-    link: "/local games/AmongUs/Among Us online.html"
+    link: "/local games/o-among-us-1747701178204/index.html"
 }, 
 {
     title: "Slow Roads",
