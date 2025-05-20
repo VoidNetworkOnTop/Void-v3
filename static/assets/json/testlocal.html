@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Site Viewer</title>
+    <style>
+        #content {
+            width: 100%;
+            min-height: 500px;
+            border: 1px solid #ccc;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <h1>Site Content Viewer</h1>
+    <div id="status">Loading...</div>
+    <div id="content"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const statusDiv = document.getElementById('status');
+            const contentDiv = document.getElementById('content');
+            
+            // Get the URL from the query parameter
+            const params = new URLSearchParams(window.location.search);
+            const targetUrl = window.location.pathname.split('=')[1];
+            
+            if (!targetUrl) {
+                statusDiv.textContent = 'No URL provided. Use format: page=https://example.com';
+                return;
+            }
+            
+            try {
+                statusDiv.textContent = `Attempting to fetch content from ${targetUrl}...`;
+                
+                // Try to fetch the content
+                const response = await fetch(targetUrl, {
+                    mode: 'cors', // This requires the target site to allow CORS
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const html = await response.text();
+                
+                // Store in localStorage (with size limitations)
+                try {
+                    localStorage.setItem(`site_${btoa(targetUrl)}`, html);
+                } catch (e) {
+                    console.warn('Could not store in localStorage:', e);
+                }
+                
+                // Display the content (note: scripts won't execute)
+                contentDiv.innerHTML = html;
+                
+                // Fix relative URLs in the content
+                fixRelativeUrls(contentDiv, targetUrl);
+                
+                statusDiv.textContent = `Content loaded from ${targetUrl}`;
+            } catch (error) {
+                statusDiv.textContent = `Error: ${error.message}`;
+                console.error(error);
+                
+                // Try to load from localStorage if available
+                const cachedContent = localStorage.getItem(`site_${btoa(targetUrl)}`);
+                if (cachedContent) {
+                    contentDiv.innerHTML = cachedContent;
+                    fixRelativeUrls(contentDiv, targetUrl);
+                    statusDiv.textContent = `Loaded cached version of ${targetUrl}`;
+                }
+            }
+        });
+        
+        function fixRelativeUrls(element, baseUrl) {
+            // Create a URL object for the base URL
+            const base = new URL(baseUrl);
+            
+            // Fix relative URLs in images, links, etc.
+            const images = element.querySelectorAll('img');
+            images.forEach(img => {
+                if (img.src && !img.src.startsWith('http')) {
+                    img.src = new URL(img.src, base).href;
+                }
+            });
+            
+            const links = element.querySelectorAll('a');
+            links.forEach(link => {
+                if (link.href && !link.href.startsWith('http')) {
+                    link.href = new URL(link.href, base).href;
+                }
+            });
+            
+            // Add more elements as needed (stylesheets, scripts, etc.)
+        }
+    </script>
+</body>
+</html>
