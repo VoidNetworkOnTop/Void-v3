@@ -3,99 +3,301 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Site Viewer</title>
+    <title>Local Site Viewer</title>
     <style>
-        #content {
-            width: 100%;
-            min-height: 500px;
-            border: 1px solid #ccc;
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
             padding: 20px;
-            box-sizing: border-box;
+        }
+        
+        .url-form {
+            margin-bottom: 20px;
+        }
+        
+        #url-input {
+            width: 70%;
+            padding: 10px;
+            font-size: 16px;
+        }
+        
+        button {
+            padding: 10px 15px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        #status {
+            margin: 15px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #ccc;
+        }
+        
+        #content-wrapper {
+            border: 1px solid #ddd;
+            min-height: 400px;
+            padding: 5px;
+            margin-top: 20px;
+            overflow: auto;
+        }
+        
+        .loader {
+            display: none;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+            margin: 10px 0;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .history-item {
+            cursor: pointer;
+            padding: 5px;
+            margin: 5px 0;
+            background-color: #f1f1f1;
+        }
+        
+        .history-item:hover {
+            background-color: #e0e0e0;
         }
     </style>
 </head>
 <body>
-    <h1>Site Content Viewer</h1>
-    <div id="status">Loading...</div>
-    <div id="content"></div>
-
+    <h1>Local Site Viewer</h1>
+    <p>Enter a URL below to fetch and display its content locally on this page.</p>
+    
+    <div class="url-form">
+        <input type="url" id="url-input" placeholder="https://example.com" required>
+        <button id="fetch-btn">Fetch Site</button>
+    </div>
+    
+    <div class="loader" id="loader"></div>
+    <div id="status">Enter a URL and click "Fetch Site" to begin.</div>
+    
+    <div id="history-container">
+        <h3>Recently Viewed Sites:</h3>
+        <div id="history-list"></div>
+    </div>
+    
+    <h2>Site Content:</h2>
+    <div id="content-wrapper">
+        <div id="content"></div>
+    </div>
+    
     <script>
-        document.addEventListener('DOMContentLoaded', async () => {
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlInput = document.getElementById('url-input');
+            const fetchBtn = document.getElementById('fetch-btn');
             const statusDiv = document.getElementById('status');
             const contentDiv = document.getElementById('content');
+            const contentWrapper = document.getElementById('content-wrapper');
+            const loader = document.getElementById('loader');
+            const historyList = document.getElementById('history-list');
             
-            // Get the URL from the query parameter
-            const params = new URLSearchParams(window.location.search);
-            const targetUrl = window.location.pathname.split('=')[1];
+            // Load and display history
+            updateHistoryList();
             
-            if (!targetUrl) {
-                statusDiv.textContent = 'No URL provided. Use format: page=https://example.com';
-                return;
+            // Handle the fetch button click
+            fetchBtn.addEventListener('click', () => {
+                fetchSite(urlInput.value);
+            });
+            
+            // Handle form submission (when pressing Enter)
+            urlInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    fetchSite(urlInput.value);
+                }
+            });
+            
+            async function fetchSite(url) {
+                // Basic URL validation
+                if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+                    statusDiv.textContent = 'Please enter a valid URL starting with http:// or https://';
+                    statusDiv.style.borderLeftColor = '#dc3545';
+                    return;
+                }
+                
+                try {
+                    // Show loading state
+                    loader.style.display = 'block';
+                    statusDiv.textContent = `Fetching content from ${url}...`;
+                    statusDiv.style.borderLeftColor = '#ffc107';
+                    contentDiv.innerHTML = '';
+                    
+                    // Attempt to fetch the content
+                    const response = await fetch(url, {
+                        mode: 'cors', // This requires the target site to allow CORS
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    
+                    const html = await response.text();
+                    
+                    // Store in localStorage with timestamp
+                    try {
+                        // Get existing history or create new one
+                        let history = JSON.parse(localStorage.getItem('site_history') || '[]');
+                        
+                        // Add current site to history (avoiding duplicates)
+                        const siteData = {
+                            url: url,
+                            title: extractTitle(html) || url,
+                            timestamp: Date.now()
+                        };
+                        
+                        // Remove if already exists
+                        history = history.filter(item => item.url !== url);
+                        
+                        // Add to beginning
+                        history.unshift(siteData);
+                        
+                        // Keep only the last 10
+                        history = history.slice(0, 10);
+                        
+                        localStorage.setItem('site_history', JSON.stringify(history));
+                        localStorage.setItem(`site_content_${btoa(url)}`, html);
+                        
+                        // Update history display
+                        updateHistoryList();
+                    } catch (e) {
+                        console.warn('Could not store in localStorage:', e);
+                    }
+                    
+                    // Display the content
+                    displayContent(html, url);
+                    
+                    statusDiv.textContent = `Content loaded from ${url}`;
+                    statusDiv.style.borderLeftColor = '#28a745';
+                } catch (error) {
+                    statusDiv.textContent = `Error: ${error.message}`;
+                    statusDiv.style.borderLeftColor = '#dc3545';
+                    console.error(error);
+                    
+                    // Try to load from localStorage if available
+                    try {
+                        const cachedContent = localStorage.getItem(`site_content_${btoa(url)}`);
+                        if (cachedContent) {
+                            displayContent(cachedContent, url);
+                            statusDiv.textContent = `Loaded cached version of ${url}`;
+                            statusDiv.style.borderLeftColor = '#17a2b8';
+                        }
+                    } catch (e) {
+                        console.error('Error loading from cache:', e);
+                    }
+                } finally {
+                    loader.style.display = 'none';
+                }
             }
             
-            try {
-                statusDiv.textContent = `Attempting to fetch content from ${targetUrl}...`;
+            function displayContent(html, baseUrl) {
+                // Create a new iframe to sandbox the content
+                contentWrapper.innerHTML = '';
+                const iframe = document.createElement('iframe');
+                iframe.style.width = '100%';
+                iframe.style.height = '600px';
+                iframe.style.border = 'none';
+                contentWrapper.appendChild(iframe);
                 
-                // Try to fetch the content
-                const response = await fetch(targetUrl, {
-                    mode: 'cors', // This requires the target site to allow CORS
+                // Write the content to the iframe
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                iframeDoc.open();
+                
+                // Modify the HTML to handle relative URLs
+                const modifiedHtml = html.replace(/<head>/i, `<head><base href="${baseUrl}">`);
+                
+                iframeDoc.write(modifiedHtml);
+                iframeDoc.close();
+                
+                // Fix any remaining relative URLs
+                setTimeout(() => {
+                    try {
+                        fixRelativeUrls(iframeDoc, baseUrl);
+                    } catch (e) {
+                        console.warn('Error fixing relative URLs:', e);
+                    }
+                }, 500);
+            }
+            
+            function fixRelativeUrls(doc, baseUrl) {
+                const base = new URL(baseUrl);
+                
+                // Fix images
+                const images = doc.querySelectorAll('img');
+                images.forEach(img => {
+                    if (img.src && !img.src.startsWith('http')) {
+                        img.src = new URL(img.getAttribute('src'), base).href;
+                    }
                 });
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
+                // Fix links
+                const links = doc.querySelectorAll('a');
+                links.forEach(link => {
+                    if (link.href && !link.href.startsWith('http')) {
+                        link.href = new URL(link.getAttribute('href'), base).href;
+                    }
+                    
+                    // Make links open in new tab
+                    link.setAttribute('target', '_blank');
+                });
                 
-                const html = await response.text();
-                
-                // Store in localStorage (with size limitations)
+                // Fix stylesheets
+                const stylesheets = doc.querySelectorAll('link[rel="stylesheet"]');
+                stylesheets.forEach(link => {
+                    if (link.href && !link.href.startsWith('http')) {
+                        link.href = new URL(link.getAttribute('href'), base).href;
+                    }
+                });
+            }
+            
+            function extractTitle(html) {
+                const match = html.match(/<title>(.*?)<\/title>/i);
+                return match ? match[1] : null;
+            }
+            
+            function updateHistoryList() {
                 try {
-                    localStorage.setItem(`site_${btoa(targetUrl)}`, html);
+                    const history = JSON.parse(localStorage.getItem('site_history') || '[]');
+                    historyList.innerHTML = '';
+                    
+                    if (history.length === 0) {
+                        historyList.innerHTML = '<p>No history yet</p>';
+                        return;
+                    }
+                    
+                    history.forEach(item => {
+                        const historyItem = document.createElement('div');
+                        historyItem.className = 'history-item';
+                        historyItem.textContent = item.title;
+                        historyItem.title = item.url;
+                        historyItem.addEventListener('click', () => {
+                            urlInput.value = item.url;
+                            fetchSite(item.url);
+                        });
+                        historyList.appendChild(historyItem);
+                    });
                 } catch (e) {
-                    console.warn('Could not store in localStorage:', e);
-                }
-                
-                // Display the content (note: scripts won't execute)
-                contentDiv.innerHTML = html;
-                
-                // Fix relative URLs in the content
-                fixRelativeUrls(contentDiv, targetUrl);
-                
-                statusDiv.textContent = `Content loaded from ${targetUrl}`;
-            } catch (error) {
-                statusDiv.textContent = `Error: ${error.message}`;
-                console.error(error);
-                
-                // Try to load from localStorage if available
-                const cachedContent = localStorage.getItem(`site_${btoa(targetUrl)}`);
-                if (cachedContent) {
-                    contentDiv.innerHTML = cachedContent;
-                    fixRelativeUrls(contentDiv, targetUrl);
-                    statusDiv.textContent = `Loaded cached version of ${targetUrl}`;
+                    console.error('Error updating history:', e);
                 }
             }
         });
-        
-        function fixRelativeUrls(element, baseUrl) {
-            // Create a URL object for the base URL
-            const base = new URL(baseUrl);
-            
-            // Fix relative URLs in images, links, etc.
-            const images = element.querySelectorAll('img');
-            images.forEach(img => {
-                if (img.src && !img.src.startsWith('http')) {
-                    img.src = new URL(img.src, base).href;
-                }
-            });
-            
-            const links = element.querySelectorAll('a');
-            links.forEach(link => {
-                if (link.href && !link.href.startsWith('http')) {
-                    link.href = new URL(link.href, base).href;
-                }
-            });
-            
-            // Add more elements as needed (stylesheets, scripts, etc.)
-        }
     </script>
 </body>
 </html>
