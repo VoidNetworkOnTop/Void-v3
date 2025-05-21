@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proxy</title>
+    <title>classes</title>
     <!-- Load required UV scripts -->
     <script src="/uv/uv.bundle.js"></script>
     <script src="/uv/uv.config.js"></script>
@@ -32,17 +32,17 @@
         // Main function to handle the proxy
         async function startProxy() {
             try {
-                // Get the URL to proxy from the path
+                // Get the URL to proxy from the 'link' query parameter
                 let targetUrl = getTargetUrl();
                 
                 // If no URL is provided, show a placeholder
                 if (!targetUrl) {
-                    document.body.innerHTML = 'No URL provided. Use: /page.html/https://example.com';
+                    document.body.innerHTML = 'No URL provided. Use: /uv-encode.html?link=https://example.com';
                     return;
                 }
                 
                 // Make sure UV is loaded
-                if (!window.__uv) {
+                if (!window.__uv$config) {
                     console.error('UV not loaded. Make sure uv.bundle.js and uv.config.js are properly included.');
                     document.body.innerHTML = 'Error: UV proxy not loaded properly.';
                     return;
@@ -60,33 +60,34 @@
             }
         }
         
-        // Extract target URL from the current location
+        // Extract target URL from the 'link' query parameter
         function getTargetUrl() {
-            // Get the path after the page.html/
-            const pathWithoutPageHtml = window.location.pathname.replace(/^\/page\.html\//, '');
+            // Get URL from the 'link' query parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const linkParam = urlParams.get('link');
             
-            // Additional handling for paths that might not include /page.html/
-            // For example, if the URL is example.com/https://sigma.com
-            if (!pathWithoutPageHtml && window.location.pathname.startsWith('/')) {
-                const possibleUrl = window.location.pathname.substring(1);
-                if (possibleUrl.startsWith('http')) {
-                    return possibleUrl;
+            // Return the URL if it exists
+            if (linkParam) {
+                // Ensure the URL starts with http:// or https://
+                if (linkParam.startsWith('http://') || linkParam.startsWith('https://')) {
+                    return linkParam;
+                } else {
+                    // Add https:// if missing
+                    return 'https://' + linkParam;
                 }
             }
             
-            // Return the URL if it exists and starts with http
-            if (pathWithoutPageHtml && (
-                pathWithoutPageHtml.startsWith('http://') || 
-                pathWithoutPageHtml.startsWith('https://')
-            )) {
-                return pathWithoutPageHtml;
-            }
-            
-            // Check if URL is in query params as fallback
-            const urlParams = new URLSearchParams(window.location.search);
-            const urlInQuery = urlParams.get('url');
-            if (urlInQuery) {
-                return urlInQuery;
+            // Check other common parameter names as fallback
+            const otherParams = ['url', 'site', 'target', 'proxy'];
+            for (const param of otherParams) {
+                const value = urlParams.get(param);
+                if (value) {
+                    if (value.startsWith('http://') || value.startsWith('https://')) {
+                        return value;
+                    } else {
+                        return 'https://' + value;
+                    }
+                }
             }
             
             return null;
