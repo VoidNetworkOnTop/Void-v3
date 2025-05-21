@@ -1175,7 +1175,7 @@ function markStage(stage) {
             });
         }
 
-// Load game function with Scramjet support through Classes.html
+// Load game function with FIXED Scramjet support
 function loadGame(game) {
     try {
         const gameElement = document.createElement("div");
@@ -1193,7 +1193,6 @@ function loadGame(game) {
                 imageLoadAttempted = true;
                 img.src = game.imgSrc || FALLBACK_ICON;
             } else {
-                // This prevents infinite loop - if the fallback fails, don't try again
                 img.src = FALLBACK_ICON;
                 img.style.background = 'rgba(255, 255, 255, 0.1)';
             }
@@ -1201,25 +1200,20 @@ function loadGame(game) {
         
         img.onerror = function() {
             if (!this.src.startsWith('data:') && imageLoadAttempted) {
-                // If the current src is not already our fallback and we've tried once
                 this.src = FALLBACK_ICON;
             }
         };
         
-        // Initial image load
         setImageSrc();
         
         gameElement.innerHTML = `<div class="game-icon"></div>
             <h3 class="game-title">${game.title || 'Unnamed Game'}</h3>
         `;
         
-        // Insert the image into the game-icon div
         gameElement.querySelector('.game-icon').appendChild(img);
         
-        // Update click handler with Scramjet support
         gameElement.onclick = async () => {
             try {
-                // Show loading overlay if available
                 const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
                     loadingOverlay.classList.remove('fade-out');
@@ -1228,7 +1222,6 @@ function loadGame(game) {
                 }
                 
                 try {
-                    // Progress animation
                     const progressFill = document.getElementById('progressFill');
                     if (progressFill) {
                         progressFill.style.width = '30%';
@@ -1254,30 +1247,34 @@ function loadGame(game) {
                         gameUrl = __uv$config.decodeUrl(encodedUrl);
                     }
                     
-                    // Determine which proxy to use based on useScramjet flag
                     let processedUrl;
+                    
                     if (game.useScramjet) {
                         try {
-                            // Fixed approach: First normalize the URL
-                            // We want to ensure it's a valid URL
-                            const url = new URL(gameUrl);
-                            gameUrl = url.toString();
+                            // CRITICAL FIX: Wait for Scramjet config to load and use its encoding
+                            if (typeof window.__scramjet$config === 'undefined') {
+                                console.warn('Scramjet config not loaded, falling back to UV');
+                                throw new Error('Scramjet config not available');
+                            }
                             
-                            // Use standard base64 without URL-safety conversion
-                            // The problem might be with URL-safe conversion
-                            processedUrl = `/scramjet/${btoa(gameUrl)}`;
+                            // Use the proper Scramjet encoding function
+                            const encodedPath = window.__scramjet$config.encodeUrl(gameUrl);
+                            processedUrl = window.__scramjet$config.prefix + encodedPath;
                             
-                            console.log("Scramjet URL:", gameUrl);
-                            console.log("Encoded:", btoa(gameUrl));
+                            console.log('Using Scramjet:');
+                            console.log('Original URL:', gameUrl);
+                            console.log('Encoded path:', encodedPath);
+                            console.log('Full Scramjet URL:', processedUrl);
+                            
                         } catch (err) {
-                            console.error("Error encoding URL for Scramjet:", err);
-                            // Fall back to Ultraviolet if encoding fails
+                            console.error('Error processing Scramjet URL:', err);
+                            // Fall back to UV
                             processedUrl = typeof __uv$config !== 'undefined' ? 
                                 __uv$config.prefix + __uv$config.encodeUrl(gameUrl) : 
                                 gameUrl;
                         }
                     } else {
-                        // Use Ultraviolet (default) for this game
+                        // Use Ultraviolet (default)
                         processedUrl = typeof __uv$config !== 'undefined' ? 
                             __uv$config.prefix + __uv$config.encodeUrl(gameUrl) : 
                             gameUrl;
@@ -1285,13 +1282,10 @@ function loadGame(game) {
                     
                     // Create the final link to Classes.html
                     const gameLink = `/Classes.html?game=${encodeURIComponent(processedUrl)}`;
-                    
-                    // Navigate to the game
                     window.location.href = gameLink;
                 }
             } catch (error) {
                 console.error('Error clicking game:', error);
-                // Hide loading overlay on error
                 const loadingOverlay = document.getElementById('loadingOverlay');
                 if (loadingOverlay) {
                     loadingOverlay.classList.add('fade-out');
