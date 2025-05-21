@@ -2150,22 +2150,135 @@ function loadGame(gameUrl) {
             // Start loading game immediately
             loadGame(originalGameUrl);
         });
-        // Add this to Classes.html - Service Worker Registration for Scramjet
-    document.addEventListener('DOMContentLoaded', async () => {
-    // Register Scramjet service worker
-    if ('serviceWorker' in navigator) {
-        try {
-            const registration = await navigator.serviceWorker.register('/scramjet/sw.js', {
-                scope: '/scramjet/'
-            });
-            console.log('Scramjet service worker registered for Classes.html:', registration.scope);
-            
-            // Wait for service worker to be ready
-            await navigator.serviceWorker.ready;
-            console.log('Scramjet service worker is ready');
-        } catch (error) {
-            console.error('Scramjet service worker registration failed:', error);
+// Replace the service worker registration section in Classes.html with this
+
+// Enhanced Service Worker Registration for both UV and Scramjet
+document.addEventListener('DOMContentLoaded', async () => {
+    const stockSW = "/uv/sw.js";
+    const scramjetSW = "/scramjet/scramjet-sw.js";
+    const swAllowedHostnames = ["localhost", "127.0.0.1"];
+    
+    // Function to determine which proxy to use based on URL
+    function determineProxyType() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const gameUrl = urlParams.get('game');
+        
+        if (gameUrl && gameUrl.includes('/scramjet/')) {
+            return 'scramjet';
         }
+        return 'uv';
+    }
+    
+    const proxyType = determineProxyType();
+    console.log('Detected proxy type:', proxyType);
+    
+    // Function to register service workers with timeout and retry
+    async function registerServiceWorkers(retries = 3) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                // Check if service workers are supported
+                if (!('serviceWorker' in navigator)) {
+                    console.error("Service workers are not supported in this browser");
+                    return false;
+                }
+                
+                // Check if we're on HTTPS or allowed development hostnames
+                if (location.protocol !== 'https:' && !swAllowedHostnames.includes(location.hostname)) {
+                    console.warn("Service workers require HTTPS (except on localhost/127.0.0.1)");
+                    return false;
+                }
+                
+                console.log(`Attempt ${attempt}/${retries}: Registering service workers`);
+                
+                // Always register UV service worker first
+                const uvRegistration = await Promise.race([
+                    navigator.serviceWorker.register(stockSW, { 
+                        scope: '/uv/',
+                        updateViaCache: 'none'
+                    }),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('UV service worker registration timeout')), 5000)
+                    )
+                ]);
+                
+                console.log('UV service worker registered:', uvRegistration.scope);
+                
+                // Register Scramjet service worker if needed
+                if (proxyType === 'scramjet' || true) { // Always register for compatibility
+                    try {
+                        const scramjetRegistration = await Promise.race([
+                            navigator.serviceWorker.register(scramjetSW, { 
+                                scope: '/scramjet/',
+                                updateViaCache: 'none'
+                            }),
+                            new Promise((_, reject) => 
+                                setTimeout(() => reject(new Error('Scramjet service worker registration timeout')), 5000)
+                            )
+                        ]);
+                        
+                        console.log('Scramjet service worker registered:', scramjetRegistration.scope);
+                        window.__scramjet$serviceWorkerReady = true;
+                    } catch (scramjetError) {
+                        console.warn('Scramjet service worker registration failed:', scramjetError);
+                        // Don't fail the whole process if only Scramjet fails
+                    }
+                }
+                
+                // Wait for service workers to be ready
+                await Promise.race([
+                    navigator.serviceWorker.ready,
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Service worker ready timeout')), 5000)
+                    )
+                ]);
+                
+                console.log('Service workers are ready');
+                window.__uv$serviceWorkerRegistered = true;
+                markStage('SERVICE_WORKER_READY');
+                
+                return true;
+            } catch (error) {
+                console.error(`Service worker registration attempt ${attempt}/${retries} failed:`, error);
+                
+                if (attempt < retries) {
+                    // Wait before retry with exponential backoff
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                }
+            }
+        }
+        
+        // All attempts failed, but don't block the page
+        console.error('All service worker registration attempts failed');
+        markStage('SERVICE_WORKER_ERROR');
+        
+        // Continue without service worker
+        return false;
+    }
+    
+    // Start registering service workers
+    registerServiceWorkers();
+    
+    // Also add message listener for service worker communication
+    if (navigator.serviceWorker) {
+        navigator.serviceWorker.addEventListener('message', function(event) {
+            if (event.data && event.data.type) {
+                console.log('Received message from service worker:', event.data);
+                
+                // Handle different message types
+                switch (event.data.type) {
+                    case 'HIGH_TRAFFIC_MODE':
+                        const trafficIndicator = document.getElementById('trafficIndicator');
+                        if (trafficIndicator) {
+                            trafficIndicator.style.display = event.data.enabled ? 'block' : 'none';
+                        }
+                        break;
+                    case 'SCRAMJET_READY':
+                        window.__scramjet$ready = true;
+                        console.log('Scramjet service worker is ready');
+                        break;
+                }
+            }
+        });
     }
 });
     </script>
