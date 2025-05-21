@@ -1178,6 +1178,8 @@ function markStage(stage) {
             });
         }
 
+// Replace the game loading section in index.html with this fixed version
+
 // Load game function with FIXED Scramjet support
 function loadGame(game) {
     try {
@@ -1254,24 +1256,34 @@ function loadGame(game) {
                     
                     if (game.useScramjet) {
                         try {
-                            // CRITICAL FIX: Wait for Scramjet config to load and use its encoding
-                            if (typeof window.__scramjet$config === 'undefined') {
-                                console.warn('Scramjet config not loaded, falling back to UV');
-                                throw new Error('Scramjet config not available');
+                            console.log('Using Scramjet for game:', game.title);
+                            
+                            // Wait for Scramjet to be ready
+                            let attempts = 0;
+                            while (!window.isScramjetReady && attempts < 50) {
+                                await new Promise(resolve => setTimeout(resolve, 100));
+                                attempts++;
                             }
                             
-                            // Use the proper Scramjet encoding function
-                            const encodedPath = window.__scramjet$config.encodeUrl(gameUrl);
-                            processedUrl = window.__scramjet$config.prefix + encodedPath;
+                            if (!window.isScramjetReady || !window.__scramjet$config) {
+                                throw new Error('Scramjet not ready after waiting');
+                            }
                             
-                            console.log('Using Scramjet:');
+                            // Use the helper function to encode the URL
+                            processedUrl = window.encodeScramjetUrl(gameUrl);
+                            
+                            if (!processedUrl) {
+                                throw new Error('Failed to encode Scramjet URL');
+                            }
+                            
+                            console.log('Scramjet URL processing:');
                             console.log('Original URL:', gameUrl);
-                            console.log('Encoded path:', encodedPath);
-                            console.log('Full Scramjet URL:', processedUrl);
+                            console.log('Processed URL:', processedUrl);
                             
                         } catch (err) {
                             console.error('Error processing Scramjet URL:', err);
                             // Fall back to UV
+                            console.log('Falling back to UV proxy');
                             processedUrl = typeof __uv$config !== 'undefined' ? 
                                 __uv$config.prefix + __uv$config.encodeUrl(gameUrl) : 
                                 gameUrl;
@@ -1281,10 +1293,12 @@ function loadGame(game) {
                         processedUrl = typeof __uv$config !== 'undefined' ? 
                             __uv$config.prefix + __uv$config.encodeUrl(gameUrl) : 
                             gameUrl;
+                        console.log('Using UV for game:', game.title);
                     }
                     
                     // Create the final link to Classes.html
                     const gameLink = `/Classes.html?game=${encodeURIComponent(processedUrl)}`;
+                    console.log('Final game link:', gameLink);
                     window.location.href = gameLink;
                 }
             } catch (error) {
