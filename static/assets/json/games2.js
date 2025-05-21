@@ -310,6 +310,12 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/AE-hXCbOIxsbbLU2kYKcoIMhsK0hlm0FJg_L6Wt5s7lmcsTsGxLDzHC3JM8mf-f2UJCVuU-BWtugMGrLSuIDc6ZtDxXDcEu6P76IBRQsO888jjehY9cGT5pfTuatuxIXt3Xir5c1xcz2APxR-fdgCm_wskEQrv39l1AKoqf-Up_jBcEusgyxw9xddR2RJ2EG4Wn19ywQ?key=yj4V8pHW144VjA9YlEbf1Q",
     link: "/uv-encode.html?link=https://html5.gamedistribution.com/rvvASMiM/65f1c84c76324e198314706dedd4aa09/index.html?gd_sdk_referrer_url=https%3A%2F%2Fwww.miniplay.com%2Fgame%2Fone-line-drawing-puzzle&mp_assets=https%3A%2F%2Fs2.minijuegosgratis.com%2F&mp_embed=0&mp_game_id=251260&mp_game_uid=one-line-drawing-puzzle&mp_game_url=https%3A%2F%2Fwww.miniplay.com%2Fembed%2Fone-line-drawing-puzzle&mp_int=1&mp_locale=en_US&mp_player_type=IFRAME&mp_site_https_url=https%3A%2F%2Fwww.miniplay.com%2F&mp_site_name=miniplay.com&mp_site_url=https%3A%2F%2Fwww.miniplay.com%2F&mp_timezone=America%2FNew_York&mp_view_type=&gd_zone_config=eyJwYXJlbnRVUkwiOiJodHRwczovL3d3dy5taW5pcGxheS5jb20vZ2FtZS9vbmUtbGluZS1kcmF3aW5nLXB1enpsZSIsInBhcmVudERvbWFpbiI6Im1pbmlwbGF5LmNvbSIsInRvcERvbWFpbiI6Im1pbmlwbGF5LmNvbSIsImhhc0ltcHJlc3Npb24iOmZhbHNlLCJsb2FkZXJFbmFibGVkIjp0cnVlLCJob3N0IjoiaHRtbDUuZ2FtZWRpc3RyaWJ1dGlvbi5jb20iLCJ2ZXJzaW9uIjoiMS41LjE3In0%253D"
 },
+{
+    title: "Geomatry Dash", 
+    imgSrc: "...",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://geometrygame.org/game/geometry-dash-lite/"),
+    scramjetLink: "/scramjet/game?url=" + encodeURIComponent("https://geometrygame.org/game/geometry-dash-lite/")
+},
 
 ];
 export { games2Data }; // Named export
