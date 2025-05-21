@@ -1,10 +1,6 @@
 <!DOCTYPE html>
 <script type="text/javascript"> adroll_adv_id = "CMBDEOH2TVFW5NFJMY5CA2"; adroll_pix_id = "4BMA6DUDGRA6TFHYFRMJS6"; adroll_version = "2.0";  (function(w, d, e, o, a) { w.__adroll_loaded = true; w.adroll = w.adroll || []; w.adroll.f = [ 'setProperties', 'identify', 'track', 'identify_email', 'get_cookie' ]; var roundtripUrl = "https://s.adroll.com/j/" + adroll_adv_id + "/roundtrip.js"; for (a = 0; a < w.adroll.f.length; a++) { w.adroll[w.adroll.f[a]] = w.adroll[w.adroll.f[a]] || (function(n) { return function() { w.adroll.push([ n, arguments ]) } })(w.adroll.f[a]) }  e = d.createElement('script'); o = d.getElementsByTagName('script')[0]; e.async = 1; e.src = roundtripUrl; o.parentNode.insertBefore(e, o); })(window, document); adroll.track("pageView"); </script> 
 <html lang="en">
-<!-- Add these script tags BEFORE your main game loading script -->
-<script src="/scramjet/scramjet.config.js"></script>
-<script src="/scramjet/scramjet.bundle.js"></script>
-<script src="/scramjet/register.js"></script>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -332,11 +328,6 @@ function markStage(stage) {
     
     <!-- Favicon -->
     <link rel="shortcut icon" href="./assets/favicon.png" type="image/png">
-
-    <!-- Add these script tags BEFORE your main game loading script -->
-    <script src="/scramjet/scramjet.config.js"></script>
-    <script src="/scramjet/scramjet.bundle.js"></script>
-    <script src="/scramjet/register.js"></script>
     
     <!-- Preload UV Service Worker -->
     <link rel="preload" href="/uv/sw.js" as="script">
@@ -1178,96 +1169,91 @@ function markStage(stage) {
             });
         }
 
-// Replace the game loading section in index.html with this fixed version
-
-function loadGame(game) {
-    try {
-        const gameElement = document.createElement("div");
-        gameElement.className = "game-item";
-        
-        const img = document.createElement('img');
-        img.alt = (game.title || 'Game') + ' icon';
-        img.src = game.imgSrc || FALLBACK_ICON;
-        img.onerror = function() {
-            this.src = FALLBACK_ICON;
-        };
-        
-        gameElement.innerHTML = `<div class="game-icon"></div>
-            <h3 class="game-title">${game.title || 'Unnamed Game'}</h3>
-        `;
-        
-        gameElement.querySelector('.game-icon').appendChild(img);
-        
-        gameElement.onclick = async () => {
+        // Load game function with FIXED error handling for images
+        function loadGame(game) {
             try {
-                // Show loading
-                const loadingOverlay = document.getElementById('loadingOverlay');
-                if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
-                    loadingOverlay.classList.remove('fade-out');
-                    document.getElementById('loadingText').textContent = 'Preparing game...';
+                const gameElement = document.createElement("div");
+                gameElement.className = "game-item";
+                
+                // Create image element first
+                const img = document.createElement('img');
+                img.alt = (game.title || 'Game') + ' icon';
+                
+                // Handle image loading with proper fallback
+                let imageLoadAttempted = false;
+                
+                function setImageSrc() {
+                    if (!imageLoadAttempted) {
+                        imageLoadAttempted = true;
+                        img.src = game.imgSrc || FALLBACK_ICON;
+                    } else {
+                        // This prevents infinite loop - if the fallback fails, don't try again
+                        img.src = FALLBACK_ICON;
+                        img.style.background = 'rgba(255, 255, 255, 0.1)';
+                    }
                 }
                 
-                // Get the original game URL
-                let gameUrl = game.link;
+                img.onerror = function() {
+                    if (!this.src.startsWith('data:') && imageLoadAttempted) {
+                        // If the current src is not already our fallback and we've tried once
+                        this.src = FALLBACK_ICON;
+                    }
+                };
                 
-                // Remove any existing proxy prefixes
-                if (gameUrl.includes('/uv/') && typeof __uv$config !== 'undefined') {
-                    const encodedPart = gameUrl.substring(gameUrl.indexOf('/uv/') + 4);
-                    gameUrl = __uv$config.decodeUrl(encodedPart);
-                } else if (gameUrl.includes('/scramjet/') && window.__scramjet$config) {
-                    const encodedPart = gameUrl.substring(gameUrl.indexOf('/scramjet/') + 10);
-                    gameUrl = window.__scramjet$config.decodeUrl(encodedPart);
-                }
+                // Initial image load
+                setImageSrc();
                 
-                let processedUrl;
+                gameElement.innerHTML = `<div class="game-icon"></div>
+                    <h3 class="game-title">${game.title || 'Unnamed Game'}</h3>
+                `;
                 
-                if (game.useScramjet) {
-                    console.log('Using Scramjet for game:', game.title);
-                    
-                    // Wait for Scramjet to be ready
+                // Insert the image into the game-icon div
+                gameElement.querySelector('.game-icon').appendChild(img);
+                
+                // Update click handler with error handling
+                gameElement.onclick = async () => {
                     try {
-                        await window.waitForScramjet(5000);
-                    } catch (e) {
-                        console.warn('Scramjet not ready, falling back to UV');
-                        throw e;
+                        // Show loading overlay if available
+                        const loadingOverlay = document.getElementById('loadingOverlay');
+                        if (loadingOverlay && loadingOverlay.classList.contains('fade-out')) {
+                            loadingOverlay.classList.remove('fade-out');
+                            document.getElementById('loadingText').textContent = 'Preparing game...';
+                            document.getElementById('progressFill').style.width = '0%';
+                        }
+                        
+                        try {
+                            // Progress animation
+                            const progressFill = document.getElementById('progressFill');
+                            if (progressFill) {
+                                progressFill.style.width = '30%';
+                                await new Promise(resolve => setTimeout(resolve, 100));
+                                progressFill.style.width = '60%';
+                                await new Promise(resolve => setTimeout(resolve, 100));
+                                progressFill.style.width = '100%';
+                                await new Promise(resolve => setTimeout(resolve, 200));
+                            }
+                        } catch (error) {
+                            console.error('Error in loading animation:', error);
+                        } finally {
+                            // Navigate to the game
+                            window.location.href = `/Classes.html?game=${encodeURIComponent(game.link)}`;
+                        }
+                    } catch (error) {
+                        console.error('Error clicking game:', error);
+                        // Hide loading overlay on error
+                        const loadingOverlay = document.getElementById('loadingOverlay');
+                        if (loadingOverlay) {
+                            loadingOverlay.classList.add('fade-out');
+                        }
                     }
-                    
-                    processedUrl = window.encodeScramjetUrl(gameUrl);
-                    
-                    if (!processedUrl) {
-                        throw new Error('Failed to encode Scramjet URL');
-                    }
-                    
-                    console.log('Scramjet URL:', processedUrl);
-                } else {
-                    // Use UV
-                    processedUrl = typeof __uv$config !== 'undefined' ? 
-                        __uv$config.prefix + __uv$config.encodeUrl(gameUrl) : 
-                        gameUrl;
-                    console.log('UV URL:', processedUrl);
-                }
+                };
                 
-                // Navigate to Classes.html
-                const gameLink = `/Classes.html?game=${encodeURIComponent(processedUrl)}`;
-                window.location.href = gameLink;
-                
+                gamesList.appendChild(gameElement);
             } catch (error) {
-                console.error('Error loading game:', error);
-                
-                // Fallback to UV on any error
-                const uvUrl = typeof __uv$config !== 'undefined' ? 
-                    __uv$config.prefix + __uv$config.encodeUrl(game.link) : 
-                    game.link;
-                const gameLink = `/Classes.html?game=${encodeURIComponent(uvUrl)}`;
-                window.location.href = gameLink;
+                console.error('Error loading game element:', error);
             }
-        };
-        
-        gamesList.appendChild(gameElement);
-    } catch (error) {
-        console.error('Error creating game element:', error);
-    }
-}
+        }
+
         // Render games with error handling
         try {
             if (Array.isArray(games)) {
