@@ -7,7 +7,7 @@ import { createBareServer } from '@tomphttp/bare-server-node';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const server = http.createServer();
-const PORT = process.env.SCRAMJET_PORT || 8081;
+const PORT = process.env.SCRAMJET_PORT || 8082;
 
 // Create bare server
 const bare = createBareServer('/bare/');
