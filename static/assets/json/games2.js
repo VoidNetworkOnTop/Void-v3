@@ -310,61 +310,6 @@ const games2Data = [
     link: __uv$config.prefix + __uv$config.encodeUrl("https://html5.gamedistribution.com/rvvASMiM/65f1c84c76324e198314706dedd4aa09/index.html?gd_sdk_referrer_url=https%3A%2F%2Fwww.miniplay.com%2Fgame%2Fone-line-drawing-puzzle&mp_assets=https%3A%2F%2Fs2.minijuegosgratis.com%2F&mp_embed=0&mp_game_id=251260&mp_game_uid=one-line-drawing-puzzle&mp_game_url=https%3A%2F%2Fwww.miniplay.com%2Fembed%2Fone-line-drawing-puzzle&mp_int=1&mp_locale=en_US&mp_player_type=IFRAME&mp_site_https_url=https%3A%2F%2Fwww.miniplay.com%2F&mp_site_name=miniplay.com&mp_site_url=https%3A%2F%2Fwww.miniplay.com%2F&mp_timezone=America%2FNew_York&mp_view_type=&gd_zone_config=eyJwYXJlbnRVUkwiOiJodHRwczovL3d3dy5taW5pcGxheS5jb20vZ2FtZS9vbmUtbGluZS1kcmF3aW5nLXB1enpsZSIsInBhcmVudERvbWFpbiI6Im1pbmlwbGF5LmNvbSIsInRvcERvbWFpbiI6Im1pbmlwbGF5LmNvbSIsImhhc0ltcHJlc3Npb24iOmZhbHNlLCJsb2FkZXJFbmFibGVkIjp0cnVlLCJob3N0IjoiaHRtbDUuZ2FtZWRpc3RyaWJ1dGlvbi5jb20iLCJ2ZXJzaW9uIjoiMS41LjE3In0%253D")
 },
 
-];
-
-// Add this code at the end - before the export
-// This patches the original game loading mechanism without changing game data
-(function patchGameLoading() {
-    // Store the original function to redirect game clicks properly
-    if (typeof window !== 'undefined') {
-        // Use a proxy to intercept game clicks
-        const originalAddEventListener = Element.prototype.addEventListener;
-        
-        Element.prototype.addEventListener = function(type, listener, options) {
-            if (type === 'click' && this.classList && this.classList.contains('game-item')) {
-                // Replace with our custom handler that will redirect to uv-encode.html
-                const customListener = function(event) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    
-                    // Find the game data
-                    const gameTitle = this.querySelector('.game-title')?.textContent;
-                    const game = games2Data.find(g => g.title === gameTitle);
-                    
-                    if (game && game.link) {
-                        // Extract the original URL from the game link 
-                        let originalUrl = '';
-                        if (typeof game.link === 'string' && game.link.includes('__uv$config.encodeUrl')) {
-                            const urlMatch = game.link.match(/"(https?:\/\/[^"]+)"/);
-                            if (urlMatch && urlMatch[1]) {
-                                originalUrl = urlMatch[1];
-                            }
-                        }
-                        
-                        if (originalUrl) {
-                            // Redirect to uv-encode.html
-                            const proxyUrl = window.location.origin + "/uv-encode.html?link=" + encodeURIComponent(originalUrl);
-                            window.location.href = proxyUrl;
-                        } else {
-                            // Fallback to original behavior
-                            listener.call(this, event);
-                        }
-                    } else {
-                        // Fallback to original behavior
-                        listener.call(this, event);
-                    }
-                };
-                
-                // Call the original addEventListener with our custom handler
-                return originalAddEventListener.call(this, type, customListener, options);
-            }
-            
-            // For all other events, use the original behavior
-            return originalAddEventListener.call(this, type, listener, options);
-        };
-        
-        console.log("✅ Game loading mechanism patched to use uv-encode.html");
-    }
-})();
-
+    
+   ];
 export { games2Data }; // Named export
