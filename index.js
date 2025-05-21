@@ -391,6 +391,10 @@ app.get("/app", function (req, res) {
   res.sendFile(path.join(dirname, "static/apps.html"));
 });
 
+app.get('/scramjet/game', (req, res) => {
+  res.sendFile(path.join(__dirname, 'static/scramjet-handler.html'));
+});
+
 app.get("/credits", function (req, res) {
   res.sendFile(path.join(dirname, "static/credits.html"));
 });
