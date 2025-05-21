@@ -1251,11 +1251,25 @@ function loadGame(game) {
                     // Determine which proxy to use based on useScramjet flag
                     let processedUrl;
                     if (game.useScramjet) {
-                        // OPTION 4: Try direct URL approach with just encoding
-                        processedUrl = `/scramjet/${encodeURIComponent(gameUrl)}`;
-                        
-                        // Log for debugging
-                        console.log("Scramjet URL:", processedUrl);
+                        try {
+                            // Fixed approach: First normalize the URL
+                            // We want to ensure it's a valid URL
+                            const url = new URL(gameUrl);
+                            gameUrl = url.toString();
+                            
+                            // Use standard base64 without URL-safety conversion
+                            // The problem might be with URL-safe conversion
+                            processedUrl = `/scramjet/${btoa(gameUrl)}`;
+                            
+                            console.log("Scramjet URL:", gameUrl);
+                            console.log("Encoded:", btoa(gameUrl));
+                        } catch (err) {
+                            console.error("Error encoding URL for Scramjet:", err);
+                            // Fall back to Ultraviolet if encoding fails
+                            processedUrl = typeof __uv$config !== 'undefined' ? 
+                                __uv$config.prefix + __uv$config.encodeUrl(gameUrl) : 
+                                gameUrl;
+                        }
                     } else {
                         // Use Ultraviolet (default) for this game
                         processedUrl = typeof __uv$config !== 'undefined' ? 
@@ -1284,7 +1298,6 @@ function loadGame(game) {
         console.error('Error loading game element:', error);
     }
 }
-
         // Render games with error handling
         try {
             if (Array.isArray(games)) {
