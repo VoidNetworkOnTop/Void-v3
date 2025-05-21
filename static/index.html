@@ -1169,7 +1169,7 @@ function markStage(stage) {
             });
         }
 
-// Load game function with some existing implementation
+// Load game function with Scramjet support through Classes.html
 function loadGame(game) {
     try {
         const gameElement = document.createElement("div");
@@ -1235,8 +1235,33 @@ function loadGame(game) {
                 } catch (error) {
                     console.error('Error in loading animation:', error);
                 } finally {
-                    // Determine which link to use
-                    const gameLink = `/Classes.html?game=${encodeURIComponent(game.scramjetLink || game.link)}`;
+                    // Get the original game URL (without proxy prefixes)
+                    let gameUrl = game.originalUrl || game.link;
+                    
+                    // Check if the URL already has a UV prefix
+                    const hasUvPrefix = typeof __uv$config !== 'undefined' && 
+                                        gameUrl.startsWith(__uv$config.prefix);
+                    
+                    // If it has a UV prefix, extract the original URL
+                    if (hasUvPrefix && typeof __uv$config !== 'undefined') {
+                        const encodedUrl = gameUrl.substring(__uv$config.prefix.length);
+                        gameUrl = __uv$config.decodeUrl(encodedUrl);
+                    }
+                    
+                    // Determine which proxy to use based on useScramjet flag
+                    let processedUrl;
+                    if (game.useScramjet) {
+                        // Use Scramjet for this game
+                        processedUrl = `/scramjet/${encodeURIComponent(gameUrl)}`;
+                    } else {
+                        // Use Ultraviolet (default) for this game
+                        processedUrl = typeof __uv$config !== 'undefined' ? 
+                            __uv$config.prefix + __uv$config.encodeUrl(gameUrl) : 
+                            gameUrl;
+                    }
+                    
+                    // Create the final link to Classes.html
+                    const gameLink = `/Classes.html?game=${encodeURIComponent(processedUrl)}`;
                     
                     // Navigate to the game
                     window.location.href = gameLink;
