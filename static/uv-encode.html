@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy</title>
+    <!-- Load required UV scripts -->
+    <script src="/uv/uv.bundle.js"></script>
+    <script src="/uv/uv.config.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+    </style>
+</head>
+<body>
+    <iframe id="frame"></iframe>
+    
+    <script>
+        // Main function to handle the proxy
+        async function startProxy() {
+            try {
+                // Get the URL to proxy from the path
+                let targetUrl = getTargetUrl();
+                
+                // If no URL is provided, show a placeholder
+                if (!targetUrl) {
+                    document.body.innerHTML = 'No URL provided. Use: /page.html/https://example.com';
+                    return;
+                }
+                
+                // Make sure UV is loaded
+                if (!window.__uv) {
+                    console.error('UV not loaded. Make sure uv.bundle.js and uv.config.js are properly included.');
+                    document.body.innerHTML = 'Error: UV proxy not loaded properly.';
+                    return;
+                }
+                
+                // Encode URL with UV
+                const encodedUrl = __uv$config.encodeUrl(targetUrl);
+                const fullProxyUrl = __uv$config.prefix + encodedUrl;
+                
+                // Set iframe source to the proxied URL
+                document.getElementById('frame').src = fullProxyUrl;
+            } catch (error) {
+                console.error('Proxy error:', error);
+                document.body.innerHTML = 'An error occurred while setting up the proxy.';
+            }
+        }
+        
+        // Extract target URL from the current location
+        function getTargetUrl() {
+            // Get the path after the page.html/
+            const pathWithoutPageHtml = window.location.pathname.replace(/^\/page\.html\//, '');
+            
+            // Additional handling for paths that might not include /page.html/
+            // For example, if the URL is example.com/https://sigma.com
+            if (!pathWithoutPageHtml && window.location.pathname.startsWith('/')) {
+                const possibleUrl = window.location.pathname.substring(1);
+                if (possibleUrl.startsWith('http')) {
+                    return possibleUrl;
+                }
+            }
+            
+            // Return the URL if it exists and starts with http
+            if (pathWithoutPageHtml && (
+                pathWithoutPageHtml.startsWith('http://') || 
+                pathWithoutPageHtml.startsWith('https://')
+            )) {
+                return pathWithoutPageHtml;
+            }
+            
+            // Check if URL is in query params as fallback
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlInQuery = urlParams.get('url');
+            if (urlInQuery) {
+                return urlInQuery;
+            }
+            
+            return null;
+        }
+        
+        // Initialize the service worker if needed
+        async function registerSW() {
+            if (!navigator.serviceWorker) {
+                return;
+            }
+            
+            try {
+                // Check if service worker is already registered
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                const uvServiceWorkerActive = registrations.some(reg => 
+                    reg.active && (reg.scope.includes('/uv/') || reg.active.scriptURL.includes('uv.sw.js'))
+                );
+                
+                if (!uvServiceWorkerActive) {
+                    // Register the UV service worker
+                    await navigator.serviceWorker.register('/uv/sw.js', {
+                        scope: '/uv/',
+                        updateViaCache: 'none'
+                    });
+                    
+                    console.log('UV service worker registered successfully');
+                }
+            } catch (error) {
+                console.error('Failed to register service worker:', error);
+            }
+        }
+        
+        // Wait for DOM content to be loaded
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Register service worker
+            await registerSW();
+            
+            // Start proxy
+            startProxy();
+        });
+        
+        // Start proxy immediately if document is already loaded
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            registerSW().then(() => startProxy());
+        }
+    </script>
+</body>
+</html>
