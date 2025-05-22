@@ -94,13 +94,16 @@ self.addEventListener('fetch', (event) => {
     
     console.log('🎯 SW Handling scramjet request:', url.pathname);
     
-    // Test endpoint - always handle this ourselves
+    // Test endpoint - always handle this ourselves with highest priority
     if (url.pathname === '/scramjet/test') {
-        console.log('🧪 SW Test endpoint hit');
+        console.log('🧪 SW Test endpoint hit - responding immediately');
         event.respondWith(
             new Response('✅ SW Test Success! (Integrated)', {
                 status: 200,
-                headers: { 'content-type': 'text/plain' }
+                headers: { 
+                    'content-type': 'text/plain',
+                    'access-control-allow-origin': '*'
+                }
             })
         );
         return;
