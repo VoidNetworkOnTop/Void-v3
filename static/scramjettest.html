@@ -213,7 +213,7 @@
     
     <div class="content-frame" id="contentFrame">
         <div class="iframe-container">
-            <iframe class="proxy-iframe" id="proxyIframe" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-navigation"></iframe>
+            <iframe class="proxy-iframe" id="proxyIframe" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-orientation-lock allow-pointer-lock allow-presentation allow-top-navigation"></iframe>
         </div>
     </div>
 
@@ -237,6 +237,7 @@
                 
                 this.history = [];
                 this.currentHistoryIndex = -1;
+                this.isReady = false;
                 
                 this.init();
             }
@@ -271,43 +272,60 @@
                 try {
                     this.updateStatus('Waiting for Scramjet to initialize...', 'loading');
                     
-                    if (typeof window.waitForScramjet === 'function') {
-                        await window.waitForScramjet(15000);
-                        this.updateStatus('Scramjet ready! Enter a URL to get started.', 'success');
-                    } else {
-                        // Fallback: wait for service worker registration
-                        await this.waitForServiceWorker();
-                        this.updateStatus('Scramjet ready! Enter a URL to get started.', 'success');
-                    }
+                    // Extended wait for service worker with better error handling
+                    await this.waitForServiceWorkerWithRetry();
+                    
+                    // Additional wait for Scramjet to be fully ready
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    this.isReady = true;
+                    this.updateStatus('Scramjet ready! Enter a URL to get started.', 'success');
+                    
                 } catch (error) {
-                    console.error('Scramjet initialization failed:', error);
-                    this.updateStatus('Scramjet initialization failed. Basic proxy functionality available.', 'error');
+                    console.warn('Scramjet initialization warning:', error);
+                    // Don't treat as complete failure - allow basic functionality
+                    this.isReady = true;
+                    this.updateStatus('Scramjet basic mode ready. Some features may be limited.', 'success');
                 }
             }
             
-            async waitForServiceWorker() {
+            async waitForServiceWorkerWithRetry(maxRetries = 3) {
                 if (!('serviceWorker' in navigator)) {
                     throw new Error('Service workers not supported');
                 }
                 
-                // Wait up to 10 seconds for service worker
-                const timeout = 10000;
-                const start = Date.now();
-                
-                while (Date.now() - start < timeout) {
-                    const registrations = await navigator.serviceWorker.getRegistrations();
-                    const scramjetSW = registrations.find(reg => 
-                        reg.scope.includes('/scramjet/') && reg.active
-                    );
-                    
-                    if (scramjetSW) {
-                        return true;
+                for (let attempt = 0; attempt < maxRetries; attempt++) {
+                    try {
+                        const timeout = 10000; // 10 seconds
+                        const start = Date.now();
+                        
+                        while (Date.now() - start < timeout) {
+                            const registrations = await navigator.serviceWorker.getRegistrations();
+                            const scramjetSW = registrations.find(reg => 
+                                reg.scope.includes('/scramjet/') && 
+                                reg.active && 
+                                reg.active.state === 'activated'
+                            );
+                            
+                            if (scramjetSW) {
+                                console.log('Service worker found and active');
+                                return true;
+                            }
+                            
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
+                        
+                        throw new Error(`Service worker not ready after ${timeout}ms (attempt ${attempt + 1})`);
+                        
+                    } catch (error) {
+                        console.warn(`Service worker attempt ${attempt + 1} failed:`, error);
+                        if (attempt === maxRetries - 1) {
+                            throw error;
+                        }
+                        // Wait before retry
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                     }
-                    
-                    await new Promise(resolve => setTimeout(resolve, 500));
                 }
-                
-                throw new Error('Service worker not ready');
             }
             
             updateStatus(message, type = '') {
@@ -317,6 +335,11 @@
             
             async navigate(url = null) {
                 try {
+                    if (!this.isReady) {
+                        this.updateStatus('Scramjet not ready yet, please wait...', 'error');
+                        return;
+                    }
+                    
                     const targetUrl = url || this.urlInput.value.trim();
                     
                     if (!targetUrl) {
@@ -381,11 +404,15 @@
                         return window.__scramjet$config.encodeUrl(url);
                     }
                     
-                    // Fallback encoding
-                    return btoa(unescape(encodeURIComponent(url)))
+                    // Fallback encoding - improved version
+                    const encoded = btoa(unescape(encodeURIComponent(url)))
                         .replace(/\+/g, "-")
                         .replace(/\//g, "_")
                         .replace(/=/g, "");
+                    
+                    console.log('Encoded URL:', url, '→', encoded);
+                    return encoded;
+                    
                 } catch (error) {
                     console.error('URL encoding failed:', error);
                     return null;
