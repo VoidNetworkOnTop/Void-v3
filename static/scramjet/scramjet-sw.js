@@ -1,6 +1,38 @@
 // Fixed Scramjet Service Worker
 console.log('Scramjet Service Worker loading...');
 
+// Ensure basic config exists as fallback
+if (!self.__scramjet$config) {
+    self.__scramjet$config = {
+        prefix: '/scramjet/',
+        codec: 'plain',
+        encodeUrl: function(url) {
+            try {
+                return btoa(unescape(encodeURIComponent(url)))
+                    .replace(/\+/g, "-")
+                    .replace(/\//g, "_")
+                    .replace(/=/g, "");
+            } catch (error) {
+                console.error('URL encoding failed:', error);
+                return null;
+            }
+        },
+        decodeUrl: function(encodedUrl) {
+            try {
+                let paddedUrl = encodedUrl.replace(/-/g, "+").replace(/_/g, "/");
+                while (paddedUrl.length % 4) {
+                    paddedUrl += '=';
+                }
+                return decodeURIComponent(escape(atob(paddedUrl)));
+            } catch (error) {
+                console.error('URL decoding failed:', error);
+                return null;
+            }
+        }
+    };
+    console.log('Using fallback Scramjet config');
+}
+
 // Import configuration and bundle
 try {
     importScripts('/scramjet/scramjet.config.js');
@@ -42,17 +74,33 @@ try {
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
     
-    // Skip non-proxy requests
-    if (!url.pathname.startsWith('/scramjet/') || 
-        url.pathname.includes('.js') || 
+    // Only handle requests to our scramjet path
+    if (!url.pathname.startsWith('/scramjet/')) {
+        return;
+    }
+    
+    // Handle static files normally (let server handle them)
+    if (url.pathname.includes('.js') || 
         url.pathname.includes('.css') ||
         url.pathname.includes('.ico') ||
+        url.pathname.includes('.png') ||
+        url.pathname.includes('.jpg') ||
+        url.pathname.includes('.gif') ||
         url.pathname === '/scramjet/' ||
         url.pathname === '/scramjet') {
         return;
     }
     
     console.log('Scramjet fetch intercepted:', event.request.url);
+    
+    // Handle test requests
+    if (url.pathname === '/scramjet/test') {
+        event.respondWith(new Response('Service Worker Active', {
+            status: 200,
+            headers: { 'content-type': 'text/plain' }
+        }));
+        return;
+    }
     
     // Try to use Scramjet instance first
     if (scramjetInstance && typeof scramjetInstance.route === 'function' && scramjetInstance.route(event)) {
