@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scramjet Test - Clean Version</title>
+    <title>Scramjet Test - Using Existing Files</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         .controls { margin-bottom: 20px; }
@@ -18,7 +18,7 @@
     </style>
 </head>
 <body>
-    <h1>Scramjet Proxy Test - Clean Version</h1>
+    <h1>Scramjet Test - Using Existing Setup</h1>
     
     <div class="controls">
         <input type="url" id="urlInput" placeholder="Enter URL (e.g., https://example.com)" />
@@ -27,24 +27,19 @@
         <button onclick="clearAll()">Clear & Restart</button>
     </div>
     
-    <div id="status" class="status">Starting...</div>
+    <div id="status" class="status">Loading existing Scramjet setup...</div>
     <div id="debug" class="debug"></div>
     
     <iframe id="proxyFrame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" style="display:none;"></iframe>
 
+    <!-- Load existing Scramjet files -->
+    <script src="/scramjet/scramjet.config.js"></script>
+    <script src="/scramjet/scramjet.bundle.js"></script>
+    <script src="/scramjet/register.js"></script>
+
     <script>
         var isReady = false;
         var registration = null;
-
-        // Simple config
-        window.__scramjet$config = {
-            encodeUrl: function(url) {
-                return btoa(unescape(encodeURIComponent(url)))
-                    .replace(/\+/g, "-")
-                    .replace(/\//g, "_")
-                    .replace(/=/g, "");
-            }
-        };
 
         function log(message) {
             const debug = document.getElementById('debug');
@@ -87,70 +82,44 @@
             }, 1000);
         }
 
-        async function registerServiceWorker() {
-            log('=== REGISTERING SERVICE WORKER ===');
+        async function waitForExistingRegistration() {
+            log('=== WAITING FOR EXISTING SCRAMJET REGISTRATION ===');
             
-            if (!('serviceWorker' in navigator)) {
-                throw new Error('Service workers not supported');
-            }
-            
-            // Clear any existing registrations first
-            const existing = await navigator.serviceWorker.getRegistrations();
-            for (const reg of existing) {
-                if (reg.scope.includes('/scramjet/')) {
-                    log('Unregistering existing: ' + reg.scope);
-                    await reg.unregister();
+            // Wait for the existing register.js to do its work
+            if (typeof window.waitForScramjet === 'function') {
+                log('Using existing waitForScramjet function...');
+                try {
+                    await window.waitForScramjet(15000);
+                    log('Existing Scramjet registration completed successfully');
+                    return true;
+                } catch (error) {
+                    log('Existing waitForScramjet failed: ' + error.message);
                 }
             }
             
-            // Wait a bit to ensure cleanup
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Fallback: manually wait for registration
+            log('Fallback: manually checking for service worker...');
+            const timeout = 15000;
+            const start = Date.now();
             
-            log('Registering new service worker...');
-            registration = await navigator.serviceWorker.register('/scramjet/scramjet-sw.js', {
-                scope: '/scramjet/',
-                updateViaCache: 'none'
-            });
-            
-            log('Registration successful: ' + registration.scope);
-            
-            // Force immediate activation for Chrome compatibility
-            if (registration.installing) {
-                log('Service worker installing, waiting for activation...');
-                registration.installing.postMessage({ type: 'SKIP_WAITING' });
+            while (Date.now() - start < timeout) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                const scramjetReg = registrations.find(reg => 
+                    reg.scope.includes('/scramjet/') && 
+                    reg.active && 
+                    reg.active.state === 'activated'
+                );
                 
-                await new Promise(resolve => {
-                    registration.installing.addEventListener('statechange', function() {
-                        log('SW state: ' + this.state);
-                        if (this.state === 'activated') {
-                            resolve();
-                        }
-                    });
-                });
-            } else if (registration.waiting) {
-                log('Service worker waiting, forcing activation...');
-                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                if (scramjetReg) {
+                    log('Found active Scramjet registration: ' + scramjetReg.scope);
+                    registration = scramjetReg;
+                    return true;
+                }
                 
-                await new Promise(resolve => {
-                    const checkActivation = () => {
-                        if (registration.active && registration.active.state === 'activated') {
-                            resolve();
-                        } else {
-                            setTimeout(checkActivation, 100);
-                        }
-                    };
-                    checkActivation();
-                });
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
             
-            // Wait for ready state
-            await navigator.serviceWorker.ready;
-            
-            // Additional wait for client claiming
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            log('Service worker should be ready and active');
-            return registration;
+            throw new Error('Service worker registration timeout');
         }
 
         async function testServiceWorker() {
@@ -182,24 +151,38 @@
                     const text = await response.text();
                     log('Response text: ' + text);
                     updateStatus('✅ Service worker working! Status: ' + response.status, 'success');
+                    return true;
                 }
                 
             } catch (error) {
                 log('Test error: ' + error.message);
                 updateStatus('Test failed: ' + error.message, 'error');
             }
+            
+            return false;
         }
 
         async function initialize() {
             try {
-                updateStatus('Registering service worker...', 'loading');
-                await registerServiceWorker();
+                // Wait a bit for existing scripts to load
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                updateStatus('Waiting for existing Scramjet registration...', 'loading');
+                
+                // Check if config is loaded
+                if (window.__scramjet$config) {
+                    log('✅ Scramjet config loaded');
+                } else {
+                    log('⚠️ Scramjet config not found');
+                }
+                
+                // Wait for existing registration to complete
+                await waitForExistingRegistration();
                 
                 updateStatus('Testing service worker...', 'loading');
-                await testServiceWorker();
+                const testResult = await testServiceWorker();
                 
-                // If we get here and test passed, we're ready
-                if (document.getElementById('status').textContent.includes('✅')) {
+                if (testResult) {
                     isReady = true;
                     updateStatus('✅ Ready! Enter a URL and click Go', 'success');
                 } else {
@@ -209,12 +192,16 @@
             } catch (error) {
                 log('Initialization error: ' + error.message);
                 updateStatus('❌ Failed: ' + error.message, 'error');
+                
+                // Try to still allow navigation
+                isReady = true;
+                updateStatus('⚠️ Ready with warnings - you can try navigating', 'error');
             }
         }
 
         function navigate() {
             if (!isReady) {
-                updateStatus('❌ Not ready - click Test SW first', 'error');
+                updateStatus('❌ Not ready - wait for initialization or click Test SW', 'error');
                 return;
             }
             
@@ -237,8 +224,20 @@
                 return;
             }
             
-            // Encode URL
-            const encodedUrl = window.__scramjet$config.encodeUrl(fullUrl);
+            // Use existing Scramjet config if available
+            let encodedUrl;
+            if (window.__scramjet$config && window.__scramjet$config.encodeUrl) {
+                encodedUrl = window.__scramjet$config.encodeUrl(fullUrl);
+                log('Using existing Scramjet config for encoding');
+            } else {
+                // Fallback encoding
+                encodedUrl = btoa(unescape(encodeURIComponent(fullUrl)))
+                    .replace(/\+/g, "-")
+                    .replace(/\//g, "_")
+                    .replace(/=/g, "");
+                log('Using fallback encoding');
+            }
+            
             const proxyUrl = `/scramjet/${encodedUrl}`;
             
             log('=== NAVIGATING ===');
@@ -263,6 +262,13 @@
             };
         }
 
+        // Listen for Scramjet ready event from register.js
+        window.addEventListener('scramjet-ready', (event) => {
+            log('🎉 Received scramjet-ready event');
+            log('Registration: ' + event.detail.registration.scope);
+            registration = event.detail.registration;
+        });
+
         // Handle Enter key
         document.getElementById('urlInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') navigate();
@@ -271,7 +277,8 @@
         // Initialize when page loads
         window.addEventListener('load', () => {
             log('=== PAGE LOADED ===');
-            initialize();
+            // Give time for existing scripts to run
+            setTimeout(initialize, 2000);
         });
     </script>
 </body>
