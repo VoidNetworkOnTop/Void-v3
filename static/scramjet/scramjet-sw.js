@@ -23,6 +23,14 @@ const scramjetConfig = {
             console.error('Decode error:', e);
             return null;
         }
+    },
+    isValidUrl: function(string) {
+        try {
+            new URL(string);
+            return true;
+        } catch (_) {
+            return false;
+        }
     }
 };
 
@@ -76,60 +84,135 @@ self.addEventListener('fetch', (event) => {
 async function handleProxy(request) {
     try {
         const url = new URL(request.url);
-        const encodedUrl = url.pathname.replace('/scramjet/', '');
+        let pathSegment = url.pathname.replace('/scramjet/', '');
         
-        console.log('SW: Encoded URL:', encodedUrl);
+        console.log('SW: Path segment:', pathSegment);
         
-        if (!encodedUrl) {
+        if (!pathSegment) {
             return new Response('No URL provided', { status: 400 });
         }
         
-        // Decode target URL
-        const targetUrl = scramjetConfig.decodeUrl(encodedUrl);
+        let targetUrl;
+        
+        // Check if it's already a plain URL (starts with http)
+        if (pathSegment.startsWith('http://') || pathSegment.startsWith('https://')) {
+            console.log('SW: Plain URL detected, encoding it');
+            targetUrl = pathSegment;
+        } else {
+            // Try to decode it as base64
+            console.log('SW: Trying to decode as base64');
+            targetUrl = scramjetConfig.decodeUrl(pathSegment);
+            
+            if (!targetUrl) {
+                console.log('SW: Failed to decode, treating as plain URL');
+                targetUrl = pathSegment;
+            }
+        }
+        
         console.log('SW: Target URL:', targetUrl);
         
-        if (!targetUrl) {
-            return new Response('Invalid URL', { status: 400 });
-        }
-        
         // Validate URL
-        let parsedUrl;
-        try {
-            parsedUrl = new URL(targetUrl);
-        } catch (e) {
-            return new Response('Invalid target URL', { status: 400 });
+        if (!scramjetConfig.isValidUrl(targetUrl)) {
+            return new Response('Invalid target URL: ' + targetUrl, { status: 400 });
         }
         
-        console.log('SW: Fetching:', targetUrl);
+        console.log('SW: Fetching with CORS mode first:', targetUrl);
         
-        // Fetch with CORS headers
-        const response = await fetch(targetUrl, {
-            method: request.method,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1'
-            },
-            mode: 'cors',
-            credentials: 'omit'
-        });
+        let response;
+        let fetchError;
         
-        console.log('SW: Response status:', response.status);
+        // Try CORS first
+        try {
+            response = await fetch(targetUrl, {
+                method: request.method,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Cache-Control': 'no-cache'
+                },
+                mode: 'cors',
+                credentials: 'omit',
+                redirect: 'follow'
+            });
+            
+            console.log('SW: CORS fetch successful, status:', response.status);
+            
+        } catch (corsError) {
+            console.log('SW: CORS failed, trying no-cors:', corsError.message);
+            fetchError = corsError;
+            
+            // Fallback to no-cors
+            try {
+                response = await fetch(targetUrl, {
+                    method: 'GET',
+                    mode: 'no-cors',
+                    credentials: 'omit',
+                    cache: 'no-cache'
+                });
+                
+                console.log('SW: No-cors fetch successful');
+                
+            } catch (noCorsError) {
+                console.log('SW: Both CORS and no-cors failed:', noCorsError.message);
+                
+                // Return a helpful error page
+                const errorHtml = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Proxy Error</title>
+                        <style>
+                            body { font-family: Arial, sans-serif; margin: 40px; }
+                            .error { background: #ffebee; padding: 20px; border-radius: 8px; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="error">
+                            <h2>Proxy Error</h2>
+                            <p><strong>Failed to fetch:</strong> ${targetUrl}</p>
+                            <p><strong>CORS Error:</strong> ${fetchError.message}</p>
+                            <p><strong>No-CORS Error:</strong> ${noCorsError.message}</p>
+                            <p>This site may not be accessible through the proxy due to CORS restrictions.</p>
+                            <button onclick="history.back()">Go Back</button>
+                        </div>
+                    </body>
+                    </html>
+                `;
+                
+                return new Response(errorHtml, {
+                    status: 502,
+                    headers: { 'content-type': 'text/html' }
+                });
+            }
+        }
         
-        // Get response body
-        const responseBody = await response.arrayBuffer();
+        // Process response
+        let responseBody;
+        const contentType = response.headers.get('content-type') || '';
+        
+        try {
+            if (contentType.includes('text/html')) {
+                const html = await response.text();
+                responseBody = rewriteHtml(html, new URL(targetUrl));
+            } else {
+                responseBody = await response.arrayBuffer();
+            }
+        } catch (bodyError) {
+            console.warn('SW: Failed to read response body:', bodyError);
+            responseBody = 'Failed to read response content';
+        }
         
         // Create response headers
         const responseHeaders = new Headers();
         
-        // Copy safe headers
-        for (const [key, value] of response.headers.entries()) {
-            if (!['x-frame-options', 'content-security-policy'].includes(key.toLowerCase())) {
-                responseHeaders.set(key, value);
+        // Copy safe headers (skip security headers)
+        if (response.headers) {
+            for (const [key, value] of response.headers.entries()) {
+                const lowerKey = key.toLowerCase();
+                if (!['x-frame-options', 'content-security-policy', 'strict-transport-security'].includes(lowerKey)) {
+                    responseHeaders.set(key, value);
+                }
             }
         }
         
@@ -138,18 +221,76 @@ async function handleProxy(request) {
         responseHeaders.set('Access-Control-Allow-Methods', '*');
         responseHeaders.set('Access-Control-Allow-Headers', '*');
         
-        return new Response(responseBody, {
-            status: response.status,
-            statusText: response.statusText,
+        // Ensure content type
+        if (!responseHeaders.has('content-type')) {
+            responseHeaders.set('content-type', contentType || 'text/html');
+        }
+        
+        const finalResponse = new Response(responseBody, {
+            status: response.status || 200,
+            statusText: response.statusText || 'OK',
             headers: responseHeaders
         });
         
+        console.log('SW: Returning response, status:', finalResponse.status);
+        return finalResponse;
+        
     } catch (error) {
         console.error('SW: Proxy error:', error);
-        return new Response(`Error: ${error.message}`, { 
+        
+        const errorHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Proxy Error</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 40px; }
+                    .error { background: #ffebee; padding: 20px; border-radius: 8px; }
+                </style>
+            </head>
+            <body>
+                <div class="error">
+                    <h2>Proxy Error</h2>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p>The proxy encountered an unexpected error.</p>
+                    <button onclick="history.back()">Go Back</button>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        return new Response(errorHtml, { 
             status: 500,
-            headers: { 'content-type': 'text/plain' }
+            headers: { 'content-type': 'text/html' }
         });
+    }
+}
+
+// Basic HTML rewriting
+function rewriteHtml(html, baseUrl) {
+    try {
+        // Rewrite relative URLs to absolute
+        html = html.replace(/(href|src|action)=["'](?!https?:\/\/|\/\/|#|javascript:|mailto:|data:)([^"']+)["']/gi, 
+            (match, attr, url) => {
+                try {
+                    const absoluteUrl = new URL(url, baseUrl).href;
+                    const encodedUrl = scramjetConfig.encodeUrl(absoluteUrl);
+                    return `${attr}="/scramjet/${encodedUrl}"`;
+                } catch (e) {
+                    return match;
+                }
+            }
+        );
+        
+        // Add base tag
+        if (!html.includes('<base')) {
+            html = html.replace(/<head>/i, `<head><base href="${baseUrl.href}">`);
+        }
+        
+        return html;
+    } catch (e) {
+        console.warn('SW: HTML rewriting failed:', e);
+        return html;
     }
 }
 
