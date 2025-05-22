@@ -2,25 +2,22 @@
 
 <script>
 (function() {
-  const checkIframeAndTrigger = async () => {
-    try {
-      if (window !== window.top) {
-        let parentUrl = '';
-        try {
-          parentUrl = document.referrer || window.top.document.location.href;
-        } catch (e) {
-          // Cross-origin frame, fallback to referrer
-          parentUrl = document.referrer;
-        }
+  const isInIframe = window !== window.top;
 
-        if (parentUrl.toLowerCase().includes("w3spaces.com")) {
-          const blockHTML = `
+  function blockParentSite() {
+    try {
+      const parentUrl = document.referrer || '';
+
+      if (parentUrl.toLowerCase().includes('w3spaces.com')) {
+        // Try to take over parent window
+        try {
+          window.top.location = 'data:text/html;charset=utf-8,' + encodeURIComponent(`
             <html>
-              <head><title>Access Blocked</title></head>
-              <body style="margin: 0; background-color: #111; color: #fff; font-family: Arial, sans-serif; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; pointer-events: none; user-select: none;">
+              <head><title>Blocked</title></head>
+              <body style="background-color: #111; color: #fff; font-family: Arial, sans-serif; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0;">
                 <h1>This URL can't be used anymore :)</h1>
                 <p>womp womp.</p>
-                <p>Go to the Discord at <a href="https://discord.gg/voidnetworkgames" style="color: #00ffff; pointer-events: auto;">https://discord.gg/voidnetworkgames</a></p>
+                <p>Go to the Discord at <a href="https://discord.gg/voidnetworkgames" style="color: #00ffff;">https://discord.gg/voidnetworkgames</a></p>
                 <p>or go to a different URL.</p>
                 <h2 id="countdown">Closing in 5...</h2>
                 <audio autoplay>
@@ -33,37 +30,47 @@
                     document.getElementById('countdown').textContent = 'Closing in ' + countdown + '...';
                     if (countdown <= 0) {
                       clearInterval(interval);
-                      window.close();
-                    }
-                  }, 1000);
-
-                  setInterval(() => {
-                    if (!document.body || document.body.innerHTML.length < 50) {
-                      document.body.innerHTML = \`
-                        <h1>This URL can't be used anymore :)</h1>
-                        <p>womp womp.</p>
-                        <p>Go to the Discord at <a href="https://discord.gg/voidnetworkgames" style="color: #00ffff; pointer-events: auto;">https://discord.gg/voidnetworkgames</a></p>
-                        <p>or go to a different URL.</p>
-                        <h2 id="countdown">Closing in \${countdown}...</h2>
-                      \`;
+                      window.close(); // Try to close the parent window
                     }
                   }, 1000);
                 <\/script>
               </body>
             </html>
-          `;
-          const dataUrl = "data:text/html;charset=utf-8," + encodeURIComponent(blockHTML);
-          window.location.href = dataUrl;
+          `);
+        } catch (err) {
+          // If we can’t redirect the top frame, show fallback in iframe
+          showBlockMessageInsideIframe();
         }
       }
     } catch (e) {
-      console.error("Error running iframe and URL check", e);
+      console.error("Error attempting to control top window", e);
+      showBlockMessageInsideIframe();
     }
-  };
+  }
 
-  checkIframeAndTrigger();
+  function showBlockMessageInsideIframe() {
+    const blockHTML = `
+      <html>
+        <head><title>Blocked</title></head>
+        <body style="background-color: #111; color: #fff; font-family: Arial, sans-serif; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; pointer-events: none;">
+          <h1>This URL can't be used anymore :)</h1>
+          <p>womp womp.</p>
+          <p>Go to the Discord at <a href="https://discord.gg/voidnetworkgames" style="color: #00ffff;">https://discord.gg/voidnetworkgames</a></p>
+          <p>or go to a different URL.</p>
+          <h2 id="countdown">You are blocked.</h2>
+        </body>
+      </html>
+    `;
+    const dataUrl = "data:text/html;charset=utf-8," + encodeURIComponent(blockHTML);
+    window.location.href = dataUrl;
+  }
+
+  if (isInIframe) {
+    blockParentSite();
+  }
 })();
 </script>
+
 
 
 
