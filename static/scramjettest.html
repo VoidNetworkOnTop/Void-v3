@@ -3,334 +3,276 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Loading...</title>
+    <title>Scramjet Test - Clean Version</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: Arial, sans-serif;
-            background: #f0f0f0;
-        }
-        
-        .loading {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px;
-            text-align: center;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .loading.hidden {
-            display: none;
-        }
-        
-        .content {
-            margin-top: 60px;
-            height: calc(100vh - 60px);
-        }
-        
-        .proxy-frame {
-            width: 100%;
-            height: 100%;
-            border: none;
-            background: white;
-        }
-        
-        .error {
-            padding: 40px;
-            text-align: center;
-            background: white;
-            margin: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .error h2 {
-            color: #d32f2f;
-            margin-bottom: 20px;
-        }
-        
-        .retry-btn {
-            background: #1976d2;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 10px;
-        }
-        
-        .retry-btn:hover {
-            background: #1565c0;
-        }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .controls { margin-bottom: 20px; }
+        input { width: 400px; padding: 10px; margin-right: 10px; }
+        button { padding: 10px 20px; margin-right: 10px; }
+        .status { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .error { background: #ffebee; border-color: #f44336; }
+        .success { background: #e8f5e9; border-color: #4caf50; }
+        .loading { background: #fff3e0; border-color: #ff9800; }
+        iframe { width: 100%; height: 600px; border: 1px solid #ccc; margin-top: 20px; }
+        .debug { font-family: monospace; font-size: 12px; background: #f5f5f5; padding: 10px; margin: 10px 0; max-height: 200px; overflow-y: auto; }
     </style>
 </head>
 <body>
-    <div class="loading" id="loadingBar">
-        <div id="loadingText">🚀 Initializing Scramjet Proxy...</div>
+    <h1>Scramjet Proxy Test - Clean Version</h1>
+    
+    <div class="controls">
+        <input type="url" id="urlInput" placeholder="Enter URL (e.g., https://example.com)" />
+        <button onclick="navigate()">Go</button>
+        <button onclick="testServiceWorker()">Test SW</button>
+        <button onclick="clearAll()">Clear & Restart</button>
     </div>
     
-    <div class="content">
-        <iframe id="proxyFrame" class="proxy-frame" style="display:none;" 
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation allow-downloads">
-        </iframe>
-        
-        <div id="errorContainer" class="error" style="display:none;">
-            <h2>🚫 Proxy Error</h2>
-            <p id="errorMessage">Failed to load the requested page.</p>
-            <button class="retry-btn" onclick="retry()">🔄 Retry</button>
-            <button class="retry-btn" onclick="openDirect()">🔗 Open Direct</button>
-        </div>
-    </div>
+    <div id="status" class="status">Starting...</div>
+    <div id="debug" class="debug"></div>
+    
+    <iframe id="proxyFrame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" style="display:none;"></iframe>
 
     <script>
-        // Get the current URL to extract the target
-        const currentPath = window.location.pathname;
-        const encodedUrl = currentPath.replace('/scramjet/', '');
-        
-        let targetUrl = '';
-        let isReady = false;
-        let registration = null;
-        
-        // URL decode function
-        function decodeUrl(encodedUrl) {
-            try {
-                let paddedUrl = encodedUrl.replace(/-/g, "+").replace(/_/g, "/");
-                while (paddedUrl.length % 4) paddedUrl += '=';
-                return decodeURIComponent(escape(atob(paddedUrl)));
-            } catch (e) {
-                console.error('Decode error:', e);
-                return null;
+        var isReady = false;
+        var registration = null;
+
+        // Simple config
+        window.__scramjet$config = {
+            encodeUrl: function(url) {
+                return btoa(unescape(encodeURIComponent(url)))
+                    .replace(/\+/g, "-")
+                    .replace(/\//g, "_")
+                    .replace(/=/g, "");
             }
+        };
+
+        function log(message) {
+            const debug = document.getElementById('debug');
+            const timestamp = new Date().toLocaleTimeString();
+            debug.innerHTML += `[${timestamp}] ${message}<br>`;
+            debug.scrollTop = debug.scrollHeight;
+            console.log(message);
         }
-        
-        // Update loading status
-        function updateStatus(message) {
-            document.getElementById('loadingText').textContent = message;
-            console.log('Status:', message);
+
+        function updateStatus(message, type = '') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            log('STATUS: ' + message);
         }
-        
-        // Show error
-        function showError(message) {
-            document.getElementById('loadingBar').classList.add('hidden');
-            document.getElementById('errorMessage').textContent = message;
-            document.getElementById('errorContainer').style.display = 'block';
-        }
-        
-        // Retry function
-        function retry() {
-            location.reload();
-        }
-        
-        // Open direct function
-        function openDirect() {
-            if (targetUrl) {
-                window.open(targetUrl, '_blank');
+
+        async function clearAll() {
+            log('=== CLEARING ALL ===');
+            
+            // Unregister all service workers
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const reg of registrations) {
+                log('Unregistering: ' + reg.scope);
+                await reg.unregister();
             }
+            
+            // Clear iframe
+            document.getElementById('proxyFrame').style.display = 'none';
+            document.getElementById('proxyFrame').src = '';
+            
+            // Reset state
+            isReady = false;
+            registration = null;
+            
+            updateStatus('Cleared. Reloading page...', 'loading');
+            
+            // Reload page after short delay
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
         }
-        
-        // Register service worker
+
         async function registerServiceWorker() {
+            log('=== REGISTERING SERVICE WORKER ===');
+            
             if (!('serviceWorker' in navigator)) {
-                throw new Error('Service workers not supported in this browser');
+                throw new Error('Service workers not supported');
             }
             
-            updateStatus('📝 Registering service worker...');
-            
-            // Unregister existing
+            // Clear any existing registrations first
             const existing = await navigator.serviceWorker.getRegistrations();
             for (const reg of existing) {
                 if (reg.scope.includes('/scramjet/')) {
-                    console.log('Unregistering existing SW');
+                    log('Unregistering existing: ' + reg.scope);
                     await reg.unregister();
                 }
             }
             
-            // Wait for cleanup
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Wait a bit to ensure cleanup
+            await new Promise(resolve => setTimeout(resolve, 1000));
             
-            // Register new service worker
+            log('Registering new service worker...');
             registration = await navigator.serviceWorker.register('/scramjet/scramjet-sw.js', {
                 scope: '/scramjet/',
                 updateViaCache: 'none'
             });
             
-            console.log('Service worker registered:', registration.scope);
+            log('Registration successful: ' + registration.scope);
             
-            // Wait for activation
+            // Force immediate activation for Chrome compatibility
             if (registration.installing) {
-                updateStatus('⚙️ Installing service worker...');
+                log('Service worker installing, waiting for activation...');
                 registration.installing.postMessage({ type: 'SKIP_WAITING' });
                 
                 await new Promise(resolve => {
                     registration.installing.addEventListener('statechange', function() {
-                        console.log('SW state:', this.state);
+                        log('SW state: ' + this.state);
                         if (this.state === 'activated') {
                             resolve();
                         }
                     });
                 });
             } else if (registration.waiting) {
-                updateStatus('⚙️ Activating service worker...');
+                log('Service worker waiting, forcing activation...');
                 registration.waiting.postMessage({ type: 'SKIP_WAITING' });
                 
                 await new Promise(resolve => {
-                    const checkActive = () => {
+                    const checkActivation = () => {
                         if (registration.active && registration.active.state === 'activated') {
                             resolve();
                         } else {
-                            setTimeout(checkActive, 100);
+                            setTimeout(checkActivation, 100);
                         }
                     };
-                    checkActive();
+                    checkActivation();
                 });
             }
             
-            // Wait for ready
+            // Wait for ready state
             await navigator.serviceWorker.ready;
             
-            // Additional wait
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Additional wait for client claiming
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
-            console.log('Service worker should be ready');
+            log('Service worker should be ready and active');
+            return registration;
         }
-        
-        // Test service worker
+
         async function testServiceWorker() {
-            updateStatus('🧪 Testing service worker...');
+            updateStatus('Testing service worker...', 'loading');
+            log('=== TESTING SERVICE WORKER ===');
             
             try {
+                // Check registrations
+                const regs = await navigator.serviceWorker.getRegistrations();
+                log('Active registrations: ' + regs.length);
+                
+                for (const reg of regs) {
+                    log('- Scope: ' + reg.scope + ', Active: ' + (reg.active ? reg.active.state : 'none'));
+                }
+                
+                // Test the endpoint
+                log('Testing /scramjet/test endpoint...');
                 const response = await fetch('/scramjet/test', { 
-                    cache: 'no-cache' 
+                    cache: 'no-cache',
+                    headers: { 'x-test': 'true' }
                 });
                 
-                if (response.status === 404) {
-                    throw new Error('Service worker not intercepting requests (404)');
-                }
+                log('Response status: ' + response.status);
                 
-                const text = await response.text();
-                console.log('SW test response:', text);
-                return true;
+                if (response.status === 404) {
+                    updateStatus('❌ Service worker NOT intercepting (404)', 'error');
+                    log('ERROR: Service worker is not intercepting requests');
+                } else {
+                    const text = await response.text();
+                    log('Response text: ' + text);
+                    updateStatus('✅ Service worker working! Status: ' + response.status, 'success');
+                }
                 
             } catch (error) {
-                console.error('SW test failed:', error);
-                throw new Error(`Service worker test failed: ${error.message}`);
+                log('Test error: ' + error.message);
+                updateStatus('Test failed: ' + error.message, 'error');
             }
         }
-        
-        // Load the proxied content
-        async function loadContent() {
-            updateStatus('🌐 Loading content...');
+
+        async function initialize() {
+            try {
+                updateStatus('Registering service worker...', 'loading');
+                await registerServiceWorker();
+                
+                updateStatus('Testing service worker...', 'loading');
+                await testServiceWorker();
+                
+                // If we get here and test passed, we're ready
+                if (document.getElementById('status').textContent.includes('✅')) {
+                    isReady = true;
+                    updateStatus('✅ Ready! Enter a URL and click Go', 'success');
+                } else {
+                    updateStatus('⚠️ Service worker issues detected', 'error');
+                }
+                
+            } catch (error) {
+                log('Initialization error: ' + error.message);
+                updateStatus('❌ Failed: ' + error.message, 'error');
+            }
+        }
+
+        function navigate() {
+            if (!isReady) {
+                updateStatus('❌ Not ready - click Test SW first', 'error');
+                return;
+            }
             
-            // Construct the proxy URL
+            const url = document.getElementById('urlInput').value.trim();
+            if (!url) {
+                updateStatus('❌ Please enter a URL', 'error');
+                return;
+            }
+            
+            // Add protocol if missing
+            let fullUrl = url;
+            if (!fullUrl.match(/^https?:\/\//)) {
+                fullUrl = 'https://' + fullUrl;
+            }
+            
+            try {
+                new URL(fullUrl); // Validate
+            } catch (e) {
+                updateStatus('❌ Invalid URL format', 'error');
+                return;
+            }
+            
+            // Encode URL
+            const encodedUrl = window.__scramjet$config.encodeUrl(fullUrl);
             const proxyUrl = `/scramjet/${encodedUrl}`;
-            console.log('Loading proxy URL:', proxyUrl);
-            console.log('Target URL:', targetUrl);
+            
+            log('=== NAVIGATING ===');
+            log('Original URL: ' + fullUrl);
+            log('Encoded URL: ' + encodedUrl);
+            log('Proxy URL: ' + proxyUrl);
+            
+            updateStatus('🔄 Loading: ' + fullUrl, 'loading');
             
             const iframe = document.getElementById('proxyFrame');
+            iframe.style.display = 'block';
+            iframe.src = proxyUrl;
             
-            // Set up load handlers
             iframe.onload = () => {
-                console.log('Iframe loaded successfully');
-                document.getElementById('loadingBar').classList.add('hidden');
-                iframe.style.display = 'block';
-                
-                // Update page title
-                if (targetUrl) {
-                    try {
-                        const url = new URL(targetUrl);
-                        document.title = `${url.hostname} - Scramjet Proxy`;
-                    } catch (e) {
-                        document.title = 'Scramjet Proxy';
-                    }
-                }
+                updateStatus('✅ Loaded: ' + fullUrl, 'success');
+                log('Iframe loaded successfully');
             };
             
             iframe.onerror = () => {
-                console.error('Iframe failed to load');
-                showError('Failed to load the proxied content. The target site may not be accessible.');
+                updateStatus('❌ Failed to load: ' + fullUrl, 'error');
+                log('Iframe failed to load');
             };
-            
-            // Set iframe source
-            iframe.src = proxyUrl;
-            
-            // Fallback timeout
-            setTimeout(() => {
-                if (document.getElementById('loadingBar').style.display !== 'none' && 
-                    !document.getElementById('loadingBar').classList.contains('hidden')) {
-                    console.warn('Loading timeout, assuming success');
-                    iframe.onload();
-                }
-            }, 10000);
         }
-        
-        // Main initialization
-        async function init() {
-            try {
-                // Decode the target URL
-                if (!encodedUrl) {
-                    throw new Error('No URL provided in path');
-                }
-                
-                // Try to decode the URL
-                targetUrl = decodeUrl(encodedUrl);
-                
-                if (!targetUrl) {
-                    // Maybe it's not encoded, try as-is
-                    targetUrl = decodeURIComponent(encodedUrl);
-                }
-                
-                if (!targetUrl) {
-                    throw new Error('Could not decode target URL');
-                }
-                
-                // Validate URL
-                try {
-                    new URL(targetUrl);
-                } catch (e) {
-                    throw new Error(`Invalid target URL: ${targetUrl}`);
-                }
-                
-                console.log('Target URL decoded:', targetUrl);
-                
-                // Register service worker
-                await registerServiceWorker();
-                
-                // Test service worker
-                await testServiceWorker();
-                
-                // Load content
-                await loadContent();
-                
-            } catch (error) {
-                console.error('Initialization failed:', error);
-                showError(error.message);
-            }
-        }
-        
-        // Start when page loads
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', init);
-        } else {
-            init();
-        }
-        
-        // Handle service worker messages
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.addEventListener('message', (event) => {
-                console.log('Received SW message:', event.data);
-                if (event.data && event.data.type === 'SW_READY') {
-                    console.log('Service worker reported ready');
-                    isReady = true;
-                }
-            });
-        }
+
+        // Handle Enter key
+        document.getElementById('urlInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') navigate();
+        });
+
+        // Initialize when page loads
+        window.addEventListener('load', () => {
+            log('=== PAGE LOADED ===');
+            initialize();
+        });
     </script>
 </body>
 </html>
