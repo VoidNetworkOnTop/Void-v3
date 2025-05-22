@@ -136,6 +136,8 @@ app.use((req, res, next) => {
   if (
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
+    req.path.startsWith('/scramjet/') ||
+    req.path.endsWith('scramjet-sw.js') ||
     req.path.includes('.woff') ||
     req.path.includes('.woff2') ||
     req.path.includes('.ttf') ||
@@ -172,6 +174,7 @@ app.use((req, res, next) => {
   if (
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
+    req.path.startsWith('/scramjet/') ||
     req.path.endsWith('.js') ||
     req.path.endsWith('.css') ||
     req.path.endsWith('.png') ||
@@ -282,7 +285,8 @@ app.use((req, res, next) => {
   // Skip for service and bare paths
   if (
     req.path.startsWith('/bare/') ||
-    req.path.includes('/service/')
+    req.path.includes('/service/') ||
+    req.path.startsWith('/scramjet/')
   ) {
     return next();
   }
@@ -393,6 +397,10 @@ app.get("/app", function (req, res) {
 
 app.get('/scramjet/game', (req, res) => {
   res.sendFile(path.join(__dirname, 'static/scramjet-handler.html'));
+});
+
+app.get("/test-proxy", function (req, res) {
+  res.sendFile(path.join(dirname, "static/scramjet-test.html"));
 });
 
 app.get("/credits", function (req, res) {
