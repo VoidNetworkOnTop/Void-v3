@@ -15,41 +15,13 @@ const bare = createBareServer('/bare/');
 // Set up static file serving
 app.use(express.static(path.join(__dirname, 'static')));
 
-// Serve Scramjet files
+// Serve Scramjet static files (JS, CSS, etc.) only
 app.use('/scramjet', express.static(path.join(__dirname, 'static/scramjet')));
 
-// Handle Scramjet proxy routes - this is the key addition
-app.get('/scramjet/*', (req, res) => {
-    const encodedUrl = req.params[0]; // Everything after /scramjet/
-    
-    if (!encodedUrl) {
-        return res.status(400).send('No URL provided');
-    }
-    
-    try {
-        // Decode the URL
-        let paddedUrl = encodedUrl.replace(/-/g, "+").replace(/_/g, "/");
-        
-        // Add proper padding
-        while (paddedUrl.length % 4) {
-            paddedUrl += '=';
-        }
-        
-        const decoded = Buffer.from(paddedUrl, 'base64').toString('utf-8');
-        const targetUrl = decodeURIComponent(decoded);
-        
-        console.log('Scramjet proxy request:', targetUrl);
-        
-        // For now, serve the handler HTML that will let the service worker handle it
-        res.sendFile(path.join(__dirname, 'static/scramjet-handler.html'));
-        
-    } catch (error) {
-        console.error('Error decoding Scramjet URL:', error);
-        res.status(400).send('Invalid encoded URL');
-    }
-});
+// REMOVED: The problematic /scramjet/* route that was intercepting service worker requests
+// Let the service worker handle all proxy requests instead
 
-// Handle the main Scramjet route for navigation
+// Handle the main Scramjet route for navigation (if you need a specific handler page)
 app.get('/scramjet-handler.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'static/scramjet-handler.html'));
 });
@@ -75,6 +47,7 @@ server.on('upgrade', (req, socket, head) => {
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Scramjet server running at http://localhost:${PORT}`);
     console.log('Scramjet proxy available at /scramjet/');
+    console.log('Service worker will handle all /scramjet/ proxy requests');
 });
 
 export default server;
