@@ -444,13 +444,14 @@ app.get('*', function(req, res, next) {
   // Skip the 404 page for service paths to prevent breaking proxied sites
   if (req.path.includes('/service/') || 
       req.path.startsWith('/uv/service/') ||
-      req.path.startsWith('/scramjet/')) {  // ADD THIS LINE
+      req.path.startsWith('/scramjet/')) {
     return next();
   }
   
   res.status(404);
   res.sendFile(path.join(dirname, "static/404.html"));
 });
+
 // ==== SERVER SETUP ====
 // Handle WebSocket upgrade requests
 server.on('upgrade', (req, socket, head) => {
