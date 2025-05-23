@@ -5,7 +5,6 @@ import https from 'node:https';
 import path from "node:path";
 import fs from "node:fs";
 import crypto from 'node:crypto';
-import zlib from 'node:zlib';
 
 const app = express();
 const server = http.createServer();
@@ -147,142 +146,49 @@ app.all('/scram', async (req, res) => {
     console.log('Scramjet proxy request for:', targetUrl);
     
     try {
-        // Validate URL
-        const url = new URL(targetUrl);
-        
-        // Choose appropriate module based on protocol
-        const httpModule = url.protocol === 'https:' ? https : http;
-        
-        // Set up request options
-        const options = {
-            hostname: url.hostname,
-            port: url.port || (url.protocol === 'https:' ? 443 : 80),
-            path: url.pathname + url.search,
-            method: req.method,
+        // Make a simple fetch request
+        const response = await fetch(targetUrl, {
+            method: req.method === 'POST' ? 'GET' : req.method, // Force GET for now
             headers: {
-                'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': req.headers['accept'] || 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': req.headers['accept-language'] || 'en-US,en;q=0.9',
-                'Accept-Encoding': 'identity', // Don't request compressed content
-                'Connection': 'close',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'identity', // Request uncompressed content
+                'Cache-Control': 'no-cache'
             },
-            timeout: 30000,
-            rejectUnauthorized: false // Allow self-signed certificates
-        };
+            redirect: 'follow'
+        });
         
-        // Remove hop-by-hop headers and problematic headers
-        const skipHeaders = [
-            'host', 'connection', 'upgrade', 'proxy-authenticate', 
-            'proxy-authorization', 'te', 'trailers', 'transfer-encoding',
-            'content-encoding', 'content-length', 'origin', 'referer'
-        ];
+        console.log('Response status:', response.status);
+        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
         
-        // Copy safe headers from original request
-        for (const [key, value] of Object.entries(req.headers)) {
-            if (!skipHeaders.includes(key.toLowerCase()) && !key.startsWith('x-proxy-')) {
-                options.headers[key] = value;
-            }
+        // Set basic headers
+        res.status(response.status);
+        
+        // Copy content type
+        const contentType = response.headers.get('content-type');
+        if (contentType) {
+            res.set('Content-Type', contentType);
         }
         
-        // Set proper host header
-        options.headers.Host = url.host;
+        // Add CORS headers
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Methods', '*');
+        res.set('Access-Control-Allow-Headers', '*');
+        res.set('X-Frame-Options', 'ALLOWALL');
         
-        console.log('Making request to:', `${url.protocol}//${url.host}${url.pathname}${url.search}`);
+        // Get the content as text (this handles decompression automatically)
+        const content = await response.text();
+        console.log('Content length:', content.length);
+        console.log('Content preview:', content.substring(0, 100));
         
-        const proxyReq = httpModule.request(options, (proxyRes) => {
-            console.log('Response status:', proxyRes.statusCode);
-            console.log('Response headers:', proxyRes.headers);
-            
-            // Set response status
-            res.status(proxyRes.statusCode);
-            
-            // Copy response headers (skip problematic ones)
-            const skipResponseHeaders = [
-                'transfer-encoding', 'content-encoding', 'content-security-policy',
-                'content-security-policy-report-only', 'x-frame-options',
-                'x-content-type-options', 'strict-transport-security',
-                'referrer-policy', 'permissions-policy', 'cross-origin-embedder-policy',
-                'cross-origin-opener-policy', 'cross-origin-resource-policy'
-            ];
-            
-            for (const [key, value] of Object.entries(proxyRes.headers)) {
-                if (!skipResponseHeaders.includes(key.toLowerCase())) {
-                    res.set(key, value);
-                }
-            }
-            
-            // Add CORS headers
-            res.set('Access-Control-Allow-Origin', '*');
-            res.set('Access-Control-Allow-Methods', '*');
-            res.set('Access-Control-Allow-Headers', '*');
-            res.set('X-Frame-Options', 'ALLOWALL');
-            
-            // Handle compressed responses
-            let responseStream = proxyRes;
-            const encoding = proxyRes.headers['content-encoding'];
-            
-            if (encoding === 'gzip') {
-                responseStream = proxyRes.pipe(zlib.createGunzip());
-                console.log('Decompressing gzip response');
-            } else if (encoding === 'deflate') {
-                responseStream = proxyRes.pipe(zlib.createInflate());
-                console.log('Decompressing deflate response');
-            } else if (encoding === 'br') {
-                responseStream = proxyRes.pipe(zlib.createBrotliDecompress());
-                console.log('Decompressing brotli response');
-            }
-            
-            // Remove content-encoding since we're decompressing
-            res.removeHeader('content-encoding');
-            res.removeHeader('content-length');
-            
-            // Pipe the (potentially decompressed) response
-            responseStream.pipe(res);
-        });
-        
-        // Handle request errors
-        proxyReq.on('error', (error) => {
-            console.error('Proxy request error:', error);
-            if (!res.headersSent) {
-                res.status(502).json({
-                    error: 'Proxy request failed',
-                    message: error.message,
-                    target: targetUrl
-                });
-            }
-        });
-        
-        // Handle timeout
-        proxyReq.on('timeout', () => {
-            console.error('Proxy request timeout for:', targetUrl);
-            proxyReq.destroy();
-            if (!res.headersSent) {
-                res.status(504).json({
-                    error: 'Request timeout',
-                    message: 'The target server took too long to respond',
-                    target: targetUrl
-                });
-            }
-        });
-        
-        // If there's a request body, write it
-        if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
-            if (typeof req.body === 'string') {
-                proxyReq.write(req.body);
-            } else {
-                proxyReq.write(JSON.stringify(req.body));
-            }
-        }
-        
-        // End the request
-        proxyReq.end();
+        // Send the content
+        res.send(content);
         
     } catch (error) {
         console.error('Proxy error:', error);
-        res.status(400).json({
-            error: 'Invalid request',
+        res.status(500).json({
+            error: 'Proxy request failed',
             message: error.message,
             target: targetUrl
         });
