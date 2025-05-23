@@ -1,7 +1,6 @@
 import { createBareServer } from '@tomphttp/bare-server-node';
 import express from 'express';
 import http from 'node:http';
-import https from 'node:https';
 import path from "node:path";
 import fs from "node:fs";
 import crypto from 'node:crypto';
@@ -119,10 +118,6 @@ if (serverSettings.headersTimeout) {
   server.headersTimeout = serverSettings.headersTimeout;
 }
 
-// Enable JSON parsing for proxy requests
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
 // Function to get the hash for a file path, normalizing the path format
 function getFileHash(filePath) {
   // Normalize path format (using forward slashes)
@@ -134,85 +129,14 @@ function getFileHash(filePath) {
   return fileHashes[hashedPath] || CACHE_BUSTER;
 }
 
-// ==== SCRAMJET PROXY ENDPOINT ====
-// Add this BEFORE the cache-busting middleware to ensure it gets handled
-app.all('/scram', async (req, res) => {
-    const targetUrl = req.query.url || req.body.url;
-    
-    if (!targetUrl) {
-        return res.status(400).json({ error: 'Missing target URL parameter' });
-    }
-    
-    console.log('Scramjet proxy request for:', targetUrl);
-    
-    try {
-        // Make a simple fetch request
-        const response = await fetch(targetUrl, {
-            method: req.method === 'POST' ? 'GET' : req.method, // Force GET for now
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'identity', // Request uncompressed content
-                'Cache-Control': 'no-cache'
-            },
-            redirect: 'follow'
-        });
-        
-        console.log('Response status:', response.status);
-        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-        
-        // Set basic headers
-        res.status(response.status);
-        
-        // Copy content type
-        const contentType = response.headers.get('content-type');
-        if (contentType) {
-            res.set('Content-Type', contentType);
-        }
-        
-        // Add CORS headers
-        res.set('Access-Control-Allow-Origin', '*');
-        res.set('Access-Control-Allow-Methods', '*');
-        res.set('Access-Control-Allow-Headers', '*');
-        res.set('X-Frame-Options', 'ALLOWALL');
-        
-        // Get the content as text (this handles decompression automatically)
-        const content = await response.text();
-        console.log('Content length:', content.length);
-        console.log('Content preview:', content.substring(0, 100));
-        
-        // Send the content
-        res.send(content);
-        
-    } catch (error) {
-        console.error('Proxy error:', error);
-        res.status(500).json({
-            error: 'Proxy request failed',
-            message: error.message,
-            target: targetUrl
-        });
-    }
-});
-
-// Handle CORS preflight requests for the proxy endpoint
-app.options('/scram', (req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', '*');
-    res.set('Access-Control-Allow-Headers', '*');
-    res.set('Access-Control-Max-Age', '86400');
-    res.status(200).end();
-});
-
 // ==== GLOBAL CACHE-BUSTING MIDDLEWARE ====
 // This middleware sets appropriate cache headers for all responses
 app.use((req, res, next) => {
-  // IMPORTANT: Skip cache-busting for service, bare, and proxy paths
+  // IMPORTANT: Skip cache-busting for service and bare paths
   if (
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
     req.path.startsWith('/scramjet/') ||
-    req.path === '/scram' ||
     req.path.endsWith('scramjet-sw.js') ||
     req.path.includes('.woff') ||
     req.path.includes('.woff2') ||
@@ -246,12 +170,11 @@ app.use((req, res, next) => {
 // ==== HTML CONTENT TRANSFORMER ====
 // This middleware modifies HTML responses to add cache-busting parameters to all resources
 app.use((req, res, next) => {
-  // Skip for non-HTML requests, bare server requests, service paths, and proxy
+  // Skip for non-HTML requests, bare server requests, and service paths
   if (
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
     req.path.startsWith('/scramjet/') ||
-    req.path === '/scram' ||
     req.path.endsWith('.js') ||
     req.path.endsWith('.css') ||
     req.path.endsWith('.png') ||
@@ -359,12 +282,11 @@ app.use((req, res, next) => {
 // ==== OPTIMIZED FILE HANDLER ====
 // Custom handler for static files with content-based ETags
 app.use((req, res, next) => {
-  // Skip for service, bare paths, and proxy
+  // Skip for service and bare paths
   if (
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
-    req.path.startsWith('/scramjet/') ||
-    req.path === '/scram'
+    req.path.startsWith('/scramjet/')
   ) {
     return next();
   }
@@ -519,11 +441,10 @@ app.use(express.static(path.join(dirname, "static"), {
 
 // ==== 404 HANDLER ====
 app.get('*', function(req, res, next) {
-  // Skip the 404 page for service paths and proxy to prevent breaking proxied sites
+  // Skip the 404 page for service paths to prevent breaking proxied sites
   if (req.path.includes('/service/') || 
       req.path.startsWith('/uv/service/') ||
-      req.path.startsWith('/scramjet/') ||
-      req.path === '/scram') {
+      req.path.startsWith('/scramjet/')) {
     return next();
   }
   
@@ -584,7 +505,6 @@ try {
   });
   
   console.log("File watching enabled - changes will be detected automatically");
-  console.log("Scramjet proxy endpoint available at /scram");
 } catch (err) {
   console.error("Error setting up file watcher:", err.message);
   console.log("File watching NOT enabled - server restart required for changes");
@@ -593,5 +513,4 @@ try {
 // Start server
 server.listen({port: PORT, host: '0.0.0.0'}, () => {
   console.log(`Server listening on port ${PORT} (IPv4 and IPv6) - Instant file updates enabled`);
-  console.log(`🚀 Scramjet proxy endpoint: /scram`);
 });
