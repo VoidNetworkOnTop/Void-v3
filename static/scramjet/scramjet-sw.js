@@ -1,5 +1,5 @@
-// Enhanced Scramjet Service Worker with Proper Content Rewriting
-console.log('=== Enhanced Scramjet SW Loading ===');
+// Fixed Scramjet Service Worker with Backend Proxy Integration
+console.log('=== Fixed Scramjet SW Loading ===');
 
 // Enhanced URL encode/decode functions
 const scramjetConfig = {
@@ -49,7 +49,7 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(clients.claim());
 });
 
-// Enhanced Fetch event handler
+// Main fetch event handler
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
     
@@ -75,7 +75,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(handleProxy(event.request));
 });
 
-// Enhanced Proxy handler function
+// Main proxy handler - uses backend proxy endpoint
 async function handleProxy(request) {
     try {
         const url = new URL(request.url);
@@ -97,7 +97,12 @@ async function handleProxy(request) {
             targetUrl = scramjetConfig.decodeUrl(pathSegment);
             
             if (!targetUrl) {
-                targetUrl = pathSegment;
+                // Fallback: treat as direct URL
+                if (!pathSegment.startsWith('http')) {
+                    targetUrl = 'https://' + pathSegment;
+                } else {
+                    targetUrl = pathSegment;
+                }
             }
         }
         
@@ -108,53 +113,32 @@ async function handleProxy(request) {
             return new Response('Invalid target URL: ' + targetUrl, { status: 400 });
         }
         
-        // Create headers for the request
-        const requestHeaders = new Headers();
-        requestHeaders.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-        requestHeaders.set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
-        requestHeaders.set('Accept-Language', 'en-US,en;q=0.9');
-        requestHeaders.set('Accept-Encoding', 'gzip, deflate, br');
-        requestHeaders.set('Cache-Control', 'no-cache');
-        requestHeaders.set('Pragma', 'no-cache');
+        // Use backend proxy endpoint instead of direct fetch
+        const proxyEndpoint = '/proxy';
+        const proxyUrl = `${proxyEndpoint}?url=${encodeURIComponent(targetUrl)}`;
         
-        let response;
-        let fetchError;
+        console.log('SW: Proxying through backend:', proxyUrl);
         
-        // Try CORS first
-        try {
-            console.log('SW: Attempting CORS fetch');
-            response = await fetch(targetUrl, {
-                method: request.method,
-                headers: requestHeaders,
-                mode: 'cors',
-                credentials: 'omit',
-                redirect: 'follow',
-                cache: 'no-cache'
-            });
-            
-            console.log('SW: CORS fetch successful, status:', response.status);
-            
-        } catch (corsError) {
-            console.log('SW: CORS failed:', corsError.message);
-            fetchError = corsError;
-            
-            // Fallback to no-cors
-            try {
-                console.log('SW: Attempting no-cors fetch');
-                response = await fetch(targetUrl, {
-                    method: 'GET',
-                    mode: 'no-cors',
-                    credentials: 'omit',
-                    cache: 'no-cache',
-                    redirect: 'follow'
-                });
-                
-                console.log('SW: No-cors fetch successful');
-                
-            } catch (noCorsError) {
-                console.error('SW: Both fetch methods failed:', noCorsError);
-                return createErrorResponse('Both CORS and no-cors failed', targetUrl, fetchError, noCorsError);
-            }
+        // Forward the request to our backend proxy
+        const proxyRequest = new Request(proxyUrl, {
+            method: request.method,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': request.headers.get('Accept') || 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'X-Proxy-Target': targetUrl,
+                'X-Proxy-Origin': url.origin
+            },
+            body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
+            mode: 'same-origin',
+            credentials: 'same-origin',
+            redirect: 'follow'
+        });
+        
+        const response = await fetch(proxyRequest);
+        
+        if (!response.ok) {
+            throw new Error(`Backend proxy failed: ${response.status} ${response.statusText}`);
         }
         
         // Process the response
@@ -176,7 +160,7 @@ async function processResponse(response, targetUrl, originalRequest) {
     // Create response headers
     const responseHeaders = new Headers();
     
-    // Copy safe headers (skip security headers that might block content)
+    // Copy safe headers
     const skipHeaders = [
         'content-security-policy',
         'content-security-policy-report-only',
@@ -187,14 +171,14 @@ async function processResponse(response, targetUrl, originalRequest) {
         'permissions-policy',
         'cross-origin-embedder-policy',
         'cross-origin-opener-policy',
-        'cross-origin-resource-policy'
+        'cross-origin-resource-policy',
+        'content-encoding',
+        'transfer-encoding'
     ];
     
-    if (response.headers) {
-        for (const [key, value] of response.headers.entries()) {
-            if (!skipHeaders.includes(key.toLowerCase())) {
-                responseHeaders.set(key, value);
-            }
+    for (const [key, value] of response.headers.entries()) {
+        if (!skipHeaders.includes(key.toLowerCase())) {
+            responseHeaders.set(key, value);
         }
     }
     
@@ -238,11 +222,10 @@ async function processResponse(response, targetUrl, originalRequest) {
         
     } catch (contentError) {
         console.warn('SW: Content processing failed:', contentError);
-        // Fallback to raw content
         try {
             processedContent = await response.arrayBuffer();
         } catch (fallbackError) {
-            console.error('SW: Even fallback content reading failed:', fallbackError);
+            console.error('SW: Fallback content reading failed:', fallbackError);
             processedContent = 'Content could not be processed';
             responseHeaders.set('Content-Type', 'text/plain');
         }
@@ -255,18 +238,22 @@ async function processResponse(response, targetUrl, originalRequest) {
     });
 }
 
-// Enhanced HTML rewriting
+// Enhanced HTML rewriting with better proxy injection
 function rewriteHtml(html, baseUrl) {
     try {
         console.log('SW: Rewriting HTML content');
         
-        // Remove problematic meta tags
+        // Remove problematic meta tags and headers
         html = html.replace(/<meta[^>]*http-equiv=["']?content-security-policy["']?[^>]*>/gi, '');
         html = html.replace(/<meta[^>]*name=["']?referrer["']?[^>]*>/gi, '');
+        html = html.replace(/<meta[^>]*name=["']?viewport["']?[^>]*>/gi, '');
+        
+        // Add our own viewport meta
+        const viewportMeta = '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
         
         // Rewrite URLs in various attributes
         const urlAttributes = [
-            'href', 'src', 'action', 'formaction', 'data-src', 'data-href'
+            'href', 'src', 'action', 'formaction', 'data-src', 'data-href', 'data-url'
         ];
         
         for (const attr of urlAttributes) {
@@ -295,63 +282,195 @@ function rewriteHtml(html, baseUrl) {
             return match.replace(css, rewrittenCss);
         });
         
-        // Inject proxy script
+        // Enhanced proxy script with more comprehensive overrides
         const proxyScript = `
         <script>
         (function() {
+            console.log('Scramjet proxy script loaded for:', '${baseUrl.origin}');
+            
+            // Helper function to encode URLs for proxy
+            function encodeProxyUrl(url) {
+                if (!url || typeof url !== 'string') return url;
+                
+                // Skip if already proxied
+                if (url.startsWith('/scramjet/')) return url;
+                
+                // Skip special URLs
+                if (url.startsWith('data:') || url.startsWith('javascript:') || 
+                    url.startsWith('mailto:') || url.startsWith('#') || 
+                    url.startsWith('blob:') || url.startsWith('about:')) {
+                    return url;
+                }
+                
+                try {
+                    let fullUrl;
+                    if (url.startsWith('//')) {
+                        fullUrl = '${baseUrl.protocol}' + url;
+                    } else if (url.startsWith('/')) {
+                        fullUrl = '${baseUrl.origin}' + url;
+                    } else if (url.startsWith('http://') || url.startsWith('https://')) {
+                        fullUrl = url;
+                    } else {
+                        // Relative URL
+                        fullUrl = new URL(url, '${baseUrl.href}').href;
+                    }
+                    
+                    const encoded = btoa(unescape(encodeURIComponent(fullUrl)))
+                        .replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=/g, "");
+                    return '/scramjet/' + encoded;
+                } catch (e) {
+                    console.warn('Failed to encode URL:', url, e);
+                    return url;
+                }
+            }
+            
             // Override window.open
             const originalOpen = window.open;
             window.open = function(url, ...args) {
-                if (url && typeof url === 'string') {
-                    const proxyUrl = '/scramjet/' + btoa(unescape(encodeURIComponent(url)))
-                        .replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=/g, "");
+                if (url) {
+                    const proxyUrl = encodeProxyUrl(url);
                     return originalOpen.call(this, proxyUrl, ...args);
                 }
                 return originalOpen.apply(this, arguments);
             };
             
-            // Override location assignments
-            const originalReplace = location.replace;
-            const originalAssign = location.assign;
-            
-            location.replace = function(url) {
-                if (url && typeof url === 'string' && !url.startsWith('/scramjet/')) {
-                    const proxyUrl = '/scramjet/' + btoa(unescape(encodeURIComponent(url)))
-                        .replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=/g, "");
-                    return originalReplace.call(this, proxyUrl);
-                }
-                return originalReplace.call(this, url);
-            };
-            
-            location.assign = function(url) {
-                if (url && typeof url === 'string' && !url.startsWith('/scramjet/')) {
-                    const proxyUrl = '/scramjet/' + btoa(unescape(encodeURIComponent(url)))
-                        .replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=/g, "");
-                    return originalAssign.call(this, proxyUrl);
-                }
-                return originalAssign.call(this, url);
-            };
+            // Override location methods and properties
+            const originalLocation = window.location;
+            Object.defineProperty(window, 'location', {
+                get: function() {
+                    return new Proxy(originalLocation, {
+                        get: function(target, prop) {
+                            if (prop === 'href') {
+                                return '${baseUrl.href}';
+                            } else if (prop === 'origin') {
+                                return '${baseUrl.origin}';
+                            } else if (prop === 'host') {
+                                return '${baseUrl.host}';
+                            } else if (prop === 'hostname') {
+                                return '${baseUrl.hostname}';
+                            } else if (prop === 'pathname') {
+                                return '${baseUrl.pathname}';
+                            } else if (prop === 'search') {
+                                return '${baseUrl.search}';
+                            } else if (prop === 'hash') {
+                                return '${baseUrl.hash}';
+                            } else if (prop === 'protocol') {
+                                return '${baseUrl.protocol}';
+                            } else if (prop === 'port') {
+                                return '${baseUrl.port}';
+                            } else if (prop === 'assign') {
+                                return function(url) {
+                                    window.location.href = encodeProxyUrl(url);
+                                };
+                            } else if (prop === 'replace') {
+                                return function(url) {
+                                    originalLocation.replace(encodeProxyUrl(url));
+                                };
+                            } else if (prop === 'reload') {
+                                return function() {
+                                    originalLocation.reload();
+                                };
+                            }
+                            return target[prop];
+                        },
+                        set: function(target, prop, value) {
+                            if (prop === 'href') {
+                                originalLocation.href = encodeProxyUrl(value);
+                                return true;
+                            } else if (prop === 'hash') {
+                                // Handle hash changes specially
+                                const currentUrl = new URL('${baseUrl.href}');
+                                currentUrl.hash = value;
+                                originalLocation.href = encodeProxyUrl(currentUrl.href);
+                                return true;
+                            }
+                            target[prop] = value;
+                            return true;
+                        }
+                    });
+                },
+                configurable: true
+            });
             
             // Override fetch
             const originalFetch = window.fetch;
             window.fetch = function(input, init) {
-                if (typeof input === 'string' && !input.startsWith('/scramjet/') && (input.startsWith('http') || input.startsWith('//'))) {
-                    const proxyUrl = '/scramjet/' + btoa(unescape(encodeURIComponent(input)))
-                        .replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=/g, "");
+                if (typeof input === 'string') {
+                    const proxyUrl = encodeProxyUrl(input);
                     return originalFetch.call(this, proxyUrl, init);
+                } else if (input instanceof Request) {
+                    const proxyUrl = encodeProxyUrl(input.url);
+                    const newRequest = new Request(proxyUrl, input);
+                    return originalFetch.call(this, newRequest, init);
                 }
                 return originalFetch.apply(this, arguments);
             };
+            
+            // Override XMLHttpRequest
+            const originalXHR = window.XMLHttpRequest;
+            window.XMLHttpRequest = function() {
+                const xhr = new originalXHR();
+                const originalOpen = xhr.open;
+                xhr.open = function(method, url, ...args) {
+                    const proxyUrl = encodeProxyUrl(url);
+                    return originalOpen.call(this, method, proxyUrl, ...args);
+                };
+                return xhr;
+            };
+            
+            // Override form submissions
+            document.addEventListener('submit', function(e) {
+                const form = e.target;
+                if (form.action) {
+                    const proxyAction = encodeProxyUrl(form.action);
+                    form.action = proxyAction;
+                }
+            }, true);
+            
+            // Override anchor clicks
+            document.addEventListener('click', function(e) {
+                const anchor = e.target.closest('a');
+                if (anchor && anchor.href && !anchor.href.startsWith('/scramjet/')) {
+                    e.preventDefault();
+                    const proxyHref = encodeProxyUrl(anchor.href);
+                    if (anchor.target === '_blank') {
+                        window.open(proxyHref);
+                    } else {
+                        window.location.href = proxyHref;
+                    }
+                }
+            }, true);
+            
+            // Override history API
+            const originalPushState = history.pushState;
+            const originalReplaceState = history.replaceState;
+            
+            history.pushState = function(state, title, url) {
+                if (url) {
+                    url = encodeProxyUrl(url);
+                }
+                return originalPushState.call(this, state, title, url);
+            };
+            
+            history.replaceState = function(state, title, url) {
+                if (url) {
+                    url = encodeProxyUrl(url);
+                }
+                return originalReplaceState.call(this, state, title, url);
+            };
+            
         })();
         </script>`;
         
-        // Inject the script before closing head or body
+        // Inject the script and viewport
         if (html.includes('</head>')) {
-            html = html.replace('</head>', proxyScript + '</head>');
+            html = html.replace('</head>', viewportMeta + proxyScript + '</head>');
+        } else if (html.includes('<head>')) {
+            html = html.replace('<head>', '<head>' + viewportMeta + proxyScript);
         } else if (html.includes('</body>')) {
             html = html.replace('</body>', proxyScript + '</body>');
         } else {
-            html += proxyScript;
+            html = viewportMeta + proxyScript + html;
         }
         
         // Add or update base tag
@@ -506,7 +625,7 @@ function createErrorResponse(title, url, ...errors) {
                 <div class="details">
                     ${errors.map(err => `<div>• ${err.message || err}</div>`).join('')}
                 </div>
-                <p>This site may not be accessible through the proxy due to CORS restrictions or other security policies.</p>
+                <p>This may be due to CORS restrictions, network issues, or the target server being unavailable.</p>
                 <button onclick="history.back()">← Go Back</button>
                 <button onclick="location.reload()">🔄 Retry</button>
             </div>
@@ -528,4 +647,4 @@ self.addEventListener('message', (event) => {
     }
 });
 
-console.log('=== Enhanced Scramjet SW Ready ===');
+console.log('=== Fixed Scramjet SW Ready ===');
