@@ -1,5 +1,5 @@
-// Comprehensive Working Scramjet Service Worker
-console.log('=== Comprehensive Working Scramjet SW Loading ===');
+// Complete Working Scramjet Service Worker for Full Game Compatibility
+console.log('=== Complete Working Scramjet SW Loading ===');
 
 // URL encode/decode functions
 const scramjetConfig = {
@@ -47,16 +47,18 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(clients.claim());
 });
 
-// Main fetch handler
+// Main fetch handler - intercepts ALL requests
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
     
+    // Only handle scramjet paths
     if (!url.pathname.startsWith('/scramjet/')) {
         return;
     }
     
-    console.log('SW: Handling scramjet request:', url.pathname);
+    console.log('SW: Intercepting request:', url.pathname);
     
+    // Handle test endpoint
     if (url.pathname === '/scramjet/test') {
         event.respondWith(
             new Response('Service Worker Test Success!', {
@@ -103,28 +105,29 @@ async function handleProxy(request) {
         const proxyUrl = `/scram?url=${encodeURIComponent(targetUrl)}`;
         console.log('SW: Proxying through backend:', proxyUrl);
         
-        // Forward original request headers
+        // Forward all original request properties
         const proxyHeaders = new Headers();
-        proxyHeaders.set('User-Agent', request.headers.get('User-Agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-        proxyHeaders.set('Accept', request.headers.get('Accept') || 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
-        proxyHeaders.set('Accept-Language', request.headers.get('Accept-Language') || 'en-US,en;q=0.9');
-        proxyHeaders.set('Accept-Encoding', 'identity');
-        proxyHeaders.set('Cache-Control', 'no-cache');
         
-        // Copy safe headers from original request
-        const safeHeaders = ['referer', 'authorization', 'cookie'];
-        for (const header of safeHeaders) {
-            if (request.headers.has(header)) {
-                proxyHeaders.set(header, request.headers.get(header));
+        // Copy all headers from original request
+        for (const [key, value] of request.headers.entries()) {
+            // Skip problematic headers
+            if (!['host', 'origin', 'referer'].includes(key.toLowerCase())) {
+                proxyHeaders.set(key, value);
             }
         }
+        
+        // Set essential headers
+        proxyHeaders.set('User-Agent', request.headers.get('User-Agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        proxyHeaders.set('Accept', request.headers.get('Accept') || '*/*');
+        proxyHeaders.set('Accept-Language', request.headers.get('Accept-Language') || 'en-US,en;q=0.9');
         
         const proxyRequest = new Request(proxyUrl, {
             method: request.method,
             headers: proxyHeaders,
             body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
             mode: 'same-origin',
-            credentials: 'same-origin'
+            credentials: 'same-origin',
+            redirect: 'follow'
         });
         
         const response = await fetch(proxyRequest);
@@ -151,13 +154,12 @@ async function processResponse(response, targetUrl, originalRequest) {
     // Create response headers
     const responseHeaders = new Headers();
     
-    // Skip problematic headers
+    // Copy all response headers except problematic ones
     const skipHeaders = [
         'content-security-policy', 'content-security-policy-report-only',
         'x-frame-options', 'x-content-type-options', 'strict-transport-security',
         'referrer-policy', 'permissions-policy', 'cross-origin-embedder-policy',
-        'cross-origin-opener-policy', 'cross-origin-resource-policy',
-        'content-encoding', 'transfer-encoding'
+        'cross-origin-opener-policy', 'cross-origin-resource-policy'
     ];
     
     for (const [key, value] of response.headers.entries()) {
@@ -170,6 +172,7 @@ async function processResponse(response, targetUrl, originalRequest) {
     responseHeaders.set('Access-Control-Allow-Origin', '*');
     responseHeaders.set('Access-Control-Allow-Methods', '*');
     responseHeaders.set('Access-Control-Allow-Headers', '*');
+    responseHeaders.set('Access-Control-Expose-Headers', '*');
     responseHeaders.set('X-Frame-Options', 'ALLOWALL');
     
     let processedContent;
@@ -189,10 +192,15 @@ async function processResponse(response, targetUrl, originalRequest) {
             const cssText = await response.text();
             processedContent = rewriteCss(cssText, baseUrl);
             
-        } else if (contentType.includes('javascript')) {
+        } else if (contentType.includes('javascript') || contentType.includes('text/javascript')) {
             console.log('SW: Processing as JavaScript');
             const jsText = await response.text();
             processedContent = rewriteJavaScript(jsText, baseUrl);
+            
+        } else if (contentType.includes('application/json')) {
+            console.log('SW: Processing as JSON');
+            const jsonText = await response.text();
+            processedContent = jsonText; // Don't modify JSON
             
         } else {
             console.log('SW: Passing through as binary content');
@@ -211,30 +219,30 @@ async function processResponse(response, targetUrl, originalRequest) {
     });
 }
 
-// Comprehensive HTML rewriting
+// Comprehensive HTML rewriting with extensive game support
 function rewriteHtml(html, baseUrl) {
     try {
-        console.log('SW: Rewriting HTML content');
+        console.log('SW: Rewriting HTML content for games');
         
-        // Remove security headers and problematic meta tags
+        // Remove security restrictions
         html = html.replace(/<meta[^>]*http-equiv=["']?content-security-policy["']?[^>]*>/gi, '');
         html = html.replace(/<meta[^>]*name=["']?referrer["']?[^>]*>/gi, '');
-        html = html.replace(/<meta[^>]*name=["']?viewport["']?[^>]*>/gi, '');
         
-        // Add proper viewport
-        const viewportMeta = '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
-        
-        // Comprehensive URL rewriting for all relevant attributes
+        // Comprehensive URL rewriting for ALL possible attributes
         const urlAttributes = [
             'href', 'src', 'action', 'formaction', 'data-src', 'data-href', 
-            'data-url', 'poster', 'background', 'cite', 'longdesc'
+            'data-url', 'poster', 'background', 'cite', 'longdesc', 'manifest',
+            'data', 'codebase', 'archive', 'classid', 'usemap'
         ];
         
         for (const attr of urlAttributes) {
             const regex = new RegExp(`(${attr})=["']([^"']+)["']`, 'gi');
             html = html.replace(regex, (match, attribute, url) => {
-                const rewrittenUrl = rewriteUrl(url, baseUrl);
-                return `${attribute}="${rewrittenUrl}"`;
+                if (url && !url.startsWith('data:') && !url.startsWith('javascript:') && !url.startsWith('#')) {
+                    const rewrittenUrl = rewriteUrl(url, baseUrl);
+                    return `${attribute}="${rewrittenUrl}"`;
+                }
+                return match;
             });
         }
         
@@ -256,13 +264,13 @@ function rewriteHtml(html, baseUrl) {
             return match.replace(css, rewrittenCss);
         });
         
-        // Comprehensive proxy script for all interactions
+        // Comprehensive game-compatible proxy script
         const proxyScript = `
         <script>
         (function() {
-            console.log('Comprehensive Scramjet proxy loaded for:', '${baseUrl.origin}');
+            console.log('Game-compatible Scramjet proxy loaded for:', '${baseUrl.origin}');
             
-            // Helper function to encode URLs for proxy
+            // Enhanced URL encoding for games
             function encodeProxyUrl(url) {
                 if (!url || typeof url !== 'string') return url;
                 
@@ -286,7 +294,7 @@ function rewriteHtml(html, baseUrl) {
                     } else if (url.startsWith('http://') || url.startsWith('https://')) {
                         fullUrl = url;
                     } else {
-                        // Relative URL
+                        // Relative URL - crucial for games
                         fullUrl = new URL(url, '${baseUrl.href}').href;
                     }
                     
@@ -299,14 +307,16 @@ function rewriteHtml(html, baseUrl) {
                 }
             }
             
-            // Override window.open
+            // Override ALL network methods for games
+            
+            // 1. Window.open
             const originalOpen = window.open;
             window.open = function(url, ...args) {
                 console.log('Proxying window.open:', url);
                 return originalOpen.call(this, encodeProxyUrl(url), ...args);
             };
             
-            // Override fetch
+            // 2. Fetch API
             const originalFetch = window.fetch;
             window.fetch = function(input, init) {
                 if (typeof input === 'string') {
@@ -316,26 +326,107 @@ function rewriteHtml(html, baseUrl) {
                 } else if (input instanceof Request) {
                     const proxyUrl = encodeProxyUrl(input.url);
                     console.log('Proxying fetch request:', input.url, '->', proxyUrl);
-                    const newRequest = new Request(proxyUrl, input);
+                    const newRequest = new Request(proxyUrl, {
+                        method: input.method,
+                        headers: input.headers,
+                        body: input.body,
+                        mode: 'same-origin',
+                        credentials: input.credentials,
+                        cache: input.cache,
+                        redirect: input.redirect,
+                        referrer: input.referrer,
+                        integrity: input.integrity
+                    });
                     return originalFetch.call(this, newRequest, init);
                 }
                 return originalFetch.apply(this, arguments);
             };
             
-            // Override XMLHttpRequest
+            // 3. XMLHttpRequest
             const originalXHR = window.XMLHttpRequest;
             window.XMLHttpRequest = function() {
                 const xhr = new originalXHR();
                 const originalOpen = xhr.open;
+                const originalSend = xhr.send;
+                
                 xhr.open = function(method, url, ...args) {
                     const proxyUrl = encodeProxyUrl(url);
                     console.log('Proxying XHR:', url, '->', proxyUrl);
                     return originalOpen.call(this, method, proxyUrl, ...args);
                 };
+                
                 return xhr;
             };
             
-            // Override location methods SAFELY
+            // 4. Image loading
+            const originalImage = window.Image;
+            window.Image = function(width, height) {
+                const img = new originalImage(width, height);
+                const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+                
+                Object.defineProperty(img, 'src', {
+                    get: originalSrcDescriptor.get,
+                    set: function(value) {
+                        const proxyUrl = encodeProxyUrl(value);
+                        console.log('Proxying Image src:', value, '->', proxyUrl);
+                        originalSrcDescriptor.set.call(this, proxyUrl);
+                    },
+                    configurable: true,
+                    enumerable: true
+                });
+                
+                return img;
+            };
+            
+            // 5. Audio loading
+            if (window.Audio) {
+                const originalAudio = window.Audio;
+                window.Audio = function(src) {
+                    const audio = new originalAudio();
+                    if (src) {
+                        const proxyUrl = encodeProxyUrl(src);
+                        console.log('Proxying Audio src:', src, '->', proxyUrl);
+                        audio.src = proxyUrl;
+                    }
+                    return audio;
+                };
+            }
+            
+            // 6. Video loading
+            const originalCreateElement = document.createElement;
+            document.createElement = function(tagName) {
+                const element = originalCreateElement.call(this, tagName);
+                
+                if (tagName.toLowerCase() === 'img' || tagName.toLowerCase() === 'image') {
+                    const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+                    Object.defineProperty(element, 'src', {
+                        get: originalSrcDescriptor.get,
+                        set: function(value) {
+                            const proxyUrl = encodeProxyUrl(value);
+                            console.log('Proxying created image src:', value, '->', proxyUrl);
+                            originalSrcDescriptor.set.call(this, proxyUrl);
+                        },
+                        configurable: true,
+                        enumerable: true
+                    });
+                } else if (tagName.toLowerCase() === 'script') {
+                    const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+                    Object.defineProperty(element, 'src', {
+                        get: originalSrcDescriptor.get,
+                        set: function(value) {
+                            const proxyUrl = encodeProxyUrl(value);
+                            console.log('Proxying script src:', value, '->', proxyUrl);
+                            originalSrcDescriptor.set.call(this, proxyUrl);
+                        },
+                        configurable: true,
+                        enumerable: true
+                    });
+                }
+                
+                return element;
+            };
+            
+            // 7. Location overrides
             const originalLocation = window.location;
             
             // Store original methods
@@ -360,13 +451,13 @@ function rewriteHtml(html, baseUrl) {
             }
             
             // Handle direct location.href assignments
-            let locationHrefDescriptor = Object.getOwnPropertyDescriptor(originalLocation, 'href');
-            if (!locationHrefDescriptor) {
-                locationHrefDescriptor = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
-            }
-            
-            if (locationHrefDescriptor && locationHrefDescriptor.set) {
-                try {
+            try {
+                let locationHrefDescriptor = Object.getOwnPropertyDescriptor(originalLocation, 'href');
+                if (!locationHrefDescriptor) {
+                    locationHrefDescriptor = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+                }
+                
+                if (locationHrefDescriptor && locationHrefDescriptor.set) {
                     Object.defineProperty(originalLocation, 'href', {
                         get: locationHrefDescriptor.get,
                         set: function(url) {
@@ -377,25 +468,12 @@ function rewriteHtml(html, baseUrl) {
                         configurable: true,
                         enumerable: true
                     });
-                } catch (e) {
-                    console.warn('Could not override location.href setter:', e);
                 }
+            } catch (e) {
+                console.warn('Could not override location.href setter:', e);
             }
             
-            // Provide correct location information
-            window.__scramjet_location = {
-                href: '${baseUrl.href}',
-                origin: '${baseUrl.origin}',
-                host: '${baseUrl.host}',
-                hostname: '${baseUrl.hostname}',
-                pathname: '${baseUrl.pathname}',
-                search: '${baseUrl.search}',
-                hash: '${baseUrl.hash}',
-                protocol: '${baseUrl.protocol}',
-                port: '${baseUrl.port}'
-            };
-            
-            // Handle form submissions
+            // 8. Form submissions
             document.addEventListener('submit', function(e) {
                 const form = e.target;
                 if (form.action && !form.action.startsWith('/scramjet/')) {
@@ -405,9 +483,8 @@ function rewriteHtml(html, baseUrl) {
                 }
             }, true);
             
-            // Handle all link clicks comprehensively
+            // 9. All link clicks
             document.addEventListener('click', function(e) {
-                // Check for anchor elements
                 const anchor = e.target.closest('a');
                 if (anchor && anchor.href && !anchor.href.startsWith('/scramjet/')) {
                     e.preventDefault();
@@ -423,24 +500,9 @@ function rewriteHtml(html, baseUrl) {
                     }
                     return false;
                 }
-                
-                // Check for elements with onclick handlers that might navigate
-                const clickable = e.target.closest('[onclick], [data-href], [data-url]');
-                if (clickable) {
-                    const dataHref = clickable.getAttribute('data-href') || clickable.getAttribute('data-url');
-                    if (dataHref && !dataHref.startsWith('/scramjet/')) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
-                        const proxyHref = encodeProxyUrl(dataHref);
-                        console.log('Proxying data-href click:', dataHref, '->', proxyHref);
-                        window.location.href = proxyHref;
-                        return false;
-                    }
-                }
             }, true);
             
-            // Override history API
+            // 10. History API
             const originalPushState = history.pushState;
             const originalReplaceState = history.replaceState;
             
@@ -460,60 +522,68 @@ function rewriteHtml(html, baseUrl) {
                 return originalReplaceState.call(this, state, title, url);
             };
             
-            // Handle window.postMessage for cross-frame communication
-            const originalPostMessage = window.postMessage;
-            window.postMessage = function(message, targetOrigin, transfer) {
-                if (targetOrigin && targetOrigin !== '*' && !targetOrigin.startsWith('/scramjet/')) {
-                    targetOrigin = encodeProxyUrl(targetOrigin);
-                    console.log('Proxying postMessage targetOrigin:', arguments[1], '->', targetOrigin);
-                }
-                return originalPostMessage.call(this, message, targetOrigin, transfer);
-            };
-            
-            // Monitor and rewrite dynamically added content
+            // 11. Monitor and rewrite dynamic content
             const observer = new MutationObserver(function(mutations) {
                 mutations.forEach(function(mutation) {
                     mutation.addedNodes.forEach(function(node) {
                         if (node.nodeType === Node.ELEMENT_NODE) {
                             // Rewrite URLs in newly added elements
                             const elements = node.querySelectorAll ? 
-                                [node, ...node.querySelectorAll('[href], [src], [action]')] : [node];
+                                [node, ...node.querySelectorAll('[href], [src], [action], [poster], [data], [background]')] : [node];
                             
                             elements.forEach(function(el) {
-                                if (el.href && !el.href.startsWith('/scramjet/')) {
-                                    el.href = encodeProxyUrl(el.href);
-                                }
-                                if (el.src && !el.src.startsWith('/scramjet/')) {
-                                    el.src = encodeProxyUrl(el.src);
-                                }
-                                if (el.action && !el.action.startsWith('/scramjet/')) {
-                                    el.action = encodeProxyUrl(el.action);
-                                }
+                                ['href', 'src', 'action', 'poster', 'data', 'background'].forEach(function(attr) {
+                                    if (el[attr] && !el[attr].startsWith('/scramjet/') && !el[attr].startsWith('data:')) {
+                                        const original = el[attr];
+                                        const proxied = encodeProxyUrl(original);
+                                        if (original !== proxied) {
+                                            console.log('Proxying dynamic', attr + ':', original, '->', proxied);
+                                            el[attr] = proxied;
+                                        }
+                                    }
+                                });
                             });
                         }
                     });
                 });
             });
             
-            observer.observe(document.body || document.documentElement, {
-                childList: true,
-                subtree: true
-            });
+            if (document.body) {
+                observer.observe(document.body, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['src', 'href', 'action', 'poster', 'data', 'background']
+                });
+            }
             
-            console.log('Scramjet proxy script fully initialized');
+            // 12. Provide correct location information for games
+            window.__scramjet_location = {
+                href: '${baseUrl.href}',
+                origin: '${baseUrl.origin}',
+                host: '${baseUrl.host}',
+                hostname: '${baseUrl.hostname}',
+                pathname: '${baseUrl.pathname}',
+                search: '${baseUrl.search}',
+                hash: '${baseUrl.hash}',
+                protocol: '${baseUrl.protocol}',
+                port: '${baseUrl.port}'
+            };
+            
+            console.log('Game-compatible Scramjet proxy fully initialized');
             
         })();
         </script>`;
         
-        // Inject the script and viewport
+        // Inject the script
         if (html.includes('</head>')) {
-            html = html.replace('</head>', viewportMeta + proxyScript + '</head>');
+            html = html.replace('</head>', proxyScript + '</head>');
         } else if (html.includes('<head>')) {
-            html = html.replace('<head>', '<head>' + viewportMeta + proxyScript);
+            html = html.replace('<head>', '<head>' + proxyScript);
         } else if (html.includes('</body>')) {
             html = html.replace('</body>', proxyScript + '</body>');
         } else {
-            html = viewportMeta + proxyScript + html;
+            html = proxyScript + html;
         }
         
         // Add base tag for relative URLs
@@ -532,13 +602,16 @@ function rewriteHtml(html, baseUrl) {
     }
 }
 
-// Comprehensive CSS rewriting
+// Enhanced CSS rewriting
 function rewriteCss(css, baseUrl) {
     try {
         // Rewrite url() in CSS
         css = css.replace(/url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi, (match, url) => {
-            const rewrittenUrl = rewriteUrl(url, baseUrl);
-            return `url("${rewrittenUrl}")`;
+            if (!url.startsWith('data:')) {
+                const rewrittenUrl = rewriteUrl(url, baseUrl);
+                return `url("${rewrittenUrl}")`;
+            }
+            return match;
         });
         
         // Rewrite @import statements
@@ -554,11 +627,11 @@ function rewriteCss(css, baseUrl) {
     }
 }
 
-// Basic JavaScript rewriting
+// Basic JavaScript rewriting for games
 function rewriteJavaScript(js, baseUrl) {
     try {
-        // Basic URL rewriting in JavaScript strings (very simple implementation)
-        // This is complex to do properly, so we do minimal rewriting
+        // Don't heavily modify JS as it can break games
+        // Just return as-is for maximum compatibility
         return js;
     } catch (error) {
         console.error('SW: JavaScript rewriting failed:', error);
@@ -571,7 +644,7 @@ function rewriteSrcset(srcset, baseUrl) {
     try {
         return srcset.replace(/([^\s,]+)/g, (match, url) => {
             // Only rewrite if it looks like a URL (not a size descriptor)
-            if (url.includes('.') && !url.endsWith('x') && !url.endsWith('w')) {
+            if (url.includes('.') && !url.endsWith('x') && !url.endsWith('w') && !url.startsWith('data:')) {
                 return rewriteUrl(url, baseUrl);
             }
             return url;
@@ -582,7 +655,7 @@ function rewriteSrcset(srcset, baseUrl) {
     }
 }
 
-// Comprehensive URL rewriting helper
+// Enhanced URL rewriting
 function rewriteUrl(url, baseUrl) {
     try {
         // Skip if already a proxy URL
@@ -607,7 +680,7 @@ function rewriteUrl(url, baseUrl) {
         } else if (url.startsWith('http://') || url.startsWith('https://')) {
             absoluteUrl = url;
         } else {
-            // Relative URL
+            // Relative URL - critical for games
             absoluteUrl = new URL(url, baseUrl).href;
         }
         
@@ -663,4 +736,4 @@ self.addEventListener('message', (event) => {
     }
 });
 
-console.log('=== Comprehensive Working Scramjet SW Ready ===');
+console.log('=== Complete Working Scramjet SW Ready ===');
