@@ -129,62 +129,6 @@ function getFileHash(filePath) {
   return fileHashes[hashedPath] || CACHE_BUSTER;
 }
 
-// ==== SCRAMJET PROXY ENDPOINT ====
-app.all('/scram', async (req, res) => {
-    const targetUrl = req.query.url || req.body.url;
-    
-    if (!targetUrl) {
-        return res.status(400).json({ error: 'Missing target URL parameter' });
-    }
-    
-    console.log('Scramjet proxy request for:', targetUrl);
-    
-    try {
-        const response = await fetch(targetUrl, {
-            method: req.method === 'POST' ? 'GET' : req.method,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'identity',
-                'Cache-Control': 'no-cache'
-            },
-            redirect: 'follow'
-        });
-        
-        res.status(response.status);
-        
-        const contentType = response.headers.get('content-type');
-        if (contentType) {
-            res.set('Content-Type', contentType);
-        }
-        
-        res.set('Access-Control-Allow-Origin', '*');
-        res.set('Access-Control-Allow-Methods', '*');
-        res.set('Access-Control-Allow-Headers', '*');
-        res.set('X-Frame-Options', 'ALLOWALL');
-        
-        const content = await response.text();
-        res.send(content);
-        
-    } catch (error) {
-        console.error('Proxy error:', error);
-        res.status(500).json({
-            error: 'Proxy request failed',
-            message: error.message,
-            target: targetUrl
-        });
-    }
-});
-
-app.options('/scram', (req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', '*');
-    res.set('Access-Control-Allow-Headers', '*');
-    res.set('Access-Control-Max-Age', '86400');
-    res.status(200).end();
-});
-
 // ==== GLOBAL CACHE-BUSTING MIDDLEWARE ====
 // This middleware sets appropriate cache headers for all responses
 app.use((req, res, next) => {
@@ -193,7 +137,6 @@ app.use((req, res, next) => {
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
     req.path.startsWith('/scramjet/') ||
-    req.path === '/scram' ||
     req.path.endsWith('scramjet-sw.js') ||
     req.path.includes('.woff') ||
     req.path.includes('.woff2') ||
@@ -232,7 +175,6 @@ app.use((req, res, next) => {
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
     req.path.startsWith('/scramjet/') ||
-    req.path === '/scram' ||
     req.path.endsWith('.js') ||
     req.path.endsWith('.css') ||
     req.path.endsWith('.png') ||
@@ -344,8 +286,7 @@ app.use((req, res, next) => {
   if (
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
-    req.path.startsWith('/scramjet/') ||
-    req.path === '/scram'
+    req.path.startsWith('/scramjet/')
   ) {
     return next();
   }
@@ -503,8 +444,7 @@ app.get('*', function(req, res, next) {
   // Skip the 404 page for service paths to prevent breaking proxied sites
   if (req.path.includes('/service/') || 
       req.path.startsWith('/uv/service/') ||
-      req.path.startsWith('/scramjet/') ||
-      req.path === '/scram') {
+      req.path.startsWith('/scramjet/')) {
     return next();
   }
   
