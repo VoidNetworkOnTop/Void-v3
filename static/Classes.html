@@ -410,6 +410,32 @@
     <script>
         console.log('Game loader initializing...');
         
+        // Enhanced device detection with Chrome/Chromebook specific handling
+        const deviceInfo = {
+            isChrome: /Chrome/.test(navigator.userAgent) && !/Edge/.test(navigator.userAgent),
+            isChromebook: /CrOS/.test(navigator.userAgent),
+            isSlowDevice: navigator.hardwareConcurrency < 4 || navigator.deviceMemory < 4,
+            isMobile: /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+            
+            // Get minimum wait times based on device
+            getMinimumWaitTime() {
+                if (this.isChromebook) return 45000; // 45 seconds for Chromebooks
+                if (this.isChrome && this.isSlowDevice) return 40000; // 40 seconds for slow Chrome
+                if (this.isChrome) return 35000; // 35 seconds for regular Chrome
+                if (this.isSlowDevice) return 30000; // 30 seconds for other slow devices
+                return 25000; // 25 seconds for fast devices
+            },
+            
+            // Get detection interval based on device
+            getDetectionInterval() {
+                if (this.isChromebook || this.isSlowDevice) return 4000; // Check every 4 seconds
+                if (this.isChrome) return 3000; // Check every 3 seconds
+                return 2000; // Check every 2 seconds for fast devices
+            }
+        };
+        
+        console.log('Device detected:', deviceInfo);
+        
         // Enhanced game state tracking
         let gameLoaded = false;
         let startTime = Date.now();
@@ -421,6 +447,7 @@
         let failsafeTimeout = null;
         let iframeLoaded = false;
         let tabFinishedLoading = false;
+        let minimumWaitTimeReached = false;
         
         // DOM elements
         const loadingScreen = document.getElementById('loadingScreen');
@@ -487,43 +514,78 @@
             }, 4000);
         }
         
-        // Enhanced tab loading detection
+        // Much more conservative tab loading detection for Chrome devices
         function isTabStillLoading() {
             try {
-                // Check if iframe document is still loading
-                if (iframe.contentDocument) {
-                    const doc = iframe.contentDocument;
-                    if (doc.readyState !== 'complete') {
-                        console.log('Tab still loading - iframe document not complete:', doc.readyState);
-                        return true;
-                    }
-                    
-                    // Check for ongoing network requests (images, scripts, etc.)
-                    const images = doc.querySelectorAll('img');
-                    for (let img of images) {
-                        if (!img.complete) {
-                            console.log('Tab still loading - images not complete');
+                // For Chrome devices, be extra careful
+                if (deviceInfo.isChrome) {
+                    // Check if iframe document is still loading
+                    if (iframe.contentDocument) {
+                        const doc = iframe.contentDocument;
+                        
+                        // Document must be completely loaded
+                        if (doc.readyState !== 'complete') {
+                            console.log('Chrome: Tab still loading - document not complete:', doc.readyState);
                             return true;
                         }
-                    }
-                    
-                    // Check for loading scripts
-                    const scripts = doc.querySelectorAll('script[src]');
-                    for (let script of scripts) {
-                        if (!script.dataset.loaded) {
-                            console.log('Tab still loading - scripts not loaded');
+                        
+                        // Check for ongoing network requests (images, scripts, etc.)
+                        const images = doc.querySelectorAll('img');
+                        for (let img of images) {
+                            if (!img.complete && img.src) {
+                                console.log('Chrome: Tab still loading - images not complete');
+                                return true;
+                            }
+                        }
+                        
+                        // Check for loading scripts more thoroughly
+                        const scripts = doc.querySelectorAll('script[src]');
+                        let scriptsLoading = 0;
+                        for (let script of scripts) {
+                            if (!script.dataset.loaded && script.src) {
+                                scriptsLoading++;
+                            }
+                        }
+                        
+                        if (scriptsLoading > 0) {
+                            console.log('Chrome: Tab still loading -', scriptsLoading, 'scripts not loaded');
                             return true;
+                        }
+                        
+                        // Check for CSS loading
+                        const stylesheets = doc.querySelectorAll('link[rel="stylesheet"]');
+                        for (let css of stylesheets) {
+                            if (!css.sheet && css.href) {
+                                console.log('Chrome: Tab still loading - stylesheets not loaded');
+                                return true;
+                            }
+                        }
+                        
+                        // For Chrome, also check if there are active loading indicators
+                        const loadingIndicators = doc.querySelectorAll('[id*="load"], [class*="load"], [id*="progress"], [class*="progress"]');
+                        for (let indicator of loadingIndicators) {
+                            const style = window.getComputedStyle(indicator);
+                            if (style.display !== 'none' && indicator.offsetWidth > 20 && indicator.offsetHeight > 20) {
+                                console.log('Chrome: Tab still loading - loading indicators visible');
+                                return true;
+                            }
                         }
                     }
                 }
                 
-                // For cross-origin iframes, use performance API if available
-                if (performance && performance.getEntriesByType) {
-                    const navEntries = performance.getEntriesByType('navigation');
-                    if (navEntries.length > 0) {
-                        const navEntry = navEntries[0];
-                        if (navEntry.loadEventEnd === 0) {
-                            console.log('Tab still loading - navigation not complete');
+                // For non-Chrome devices, use simpler check
+                if (iframe.contentDocument) {
+                    const doc = iframe.contentDocument;
+                    if (doc.readyState !== 'complete') {
+                        console.log('Tab still loading - document not complete:', doc.readyState);
+                        return true;
+                    }
+                    
+                    // Basic image loading check
+                    const images = doc.querySelectorAll('img');
+                    for (let img of images) {
+                        if (!img.complete && img.src) {
+                            console.log('Tab still loading - images not complete');
                             return true;
                         }
                     }
