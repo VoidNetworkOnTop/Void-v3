@@ -22,7 +22,7 @@ const games2Data = [
 {
     title: "Duck Life", 
     imgSrc: "https://lh7-us.googleusercontent.com/MT7Kp6m_Bbb-HHM29S7ow2cl1YvC6LKI0OSg3nLEVXTg0YffNRsRPeU41O-mqz-bn8Cg84yDtrrJXSUGVj2JeMp10Ddslxs9TX5z3mu_qNrF1uKb2BTL5bN3B9bLf7EMunzY3cJQOg9z09gDSZahVTlUk3g5UQ",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/48914/")
+    link: "/local games/ducklife/index.html"
 },
 {
     title: "Duck Life 2", 
