@@ -37,7 +37,7 @@ const gamesData = [
 {
     title: "Moto X3M 1",
     imgSrc: "/img/gameimg/motox3m.jpeg",
-    link: "/local games/motox3m1/index.html")
+    link: "/local games/motox3m1/index.html"
 },
 {
     title: "Moto X3M 2",
