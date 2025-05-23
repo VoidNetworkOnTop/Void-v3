@@ -27,7 +27,7 @@ const gamesData = [
 {
     title: "Suika Game",
     imgSrc: "/img/gameimg/suikagame.jpeg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://suikagame.com")
+    link: "/local games/watermelongame/index.html"
 }, 
 {
     title: "Stickman Parkour",
