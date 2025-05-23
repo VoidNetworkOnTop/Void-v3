@@ -37,7 +37,7 @@ const games2Data = [
 {
     title: "Duck Life 4", 
     imgSrc: "https://lh7-us.googleusercontent.com/z8atGY8NONZpEpxoOyyHo94FjI4bu8dekjNFrbBPAE1UBlhbd51FUzu2tMCcXSWYc99E1OEFsAYVHLbQXgPgQoxGPkbcCutGRwLRSnxA58YJh679uJgaFYT1jyJWY4fGWA-c76f5jSPzKfJ8giZGvHk-ILvLxw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/48920/")
+    link: "/local games/ducklife4/index.html"
 },
 {
     title: "Duck Life Space", 
