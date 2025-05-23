@@ -77,17 +77,17 @@ const games2Data = [
 {
     title: "Baldis Basics",
     imgSrc: "https://lh7-us.googleusercontent.com/Iafhnkg3uzMv7lLK99ADN1O0tunCQwc0JLhuvYEhJrH6SiIgxVXhEUVHGEVrgC3KIATkNx5H0LHfq8-strKG-g4fsuoeRzjbQPJVCCzA063nQkqnk1nTEihZJaRv-4qDPXaMfDUcFPbvgaGFcTduBOsK8yq2kA", 
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://school-lessons.lol/_games/baldisbasics/")
+    link: "/local games/baldis-basics/index.html"
 },
 {
     title: "Mario Games", 
     imgSrc: "https://lh7-us.googleusercontent.com/9gBn_-diXW0qiyzxP1M3D65mJgpeZ7RqM2mSy2HwTz78-cd7HY0HEra0of4EhWsrOHBMoMzwEMWlBCPD0v-M59XTbuR9vCnByqM2QA_wBv_qeETzKCVIedkDRi7yEo4jnCJqu4sSeOANEPEg-Ej7VOmm9HTPdw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.smbgames.be")
+    link: "/local games/mario/index.html"
 },
 {
     title: "EggyCar", 
     imgSrc: "https://lh7-us.googleusercontent.com/XzQmqFIMuI1P7JPJYEMDsaVvnyUEx3Yi-yHMb56pAWDDP6BS9L7nhz-9Z6qGfcqqU7SK3-dLuBVBBd7ptmx-zFOm5jK3Nba_o8I8pNAq3-NpNcInyXFJJ1woU3a-jDQ9zONSio91O_5QCYVWAqn-_vIgMW7rCQ",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://html5.gamedistribution.com/rvvASMiM/59a98bf799ef499d9d7b9285bccaa196/index.html?gd_zone_config=eyJwYXJlbnRVUkwiOiJodHRwczovL2VnZ3ljYXIuY28vIiwicGFyZW50RG9tYWluIjoiZWdneWNhci5jbyIsInRvcERvbWFpbiI6ImVnZ3ljYXIuY28iLCJoYXNJbXByZXNzaW9uIjp0cnVlLCJsb2FkZXJFbmFibGVkIjp0cnVlLCJob3N0IjoiaHRtbDUuZ2FtZWRpc3RyaWJ1dGlvbi5jb20iLCJ2ZXJzaW9uIjoiMS41LjE3In0%253D")
+    link: "/local games/eggycar/index.html"
 },
 {
     title: "Papa's Cheeseria", 
@@ -97,7 +97,7 @@ const games2Data = [
 {
     title: "Papa's Freezeria", 
     imgSrc: "https://lh7-us.googleusercontent.com/oqGyMLvZptjeWaKEcJa0IHF_OzZmtKZ4-CEm0eIO-hNtacbgZCgrqPztf-MRxUr6lodNhwJnb2qfX2AHQtaiYybOtIQtylifGyUpg11BY9e9BdIH8vEwOgAGoRpricltz9D54dnbs5ieSefqLr5zo9M_kp7LcQ",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/48987/")
+    link: "/local games/papasfreezeria/index.html"
 },
 {
     title: "Papa's Bakeria", 
