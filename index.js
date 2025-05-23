@@ -5,6 +5,7 @@ import https from 'node:https';
 import path from "node:path";
 import fs from "node:fs";
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 
 const app = express();
 const server = http.createServer();
@@ -218,8 +219,27 @@ app.all('/scram', async (req, res) => {
             res.set('Access-Control-Allow-Headers', '*');
             res.set('X-Frame-Options', 'ALLOWALL');
             
-            // Pipe the response
-            proxyRes.pipe(res);
+            // Handle compressed responses
+            let responseStream = proxyRes;
+            const encoding = proxyRes.headers['content-encoding'];
+            
+            if (encoding === 'gzip') {
+                responseStream = proxyRes.pipe(zlib.createGunzip());
+                console.log('Decompressing gzip response');
+            } else if (encoding === 'deflate') {
+                responseStream = proxyRes.pipe(zlib.createInflate());
+                console.log('Decompressing deflate response');
+            } else if (encoding === 'br') {
+                responseStream = proxyRes.pipe(zlib.createBrotliDecompress());
+                console.log('Decompressing brotli response');
+            }
+            
+            // Remove content-encoding since we're decompressing
+            res.removeHeader('content-encoding');
+            res.removeHeader('content-length');
+            
+            // Pipe the (potentially decompressed) response
+            responseStream.pipe(res);
         });
         
         // Handle request errors
