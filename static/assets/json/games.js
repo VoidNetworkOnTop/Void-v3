@@ -82,18 +82,18 @@ const gamesData = [
 {
     title: "Slope",
     imgSrc: "/img/gameimg/slopegame.webp",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://kazwire.com/cdn/game/static/slope/index.html")
+    link: "/local games/slope/index.html"
 
 },
 {
     title: "1v1.lol",
     imgSrc: "/img/gameimg/1v1lol.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://1v1.school")
+    link: "/local games/1v1lol/index.html"
 },
 {
     title: "Happy Wheels",
     imgSrc: "/img/gameimg/happywheels.jpg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://games-online.io/game/HappyWheels/")
+    link: "/local games/happywheels/index.html"
 },
 {
     title: "Apple worm", 
@@ -103,12 +103,12 @@ const gamesData = [
 {
     title: "G</x>un Mayhem", 
     imgSrc: "/img/gameimg/gunmayhem.jpeg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://gunmayhem.io/game/gun-mayhem/")
+    link: "/local games/gunmayhem/index.html"
 },
 {
     title: "Snow Rider", 
     imgSrc: "/img/gameimg/snowrider.webp",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://itsvijaysingh.github.io/Snow-Rider3D/")
+    link: "/local games/snowrider3d/index.html"
 }, 
 {
     title: "Happy Glass",
@@ -123,17 +123,17 @@ const gamesData = [
 {
     title: "Dino Game", 
     imgSrc: "/img/gameimg/dinogame.avif",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://games.crazygames.com/en_US/chrome-dino/index.html?v=1.298")
+    link: "/local games/dino/index.html"
 }, 
 {
     title: "BitLife", 
     imgSrc: "/img/gameimg/bitlife.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://ubg365.github.io/bitlife-life-simulator/play.html")
+    link: "/local games/bitlife/index.html"
 }, 
 {
     title: "Cook</x>ie Clic</x>ker", 
     imgSrc: "https://play-lh.googleusercontent.com/7QdF1mILpUj-xtZGzNwECuVHaVKJHobvYh45z9q7hGvCbmjH1oD_ZfRxbEqbB_yb6Dk",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://cookieclicker.ee")
+    link: "/local games/cookieclicker/index.html"
 }, 
 {
     title: "Id</x>le Brea</x>kout", 
@@ -143,7 +143,7 @@ const gamesData = [
 {
     title: "Wordle Unlimited", 
     imgSrc: "/img/gameimg/wordle.jpg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://wordleunlimited.org")
+    link: "/local games/wordle/index.html"
 },
 {
     title: "Ba</x>ll Bla</x>st", 
@@ -163,7 +163,7 @@ const gamesData = [
 {
     title: "Cu</x>t T</x>he R</x>ope", 
     imgSrc: "/img/gameimg/CutTheRope.jpg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://17440050909322948705.playables.usercontent.goog/v/assets/index.html")
+    link: "/local games/cuttherope/index.html"
 },
 {
     title: "Ta</x>ll M</x>an R</x>un", 
@@ -178,7 +178,7 @@ const gamesData = [
 {
     title: "Le</x>arn to F</x>ly", 
     imgSrc: "https://image.spreadshirtmedia.com/image-server/v1/compositions/T812A1PA4267PT17X37Y50D11330543W27177H19067/views/1,width=500,height=500,appearanceId=1,backgroundColor=468bd2,noPt=true/learn-to-fly-mens-premium-t-shirt.jpg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/50509/")
+    link: "/local games/learntofly/index.html"
 },
 {
     title: "Squ</x>areX 2: eXt</x>reme", 
@@ -208,7 +208,7 @@ const gamesData = [
 {
     title: "Fireboy and Watergirl 1", 
     imgSrc: "https://kizicdn.com/system/static/thumbs/big_tile_thumb/9/thumb300_FBWG1_300x300.jpg?1556198405",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/40034/?gd_sdk_referrer_url=https%3A%2F%2Fwww.coolmathgames.com%2F0-fireboy-and-water-girl-in-the-forest-temple")
+    link: "/local games/fireboywatergirl/index.html"
 },
 {
     title: "Mr. Mine", 
