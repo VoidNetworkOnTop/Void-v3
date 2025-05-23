@@ -140,73 +140,32 @@ app.all('/scram', async (req, res) => {
     console.log('Scramjet proxy request for:', targetUrl);
     
     try {
-        // Forward original request headers when possible
-        const requestHeaders = {
-            'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': req.headers['accept'] || '*/*',
-            'Accept-Language': req.headers['accept-language'] || 'en-US,en;q=0.9',
-            'Accept-Encoding': 'identity',
-            'Cache-Control': 'no-cache',
-            'Referer': targetUrl
-        };
-        
-        // Forward safe headers from original request
-        const safeHeaders = ['authorization', 'cookie', 'range', 'if-modified-since', 'if-none-match'];
-        safeHeaders.forEach(header => {
-            if (req.headers[header]) {
-                requestHeaders[header] = req.headers[header];
-            }
-        });
-        
         const response = await fetch(targetUrl, {
-            method: req.method,
-            headers: requestHeaders,
-            body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+            method: req.method === 'POST' ? 'GET' : req.method,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'identity',
+                'Cache-Control': 'no-cache'
+            },
             redirect: 'follow'
         });
         
-        console.log('Response status:', response.status, 'Content-Type:', response.headers.get('content-type'));
-        
-        // Set response status
         res.status(response.status);
         
-        // Copy important response headers
-        const headersToForward = [
-            'content-type', 'content-length', 'content-range', 'content-disposition',
-            'cache-control', 'expires', 'last-modified', 'etag', 'accept-ranges',
-            'set-cookie'
-        ];
+        const contentType = response.headers.get('content-type');
+        if (contentType) {
+            res.set('Content-Type', contentType);
+        }
         
-        headersToForward.forEach(header => {
-            const value = response.headers.get(header);
-            if (value) {
-                res.set(header, value);
-            }
-        });
-        
-        // Add permissive CORS headers
         res.set('Access-Control-Allow-Origin', '*');
         res.set('Access-Control-Allow-Methods', '*');
         res.set('Access-Control-Allow-Headers', '*');
-        res.set('Access-Control-Expose-Headers', '*');
         res.set('X-Frame-Options', 'ALLOWALL');
         
-        // Handle different content types properly
-        const contentType = response.headers.get('content-type') || '';
-        
-        if (contentType.includes('text/') || 
-            contentType.includes('application/json') ||
-            contentType.includes('application/javascript') ||
-            contentType.includes('application/xml') ||
-            contentType.includes('application/xhtml')) {
-            // Handle text content
-            const content = await response.text();
-            res.send(content);
-        } else {
-            // Handle binary content (images, videos, games, etc.)
-            const buffer = await response.arrayBuffer();
-            res.send(Buffer.from(buffer));
-        }
+        const content = await response.text();
+        res.send(content);
         
     } catch (error) {
         console.error('Proxy error:', error);
