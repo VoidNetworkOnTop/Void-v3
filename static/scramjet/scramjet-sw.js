@@ -114,7 +114,7 @@ async function handleProxy(request) {
         }
         
         // Use backend proxy endpoint instead of direct fetch
-        const proxyEndpoint = '/proxy';
+        const proxyEndpoint = '/scram';
         const proxyUrl = `${proxyEndpoint}?url=${encodeURIComponent(targetUrl)}`;
         
         console.log('SW: Proxying through backend:', proxyUrl);
