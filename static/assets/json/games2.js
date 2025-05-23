@@ -27,12 +27,12 @@ const games2Data = [
 {
     title: "Duck Life 2", 
     imgSrc: "https://lh7-us.googleusercontent.com/h_xiwHa1s0W-1zr9dIgm87XGCxKEbR8WledA7sNlGzpZNzqtTEMMc68f7dqpIShT6YYGY3sloRIKF5Af9MBdYE_NmhxFK4N9z3TR10-PveE259WXr9rnkAAA7aif4UTJBFvkp2qzFHuJv0GMSCBg1-Tn2bu6uw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/48916/")
+    link: "/local games/ducklife2/index.html"
 },
 {
     title: "Duck Life 3", 
     imgSrc: "https://lh7-us.googleusercontent.com/_gukVbtO_PMcPUQxNna1jxlHOn2IfCfiB4_oyJoDbXUJWGryKzEq-5P6rXlgVLqXoTYEBPL93KEWIBO7TUJS_UpD7enbDJ5JhMJeJyRDZT2R7UWuYjYNv_fb891qsi2NEprHpFKgpYnr14MsJKsBbLsi2AY3Vw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/48918/")
+    link: "/local games/ducklife3/index.html"
 },
 {
     title: "Duck Life 4", 
