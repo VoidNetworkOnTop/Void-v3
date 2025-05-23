@@ -1,6 +1,7 @@
 import { createBareServer } from '@tomphttp/bare-server-node';
 import express from 'express';
 import http from 'node:http';
+import https from 'node:https';
 import path from "node:path";
 import fs from "node:fs";
 import crypto from 'node:crypto';
@@ -118,6 +119,10 @@ if (serverSettings.headersTimeout) {
   server.headersTimeout = serverSettings.headersTimeout;
 }
 
+// Enable JSON parsing for proxy requests
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
 // Function to get the hash for a file path, normalizing the path format
 function getFileHash(filePath) {
   // Normalize path format (using forward slashes)
@@ -129,14 +134,159 @@ function getFileHash(filePath) {
   return fileHashes[hashedPath] || CACHE_BUSTER;
 }
 
+// ==== SCRAMJET PROXY ENDPOINT ====
+// Add this BEFORE the cache-busting middleware to ensure it gets handled
+app.all('/scram', async (req, res) => {
+    const targetUrl = req.query.url || req.body.url;
+    
+    if (!targetUrl) {
+        return res.status(400).json({ error: 'Missing target URL parameter' });
+    }
+    
+    console.log('Scramjet proxy request for:', targetUrl);
+    
+    try {
+        // Validate URL
+        const url = new URL(targetUrl);
+        
+        // Choose appropriate module based on protocol
+        const httpModule = url.protocol === 'https:' ? https : http;
+        
+        // Set up request options
+        const options = {
+            hostname: url.hostname,
+            port: url.port || (url.protocol === 'https:' ? 443 : 80),
+            path: url.pathname + url.search,
+            method: req.method,
+            headers: {
+                'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': req.headers['accept'] || 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': req.headers['accept-language'] || 'en-US,en;q=0.9',
+                'Accept-Encoding': 'identity', // Don't request compressed content
+                'Connection': 'close',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            },
+            timeout: 30000,
+            rejectUnauthorized: false // Allow self-signed certificates
+        };
+        
+        // Remove hop-by-hop headers and problematic headers
+        const skipHeaders = [
+            'host', 'connection', 'upgrade', 'proxy-authenticate', 
+            'proxy-authorization', 'te', 'trailers', 'transfer-encoding',
+            'content-encoding', 'content-length', 'origin', 'referer'
+        ];
+        
+        // Copy safe headers from original request
+        for (const [key, value] of Object.entries(req.headers)) {
+            if (!skipHeaders.includes(key.toLowerCase()) && !key.startsWith('x-proxy-')) {
+                options.headers[key] = value;
+            }
+        }
+        
+        // Set proper host header
+        options.headers.Host = url.host;
+        
+        console.log('Making request to:', `${url.protocol}//${url.host}${url.pathname}${url.search}`);
+        
+        const proxyReq = httpModule.request(options, (proxyRes) => {
+            console.log('Response status:', proxyRes.statusCode);
+            console.log('Response headers:', proxyRes.headers);
+            
+            // Set response status
+            res.status(proxyRes.statusCode);
+            
+            // Copy response headers (skip problematic ones)
+            const skipResponseHeaders = [
+                'transfer-encoding', 'content-encoding', 'content-security-policy',
+                'content-security-policy-report-only', 'x-frame-options',
+                'x-content-type-options', 'strict-transport-security',
+                'referrer-policy', 'permissions-policy', 'cross-origin-embedder-policy',
+                'cross-origin-opener-policy', 'cross-origin-resource-policy'
+            ];
+            
+            for (const [key, value] of Object.entries(proxyRes.headers)) {
+                if (!skipResponseHeaders.includes(key.toLowerCase())) {
+                    res.set(key, value);
+                }
+            }
+            
+            // Add CORS headers
+            res.set('Access-Control-Allow-Origin', '*');
+            res.set('Access-Control-Allow-Methods', '*');
+            res.set('Access-Control-Allow-Headers', '*');
+            res.set('X-Frame-Options', 'ALLOWALL');
+            
+            // Pipe the response
+            proxyRes.pipe(res);
+        });
+        
+        // Handle request errors
+        proxyReq.on('error', (error) => {
+            console.error('Proxy request error:', error);
+            if (!res.headersSent) {
+                res.status(502).json({
+                    error: 'Proxy request failed',
+                    message: error.message,
+                    target: targetUrl
+                });
+            }
+        });
+        
+        // Handle timeout
+        proxyReq.on('timeout', () => {
+            console.error('Proxy request timeout for:', targetUrl);
+            proxyReq.destroy();
+            if (!res.headersSent) {
+                res.status(504).json({
+                    error: 'Request timeout',
+                    message: 'The target server took too long to respond',
+                    target: targetUrl
+                });
+            }
+        });
+        
+        // If there's a request body, write it
+        if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
+            if (typeof req.body === 'string') {
+                proxyReq.write(req.body);
+            } else {
+                proxyReq.write(JSON.stringify(req.body));
+            }
+        }
+        
+        // End the request
+        proxyReq.end();
+        
+    } catch (error) {
+        console.error('Proxy error:', error);
+        res.status(400).json({
+            error: 'Invalid request',
+            message: error.message,
+            target: targetUrl
+        });
+    }
+});
+
+// Handle CORS preflight requests for the proxy endpoint
+app.options('/scram', (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', '*');
+    res.set('Access-Control-Allow-Headers', '*');
+    res.set('Access-Control-Max-Age', '86400');
+    res.status(200).end();
+});
+
 // ==== GLOBAL CACHE-BUSTING MIDDLEWARE ====
 // This middleware sets appropriate cache headers for all responses
 app.use((req, res, next) => {
-  // IMPORTANT: Skip cache-busting for service and bare paths
+  // IMPORTANT: Skip cache-busting for service, bare, and proxy paths
   if (
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
     req.path.startsWith('/scramjet/') ||
+    req.path === '/scram' ||
     req.path.endsWith('scramjet-sw.js') ||
     req.path.includes('.woff') ||
     req.path.includes('.woff2') ||
@@ -170,11 +320,12 @@ app.use((req, res, next) => {
 // ==== HTML CONTENT TRANSFORMER ====
 // This middleware modifies HTML responses to add cache-busting parameters to all resources
 app.use((req, res, next) => {
-  // Skip for non-HTML requests, bare server requests, and service paths
+  // Skip for non-HTML requests, bare server requests, service paths, and proxy
   if (
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
     req.path.startsWith('/scramjet/') ||
+    req.path === '/scram' ||
     req.path.endsWith('.js') ||
     req.path.endsWith('.css') ||
     req.path.endsWith('.png') ||
@@ -282,11 +433,12 @@ app.use((req, res, next) => {
 // ==== OPTIMIZED FILE HANDLER ====
 // Custom handler for static files with content-based ETags
 app.use((req, res, next) => {
-  // Skip for service and bare paths
+  // Skip for service, bare paths, and proxy
   if (
     req.path.startsWith('/bare/') ||
     req.path.includes('/service/') ||
-    req.path.startsWith('/scramjet/')
+    req.path.startsWith('/scramjet/') ||
+    req.path === '/scram'
   ) {
     return next();
   }
@@ -441,10 +593,11 @@ app.use(express.static(path.join(dirname, "static"), {
 
 // ==== 404 HANDLER ====
 app.get('*', function(req, res, next) {
-  // Skip the 404 page for service paths to prevent breaking proxied sites
+  // Skip the 404 page for service paths and proxy to prevent breaking proxied sites
   if (req.path.includes('/service/') || 
       req.path.startsWith('/uv/service/') ||
-      req.path.startsWith('/scramjet/')) {
+      req.path.startsWith('/scramjet/') ||
+      req.path === '/scram') {
     return next();
   }
   
@@ -505,6 +658,7 @@ try {
   });
   
   console.log("File watching enabled - changes will be detected automatically");
+  console.log("Scramjet proxy endpoint available at /scram");
 } catch (err) {
   console.error("Error setting up file watcher:", err.message);
   console.log("File watching NOT enabled - server restart required for changes");
@@ -513,4 +667,5 @@ try {
 // Start server
 server.listen({port: PORT, host: '0.0.0.0'}, () => {
   console.log(`Server listening on port ${PORT} (IPv4 and IPv6) - Instant file updates enabled`);
+  console.log(`🚀 Scramjet proxy endpoint: /scram`);
 });
