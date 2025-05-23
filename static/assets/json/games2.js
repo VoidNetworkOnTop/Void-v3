@@ -57,7 +57,7 @@ const games2Data = [
 {
     title: "Funny Shooter 2",
     imgSrc: "https://lh7-us.googleusercontent.com/4E55AJwZrKouLKIWNiY4An-bf9UjmuR_b68Bz3v34iyyioUqD8Zp2MzqQzp_xCNkYw8ND1A368P1ntd0vBERkWVKszzM6MkgUst1b4dqTehf3USQkRC4hMqBM0cfm29Mi1r5UkpTDdkSxhsRYTyyhJn9SGnNEw", 
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://html5.gamedistribution.com/rvvASMiM/a1b7ac4025214a5cb0bd01a4f675513a/index.html?gd_zone_config=eyJwYXJlbnRVUkwiOiJodHRwczovL2h0bWw1LmdhbWVkaXN0cmlidXRpb24uY29tL2ExYjdhYzQwMjUyMTRhNWNiMGJkMDFhNGY2NzU1MTNhLyIsInBhcmVudERvbWFpbiI6Imh0bWw1LmdhbWVkaXN0cmlidXRpb24uY29tIiwidG9wRG9tYWluIjoiaHRtbDUuZ2FtZWRpc3RyaWJ1dGlvbi5jb20iLCJoYXNJbXByZXNzaW9uIjp0cnVlLCJsb2FkZXJFbmFibGVkIjp0cnVlLCJob3N0IjoiaHRtbDUuZ2FtZWRpc3RyaWJ1dGlvbi5jb20iLCJ2ZXJzaW9uIjoiMS41LjE3In0%253D")
+    link: "/local games/funnyshooter2/index.html"
 },
 {
     title: "Retro Bowl",
@@ -88,16 +88,6 @@ const games2Data = [
     title: "EggyCar", 
     imgSrc: "https://lh7-us.googleusercontent.com/XzQmqFIMuI1P7JPJYEMDsaVvnyUEx3Yi-yHMb56pAWDDP6BS9L7nhz-9Z6qGfcqqU7SK3-dLuBVBBd7ptmx-zFOm5jK3Nba_o8I8pNAq3-NpNcInyXFJJ1woU3a-jDQ9zONSio91O_5QCYVWAqn-_vIgMW7rCQ",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://html5.gamedistribution.com/rvvASMiM/59a98bf799ef499d9d7b9285bccaa196/index.html?gd_zone_config=eyJwYXJlbnRVUkwiOiJodHRwczovL2VnZ3ljYXIuY28vIiwicGFyZW50RG9tYWluIjoiZWdneWNhci5jbyIsInRvcERvbWFpbiI6ImVnZ3ljYXIuY28iLCJoYXNJbXByZXNzaW9uIjp0cnVlLCJsb2FkZXJFbmFibGVkIjp0cnVlLCJob3N0IjoiaHRtbDUuZ2FtZWRpc3RyaWJ1dGlvbi5jb20iLCJ2ZXJzaW9uIjoiMS41LjE3In0%253D")
-},
-{
-    title: "Geometrydash Meltdown", 
-    imgSrc: "https://lh7-us.googleusercontent.com/2VSrflEy3rxlwUHDLPkDuICjlqthjIkW1bBHNE548hX_uxU6n2wn0qFwl49ufqQowttCUksEdwEU4itmDSK6SFjx9Fgj-H1mQxde_uig6NvIoj1RNoJqzH54IJMAqcb8cw6-Jqz0f8T45Moj1rHKz5yXtZRH7Q",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://geometrydashmeltdown.io")
-},
-{
-    title: "Geometrydash SubZero", 
-    imgSrc: "https://lh7-us.googleusercontent.com/o-ZnHpcqHAa_1e_GPwUc8XNC0gKFSLry0EoFtYZYwW2sOkWNvumU4KGblA0s_vkslqDiIsK4_tuRg_QKlirNjO6UajJZUIKwNHfxPIM1KZsEE6pd4j2HEVCKbvzt64fW48qA8K1eb3rf_OhoInyvjdmRQy0duw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("geometrydashsubzero.io")
 },
 {
     title: "Papa's Cheeseria", 
