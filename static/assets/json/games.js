@@ -12,7 +12,7 @@ const gamesData = [
 {
     title: "Slow Roads",
     imgSrc: "/img/gameimg/SlowRoads.png",
-    link: "/uv-encode.html?link=https://lizard-foil-pincushion.glitch.me"
+    link: "/local games/slowroads/index.html"
 },
 {
     title: "Swoop",
