@@ -334,63 +334,39 @@ function rewriteHtml(html, baseUrl) {
                 return originalOpen.apply(this, arguments);
             };
             
-            // Override location methods and properties
+            // Override location methods (avoid redefining the property)
             const originalLocation = window.location;
-            Object.defineProperty(window, 'location', {
-                get: function() {
-                    return new Proxy(originalLocation, {
-                        get: function(target, prop) {
-                            if (prop === 'href') {
-                                return '${baseUrl.href}';
-                            } else if (prop === 'origin') {
-                                return '${baseUrl.origin}';
-                            } else if (prop === 'host') {
-                                return '${baseUrl.host}';
-                            } else if (prop === 'hostname') {
-                                return '${baseUrl.hostname}';
-                            } else if (prop === 'pathname') {
-                                return '${baseUrl.pathname}';
-                            } else if (prop === 'search') {
-                                return '${baseUrl.search}';
-                            } else if (prop === 'hash') {
-                                return '${baseUrl.hash}';
-                            } else if (prop === 'protocol') {
-                                return '${baseUrl.protocol}';
-                            } else if (prop === 'port') {
-                                return '${baseUrl.port}';
-                            } else if (prop === 'assign') {
-                                return function(url) {
-                                    window.location.href = encodeProxyUrl(url);
-                                };
-                            } else if (prop === 'replace') {
-                                return function(url) {
-                                    originalLocation.replace(encodeProxyUrl(url));
-                                };
-                            } else if (prop === 'reload') {
-                                return function() {
-                                    originalLocation.reload();
-                                };
-                            }
-                            return target[prop];
-                        },
-                        set: function(target, prop, value) {
-                            if (prop === 'href') {
-                                originalLocation.href = encodeProxyUrl(value);
-                                return true;
-                            } else if (prop === 'hash') {
-                                // Handle hash changes specially
-                                const currentUrl = new URL('${baseUrl.href}');
-                                currentUrl.hash = value;
-                                originalLocation.href = encodeProxyUrl(currentUrl.href);
-                                return true;
-                            }
-                            target[prop] = value;
-                            return true;
-                        }
-                    });
-                },
-                configurable: true
-            });
+            const originalAssign = originalLocation.assign;
+            const originalReplace = originalLocation.replace;
+            
+            // Override specific location methods
+            if (originalAssign) {
+                originalLocation.assign = function(url) {
+                    return originalAssign.call(this, encodeProxyUrl(url));
+                };
+            }
+            
+            if (originalReplace) {
+                originalLocation.replace = function(url) {
+                    return originalReplace.call(this, encodeProxyUrl(url));
+                };
+            }
+            
+            // Create a virtual location object for reading properties
+            window.__scramjet_location = {
+                href: '${baseUrl.href}',
+                origin: '${baseUrl.origin}',
+                host: '${baseUrl.host}',
+                hostname: '${baseUrl.hostname}',
+                pathname: '${baseUrl.pathname}',
+                search: '${baseUrl.search}',
+                hash: '${baseUrl.hash}',
+                protocol: '${baseUrl.protocol}',
+                port: '${baseUrl.port}',
+                assign: function(url) { window.location.href = encodeProxyUrl(url); },
+                replace: function(url) { originalLocation.replace(encodeProxyUrl(url)); },
+                reload: function() { originalLocation.reload(); }
+            };
             
             // Override fetch
             const originalFetch = window.fetch;
