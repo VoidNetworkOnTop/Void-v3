@@ -42,7 +42,7 @@ const games2Data = [
 {
     title: "Duck Life Space", 
     imgSrc: "https://lh7-us.googleusercontent.com/PH_XPFbty-8F-XCtG5H6tu39RBP-ga9Izjem7Fj6dmSqcCaCKLXhgSQmpSb2VOcHc5AGnlFHfNRM2rycwHSDDNwp-SQPq8SZj4lLWsITVTUo-W-Cat6mlAggu6lV3IOJMkvhZ3eYOiDUe_w24qxmRGOlJjWTNA",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://games.wixgames.co.uk/games/ducklifespace/webgl/")
+    link: "/local games/ducklife6/index.html"
 },
 {
     title: "Gladihoppers", 
