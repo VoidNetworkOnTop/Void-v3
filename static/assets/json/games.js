@@ -22,7 +22,7 @@ const gamesData = [
 {
     title: "Gun Night",
     imgSrc: "/img/gameimg/gunnight.jpeg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://html5.gamedistribution.com/rvvASMiM/91717eef3f1d4dfabc910ea4f3ea9c74/index.html?gd_sdk_referrer_url=https%3A%2F%2Fkevin.games%2Fgunnight-io&gd_zone_config=eyJwYXJlbnRVUkwiOiJodHRwczovL2tldmluLmdhbWVzL2d1bm5pZ2h0LWlvIiwicGFyZW50RG9tYWluIjoia2V2aW4uZ2FtZXMiLCJ0b3BEb21haW4iOiJrZXZpbi5nYW1lcyIsImhhc0ltcHJlc3Npb24iOnRydWUsImxvYWRlckVuYWJsZWQiOnRydWUsImhvc3QiOiJodG1sNS5nYW1lZGlzdHJpYnV0aW9uLmNvbSIsInZlcnNpb24iOiIxLjUuMTcifQ%253D%253D") 
+    link: "/local games/gunnight/index.html"
 },
 {
     title: "Suika Game",
