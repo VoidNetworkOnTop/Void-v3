@@ -57,7 +57,7 @@ const games2Data = [
 {
     title: "Funny Shooter 2",
     imgSrc: "https://lh7-us.googleusercontent.com/4E55AJwZrKouLKIWNiY4An-bf9UjmuR_b68Bz3v34iyyioUqD8Zp2MzqQzp_xCNkYw8ND1A368P1ntd0vBERkWVKszzM6MkgUst1b4dqTehf3USQkRC4hMqBM0cfm29Mi1r5UkpTDdkSxhsRYTyyhJn9SGnNEw", 
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://html5.gamedistribution.com/rvvASMiM/a1b7ac4025214a5cb0bd01a4f675513a/index.html?gd_zone_config=eyJwYXJlbnRVUkwiOiJodHRwczovL2h0bWw1LmdhbWVkaXN0cmlidXRpb24uY29tL2ExYjdhYzQwMjUyMTRhNWNiMGJkMDFhNGY2NzU1MTNhLyIsInBhcmVudERvbWFpbiI6Imh0bWw1LmdhbWVkaXN0cmlidXRpb24uY29tIiwidG9wRG9tYWluIjoiaHRtbDUuZ2FtZWRpc3RyaWJ1dGlvbi5jb20iLCJoYXNJbXByZXNzaW9uIjp0cnVlLCJsb2FkZXJFbmFibGVkIjp0cnVlLCJob3N0IjoiaHRtbDUuZ2FtZWRpc3RyaWJ1dGlvbi5jb20iLCJ2ZXJzaW9uIjoiMS41LjE3In0%253D")
+    link: "/local games/funnyshooter2/index.html"
 },
 {
     title: "Retro Bowl",
