@@ -1,7 +1,7 @@
-// Complete Working Scramjet Service Worker for Full Game Compatibility
-console.log('=== Complete Working Scramjet SW Loading ===');
+// Scramjet Service Worker - UV Style Implementation
+console.log('=== Scramjet SW - UV Style Loading ===');
 
-// URL encode/decode functions
+// URL encode/decode functions (same as UV)
 const scramjetConfig = {
     encodeUrl: function(url) {
         try {
@@ -47,21 +47,21 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(clients.claim());
 });
 
-// Main fetch handler - intercepts ALL requests
+// Main fetch handler - UV style
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
     
-    // Only handle scramjet paths
-    if (!url.pathname.startsWith('/scramjet/')) {
+    // Handle /scramjet/service/ requests (like UV does with /uv/service/)
+    if (url.pathname.startsWith('/scramjet/service/')) {
+        console.log('SW: Handling scramjet service request:', url.pathname);
+        event.respondWith(handleScramjetService(event.request));
         return;
     }
-    
-    console.log('SW: Intercepting request:', url.pathname);
     
     // Handle test endpoint
     if (url.pathname === '/scramjet/test') {
         event.respondWith(
-            new Response('Service Worker Test Success!', {
+            new Response('Scramjet Service Worker Test Success!', {
                 status: 200,
                 headers: { 'content-type': 'text/plain' }
             })
@@ -69,82 +69,79 @@ self.addEventListener('fetch', (event) => {
         return;
     }
     
-    event.respondWith(handleProxy(event.request));
+    // Let other requests pass through normally
 });
 
-// Comprehensive proxy handler
-async function handleProxy(request) {
+// Main service handler - UV style
+async function handleScramjetService(request) {
     try {
         const url = new URL(request.url);
-        let pathSegment = url.pathname.replace('/scramjet/', '');
+        // Extract encoded URL from path: /scramjet/service/ENCODED_URL
+        const encodedUrl = url.pathname.replace('/scramjet/service/', '');
         
-        console.log('SW: Processing path segment:', pathSegment);
+        console.log('SW: Processing encoded URL:', encodedUrl);
         
-        if (!pathSegment) {
+        if (!encodedUrl) {
             return new Response('No URL provided', { status: 400 });
         }
         
-        let targetUrl;
+        // Decode the target URL
+        const targetUrl = scramjetConfig.decodeUrl(encodedUrl);
         
-        if (pathSegment.startsWith('http://') || pathSegment.startsWith('https://')) {
-            targetUrl = pathSegment;
-        } else {
-            targetUrl = scramjetConfig.decodeUrl(pathSegment);
-            if (!targetUrl) {
-                targetUrl = pathSegment.startsWith('http') ? pathSegment : 'https://' + pathSegment;
-            }
+        if (!targetUrl || !scramjetConfig.isValidUrl(targetUrl)) {
+            return new Response('Invalid target URL', { status: 400 });
         }
         
         console.log('SW: Target URL:', targetUrl);
         
-        if (!scramjetConfig.isValidUrl(targetUrl)) {
-            return new Response('Invalid target URL: ' + targetUrl, { status: 400 });
-        }
-        
-        // Use backend proxy
-        const proxyUrl = `/scram?url=${encodeURIComponent(targetUrl)}`;
-        console.log('SW: Proxying through backend:', proxyUrl);
-        
-        // Forward all original request properties
-        const proxyHeaders = new Headers();
-        
-        // Copy all headers from original request
-        for (const [key, value] of request.headers.entries()) {
-            // Skip problematic headers
-            if (!['host', 'origin', 'referer'].includes(key.toLowerCase())) {
-                proxyHeaders.set(key, value);
-            }
-        }
-        
-        // Set essential headers
-        proxyHeaders.set('User-Agent', request.headers.get('User-Agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-        proxyHeaders.set('Accept', request.headers.get('Accept') || '*/*');
-        proxyHeaders.set('Accept-Language', request.headers.get('Accept-Language') || 'en-US,en;q=0.9');
-        
-        const proxyRequest = new Request(proxyUrl, {
+        // Make the actual request (like UV does)
+        const response = await fetch(targetUrl, {
             method: request.method,
-            headers: proxyHeaders,
+            headers: createProxyHeaders(request),
             body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : null,
-            mode: 'same-origin',
-            credentials: 'same-origin',
             redirect: 'follow'
         });
         
-        const response = await fetch(proxyRequest);
+        console.log('SW: Response status:', response.status, 'Content-Type:', response.headers.get('content-type'));
         
-        if (!response.ok) {
-            throw new Error(`Backend proxy failed: ${response.status} ${response.statusText}`);
-        }
-        
+        // Process the response
         return await processResponse(response, targetUrl, request);
         
     } catch (error) {
-        console.error('SW: Proxy error:', error);
-        return createErrorResponse('Proxy error', request.url, error);
+        console.error('SW: Service error:', error);
+        return createErrorResponse('Service error', request.url, error);
     }
 }
 
-// Comprehensive response processing
+// Create proxy headers (like UV)
+function createProxyHeaders(request) {
+    const headers = {};
+    
+    // Copy safe headers from original request
+    const safeHeaders = [
+        'accept', 'accept-language', 'accept-encoding', 'cache-control',
+        'content-type', 'authorization', 'range', 'if-modified-since', 'if-none-match'
+    ];
+    
+    safeHeaders.forEach(header => {
+        if (request.headers.has(header)) {
+            headers[header] = request.headers.get(header);
+        }
+    });
+    
+    // Set essential headers
+    headers['User-Agent'] = request.headers.get('User-Agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+    if (!headers['accept']) {
+        headers['accept'] = '*/*';
+    }
+    if (!headers['accept-language']) {
+        headers['accept-language'] = 'en-US,en;q=0.9';
+    }
+    
+    return headers;
+}
+
+// Process response (like UV)
 async function processResponse(response, targetUrl, originalRequest) {
     const baseUrl = new URL(targetUrl);
     const contentType = response.headers.get('content-type') || '';
@@ -154,7 +151,7 @@ async function processResponse(response, targetUrl, originalRequest) {
     // Create response headers
     const responseHeaders = new Headers();
     
-    // Copy all response headers except problematic ones
+    // Copy response headers (skip security headers like UV does)
     const skipHeaders = [
         'content-security-policy', 'content-security-policy-report-only',
         'x-frame-options', 'x-content-type-options', 'strict-transport-security',
@@ -168,7 +165,7 @@ async function processResponse(response, targetUrl, originalRequest) {
         }
     }
     
-    // Add permissive headers
+    // Add permissive headers (like UV)
     responseHeaders.set('Access-Control-Allow-Origin', '*');
     responseHeaders.set('Access-Control-Allow-Methods', '*');
     responseHeaders.set('Access-Control-Allow-Headers', '*');
@@ -197,11 +194,6 @@ async function processResponse(response, targetUrl, originalRequest) {
             const jsText = await response.text();
             processedContent = rewriteJavaScript(jsText, baseUrl);
             
-        } else if (contentType.includes('application/json')) {
-            console.log('SW: Processing as JSON');
-            const jsonText = await response.text();
-            processedContent = jsonText; // Don't modify JSON
-            
         } else {
             console.log('SW: Passing through as binary content');
             processedContent = await response.arrayBuffer();
@@ -219,20 +211,19 @@ async function processResponse(response, targetUrl, originalRequest) {
     });
 }
 
-// Comprehensive HTML rewriting with extensive game support
+// HTML rewriting (UV style)
 function rewriteHtml(html, baseUrl) {
     try {
-        console.log('SW: Rewriting HTML content for games');
+        console.log('SW: Rewriting HTML content');
         
         // Remove security restrictions
         html = html.replace(/<meta[^>]*http-equiv=["']?content-security-policy["']?[^>]*>/gi, '');
         html = html.replace(/<meta[^>]*name=["']?referrer["']?[^>]*>/gi, '');
         
-        // Comprehensive URL rewriting for ALL possible attributes
+        // Rewrite URLs in attributes
         const urlAttributes = [
             'href', 'src', 'action', 'formaction', 'data-src', 'data-href', 
-            'data-url', 'poster', 'background', 'cite', 'longdesc', 'manifest',
-            'data', 'codebase', 'archive', 'classid', 'usemap'
+            'poster', 'background', 'cite', 'manifest', 'data'
         ];
         
         for (const attr of urlAttributes) {
@@ -246,7 +237,7 @@ function rewriteHtml(html, baseUrl) {
             });
         }
         
-        // Rewrite srcset attributes
+        // Rewrite srcset
         html = html.replace(/srcset=["']([^"']+)["']/gi, (match, srcset) => {
             const rewrittenSrcset = rewriteSrcset(srcset, baseUrl);
             return `srcset="${rewrittenSrcset}"`;
@@ -264,18 +255,18 @@ function rewriteHtml(html, baseUrl) {
             return match.replace(css, rewrittenCss);
         });
         
-        // Comprehensive game-compatible proxy script
+        // Inject proxy script (UV style)
         const proxyScript = `
         <script>
         (function() {
-            console.log('Game-compatible Scramjet proxy loaded for:', '${baseUrl.origin}');
+            console.log('Scramjet proxy script loaded for:', '${baseUrl.origin}');
             
-            // Enhanced URL encoding for games
-            function encodeProxyUrl(url) {
+            // URL encoding function
+            function encodeScramjetUrl(url) {
                 if (!url || typeof url !== 'string') return url;
                 
                 // Skip if already proxied
-                if (url.startsWith('/scramjet/')) return url;
+                if (url.startsWith('/scramjet/service/')) return url;
                 
                 // Skip special URLs
                 if (url.startsWith('data:') || url.startsWith('javascript:') || 
@@ -294,149 +285,64 @@ function rewriteHtml(html, baseUrl) {
                     } else if (url.startsWith('http://') || url.startsWith('https://')) {
                         fullUrl = url;
                     } else {
-                        // Relative URL - crucial for games
+                        // Relative URL
                         fullUrl = new URL(url, '${baseUrl.href}').href;
                     }
                     
+                    // Encode like UV does
                     const encoded = btoa(unescape(encodeURIComponent(fullUrl)))
                         .replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=/g, "");
-                    return '/scramjet/' + encoded;
+                    return '/scramjet/service/' + encoded;
                 } catch (e) {
                     console.warn('URL encoding failed:', url, e);
                     return url;
                 }
             }
             
-            // Override ALL network methods for games
-            
-            // 1. Window.open
-            const originalOpen = window.open;
-            window.open = function(url, ...args) {
-                console.log('Proxying window.open:', url);
-                return originalOpen.call(this, encodeProxyUrl(url), ...args);
-            };
-            
-            // 2. Fetch API
+            // Override fetch (like UV)
             const originalFetch = window.fetch;
             window.fetch = function(input, init) {
                 if (typeof input === 'string') {
-                    const proxyUrl = encodeProxyUrl(input);
+                    const proxyUrl = encodeScramjetUrl(input);
                     console.log('Proxying fetch:', input, '->', proxyUrl);
                     return originalFetch.call(this, proxyUrl, init);
                 } else if (input instanceof Request) {
-                    const proxyUrl = encodeProxyUrl(input.url);
+                    const proxyUrl = encodeScramjetUrl(input.url);
                     console.log('Proxying fetch request:', input.url, '->', proxyUrl);
-                    const newRequest = new Request(proxyUrl, {
-                        method: input.method,
-                        headers: input.headers,
-                        body: input.body,
-                        mode: 'same-origin',
-                        credentials: input.credentials,
-                        cache: input.cache,
-                        redirect: input.redirect,
-                        referrer: input.referrer,
-                        integrity: input.integrity
-                    });
+                    const newRequest = new Request(proxyUrl, input);
                     return originalFetch.call(this, newRequest, init);
                 }
                 return originalFetch.apply(this, arguments);
             };
             
-            // 3. XMLHttpRequest
+            // Override XMLHttpRequest (like UV)
             const originalXHR = window.XMLHttpRequest;
             window.XMLHttpRequest = function() {
                 const xhr = new originalXHR();
                 const originalOpen = xhr.open;
-                const originalSend = xhr.send;
-                
                 xhr.open = function(method, url, ...args) {
-                    const proxyUrl = encodeProxyUrl(url);
+                    const proxyUrl = encodeScramjetUrl(url);
                     console.log('Proxying XHR:', url, '->', proxyUrl);
                     return originalOpen.call(this, method, proxyUrl, ...args);
                 };
-                
                 return xhr;
             };
             
-            // 4. Image loading
-            const originalImage = window.Image;
-            window.Image = function(width, height) {
-                const img = new originalImage(width, height);
-                const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
-                
-                Object.defineProperty(img, 'src', {
-                    get: originalSrcDescriptor.get,
-                    set: function(value) {
-                        const proxyUrl = encodeProxyUrl(value);
-                        console.log('Proxying Image src:', value, '->', proxyUrl);
-                        originalSrcDescriptor.set.call(this, proxyUrl);
-                    },
-                    configurable: true,
-                    enumerable: true
-                });
-                
-                return img;
+            // Override window.open (like UV)
+            const originalOpen = window.open;
+            window.open = function(url, ...args) {
+                console.log('Proxying window.open:', url);
+                return originalOpen.call(this, encodeScramjetUrl(url), ...args);
             };
             
-            // 5. Audio loading
-            if (window.Audio) {
-                const originalAudio = window.Audio;
-                window.Audio = function(src) {
-                    const audio = new originalAudio();
-                    if (src) {
-                        const proxyUrl = encodeProxyUrl(src);
-                        console.log('Proxying Audio src:', src, '->', proxyUrl);
-                        audio.src = proxyUrl;
-                    }
-                    return audio;
-                };
-            }
-            
-            // 6. Video loading
-            const originalCreateElement = document.createElement;
-            document.createElement = function(tagName) {
-                const element = originalCreateElement.call(this, tagName);
-                
-                if (tagName.toLowerCase() === 'img' || tagName.toLowerCase() === 'image') {
-                    const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
-                    Object.defineProperty(element, 'src', {
-                        get: originalSrcDescriptor.get,
-                        set: function(value) {
-                            const proxyUrl = encodeProxyUrl(value);
-                            console.log('Proxying created image src:', value, '->', proxyUrl);
-                            originalSrcDescriptor.set.call(this, proxyUrl);
-                        },
-                        configurable: true,
-                        enumerable: true
-                    });
-                } else if (tagName.toLowerCase() === 'script') {
-                    const originalSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
-                    Object.defineProperty(element, 'src', {
-                        get: originalSrcDescriptor.get,
-                        set: function(value) {
-                            const proxyUrl = encodeProxyUrl(value);
-                            console.log('Proxying script src:', value, '->', proxyUrl);
-                            originalSrcDescriptor.set.call(this, proxyUrl);
-                        },
-                        configurable: true,
-                        enumerable: true
-                    });
-                }
-                
-                return element;
-            };
-            
-            // 7. Location overrides
+            // Override location methods (like UV)
             const originalLocation = window.location;
-            
-            // Store original methods
             const originalAssign = originalLocation.assign;
             const originalReplace = originalLocation.replace;
             
-            // Override location methods
             if (originalAssign) {
                 originalLocation.assign = function(url) {
-                    const proxyUrl = encodeProxyUrl(url);
+                    const proxyUrl = encodeScramjetUrl(url);
                     console.log('Proxying location.assign:', url, '->', proxyUrl);
                     return originalAssign.call(this, proxyUrl);
                 };
@@ -444,53 +350,30 @@ function rewriteHtml(html, baseUrl) {
             
             if (originalReplace) {
                 originalLocation.replace = function(url) {
-                    const proxyUrl = encodeProxyUrl(url);
+                    const proxyUrl = encodeScramjetUrl(url);
                     console.log('Proxying location.replace:', url, '->', proxyUrl);
                     return originalReplace.call(this, proxyUrl);
                 };
             }
             
-            // Handle direct location.href assignments
-            try {
-                let locationHrefDescriptor = Object.getOwnPropertyDescriptor(originalLocation, 'href');
-                if (!locationHrefDescriptor) {
-                    locationHrefDescriptor = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
-                }
-                
-                if (locationHrefDescriptor && locationHrefDescriptor.set) {
-                    Object.defineProperty(originalLocation, 'href', {
-                        get: locationHrefDescriptor.get,
-                        set: function(url) {
-                            const proxyUrl = encodeProxyUrl(url);
-                            console.log('Proxying location.href =', url, '->', proxyUrl);
-                            return locationHrefDescriptor.set.call(this, proxyUrl);
-                        },
-                        configurable: true,
-                        enumerable: true
-                    });
-                }
-            } catch (e) {
-                console.warn('Could not override location.href setter:', e);
-            }
-            
-            // 8. Form submissions
+            // Handle form submissions
             document.addEventListener('submit', function(e) {
                 const form = e.target;
-                if (form.action && !form.action.startsWith('/scramjet/')) {
-                    const proxyAction = encodeProxyUrl(form.action);
+                if (form.action && !form.action.startsWith('/scramjet/service/')) {
+                    const proxyAction = encodeScramjetUrl(form.action);
                     console.log('Proxying form action:', form.action, '->', proxyAction);
                     form.action = proxyAction;
                 }
             }, true);
             
-            // 9. All link clicks
+            // Handle link clicks
             document.addEventListener('click', function(e) {
                 const anchor = e.target.closest('a');
-                if (anchor && anchor.href && !anchor.href.startsWith('/scramjet/')) {
+                if (anchor && anchor.href && !anchor.href.startsWith('/scramjet/service/')) {
                     e.preventDefault();
                     e.stopPropagation();
                     
-                    const proxyHref = encodeProxyUrl(anchor.href);
+                    const proxyHref = encodeScramjetUrl(anchor.href);
                     console.log('Proxying link click:', anchor.href, '->', proxyHref);
                     
                     if (anchor.target === '_blank' || e.ctrlKey || e.metaKey) {
@@ -502,40 +385,19 @@ function rewriteHtml(html, baseUrl) {
                 }
             }, true);
             
-            // 10. History API
-            const originalPushState = history.pushState;
-            const originalReplaceState = history.replaceState;
-            
-            history.pushState = function(state, title, url) {
-                if (url) {
-                    url = encodeProxyUrl(url);
-                    console.log('Proxying history.pushState:', arguments[2], '->', url);
-                }
-                return originalPushState.call(this, state, title, url);
-            };
-            
-            history.replaceState = function(state, title, url) {
-                if (url) {
-                    url = encodeProxyUrl(url);
-                    console.log('Proxying history.replaceState:', arguments[2], '->', url);
-                }
-                return originalReplaceState.call(this, state, title, url);
-            };
-            
-            // 11. Monitor and rewrite dynamic content
+            // Monitor dynamic content
             const observer = new MutationObserver(function(mutations) {
                 mutations.forEach(function(mutation) {
                     mutation.addedNodes.forEach(function(node) {
                         if (node.nodeType === Node.ELEMENT_NODE) {
-                            // Rewrite URLs in newly added elements
                             const elements = node.querySelectorAll ? 
-                                [node, ...node.querySelectorAll('[href], [src], [action], [poster], [data], [background]')] : [node];
+                                [node, ...node.querySelectorAll('[href], [src], [action]')] : [node];
                             
                             elements.forEach(function(el) {
-                                ['href', 'src', 'action', 'poster', 'data', 'background'].forEach(function(attr) {
-                                    if (el[attr] && !el[attr].startsWith('/scramjet/') && !el[attr].startsWith('data:')) {
+                                ['href', 'src', 'action'].forEach(function(attr) {
+                                    if (el[attr] && !el[attr].startsWith('/scramjet/service/') && !el[attr].startsWith('data:')) {
                                         const original = el[attr];
-                                        const proxied = encodeProxyUrl(original);
+                                        const proxied = encodeScramjetUrl(original);
                                         if (original !== proxied) {
                                             console.log('Proxying dynamic', attr + ':', original, '->', proxied);
                                             el[attr] = proxied;
@@ -551,42 +413,25 @@ function rewriteHtml(html, baseUrl) {
             if (document.body) {
                 observer.observe(document.body, {
                     childList: true,
-                    subtree: true,
-                    attributes: true,
-                    attributeFilter: ['src', 'href', 'action', 'poster', 'data', 'background']
+                    subtree: true
                 });
             }
             
-            // 12. Provide correct location information for games
-            window.__scramjet_location = {
-                href: '${baseUrl.href}',
-                origin: '${baseUrl.origin}',
-                host: '${baseUrl.host}',
-                hostname: '${baseUrl.hostname}',
-                pathname: '${baseUrl.pathname}',
-                search: '${baseUrl.search}',
-                hash: '${baseUrl.hash}',
-                protocol: '${baseUrl.protocol}',
-                port: '${baseUrl.port}'
-            };
-            
-            console.log('Game-compatible Scramjet proxy fully initialized');
+            console.log('Scramjet proxy script initialized');
             
         })();
         </script>`;
         
-        // Inject the script
+        // Inject script
         if (html.includes('</head>')) {
             html = html.replace('</head>', proxyScript + '</head>');
-        } else if (html.includes('<head>')) {
-            html = html.replace('<head>', '<head>' + proxyScript);
         } else if (html.includes('</body>')) {
             html = html.replace('</body>', proxyScript + '</body>');
         } else {
             html = proxyScript + html;
         }
         
-        // Add base tag for relative URLs
+        // Add base tag
         const baseTag = `<base href="${baseUrl.href}">`;
         if (html.includes('<base')) {
             html = html.replace(/<base[^>]*>/i, baseTag);
@@ -602,10 +447,9 @@ function rewriteHtml(html, baseUrl) {
     }
 }
 
-// Enhanced CSS rewriting
+// CSS rewriting
 function rewriteCss(css, baseUrl) {
     try {
-        // Rewrite url() in CSS
         css = css.replace(/url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi, (match, url) => {
             if (!url.startsWith('data:')) {
                 const rewrittenUrl = rewriteUrl(url, baseUrl);
@@ -614,7 +458,6 @@ function rewriteCss(css, baseUrl) {
             return match;
         });
         
-        // Rewrite @import statements
         css = css.replace(/@import\s+['"]([^'"]+)['"]/gi, (match, url) => {
             const rewrittenUrl = rewriteUrl(url, baseUrl);
             return `@import "${rewrittenUrl}"`;
@@ -622,44 +465,34 @@ function rewriteCss(css, baseUrl) {
         
         return css;
     } catch (error) {
-        console.error('SW: CSS rewriting failed:', error);
         return css;
     }
 }
 
-// Basic JavaScript rewriting for games
+// JavaScript rewriting (minimal for compatibility)
 function rewriteJavaScript(js, baseUrl) {
-    try {
-        // Don't heavily modify JS as it can break games
-        // Just return as-is for maximum compatibility
-        return js;
-    } catch (error) {
-        console.error('SW: JavaScript rewriting failed:', error);
-        return js;
-    }
+    return js; // Don't modify JS to avoid breaking games
 }
 
 // Srcset rewriting
 function rewriteSrcset(srcset, baseUrl) {
     try {
         return srcset.replace(/([^\s,]+)/g, (match, url) => {
-            // Only rewrite if it looks like a URL (not a size descriptor)
             if (url.includes('.') && !url.endsWith('x') && !url.endsWith('w') && !url.startsWith('data:')) {
                 return rewriteUrl(url, baseUrl);
             }
             return url;
         });
     } catch (error) {
-        console.error('SW: Srcset rewriting failed:', error);
         return srcset;
     }
 }
 
-// Enhanced URL rewriting
+// URL rewriting (UV style)
 function rewriteUrl(url, baseUrl) {
     try {
-        // Skip if already a proxy URL
-        if (url.startsWith('/scramjet/')) {
+        // Skip if already proxied
+        if (url.startsWith('/scramjet/service/')) {
             return url;
         }
         
@@ -680,13 +513,13 @@ function rewriteUrl(url, baseUrl) {
         } else if (url.startsWith('http://') || url.startsWith('https://')) {
             absoluteUrl = url;
         } else {
-            // Relative URL - critical for games
+            // Relative URL
             absoluteUrl = new URL(url, baseUrl).href;
         }
         
-        // Encode for proxy
+        // Encode like UV
         const encodedUrl = scramjetConfig.encodeUrl(absoluteUrl);
-        return `/scramjet/${encodedUrl}`;
+        return `/scramjet/service/${encodedUrl}`;
         
     } catch (error) {
         console.warn('SW: URL rewriting failed for:', url);
@@ -699,26 +532,13 @@ function createErrorResponse(title, url, ...errors) {
     const errorHtml = `
         <!DOCTYPE html>
         <html>
-        <head>
-            <title>Proxy Error</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
-                .error { background: #ffebee; padding: 20px; border-radius: 8px; border-left: 4px solid #f44336; max-width: 800px; }
-                .details { margin-top: 15px; padding: 10px; background: #fff; border-radius: 4px; font-family: monospace; font-size: 12px; }
-                button { margin-top: 15px; padding: 10px 20px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; }
-            </style>
-        </head>
+        <head><title>Scramjet Error</title></head>
         <body>
-            <div class="error">
-                <h2>🚫 ${title}</h2>
-                <p><strong>Failed to load:</strong> ${url}</p>
-                <div class="details">
-                    ${errors.map(err => `<div>• ${err.message || err}</div>`).join('')}
-                </div>
-                <p>This may be due to network issues or the target server being unavailable.</p>
-                <button onclick="history.back()">← Go Back</button>
-                <button onclick="location.reload()">🔄 Retry</button>
-            </div>
+            <h2>🚫 ${title}</h2>
+            <p><strong>Failed to load:</strong> ${url}</p>
+            <p>Error: ${errors.map(e => e.message || e).join(', ')}</p>
+            <button onclick="history.back()">← Go Back</button>
+            <button onclick="location.reload()">🔄 Retry</button>
         </body>
         </html>
     `;
@@ -736,4 +556,4 @@ self.addEventListener('message', (event) => {
     }
 });
 
-console.log('=== Complete Working Scramjet SW Ready ===');
+console.log('=== Scramjet SW - UV Style Ready ===');
