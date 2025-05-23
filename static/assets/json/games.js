@@ -37,7 +37,7 @@ const gamesData = [
 {
     title: "Moto X3M 1",
     imgSrc: "/img/gameimg/motox3m.jpeg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.friv.com/z/games/motox3m/game.html")
+    link: "/local games/motox3m1/index.html")
 },
 {
     title: "Moto X3M 2",
@@ -52,17 +52,17 @@ const gamesData = [
 {
     title: "Moto X3M Summer",
     imgSrc: "/img/gameimg/Motox3msummer.jpeg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://moto-x3m.net/pool-party/")
+    link: "/local games/motox3m-summer/index.html"
 }, 
 {
     title: "Moto X3M Halloween",
     imgSrc: "/img/gameimg/motox3mha.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://moto-x3m.net/spooky-land/")
+    link: "/local games/motox3m-hallo/index.html"
 },
 {
     title: "Moto X3M Winter", 
     imgSrc: "/img/gameimg/motox3mwinter.jpeg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://moto-x3m.net/winter/")  
+    link: "/local games/motox3m-winter/index.html"
 },
 {
     title: "Balls N Bricks",
