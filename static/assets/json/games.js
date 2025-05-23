@@ -1,9 +1,9 @@
 const gamesData = [
-    {
-        title: "Agar.io",
-        imgSrc: "/img/gameimg/Agario.png",
-        link: "/local games/Agar.io/index.html"
-    },
+{
+    title: "Agar.io",
+    imgSrc: "/img/gameimg/Agario.png",
+    link: "/local games/Agar.io/index.html"
+},
 {
     title: "Among us",
     imgSrc: "/img/gameimg/Amoungus.png",
