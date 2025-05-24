@@ -15,11 +15,6 @@ const gamesData = [
     link: "/local games/slowroads/index.html"
 },
 {
-    title: "Swoop",
-    imgSrc: "/img/gameimg/swoop.jpeg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://games.cdn.famobi.com/html5games/s/swooop/v1/?fg_domain=play.famobi.com&fg_aid=A-SILVERGAMES&fg_uid=89459199-3905-4687-b993-158f437a0e11&fg_pid=8a24e5f2-94a8-4593-b4e5-81cc68f524c8&fg_beat=881&original_ref=https%3A%2F%2Fwww.silvergames.com%2F")
-},
-{
     title: "Gun Night",
     imgSrc: "/img/gameimg/gunnight.jpeg",
     link: "/local games/gunnight/index.html"
