@@ -223,7 +223,7 @@ const gamesData = [
 {
     title: "Time Sho</x>oter 2", 
     imgSrc: "/img/gameimg/TimeShooter2.jpg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://watchdocumentaries.com/wp-content/uploads/games/time-shooter-2/")
+    link: "/local games/timeshooter/index.html"
 },
 {
     title: "Gu</x>n Str</x>ike Runner", 
@@ -248,12 +248,12 @@ const gamesData = [
 {
     title: "Tomb Of The Mask", 
     imgSrc: "/img/gameimg/tombofthemask.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://tombofthe-mask.com/1.embed")
+    link: "/local games/tombofthemask/index.html"
 },
 {
     title: "OvO", 
     imgSrc: "/img/gameimg/OVO.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/50208/")
+    link: "/local games/ovo/index.html"
 },
 {
     title: "Poly Track", 
@@ -263,12 +263,12 @@ const gamesData = [
 {
     title: "The Impossible Quiz", 
     imgSrc: "/img/gameimg/theimpossiblequiz.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://thepizzaedition.github.io/iquiz/")
+    link: "/local games/theimpossiblequiz/index.html"
 },
 {
     title: "Tunnel Rush", 
     imgSrc: "/img/gameimg/tunnelrush2.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://tunnelrush.app/iframe/index.html")
+    link: "/local games/tunnelrush/index.html"
 },
 {
     title: "Tanuki Sunset", 
@@ -278,12 +278,12 @@ const gamesData = [
 {
     title: "Vex 8", 
     imgSrc: "/img/gameimg/vex8.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/Vex8/")
+    link: "/local games/vex7/index.html"
 },
 {
     title: "Rooftop Snipers", 
     imgSrc: "/img/gameimg/rooftopsnipers.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://rooftop-snipers.github.io/file/")
+    link: "/local games/rooftopsnipers/index.html"
 },
 {
     title: "Paper Plane", 
@@ -293,12 +293,12 @@ const gamesData = [
 {
     title: "Cluster Rush", 
     imgSrc: "/img/gameimg/clusterrush.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://smdgames.github.io/mathgames66/7462e5fd-cbf3-4484-91ad-ad8574157409/content/w8.snokido.com/games/unity-webgl/cluster-rush/index.html")
+    link: "/local games/cluster-rush/index.html"
 },
 {
     title: "FNAF", 
     imgSrc: "/img/gameimg/fnaf.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/gmz/fnaf/index.html")
+    link: "/local games/fnaf/index.html"
 },
 {
     title: "Gun Spin", 
@@ -313,12 +313,12 @@ const gamesData = [
 {
     title: "Neon Swing", 
     imgSrc: "/img/gameimg/neonswing.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://mazahackasgan.github.io/neon-swing/")
+    link: "/local games/stickman-hook/index.html"
 },
 {
     title: "Drive Mad", 
     imgSrc: "/img/gameimg/drivemad.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://ubg77.github.io/game131022/drive-mad/")
+    link: "/local games/drivemad/index.html"
 },
 {
     title: "CoreBall", 
@@ -333,22 +333,22 @@ const gamesData = [
 {
     title: "Basketball Stars", 
     imgSrc: "/img/gameimg/basketballstars.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://images-opensocial.googleusercontent.com/gadgets/ifr?url=https://cdn.jsdelivr.net/gh/bobydob/JSEngine@c0c9f32fd575688ff4b14309e9acf19b73f15e2a/build/bs/bs.xml&container=ig")
+    link: "/local games/basketball-stars/index.html"
 },
 {
     title: "FNAF 2", 
     imgSrc: "/img/gameimg/fnaf2.webp",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/gmz/fnaf2/index.html")
+    link: "/local games/fnaf2/index.html"
 },
 {
     title: "FNAF 3", 
     imgSrc: "/img/gameimg/fnaf3.webp",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/gmz/fnaf3/index.html")
+    link: "/local games/fnaf3/index.html"
 },
 {
     title: "FNAF 4", 
     imgSrc: "/img/gameimg/fnaf4.webp",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/gmz/fnaf4/index.html")
+    link: "/local games/fnaf4/index.html"
 },
 {
     title: "FNAF 5", 
@@ -358,17 +358,17 @@ const gamesData = [
 {
     title: "Monkey Mart", 
     imgSrc: "/img/gameimg/monkeymark.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://ubggo.github.io/ub-games/monkeymart/")
+    link: "/local games/monkeymart/index.html"
 },
 {
     title: "Flappy Bird", 
     imgSrc: "/img/gameimg/flappybird.jpg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://flappybirdgame.github.io/file/")
+    link: "/local games/flappybird/index.html"
 },
 {
     title: "FNF", 
     imgSrc: "/img/gameimg/fnf.jpg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://game.fnfhub.net/26860/")
+    link: "/local games/fnf/index.html"
 },
 {
     title: "A Little To The Left", 
@@ -378,7 +378,7 @@ const gamesData = [
 {
     title: "Silk", 
     imgSrc: "/img/gameimg/silk.jpeg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("http://weavesilk.com")
+    link: "/local games/weavesilk/index.html"
 },
 {
     title: "Poppy Playtime", 
@@ -388,7 +388,7 @@ const gamesData = [
 {
     title: "Drift Boss", 
     imgSrc: "/img/gameimg/drift-boss1.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.mathplayground.com/drift-boss-v3/index.html")
+    link: "/local games/drift-boss/index.html"
 },
 {
     title: "Block Blast", 
@@ -403,32 +403,32 @@ const gamesData = [
 {
     title: "Subway Surfers", 
     imgSrc: "/img/gameimg/subway-surfers.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://77pen.github.io/p8/subway-surfers-newyork/")
+    link: "/local games/subway-surfers/index.html"
 },
 {
     title: "Temple Run", 
     imgSrc: "/img/gameimg/templerun.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://23azostore.github.io/s8/temple-run-2")
+    link: "/local games/templerun/index.html"
 },
 {
     title: "Google Snake", 
     imgSrc: "/img/gameimg/google-snake-icon-filled-256.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://googlesnakemods.com/v/4/")
+    link: "/local games/googlesnake/index.html"
 },
 {
     title: "Drift Hunters", 
     imgSrc: "/img/gameimg/drifthunters.png",
-    link: "/local games/Drift Hunters/Drift Hunters.html"
+    link: "/local games/drifthunters/index.html"
 },
 {
     title: "Ngon", 
     imgSrc: "/img/gameimg/ngon_title.gif",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://landgreen.github.io/n-gon/")
+    link: "/local games/ngon/index.html"
 },
 {
     title: "Crossy Road", 
     imgSrc: "https://lh7-us.googleusercontent.com/q9pQl7MZG2X6QYEVsGMYZp5PoalmJCY0bK9o5wcNEhEhN6pWmDTutZNwmEhfNVUIhqKAGlt6VNjGOInVSkkphG8D8uyx0gF2KVzXTt3LLF9OyBSiI3XGb2PZsM6HPHRol1nfALe6m20v7xrFGsT2J43-dBnueA",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://crossyroad-pi.vercel.app")
+    link: "/local games/crossyroad/index.html"
 },
 {
     title: "A Dance Of Fire And Ice", 
@@ -438,7 +438,7 @@ const gamesData = [
 {
     title: "Run 3", 
     imgSrc: "https://lh7-us.googleusercontent.com/6avdW0W2-vTEubtnOORUqELyCbi-axinh-m-R1b7ZXKG6y4kLz18WYO20gQ3Ml4FRXAZAdlH6_s6ADOoowHf6ReiZXbmfdwCiaVBEV59uGb0LQx9qq1vAX41DpNU7rA7AKlqJYc76fjPcCqKCD-8PLW-p5H8Xw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://lekug.github.io/tn6pS9dCf37xAhkJv/")
+    link: "/local games/run3/index.html"
 },
 {
     title: "FNAF Shooter", 
@@ -448,7 +448,7 @@ const gamesData = [
 {
     title: "CSGO Clicker", 
     imgSrc: "https://lh7-us.googleusercontent.com/1wvdccj2d9ah0y09HW1yjisqyHVasjE5FQfMlx2VtT_NRR2C7xNesoEW1rcu4-gZXXX5UtqyMz2jdm8Ze92VHmAb0kPsnZcw6Hbmk_d5o4yNo7U5uK2L6etRycOyqppy7fEOAHONB4AUgxu-vp-c0m3m1W5zbw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://csgoclicker.github.io/file/")
+    link: "/local games/csgoclicker/index.html"
 },
 {
     title: "Doodle Baseball", 
@@ -458,7 +458,7 @@ const gamesData = [
 {
     title: "Bad Time Sim", 
     imgSrc: "https://lh7-us.googleusercontent.com/mBlISAzKsz0xx5ZSEBstU7rGyMaL2zZPKDmZ-ZTRnb9c6NxfMBKkaF1Hfc4fTO0svWeokE1UyIQLzDZliz6LEfDMEvAMXQtZzQ3HjFWZ9qljNJj7nKIFMpvDXrgETdka6QEbDHXZpl-JHMuAVsRhhVAoaWFlnw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://jcw87.github.io/c2-sans-fight/")
+    link: "/local games/badtimesimulator/index.html"
 },
 {
     title: "Dead or No Deal", 
@@ -478,7 +478,7 @@ const gamesData = [
 {
     title: "Getaway Sho</x>otout", 
     imgSrc: "https://lh7-us.googleusercontent.com/fxmVYqxAHuq9zf7lE33Yy0nLKNiaChEmbEpfzm1MN_SyN24JPFaqDJU_nrEE5WmG4Qt8gPNUbLOI_UnrTwMfD1rKa7BF99M5sp6Z-VUeRoRXrJpgVfaOaUHH2r4iSt1XGWsH31iq_KDkuoUGxuFoxvkcJGadiA",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://metalfoxdev.github.io/cjs-garchive/ga-s/index.html")
+    link: "/local games/getawayshooter/index.html"
 },
 {
     title: "Granny", 
@@ -488,7 +488,7 @@ const gamesData = [
 {
     title: "2048 Cupcakes", 
     imgSrc: "https://lh7-us.googleusercontent.com/fxRTAwBXjNG3k_l2NxwgkLClWqbFvXWws76FeW8KS5D8b4Py5zwd8IePuw9_KKggqzppFGENNBlsiLihiBI5eFUBtwamxZeDyxK1ck6qJPR3uKlNJtojOI7-OLm6NqBAHG4ctoHM3hPISkU8lxd7bR-Cw-_ucA",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://0x0800.github.io/2048-CUPCAKES/")
+    link: "/local games/2048cup/index.html"
 },
 {
     title: "Highway Traffic", 
@@ -533,7 +533,7 @@ const gamesData = [
 {
     title: "Madalin Stunt Cars 2", 
     imgSrc: "https://lh7-us.googleusercontent.com/DZ8CBHVobl4YY5w1St5PDjbszkyrQ5FX-TJwFoGr8BQ16aa_a_u6e7nCuPpPxsVxxRcBniPlCUhQjkqXsk_aEJYNohfbEfP3k8NYQxDdI5w3w8Gme9CavLBJYeR9tr_dXiW1rFXn7RwRCA3g5B0OHRo41EemzQ",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://lnageo.github.io/a/madalin-stunt-cars-2/")
+    link: "/local games/madalinstuntcars/index.html"
 },
 {
     title: "Stick Duel Battle", 
@@ -543,7 +543,7 @@ const gamesData = [
 {
     title: "Stick Man Hook", 
     imgSrc: "https://lh7-us.googleusercontent.com/p1cpa6x0ie3KK2nP6lPYZPJl6w-WF-3J2iwx5uV3rr9RRbti0ze3UBusOLp6KwUs99P5NQQ6kNxGGZDxpnP68HVu94UhjUDY7vdQJzxgzKa3cZOt-6HlzWujgCh5NaR_GnJCde51WaPmkNsp1-gnCary0fMZlQ",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://g.immortal2willlose.xyz/ghost/stickman-hook/")
+    link: "/local games/stickman-hook/index.html"
 },
 {
     title: "Papa's Pizzeria", 
@@ -558,12 +558,12 @@ const gamesData = [
 {
     title: "Tube Jumpers", 
     imgSrc: "https://lh7-us.googleusercontent.com/THZEgS16ulDmx9iZPCHuRwCoU0N2c9-PF4WewqWph98dDi_quwk389OO6ia7tg2_r-WTN94HrlQh2Ejao_MV_8DLgZY1YHxZPfziyADp1HG-2vFQXLibYiG7ZQUgZ-XkPeOfJqD-OyO7rMO1AcRTYoP3bh2sLQ",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://ubg100.github.io/games/tube-jumpers/index.html")
+    link: "/local games/tube-jumpers/index.html"
 },
 {
     title: "ROBLOX", 
     imgSrc: "https://lh7-us.googleusercontent.com/ur4VB3U3kGEVoFAiha3Ay_h9rubAOXsSUJvXVxywP63P5TMrBrB6jauVFTwxlarQG9Vyv-ApDxsyYBPcA5f2BJAXddsz49fYeJZuoh3Q4EQDe2BcOqb2MkxB5o5TZiJi4TxFE2wvjFG2OU5mvYfUfwnKaCKPug",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.easyfun.gg/cloud-games/roblox.html")
+    link: "/local games/roblox/index.html"
 },
 {
     title: "Opposite Day", 
