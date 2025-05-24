@@ -37,7 +37,7 @@ const gamesData = [
 {
     title: "Moto X3M 2",
     imgSrc: "/img/gameimg/motox3m2.jpeg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.friv.com/z/games/motox3m2origins/game.html")
+    link: "/local games/moto-x3m2/index.html"
 },
 {
     title: "Moto X3M 3",
