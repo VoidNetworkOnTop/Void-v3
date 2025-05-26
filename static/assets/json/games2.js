@@ -52,7 +52,7 @@ const games2Data = [
 {
     title: "Ragdoll Archers", 
     imgSrc: "https://lh7-us.googleusercontent.com/V0oeuxrpTGrOAdC0HMtztXnG6v-W0AMSC4ozjjK5-GbmylDDfismz5ylhEkKsHG7vJCc4WxQ2OLcHY8QEZCQftc0adJDjw_Ia2KvpNeonq2RzXTgz6x6DAroDVp-M-i5c8FQwPmnzQizzxIs0yVVBZzxrRzhlQ",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://bitlifeonline.github.io/ragdoll-archers/")
+    link: "/local games/ragdollar/index.html"
 },
 {
     title: "Funny Shooter 2",
