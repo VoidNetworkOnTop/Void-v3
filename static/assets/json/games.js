@@ -72,7 +72,7 @@ const gamesData = [
 {
     title: "Spacebar Clicker", 
     imgSrc: "/img/gameimg/spacebarclicker.jpg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.arealme.com/spacebar-clicker/en/")
+    link: "/local games/spacebarclicker/index.html"
 },
 {
     title: "Slope",
