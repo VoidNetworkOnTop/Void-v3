@@ -87,12 +87,12 @@ const games2Data = [
 {
     title: "EggyCar", 
     imgSrc: "https://lh7-us.googleusercontent.com/XzQmqFIMuI1P7JPJYEMDsaVvnyUEx3Yi-yHMb56pAWDDP6BS9L7nhz-9Z6qGfcqqU7SK3-dLuBVBBd7ptmx-zFOm5jK3Nba_o8I8pNAq3-NpNcInyXFJJ1woU3a-jDQ9zONSio91O_5QCYVWAqn-_vIgMW7rCQ",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://html5.gamedistribution.com/rvvASMiM/59a98bf799ef499d9d7b9285bccaa196/index.html?gd_zone_config=eyJwYXJlbnRVUkwiOiJodHRwczovL2VnZ3ljYXIuY28vIiwicGFyZW50RG9tYWluIjoiZWdneWNhci5jbyIsInRvcERvbWFpbiI6ImVnZ3ljYXIuY28iLCJoYXNJbXByZXNzaW9uIjp0cnVlLCJsb2FkZXJFbmFibGVkIjp0cnVlLCJob3N0IjoiaHRtbDUuZ2FtZWRpc3RyaWJ1dGlvbi5jb20iLCJ2ZXJzaW9uIjoiMS41LjE3In0%253D")
+    link: "/local games/eggycar-poki/index.html"
 },
 {
     title: "Papa's Cheeseria", 
     imgSrc: "https://lh7-us.googleusercontent.com/vvyk1JdsAgFsPPE4lTjaW2KeG9Yf1C49WBvdZNZWQr2vyIChl5XCIy7DCByd8estWUjxVYBWowhFV11oqIqdw2IDtj-Mqjl2eqNBraif34wCjkhUT2OYtCPweDFTk_YQiOHufRMUqsT3Z7_kcTVqptmnvrOQPg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/49657/")
+    link: "/local games/papas-cheeseria-freezenova/index.html"
 },
 {
     title: "Papa's Freezeria", 
