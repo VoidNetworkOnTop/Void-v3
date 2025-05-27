@@ -117,27 +117,17 @@ const games2Data = [
 {
     title: "Doge Miner", 
     imgSrc: "https://lh7-us.googleusercontent.com/vp_mx6o4SrOHlgzoIBWO0inGCWEO3XX7WPD2JZqpz_NWBcLH6tIUoW9zUolo2SpzFKcbtDMBhayCH14LwGNQXurcfIyeDpwla2wMfseS_ZLYvgIQG_92sFF36BQyWD1p80qWbL3OJ60b0CwEZZZiu5qKrfzJqg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://void.radio.am/gg/DogeMiner/")
+    link: "/local games/dogeminer/index.html"
 },
 {
     title: "Basket Random", 
     imgSrc: "https://lh7-us.googleusercontent.com/YyUUZFVuXnOCbOxrH9HcMVm12qQd5I1vdw66Bx4Rpiq894Dn8AhQhdQbsKtO7NKs6LZ-R0NmU__tOxKAeC-S_ECuli0_HHesKMlv4CwEx-NLukuRkj5Q2_gVR8VwQsgyQd32kSZfwx_Ia14mhV87hyQ8rZ71qA",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://files.twoplayergames.org/files/games/other/Basket_Random/index.html")
-},
-{
-    title: "Hook", 
-    imgSrc: "https://lh7-us.googleusercontent.com/KZ4Q7Oi3Y1nmHVl4C5RRutadqJuboLJqSrxuENpUxyOo7wjp_rA_42diemPg9qyCmABkxrDePmi6-n38K_I-YXxSHrRc_BUeB7Jf-e9tWORf0bhOAWW5vz_2nqlUE7qz2X_pbSRM11g_C0xS3hsaQjRMYcVstA",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://media.abcya.com/games/hook/html/index.html")
-},
-{
-    title: "Blue Box", 
-    imgSrc: "https://lh7-us.googleusercontent.com/yJm0N-6jwF0rI7UaSpB7A6uJbEpU2M75nXxsBFzFCuaP1ZZe33sPjWaEON8ZEQG7aSs8e9wBAU6WWJ4O4L3jWXCoQdwEcwrsb2rTGCdqnJBANHDDcNmyxSxX2VaSaeKoFSQnRre0izmJAcpVLjQx9t8XEP4gmg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://media.abcya.com/games/blue_box/html/index.html")
+    link: "/local games/basketrandom/index.html"
 },
 {
     title: "DreadHead Parkour", 
     imgSrc: "https://lh7-us.googleusercontent.com/jf5vvm3zg5py2cwdn3r_YTxSd-d-UdDXKbL2XwWpmT7g-hxF3iXd4nNcTrEOjPJhELf8rCnjDVAk0Vo4-VCDJuBA_XzvYBZ9hZhiK1diVev6goyQMAw96ECCpQlBUHVbi7kPweQArljg6AoWdWwXbXaTP5201w",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://scrap-metal.github.io/s7/dreadhead-parkour/")
+    link: "/local games/dreadP/dreadhead-parkour.html"
 },
 {
     title: "Chill Guy Clicker", 
