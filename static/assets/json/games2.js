@@ -227,12 +227,12 @@ const games2Data = [
 {
     title: "Super Orb Collector", 
     imgSrc: "https://lh7-us.googleusercontent.com/Ge18u1hdxEoVA7YJahOCstBSJ5E0dIi-_0Ps9mWCYMXQoFIsZ-VfWCEmkDInxX_Tebac2cAnBbdMOGy-wOMIxxI4jNM0o0aJqQWvVcCWYL53eMWUELeNHkF2WvvWfLvp17cXXSekcw5jO6vXxcLRzrD5TkpR4swwIVnDW8nfBhEktTZMFBD8WN1vKKOMH69XLsmFWA0D?key=yj4V8pHW144VjA9YlEbf1Q",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/26137/")
+    link: "/local games/orbcollector/html-classic.itch.zone/html/1514220/indexaf55.html"
 }, 
 {
     title: "Crazy Chicken 3D", 
     imgSrc: "https://lh7-us.googleusercontent.com/2YGjtKZeclh6T_MmyQtQRBUcwlw1Ot7kGNXiPVBelfTabaXEA9px3LWN93CNTTe7ovxSYpxFmkBt2DytqzxeS32OU0K63O8lZhi08sy8MWRnt-V-pckzf0pvD0vagVKIe6mfrpgucRR2w9DUfvgtBjoZGf96j91d3jPIggCf690n8jF9VDz5w445yqV-XgBSvi2Tvily?key=yj4V8pHW144VjA9YlEbf1Q",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://html-classic.itch.zone/html/13448030/crazychicken%20web%20port/index.html")
+    link: "/local games/crazychicken web port/index.html"
 },  
 {
     title: "Basketball Legends", 
