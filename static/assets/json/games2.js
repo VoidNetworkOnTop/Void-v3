@@ -272,7 +272,7 @@ const games2Data = [
 {
     title: "Bloons Tower Defense", 
     imgSrc: "https://lh7-us.googleusercontent.com/MG61ryfsIFHqeOglDcH5qGEzHwNqBsJdSGVJA1Q_A65WL3QgIteLefelKseMqf7oAtMTCes4ABYkFyWzxGq3rBM4C8Tsfc6iar8hXwLLH6tH24HH7r1f1XIBqEklb07JabqNU8PJAv9uq6KbTMfXfU3aV8EAPxoloEu9f4ny0Xmf6aQc5DYX_mWbZjPBGrdAmqHN6549?key=yj4V8pHW144VjA9YlEbf1Q",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://bloons-towerdefense.github.io/file/")
+    link: "/local games/bloonstowerdefence/index.html"
 }, 
 {
     title: "Space Wave", 
@@ -287,7 +287,7 @@ const games2Data = [
 {
     title: "Bit Planes", 
     imgSrc: "https://lh7-us.googleusercontent.com/7_KB7ktxTYY29d_TQnnEk1-oo-2c69hMAtp1AWvIwWoSaky4Xp68WbeBeDueKUqCvvNadYIACMeKxILJ3YnybGscdD7gR_qzRUBsd58JR3fXZbYx4f1bg_yy--Glph-CdSq-6uN-vqifMwHox-hX8tNHoE5FC5c6CtWMhNa6olBW1vl7jkCZJb0-Jl5pInBWDS-Os5NK?key=yj4V8pHW144VjA9YlEbf1Q",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://medv.io/bit-planes/")
+    link: "/local games/bit-planes/index.html"
 },
 {
     title: "Connect 4", 
