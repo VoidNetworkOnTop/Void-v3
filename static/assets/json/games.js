@@ -108,12 +108,12 @@ const gamesData = [
 {
     title: "Happy Glass",
     imgSrc: "/img/gameimg/happyglass.avif",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://games.crazygames.com/en_US/happy-glass/index.html")
+    link: "/local games/happyfilledglass/lagged.com/api/play2/happy-glass6/index.html"
 },
 {
     title: "M</x>inec</x>raft",
     imgSrc: "/img/gameimg/minecraft.avif",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://eaglercraft.com/mc/1.8.8/")
+    link: "/local games/Eaglercraft_1.12_Offline_en_US.html"
 }, 
 {
     title: "Dino Game", 
@@ -133,7 +133,7 @@ const gamesData = [
 {
     title: "Id</x>le Brea</x>kout", 
     imgSrc: "/img/gameimg/idle-breakout-logo.jpg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/49029/")
+    link: "/local games/idlebreakout/index.html"
 },
 {
     title: "Wordle Unlimited", 
