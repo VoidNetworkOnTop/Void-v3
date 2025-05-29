@@ -553,12 +553,7 @@ const gamesData = [
 {
     title: "Slope Run", 
     imgSrc: "https://lh7-us.googleusercontent.com/Gb8hdT5a8UzWV0lU4WZx7LWViY8SqULyzwwjQcfBA43vo-pMKOcveBSuk0_633Rb9pkR-UHxF9ItMsdLYdLs1qrDlw0vGK-1YJrEaqExpcIDhLz-XQdAs87JnT4bop6cvD-DJ9VPiUihOi8t_pBsXIXztj5bxw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.hoodamath.com/mobile/games/slope-run/game.html?nocheckorient=1")
-},
-{
-    title: "Glitch", 
-    imgSrc: "https://lh7-us.googleusercontent.com/GzeRPIVD-t7QLRuxTzU9Z5FgA5i865PMFpk7zCjeCAvMcXeJ8u9ldbYhRvrFNDoIKutdpam9gerqE9FeL66KgU9AHTywG2EgTu618J263vorM2Zfhqo3oh8gDf9dLxh0nZICbvPwCH0mQO1asF9nn7JWnBsI9A",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.hoodamath.com/mobile/games/glitch/game.html?nocheckorient=1")
+    link: "/local games/slope-run-gamedistribution/index.html"
 },
 {
     title: "Devil Trap Path", 
