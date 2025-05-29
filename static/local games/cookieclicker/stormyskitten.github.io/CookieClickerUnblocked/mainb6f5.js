@@ -2208,7 +2208,7 @@ Game.Launch=function()
 		
 Game.showBackupWarning=function()
 {
-	Game.Notify(loc("Void Network"),loc("Hello Void Network user! Make sure to join the discord for more unblocked links! https://discord.gg/M5vcveZbGx"),[25,7]);
+	Game.Notify(loc("Void Network"),loc("Hello Void Network user! Make sure to join the discord for more unblocked links! <a href=\"https://discord.gg/M5vcveZbGx\" target=\"_blank\" style=\"color:#7289da;text-decoration:underline;\">https://discord.gg/M5vcveZbGx</a>"),[25,7]);
 }
 
 		
