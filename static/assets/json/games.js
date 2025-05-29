@@ -60,11 +60,6 @@ const gamesData = [
     link: "/local games/motox3m-winter/index.html"
 },
 {
-    title: "Balls N Bricks",
-    imgSrc: "/img/gameimg/Ballsnbricks.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.miniplay.com/embed/bricks-and-balls")
-}, 
-{
     title: "Javlien Fighting",
     imgSrc: "/img/gameimg/image_10.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://kbhgames.com/game/javelin-fighting")
@@ -90,11 +85,6 @@ const gamesData = [
     imgSrc: "/img/gameimg/happywheels.jpg",
     link: "/local games/happywheels/index.html"
 },
-{
-    title: "Apple worm", 
-    imgSrc: "/img/gameimg/appleworm.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://apple-worm.github.io/apple-worm/")
-}, 
 {
     title: "G</x>un Mayhem", 
     imgSrc: "/img/gameimg/gunmayhem.jpeg",
@@ -208,7 +198,7 @@ const gamesData = [
 {
     title: "Mr. Mine", 
     imgSrc: "/img/gameimg/mrmine.jpg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/48544/")
+    link: "/local games/mr-mine/index.html"
 },
 {
     title: "Bodycam", 
