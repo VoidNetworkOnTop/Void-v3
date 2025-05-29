@@ -2208,7 +2208,7 @@ Game.Launch=function()
 		
 Game.showBackupWarning=function()
 {
-	Game.Notify(loc("Void Network On Top"),loc("Hello again! Just a reminder that you may want to back up your Cookie Clicker save every once in a while, just in case.<br>To do so, go to Options and hit \"Export save\" or \"Save to file\"!")+'<div class="line"></div><a style="float:right;" onclick="Game.prefs.showBackupWarning=0;Game.CloseNotes();">'+loc("Don't show this again")+'</a>',[25,7]);
+	Game.Notify(loc("Void Network"),loc("Hello Void Network user! Make sure to join the discord for more unblocked links! https://discord.gg/M5vcveZbGx"),[25,7]);
 }
 
 		
