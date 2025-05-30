@@ -118,7 +118,7 @@ const gamesData = [
 {
     title: "Cook</x>i</x>e Clic</x>ker", 
     imgSrc: "https://play-lh.googleusercontent.com/7QdF1mILpUj-xtZGzNwECuVHaVKJHobvYh45z9q7hGvCbmjH1oD_ZfRxbEqbB_yb6Dk",
-    link: "/local games/cookieclicker/stormyskitten.github.io/CookieClickerUnblocked/index.html"
+    link: "/local games/voidCC/stormyskitten.github.io/VOIDCC/index.html"
 }, 
 {
     title: "Id</x>le Brea</x>kout", 
