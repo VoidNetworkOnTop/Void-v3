@@ -116,7 +116,7 @@ const gamesData = [
     link: "/local games/bitlife/index.html"
 }, 
 {
-    title: "Cook</x>ie Clic</x>ker", 
+    title: "Cook</x>i</x>e Clic</x>ker", 
     imgSrc: "https://play-lh.googleusercontent.com/7QdF1mILpUj-xtZGzNwECuVHaVKJHobvYh45z9q7hGvCbmjH1oD_ZfRxbEqbB_yb6Dk",
     link: "/local games/cookieclicker/stormyskitten.github.io/CookieClickerUnblocked/index.html"
 }, 
