@@ -137,3 +137,172 @@ function loadHTML(url, elementId) {
         })
         .catch(error => console.error('Error loading HTML:', error));
 }
+
+// Custom Red Dot Cursor
+(function() {
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initCustomCursor);
+    } else {
+        initCustomCursor();
+    }
+
+    function initCustomCursor() {
+        // Create styles
+        const style = document.createElement('style');
+        style.textContent = `
+            * {
+                cursor: none !important;
+            }
+            
+            .custom-cursor {
+                position: fixed;
+                width: 12px;
+                height: 12px;
+                pointer-events: none;
+                z-index: 9999999999999999999999999;
+                transform: translate(-50%, -50%);
+            }
+            
+            .custom-cursor-dot {
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                background: #ff0000;
+                border-radius: 50%;
+                top: 0;
+                left: 0;
+                transition: all 0.1s ease;
+                box-shadow: 0 0 6px rgba(255, 0, 0, 0.5);
+            }
+            
+            .custom-cursor.clicking .custom-cursor-dot {
+                transform: scale(0.7);
+                background: #ff4444;
+                box-shadow: 0 0 12px rgba(255, 0, 0, 0.8);
+            }
+            
+            /* Hide custom cursor when it leaves the window */
+            .custom-cursor.hidden {
+                display: none;
+            }
+            
+            /* Hover effect for interactive elements */
+            .custom-cursor.hovering .custom-cursor-dot {
+                transform: scale(1.5);
+                background: #ff6666;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Create cursor element
+        const cursor = document.createElement('div');
+        cursor.className = 'custom-cursor';
+        cursor.innerHTML = `<div class="custom-cursor-dot"></div>`;
+        document.body.appendChild(cursor);
+
+        // Cursor position tracking
+        let mouseX = 0;
+        let mouseY = 0;
+        let cursorX = 0;
+        let cursorY = 0;
+        let isPointerLocked = false;
+
+        // Smooth animation loop
+        function animate() {
+            const dx = mouseX - cursorX;
+            const dy = mouseY - cursorY;
+            
+            cursorX += dx * 0.2;
+            cursorY += dy * 0.2;
+            
+            cursor.style.left = cursorX + 'px';
+            cursor.style.top = cursorY + 'px';
+            
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        // Mouse movement handler
+        document.addEventListener('mousemove', function(e) {
+            if (isPointerLocked) {
+                mouseX += e.movementX;
+                mouseY += e.movementY;
+                
+                // Keep cursor within viewport bounds
+                mouseX = Math.max(0, Math.min(window.innerWidth, mouseX));
+                mouseY = Math.max(0, Math.min(window.innerHeight, mouseY));
+            } else {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            }
+            
+            cursor.classList.remove('hidden');
+        });
+
+        // Mouse down/up handlers
+        document.addEventListener('mousedown', function() {
+            cursor.classList.add('clicking');
+        });
+
+        document.addEventListener('mouseup', function() {
+            cursor.classList.remove('clicking');
+        });
+
+        // Hide cursor when it leaves the window
+        document.addEventListener('mouseleave', function() {
+            cursor.classList.add('hidden');
+        });
+
+        document.addEventListener('mouseenter', function() {
+            cursor.classList.remove('hidden');
+        });
+
+        // Handle pointer lock changes
+        document.addEventListener('pointerlockchange', function() {
+            isPointerLocked = document.pointerLockElement !== null;
+        });
+
+        // Initialize cursor position
+        cursor.style.left = window.innerWidth / 2 + 'px';
+        cursor.style.top = window.innerHeight / 2 + 'px';
+        cursorX = window.innerWidth / 2;
+        cursorY = window.innerHeight / 2;
+
+        // Optional: Add hover detection for interactive elements
+        let hoverTargets = [];
+        
+        function updateHoverTargets() {
+            hoverTargets = document.querySelectorAll('a, button, input, select, textarea, [role="button"], [onclick]');
+            
+            hoverTargets.forEach(target => {
+                target.addEventListener('mouseenter', function() {
+                    cursor.classList.add('hovering');
+                });
+                
+                target.addEventListener('mouseleave', function() {
+                    cursor.classList.remove('hovering');
+                });
+            });
+        }
+        
+        // Initial hover target setup
+        updateHoverTargets();
+        
+        // Update hover targets when DOM changes (for dynamic content)
+        const observer = new MutationObserver(updateHoverTargets);
+        observer.observe(document.body, { childList: true, subtree: true });
+        
+        // Cleanup function if needed
+        window.removeCustomCursor = function() {
+            cursor.remove();
+            style.remove();
+            observer.disconnect();
+            document.removeEventListener('mousemove', arguments.callee);
+            document.removeEventListener('mousedown', arguments.callee);
+            document.removeEventListener('mouseup', arguments.callee);
+            document.removeEventListener('mouseleave', arguments.callee);
+            document.removeEventListener('mouseenter', arguments.callee);
+        };
+    }
+})();
