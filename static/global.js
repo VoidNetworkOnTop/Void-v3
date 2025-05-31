@@ -94,10 +94,18 @@ document.addEventListener("keydown", function(e) {
     if ((e.altKey && e.key == "t")) {
         if (document.getElementById("terminal") != null) {
             document.getElementById("terminal").remove()
+            // Re-enable cursor when terminal is closed
+            if (window.customCursor) {
+                window.customCursor.classList.remove('hidden');
+            }
             return;
         }
         if (document.getElementById("terminal") == null) {
             renderFile("/terminal.html", "50%", "50%", "terminal")
+            // Hide cursor when terminal is open
+            if (window.customCursor) {
+                window.customCursor.classList.add('hidden');
+            }
             return
         }
     }
@@ -116,11 +124,44 @@ function renderFile(url, width, height, id) { // Renders URL in a centered ifram
     fr.style.left = "50%"
     fr.style.opacity = 0.9
     document.body.appendChild(fr)
+    
+    // Hide cursor when iframe is rendered
+    if (window.customCursor) {
+        window.customCursor.classList.add('hidden');
+    }
 }
 
 // Delete Item Function
 function deleteItem(id) {
-    document.getElementById(id).remove()
+    const element = document.getElementById(id);
+    if (element && element.tagName === 'IFRAME') {
+        element.remove();
+        // Re-check if cursor should be visible after iframe removal
+        if (window.customCursor) {
+            setTimeout(() => {
+                const iframes = document.querySelectorAll('iframe');
+                if (iframes.length === 0) {
+                    window.customCursor.classList.remove('hidden');
+                }
+            }, 100);
+        }
+    } else if (element) {
+        element.remove();
+    }
+}IFRAME') {
+        element.remove();
+        // Re-check if cursor should be visible after iframe removal
+        if (window.customCursor) {
+            setTimeout(() => {
+                const currentElement = document.elementFromPoint(window.mouseX || 0, window.mouseY || 0);
+                if (!currentElement || currentElement.tagName !== 'IFRAME') {
+                    window.customCursor.classList.remove('hidden');
+                }
+            }, 100);
+        }
+    } else if (element) {
+        element.remove();
+    }
 }
 
 // Load HTML Function
@@ -200,6 +241,9 @@ function loadHTML(url, elementId) {
         cursor.className = 'custom-cursor';
         cursor.innerHTML = `<div class="custom-cursor-dot"></div>`;
         document.body.appendChild(cursor);
+        
+        // Save cursor reference globally
+        window.customCursor = cursor;
 
         // Cursor position tracking
         let mouseX = 0;
@@ -207,9 +251,10 @@ function loadHTML(url, elementId) {
         let cursorX = 0;
         let cursorY = 0;
         let isPointerLocked = false;
-        let stillnessTimer = null;
-        let lastMouseX = 0;
-        let lastMouseY = 0;
+        let lastMouseMove = Date.now();
+        let lastCursorPosition = { x: 0, y: 0 };
+        let movementDetected = false;
+        let isOverIframe = false;
 
         // Smooth animation loop
         function animate() {
@@ -226,8 +271,58 @@ function loadHTML(url, elementId) {
         }
         animate();
 
+        // Check if cursor is stuck
+        function checkCursorStuck() {
+            const currentTime = Date.now();
+            const timeSinceLastMove = currentTime - lastMouseMove;
+            
+            // Check if cursor position has changed
+            const positionChanged = Math.abs(cursorX - lastCursorPosition.x) > 1 || 
+                                  Math.abs(cursorY - lastCursorPosition.y) > 1;
+            
+            if (positionChanged) {
+                lastCursorPosition = { x: cursorX, y: cursorY };
+            }
+            
+            // If we detected movement but cursor hasn't moved in 500ms, it's probably stuck
+            if (movementDetected && !positionChanged && timeSinceLastMove > 500) {
+                cursor.classList.add('hidden');
+                movementDetected = false;
+            }
+            
+            // Hide cursor if over iframe
+            if (isOverIframe) {
+                cursor.classList.add('hidden');
+            }
+        }
+        
+        // Check cursor status periodically
+        setInterval(checkCursorStuck, 100);
+
+        // Detect when mouse is over iframe
+        function detectIframe(e) {
+            const element = document.elementFromPoint(e.clientX, e.clientY);
+            isOverIframe = element && element.tagName === 'IFRAME';
+            
+            // Also check if we're over any element that might capture the mouse
+            const problematicElements = ['IFRAME', 'EMBED', 'OBJECT', 'VIDEO', 'CANVAS'];
+            if (element && problematicElements.includes(element.tagName)) {
+                cursor.classList.add('hidden');
+                return true;
+            }
+            return false;
+        }
+
         // Mouse movement handler
         document.addEventListener('mousemove', function(e) {
+            lastMouseMove = Date.now();
+            movementDetected = true;
+            
+            // Check if over iframe or problematic element
+            if (detectIframe(e)) {
+                return;
+            }
+            
             if (isPointerLocked) {
                 mouseX += e.movementX;
                 mouseY += e.movementY;
@@ -241,6 +336,10 @@ function loadHTML(url, elementId) {
             }
             
             cursor.classList.remove('hidden');
+            
+            // Save mouse position globally
+            window.mouseX = mouseX;
+            window.mouseY = mouseY;
         });
 
         // Mouse down/up handlers
@@ -258,12 +357,71 @@ function loadHTML(url, elementId) {
         });
 
         document.addEventListener('mouseenter', function() {
-            cursor.classList.remove('hidden');
+            if (!isOverIframe) {
+                cursor.classList.remove('hidden');
+            }
+        });
+        
+        // Detect iframe hover events
+        document.addEventListener('mouseover', function(e) {
+            if (e.target.tagName === 'IFRAME') {
+                cursor.classList.add('hidden');
+                isOverIframe = true;
+            }
+        });
+        
+        // Re-show cursor when leaving iframe (if it bubbles up)
+        document.addEventListener('mouseout', function(e) {
+            if (e.target.tagName === 'IFRAME') {
+                // Small delay to ensure we're actually out of the iframe
+                setTimeout(() => {
+                    const currentElement = document.elementFromPoint(mouseX, mouseY);
+                    if (!currentElement || currentElement.tagName !== 'IFRAME') {
+                        isOverIframe = false;
+                        cursor.classList.remove('hidden');
+                    }
+                }, 10);
+            }
         });
 
         // Handle pointer lock changes
         document.addEventListener('pointerlockchange', function() {
             isPointerLocked = document.pointerLockElement !== null;
+            if (!isPointerLocked) {
+                // Reset cursor position when pointer lock is lost
+                cursor.classList.add('hidden');
+                setTimeout(() => {
+                    if (!isOverIframe) {
+                        cursor.classList.remove('hidden');
+                    }
+                }, 100);
+            }
+        });
+        
+        // Handle visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                cursor.classList.add('hidden');
+            } else {
+                setTimeout(() => {
+                    if (!isOverIframe) {
+                        cursor.classList.remove('hidden');
+                    }
+                }, 100);
+            }
+        });
+        
+        // Handle window blur/focus
+        window.addEventListener('blur', function() {
+            cursor.classList.add('hidden');
+        });
+        
+        window.addEventListener('focus', function() {
+            setTimeout(() => {
+                if (!isOverIframe) {
+                    cursor.classList.remove('hidden');
+                }
+            }, 100);
         });
 
         // Initialize cursor position
