@@ -207,6 +207,9 @@ function loadHTML(url, elementId) {
         let cursorX = 0;
         let cursorY = 0;
         let isPointerLocked = false;
+        let stillnessTimer = null;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
 
         // Smooth animation loop
         function animate() {
