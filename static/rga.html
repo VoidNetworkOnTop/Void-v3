@@ -24,6 +24,203 @@
     <!-- UV things -->
     <script src="uv/uv.bundle.js"></script>
     <script src="uv/uv.config.js"></script>
+
+    <script>
+(function() {
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initCustomCursor);
+    } else {
+        initCustomCursor();
+    }
+
+    function initCustomCursor() {
+        // Create styles
+        const style = document.createElement('style');
+        style.textContent = `
+            * {
+                cursor: none !important;
+            }
+            
+            .custom-cursor {
+                position: fixed;
+                width: 40px;
+                height: 40px;
+                pointer-events: none;
+                z-index: 999999;
+                transform: translate(-50%, -50%);
+                transition: transform 0.1s ease-out;
+                mix-blend-mode: difference;
+            }
+            
+            .custom-cursor-ring {
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                border: 3px solid #fff;
+                border-radius: 50%;
+                top: 0;
+                left: 0;
+                transition: all 0.2s ease;
+            }
+            
+            .custom-cursor-dot {
+                position: absolute;
+                width: 8px;
+                height: 8px;
+                background: #fff;
+                border-radius: 50%;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                transition: all 0.2s ease;
+            }
+            
+            .custom-cursor.clicking .custom-cursor-ring {
+                transform: scale(0.8);
+                border-color: #00ff88;
+            }
+            
+            .custom-cursor.clicking .custom-cursor-dot {
+                transform: translate(-50%, -50%) scale(0.5);
+            }
+            
+            /* Hide custom cursor when it leaves the window */
+            .custom-cursor.hidden {
+                display: none;
+            }
+            
+            /* Ensure links and buttons still indicate they're interactive */
+            a:hover .custom-cursor-ring,
+            button:hover .custom-cursor-ring,
+            input:hover .custom-cursor-ring,
+            select:hover .custom-cursor-ring,
+            textarea:hover .custom-cursor-ring,
+            [role="button"]:hover .custom-cursor-ring,
+            [onclick]:hover .custom-cursor-ring {
+                transform: scale(1.2);
+                border-color: #00ff88;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Create cursor element
+        const cursor = document.createElement('div');
+        cursor.className = 'custom-cursor';
+        cursor.innerHTML = `
+            <div class="custom-cursor-ring"></div>
+            <div class="custom-cursor-dot"></div>
+        `;
+        document.body.appendChild(cursor);
+
+        // Cursor position tracking
+        let mouseX = 0;
+        let mouseY = 0;
+        let cursorX = 0;
+        let cursorY = 0;
+        let isPointerLocked = false;
+
+        // Smooth animation loop
+        function animate() {
+            const dx = mouseX - cursorX;
+            const dy = mouseY - cursorY;
+            
+            cursorX += dx * 0.15;
+            cursorY += dy * 0.15;
+            
+            cursor.style.left = cursorX + 'px';
+            cursor.style.top = cursorY + 'px';
+            
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        // Mouse movement handler
+        document.addEventListener('mousemove', function(e) {
+            if (isPointerLocked) {
+                mouseX += e.movementX;
+                mouseY += e.movementY;
+                
+                // Keep cursor within viewport bounds
+                mouseX = Math.max(0, Math.min(window.innerWidth, mouseX));
+                mouseY = Math.max(0, Math.min(window.innerHeight, mouseY));
+            } else {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            }
+            
+            cursor.classList.remove('hidden');
+        });
+
+        // Mouse down/up handlers
+        document.addEventListener('mousedown', function() {
+            cursor.classList.add('clicking');
+        });
+
+        document.addEventListener('mouseup', function() {
+            cursor.classList.remove('clicking');
+        });
+
+        // Hide cursor when it leaves the window
+        document.addEventListener('mouseleave', function() {
+            cursor.classList.add('hidden');
+        });
+
+        document.addEventListener('mouseenter', function() {
+            cursor.classList.remove('hidden');
+        });
+
+        // Handle pointer lock changes
+        document.addEventListener('pointerlockchange', function() {
+            isPointerLocked = document.pointerLockElement !== null;
+        });
+
+        // Initialize cursor position
+        cursor.style.left = window.innerWidth / 2 + 'px';
+        cursor.style.top = window.innerHeight / 2 + 'px';
+        cursorX = window.innerWidth / 2;
+        cursorY = window.innerHeight / 2;
+
+        // Optional: Add hover detection for interactive elements
+        let hoverTargets = [];
+        
+        function updateHoverTargets() {
+            hoverTargets = document.querySelectorAll('a, button, input, select, textarea, [role="button"], [onclick]');
+            
+            hoverTargets.forEach(target => {
+                target.addEventListener('mouseenter', function() {
+                    cursor.classList.add('hovering');
+                });
+                
+                target.addEventListener('mouseleave', function() {
+                    cursor.classList.remove('hovering');
+                });
+            });
+        }
+        
+        // Initial hover target setup
+        updateHoverTargets();
+        
+        // Update hover targets when DOM changes (for dynamic content)
+        const observer = new MutationObserver(updateHoverTargets);
+        observer.observe(document.body, { childList: true, subtree: true });
+        
+        // Cleanup function if needed
+        window.removeCustomCursor = function() {
+            cursor.remove();
+            style.remove();
+            observer.disconnect();
+            document.removeEventListener('mousemove', arguments.callee);
+            document.removeEventListener('mousedown', arguments.callee);
+            document.removeEventListener('mouseup', arguments.callee);
+            document.removeEventListener('mouseleave', arguments.callee);
+            document.removeEventListener('mouseenter', arguments.callee);
+        };
+    }
+})();
+</script>
+
+    
     <style>
         /* Add CSS for particle background */
         #particles-js {
