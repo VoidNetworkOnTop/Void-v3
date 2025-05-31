@@ -148,20 +148,6 @@ function deleteItem(id) {
     } else if (element) {
         element.remove();
     }
-}IFRAME') {
-        element.remove();
-        // Re-check if cursor should be visible after iframe removal
-        if (window.customCursor) {
-            setTimeout(() => {
-                const currentElement = document.elementFromPoint(window.mouseX || 0, window.mouseY || 0);
-                if (!currentElement || currentElement.tagName !== 'IFRAME') {
-                    window.customCursor.classList.remove('hidden');
-                }
-            }, 100);
-        }
-    } else if (element) {
-        element.remove();
-    }
 }
 
 // Load HTML Function
