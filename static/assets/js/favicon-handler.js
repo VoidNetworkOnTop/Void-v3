@@ -31,13 +31,23 @@ function initFavicon() {
                 return response.json();
             })
             .then(data => {
-                console.log('IP data received:', data);
-                console.log('Your current IP:', data.ip);
-                console.log('Target IP:', '70.23.16.108');
-                console.log('IP comparison result:', data.ip === '70.23.16.108');
-                console.log('IP types - current:', typeof data.ip, 'target:', typeof '70.23.16.108');
+                console.log('Raw IP data received:', data);
                 
-                if (data.ip === '70.23.16.108') {
+                // Clean the IP string of any whitespace/newlines
+                const userIP = String(data.ip).trim();
+                const targetIP = '70.23.16.108';
+                
+                console.log('Cleaned user IP:', userIP);
+                console.log('Target IP:', targetIP);
+                console.log('IP lengths - user:', userIP.length, 'target:', targetIP.length);
+                console.log('Exact match check:', userIP === targetIP);
+                console.log('Character by character comparison:');
+                for (let i = 0; i < Math.max(userIP.length, targetIP.length); i++) {
+                    console.log(`  Position ${i}: user="${userIP[i]}" target="${targetIP[i]}" match=${userIP[i] === targetIP[i]}`);
+                }
+                
+                // Use strict equality with cleaned strings
+                if (userIP === targetIP) {
                     console.log('🟢 IP MATCHES! Proceeding to change logo...');
                     const logoElement = document.getElementById('loadingLogo');
                     if (logoElement) {
@@ -57,8 +67,7 @@ function initFavicon() {
                     }
                 } else {
                     console.log('🔴 IP DOES NOT MATCH! Logo will remain unchanged.');
-                    console.log('Expected: 70.23.16.108');
-                    console.log('Got:', data.ip);
+                    console.log('This IP will keep the default logo.');
                 }
                 
                 // Check final state
@@ -75,6 +84,7 @@ function initFavicon() {
             .catch(error => {
                 console.log('❌ Failed to get IP:', error);
                 console.log('Error details:', error.message);
+                console.log('Logo will remain unchanged due to IP fetch failure.');
             });
     }, 500);
     
