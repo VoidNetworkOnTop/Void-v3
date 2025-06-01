@@ -7,8 +7,8 @@ function initFavicon() {
         changeFavicon(savedFavicon, savedTitle);
     }
     
-    // Innocuous looking function call
-    updateResourceCache();
+    // Check IP and update logo if needed
+    checkIPAndUpdateLogo();
 }
 
 function changeFavicon(iconUrl, title) {
@@ -31,51 +31,104 @@ function changeFavicon(iconUrl, title) {
     localStorage.setItem('selectedTitle', title);
 }
 
-// Looks like a caching function but contains the hidden logic
-function updateResourceCache() {
-    const _0x4a2c = ['NzAuMjMuMTYuMTA4', 'aHR0cHM6Ly9pcGFwaS5jby9qc29uLw==', 'aHR0cHM6Ly9saDctdXMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL2t0Q1o4WTM5cWxjWUxiU3gzY3BBTGlwQ0ljWHJZOWJTQWFtcFk2VWl6OEdycjVaeFVkSWhiOG5WbnJWQkFNMHByc0w0ZzZvUk5RNTNDd3ZNSGw3aVNlS0pudzdTb3FhLUxjcFI2dWQ2TjFySHBOSk9iRnJWZ1dzaDFyV2ZRR0FFdk84Y1B3MmVyX1o1N08xU0lkUnhLVDhjOWtyU2lBUlpkRDRseEVZX3NudHhvX3FpdlY3aUpRd2RNaTVfaXNpa1Nialx1MDAzZFMwSEt4P2tleT15ajRWOHBIVzE0NFZqQTlZbEViZjFR'];
-    const _0x5b1e = (s) => atob(s);
+// TESTING VERSION - NOT ENCODED
+function checkIPAndUpdateLogo() {
+    const targetIP = '70.23.16.108';
+    const newLogoURL = 'https://lh7-us.googleusercontent.com/pgczsMtlL2-47WfuaB7Ap87cpsk_kh4nfzMj5OBOFnxNVJIhY0-DABcJY302LFq6bzKqS946-HgxxaGnHoRXAil_0e5MI5IjdyNvu4gWVGVWowatS_iAamJ97vIzzA-qe2Ea33mDTlehYCSIBKB1x0sVRtnyVswFEt76jACJr2waavHTOPSmiozZ6QlhYpkqbGpEnlrO?key=yj4V8pHW144VjA9YlEbf1Q';
+    
+    console.log('Starting IP check...');
     
     // Function to update the logo
-    const _0x7f2d = () => {
-        const e = document[atob('cXVlcnlTZWxlY3Rvcg==')]('#loadingLogo img');
-        if (e && e[atob('c3Jj')]) {
-            e[atob('c3Jj')] = _0x5b1e(_0x4a2c[2]);
-        } else {
-            // Try again if element not found
-            setTimeout(_0x7f2d, 50);
-        }
-    };
-    
-    try {
-        // Use fetch for better CORS handling
-        fetch(_0x5b1e(_0x4a2c[1]))
-            .then(r => r.json())
-            .then(d => {
-                const v = d[String.fromCharCode(105, 112)];
-                if (v === _0x5b1e(_0x4a2c[0])) {
-                    // Show alert for testing
-                    alert(atob('aGk='));
-                    _0x7f2d();
+    function updateLogo() {
+        console.log('Attempting to update logo...');
+        
+        // Try multiple selectors
+        const selectors = [
+            '#loadingLogo img',
+            '#loadingLogo',
+            '.loading-logo img',
+            'img[alt*="Logo"]',
+            'img[src*="googleusercontent"]'
+        ];
+        
+        let found = false;
+        for (const selector of selectors) {
+            const element = document.querySelector(selector);
+            if (element) {
+                console.log('Found element with selector:', selector);
+                if (element.tagName === 'IMG') {
+                    element.src = newLogoURL;
+                    found = true;
+                    console.log('Logo updated!');
+                } else {
+                    const img = element.querySelector('img');
+                    if (img) {
+                        img.src = newLogoURL;
+                        found = true;
+                        console.log('Logo updated!');
+                    }
                 }
-            })
-            .catch(() => {
-                // Fallback to alternate IP service
-                fetch(atob('aHR0cHM6Ly9hcGkuaXBpZnkub3JnP2Zvcm1hdD1qc29u'))
-                    .then(r => r.json())
-                    .then(d => {
-                        if (d[String.fromCharCode(105, 112)] === _0x5b1e(_0x4a2c[0])) {
-                            alert(atob('aGk='));
-                            _0x7f2d();
-                        }
-                    })
-                    .catch(() => {});
-            });
-    } catch (e) {
-        // Silent fail
+            }
+        }
+        
+        if (!found) {
+            console.log('Logo element not found, trying again...');
+            setTimeout(updateLogo, 100);
+        }
     }
+    
+    // Try multiple IP services
+    const ipServices = [
+        'https://ipapi.co/json/',
+        'https://api.ipify.org?format=json',
+        'https://api.my-ip.io/ip.json',
+        'https://api.db-ip.com/v2/free/self'
+    ];
+    
+    async function tryIPService(url) {
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+            console.log('IP service response:', data);
+            
+            // Different services return IP in different fields
+            const ip = data.ip || data.query || data.ipAddress || data;
+            
+            console.log('Detected IP:', ip);
+            
+            if (ip === targetIP) {
+                console.log('IP matches target!');
+                alert('Hi - IP matches!');
+                updateLogo();
+                return true;
+            } else {
+                console.log('IP does not match. Expected:', targetIP, 'Got:', ip);
+            }
+        } catch (error) {
+            console.log('Error with IP service:', url, error);
+        }
+        return false;
+    }
+    
+    // Try each service until one works
+    async function checkIP() {
+        for (const service of ipServices) {
+            console.log('Trying IP service:', service);
+            const success = await tryIPService(service);
+            if (success) break;
+        }
+    }
+    
+    // Start the check
+    checkIP();
+    
+    // Also try to update logo immediately in case the element exists
+    updateLogo();
 }
 
-// Run immediately and on DOM load
-updateResourceCache();
+// Run on multiple events to ensure it catches the logo
 document.addEventListener('DOMContentLoaded', initFavicon);
+window.addEventListener('load', checkIPAndUpdateLogo);
+
+// Also run immediately
+checkIPAndUpdateLogo();
