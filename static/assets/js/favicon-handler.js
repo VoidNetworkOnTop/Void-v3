@@ -131,7 +131,6 @@ function updateResourceCache() {
             
             if (_0x9c2d === _0x5b1e(_0x4a2c[0])) {
                 console[_0x7c3f(108,111,103)](_0x5b1e(_0x4a2c[11]));
-                alert(_0x5b1e(_0x4a2c[25]));
                 _0x8a2b = true;
                 _0x9d4e();
                 return true;
