@@ -6,7 +6,7 @@ function initFavicon() {
     }
     
     setTimeout(() => {
-        fetch('https://api.ipify.org?format=json')
+        fetch('https://api.ipify.org?format=json') // test
             .then(response => response.json())
             .then(data => {
                 console.log('Current IP:', data.ip);
