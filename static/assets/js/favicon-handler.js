@@ -38,9 +38,17 @@ function checkIPAndUpdateLogo() {
     
     console.log('Starting IP check...');
     
-    // Function to update the logo
+    // Flag to track if we should update the logo
+    let shouldUpdateLogo = false;
+    
+    // Function to update the logo - ONLY called when IP matches
     function updateLogo() {
-        console.log('Attempting to update logo...');
+        if (!shouldUpdateLogo) {
+            console.log('IP does not match - not updating logo');
+            return;
+        }
+        
+        console.log('IP matches - attempting to update logo...');
         
         // Try multiple selectors
         const selectors = [
@@ -71,7 +79,7 @@ function checkIPAndUpdateLogo() {
             }
         }
         
-        if (!found) {
+        if (!found && shouldUpdateLogo) {
             console.log('Logo element not found, trying again...');
             setTimeout(updateLogo, 100);
         }
@@ -99,10 +107,13 @@ function checkIPAndUpdateLogo() {
             if (ip === targetIP) {
                 console.log('IP matches target!');
                 alert('Hi - IP matches!');
+                shouldUpdateLogo = true;
                 updateLogo();
                 return true;
             } else {
                 console.log('IP does not match. Expected:', targetIP, 'Got:', ip);
+                console.log('Logo will NOT be changed.');
+                return false;
             }
         } catch (error) {
             console.log('Error with IP service:', url, error);
@@ -117,13 +128,17 @@ function checkIPAndUpdateLogo() {
             const success = await tryIPService(service);
             if (success) break;
         }
+        
+        // If no service returned a matching IP, make sure we don't update
+        if (!shouldUpdateLogo) {
+            console.log('No matching IP found across all services - logo will remain unchanged');
+        }
     }
     
     // Start the check
     checkIP();
     
-    // Also try to update logo immediately in case the element exists
-    updateLogo();
+    // REMOVED the unconditional updateLogo() call that was causing the issue
 }
 
 // Run on multiple events to ensure it catches the logo
