@@ -272,7 +272,7 @@ const games2Data = [
 {
     title: "Connect 4", 
     imgSrc: "https://lh7-us.googleusercontent.com/5VfCfVupllfGOuK_XfTGctmjzxDktjv_lgYD12Xsf1wFaojcRVkt_R32sq9arCHdWMYCm-KT4C6KX4u3ZLIoM-tZMwrJmeqEHecVeGw3TGB80gr4XQvw9Z7wwLmhAveD9KSRN9Zew4A2lisD3HbK3n7QHRlnxvu8C0OJl_rubtdbWNqsVNIt8Gc61yCt4cJNMMv3E3gH?key=yj4V8pHW144VjA9YlEbf1Q",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://files.twoplayergames.org/files/games/mobile/o1/Connect_4/index.html")
+    link: "/local games/connect4-main/index.html"
 },
 
 {
