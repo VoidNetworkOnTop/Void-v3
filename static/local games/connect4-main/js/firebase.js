@@ -16,7 +16,7 @@ async function fetchFirebaseConfig() {
   }
 
   try {
-    const response = await fetch('/api/info');
+    const response = await fetch('/local games/connect4-main/api/info.js');
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
