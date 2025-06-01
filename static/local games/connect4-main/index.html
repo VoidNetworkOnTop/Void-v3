@@ -573,59 +573,22 @@
     </div>
 
     <script type="module">
-        // Import Firebase functions from our config
-        import { initializeFirebase, getDatabase } from './js/firebase.js';
+        // Firebase Configuration (embedded for single-file version)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
         import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, updateDoc, deleteDoc, query, where, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
 
-        // Initialize Firebase and get database
-        let db;
-        
-        // Initialize Firebase when the page loads with retry mechanism
-        async function initializeApp() {
-            let retryCount = 0;
-            const maxRetries = 3;
-            
-            while (retryCount < maxRetries) {
-                try {
-                    await initializeFirebase();
-                    db = await getDatabase();
-                    console.log('App initialized successfully');
-                    return;
-                } catch (error) {
-                    retryCount++;
-                    console.error(`Failed to initialize app (attempt ${retryCount}):`, error);
-                    
-                    if (retryCount >= maxRetries) {
-                        alert('Failed to connect to game servers. Please refresh the page.');
-                        return;
-                    }
-                    
-                    // Wait before retrying
-                    await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-                }
-            }
-        }
+        const firebaseConfig = {
+            apiKey: "AIzaSyABlBYArBccjkQRhOo2rtJ5yP7gQ0tmTzw",
+            authDomain: "connect4-eb06a.firebaseapp.com",
+            projectId: "connect4-eb06a",
+            storageBucket: "connect4-eb06a.firebasestorage.app",
+            messagingSenderId: "169242213112",
+            appId: "1:169242213112:web:1af850ad4a648b4d86590d"
+        };
 
-        // Suppress common browser extension errors
-        window.addEventListener('error', function(e) {
-            if (e.message && e.message.includes('message port closed')) {
-                // Suppress this common browser extension error
-                e.preventDefault();
-                return false;
-            }
-        });
-
-        // Handle unhandled promise rejections
-        window.addEventListener('unhandledrejection', function(e) {
-            if (e.reason && e.reason.message && e.reason.message.includes('message port closed')) {
-                // Suppress this common browser extension error
-                e.preventDefault();
-                return false;
-            }
-        });
-
-        // Initialize the app
-        initializeApp();
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
 
         // Helper functions for board conversion (Firebase doesn't support nested arrays)
         function flattenBoard(board2D) {
@@ -640,6 +603,21 @@
             return board2D;
         }
 
+        // Suppress common browser extension errors
+        window.addEventListener('error', function(e) {
+            if (e.message && e.message.includes('message port closed')) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        window.addEventListener('unhandledrejection', function(e) {
+            if (e.reason && e.reason.message && e.reason.message.includes('message port closed')) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
         class Connect4Game {
             constructor(isOnline = false) {
                 this.board = Array(6).fill().map(() => Array(7).fill(0));
@@ -652,7 +630,7 @@
                 this.playerNumber = null;
                 this.roomListener = null;
                 this.moveTimer = null;
-                this.timeLeft = 60;
+                this.timeLeft = 90;
                 this.initializeBoard();
                 if (isOnline) {
                     this.playerId = 'player_' + Math.random().toString(36).substr(2, 9);
@@ -679,25 +657,24 @@
                 if (this.gameOver || this.animating) return;
                 
                 if (this.isOnline) {
-                    // Check if it's this player's turn
                     if (this.currentPlayer !== this.playerNumber) return;
                     
                     const row = this.getLowestAvailableRow(col);
                     if (row === -1) return;
 
-                    // Make move in Firebase
                     await this.makeOnlineMove(row, col);
                 } else {
-                    // Local game logic
                     const row = this.getLowestAvailableRow(col);
                     if (row === -1) return;
 
                     this.animating = true;
-                    this.board[row][col] = this.currentPlayer;
+                    const movingPlayer = this.currentPlayer;
+                    this.board[row][col] = movingPlayer;
                     
                     await this.dropToken(row, col);
                     
                     if (this.checkWin(row, col)) {
+                        this.highlightWinningTokens(this.getWinningCells(this.board, row, col, movingPlayer));
                         this.handleWin();
                     } else if (this.isBoardFull()) {
                         this.handleTie();
@@ -711,34 +688,29 @@
 
             async makeOnlineMove(row, col) {
                 try {
-                    await ensureDbReady();
                     const roomRef = doc(db, 'rooms', this.roomId);
                     const roomDoc = await getDoc(roomRef);
                     
                     if (roomDoc.exists()) {
                         const roomData = roomDoc.data();
                         
-                        // Double-check it's still this player's turn
                         if (roomData.currentPlayer !== this.playerNumber) {
                             return;
                         }
                         
                         const newBoard = unflattenBoard(roomData.board);
                         
-                        // Verify the move is still valid
                         if (newBoard[row][col] !== 0) {
                             return;
                         }
                         
-                        const movingPlayer = this.currentPlayer; // Store current player before updating
+                        const movingPlayer = this.currentPlayer;
                         newBoard[row][col] = movingPlayer;
                         const nextPlayer = movingPlayer === 1 ? 2 : 1;
                         
-                        // Check for win immediately
                         const isWin = this.checkWinOnBoard(newBoard, row, col, movingPlayer);
                         const isTie = !isWin && this.isBoardFullOnBoard(newBoard);
                         
-                        // Update Firebase with the new board state and game end status
                         const updateData = {
                             board: flattenBoard(newBoard),
                             currentPlayer: nextPlayer,
@@ -755,22 +727,18 @@
                         
                         await updateDoc(roomRef, updateData);
                         
-                        // Update local board first
                         this.board = newBoard;
                         
-                        // Drop token with the ORIGINAL player (before switching)
                         this.animating = true;
                         await this.dropTokenWithPlayer(row, col, movingPlayer);
                         this.animating = false;
                         
-                        // Handle game end immediately
                         if (isWin) {
                             this.highlightWinningTokens(this.getWinningCells(newBoard, row, col, movingPlayer));
-                            this.handleWinImmediate(true); // This player wins
+                            this.handleWinImmediate(true);
                         } else if (isTie) {
                             this.handleTieImmediate();
                         } else {
-                            // Game continues
                             this.currentPlayer = nextPlayer;
                             this.updatePlayerDisplay();
                         }
@@ -781,7 +749,6 @@
                 }
             }
 
-            // Check win on a specific board state
             checkWinOnBoard(board, row, col, player) {
                 const directions = [
                     [0, 1], [1, 0], [1, 1], [1, -1]
@@ -790,7 +757,6 @@
                 for (let [dx, dy] of directions) {
                     let count = 1;
 
-                    // Check positive direction
                     for (let i = 1; i < 4; i++) {
                         const newRow = row + dx * i;
                         const newCol = col + dy * i;
@@ -802,7 +768,6 @@
                         }
                     }
 
-                    // Check negative direction
                     for (let i = 1; i < 4; i++) {
                         const newRow = row - dx * i;
                         const newCol = col - dy * i;
@@ -821,7 +786,6 @@
                 return false;
             }
 
-            // Get winning cells for highlighting
             getWinningCells(board, row, col, player) {
                 const directions = [
                     [0, 1], [1, 0], [1, 1], [1, -1]
@@ -831,7 +795,6 @@
                     let count = 1;
                     const winningCells = [[row, col]];
 
-                    // Check positive direction
                     for (let i = 1; i < 4; i++) {
                         const newRow = row + dx * i;
                         const newCol = col + dy * i;
@@ -844,7 +807,6 @@
                         }
                     }
 
-                    // Check negative direction
                     for (let i = 1; i < 4; i++) {
                         const newRow = row - dx * i;
                         const newCol = col - dy * i;
@@ -864,12 +826,10 @@
                 return [];
             }
 
-            // Check if board is full
             isBoardFullOnBoard(board) {
                 return board[0].every(cell => cell !== 0);
             }
 
-            // Immediate win handler
             handleWinImmediate(didWin) {
                 this.gameOver = true;
                 this.stopMoveTimer();
@@ -887,7 +847,6 @@
                 
                 winMessage.style.display = 'block';
                 
-                // Auto return to menu after 5 seconds as backup
                 setTimeout(() => {
                     if (winMessage.style.display !== 'none') {
                         this.cleanup();
@@ -896,7 +855,6 @@
                 }, 5000);
             }
 
-            // Immediate tie handler
             handleTieImmediate() {
                 this.gameOver = true;
                 this.stopMoveTimer();
@@ -908,7 +866,6 @@
                 
                 winMessage.style.display = 'block';
                 
-                // Auto return to menu after 5 seconds as backup
                 setTimeout(() => {
                     if (winMessage.style.display !== 'none') {
                         this.cleanup();
@@ -917,7 +874,6 @@
                 }, 5000);
             }
 
-            // New method to drop token with specific player
             async dropTokenWithPlayer(row, col, player) {
                 const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
                 const token = document.createElement('div');
@@ -937,7 +893,6 @@
                 });
             }
 
-            // New method to render board from current state
             renderBoardFromState() {
                 for (let row = 0; row < 6; row++) {
                     for (let col = 0; col < 7; col++) {
@@ -946,14 +901,12 @@
                         const cellValue = this.board[row][col];
                         
                         if (cellValue !== 0 && !existingToken) {
-                            // Need to add a token - use the actual board value for color
                             const token = document.createElement('div');
                             token.className = `token ${cellValue === 1 ? 'red' : 'blue'} placed`;
                             token.style.transform = 'translateY(0)';
                             token.style.opacity = '1';
                             cell.appendChild(token);
                         } else if (cellValue === 0 && existingToken) {
-                            // Need to remove a token
                             existingToken.remove();
                         }
                     }
@@ -962,7 +915,7 @@
 
             startMoveTimer() {
                 this.stopMoveTimer();
-                this.timeLeft = 60;
+                this.timeLeft = 90;
                 
                 if (this.isOnline && this.currentPlayer === this.playerNumber) {
                     document.getElementById('moveTimer').style.display = 'block';
@@ -983,15 +936,23 @@
 
             updateTimerDisplay() {
                 document.getElementById('timerDisplay').textContent = this.timeLeft;
-                const percentage = (this.timeLeft / 60) * 100;
+                const percentage = (this.timeLeft / 90) * 100;
                 document.getElementById('timerBar').style.width = percentage + '%';
                 
-                if (this.timeLeft <= 10) {
+                if (this.timeLeft <= 15) {
                     document.getElementById('timerBar').style.background = '#ff4757';
                 } else if (this.timeLeft <= 30) {
                     document.getElementById('timerBar').style.background = '#ffa502';
                 } else {
                     document.getElementById('timerBar').style.background = '#2ed573';
+                }
+            }
+
+            async handleTimeout() {
+                this.stopMoveTimer();
+                if (this.isOnline) {
+                    alert('Time\'s up! Game ending...');
+                    await this.endOnlineGame('timeout');
                 }
             }
 
@@ -1001,25 +962,6 @@
                     this.moveTimer = null;
                 }
                 document.getElementById('moveTimer').style.display = 'none';
-            }
-
-            async handleTimeout() {
-                this.stopMoveTimer();
-                if (this.isOnline && this.roomId) {
-                    try {
-                        await ensureDbReady();
-                        // Give the player a 10 second warning before ending the game
-                        alert('You ran out of time! The game will end in 10 seconds unless you make a move.');
-                        
-                        setTimeout(async () => {
-                            if (this.roomId) { // Check if game is still active
-                                await this.endOnlineGame('timeout');
-                            }
-                        }, 10000);
-                    } catch (error) {
-                        console.error('Error handling timeout:', error);
-                    }
-                }
             }
 
             getLowestAvailableRow(col) {
@@ -1109,43 +1051,46 @@
                 this.gameOver = true;
                 this.stopMoveTimer();
                 
-                if (this.isOnline) {
-                    await this.endOnlineGame('win');
-                }
-                
                 const winMessage = document.getElementById('winMessage');
                 const winText = document.getElementById('winText');
                 
                 if (this.isOnline) {
-                    const isWinner = this.currentPlayer === this.playerNumber;
-                    winText.textContent = isWinner ? 'You Win!' : 'You Lose!';
-                    winText.style.color = isWinner ? '#2ed573' : '#ff4757';
+                    return;
                 } else {
                     winText.textContent = `Player ${this.currentPlayer === 1 ? 'Red' : 'Blue'} Wins!`;
                     winText.style.color = this.currentPlayer === 1 ? '#ff4757' : '#3742fa';
                 }
                 
-                setTimeout(() => {
-                    winMessage.style.display = 'block';
-                }, 1000);
+                winMessage.style.display = 'block';
+                
+                if (!this.isOnline) {
+                    setTimeout(() => {
+                        if (winMessage.style.display !== 'none') {
+                            backToMainMenu();
+                        }
+                    }, 5000);
+                }
             }
 
             async handleTie() {
                 this.gameOver = true;
                 this.stopMoveTimer();
                 
-                if (this.isOnline) {
-                    await this.endOnlineGame('tie');
-                }
-                
                 const winMessage = document.getElementById('winMessage');
                 const winText = document.getElementById('winText');
                 winText.textContent = "It's a Tie!";
                 winText.style.color = '#ffffff';
                 
+                winMessage.style.display = 'block';
+                
                 setTimeout(() => {
-                    winMessage.style.display = 'block';
-                }, 500);
+                    if (winMessage.style.display !== 'none') {
+                        if (this.isOnline) {
+                            this.cleanup();
+                        }
+                        backToMainMenu();
+                    }
+                }, 5000);
             }
 
             isBoardFull() {
@@ -1177,7 +1122,6 @@
             async endOnlineGame(reason) {
                 if (this.roomId) {
                     try {
-                        await ensureDbReady();
                         await deleteDoc(doc(db, 'rooms', this.roomId));
                     } catch (error) {
                         console.error('Error ending game:', error);
@@ -1214,14 +1158,6 @@
 
         let game;
 
-        // Helper function to ensure database is ready
-        async function ensureDbReady() {
-            if (!db) {
-                db = await getDatabase();
-            }
-            return db;
-        }
-
         // UI Navigation Functions
         window.startGame = function() {
             hideAllMenus();
@@ -1257,7 +1193,6 @@
                 game.cleanup();
                 if (game.roomId) {
                     try {
-                        await ensureDbReady();
                         await deleteDoc(doc(db, 'rooms', game.roomId));
                     } catch (error) {
                         console.error('Error cleaning up room:', error);
@@ -1275,7 +1210,6 @@
             document.getElementById('winMessage').style.display = 'none';
         }
 
-        // Handle win message menu action
         window.handleWinMenuAction = function() {
             document.getElementById('winMessage').style.display = 'none';
             if (game && game.isOnline) {
@@ -1284,9 +1218,9 @@
             backToMainMenu();
         }
 
+        // Online Game Functions
         window.createPrivateRoom = async function() {
             try {
-                await ensureDbReady();
                 const roomCode = Math.random().toString(36).substr(2, 6).toUpperCase();
                 const roomData = {
                     code: roomCode,
@@ -1308,7 +1242,6 @@
 
         window.createPublicRoom = async function() {
             try {
-                await ensureDbReady();
                 const roomCode = Math.random().toString(36).substr(2, 6).toUpperCase();
                 const roomData = {
                     code: roomCode,
@@ -1339,7 +1272,6 @@
 
         async function joinRoom(roomCode, isCreator) {
             try {
-                await ensureDbReady();
                 const roomRef = doc(db, 'rooms', roomCode);
                 const roomDoc = await getDoc(roomRef);
 
@@ -1355,27 +1287,23 @@
                     return;
                 }
 
-                // Add player to room
                 const playerId = 'player_' + Math.random().toString(36).substr(2, 9);
                 const playerNumber = roomData.players.length + 1;
                 
                 await updateDoc(roomRef, {
                     players: [...roomData.players, { id: playerId, number: playerNumber }],
-                    lastMoveTime: Date.now() // Update activity timestamp
+                    lastMoveTime: Date.now()
                 });
 
-                // Hide menus and show waiting room
                 hideAllMenus();
                 document.getElementById('waitingRoom').style.display = 'block';
                 document.getElementById('roomCodeDisplay').textContent = `Room Code: ${roomCode}`;
 
-                // Start listening for game updates
                 setupGameListener(roomCode, playerId, playerNumber);
 
             } catch (error) {
                 console.error('Error joining room:', error);
                 
-                // More specific error handling
                 if (error.code === 'unavailable') {
                     alert('Connection failed. Please check your internet connection and try again.');
                 } else if (error.code === 'permission-denied') {
@@ -1398,54 +1326,43 @@
 
                 const roomData = doc.data();
                 
-                // Only check timeout for active games with 2 players that haven't started yet
                 const timeSinceLastMove = Date.now() - roomData.lastMoveTime;
                 if (timeSinceLastMove > 120000 && roomData.players.length === 2) {
-                    // 2 minute timeout instead of 1 minute
                     deleteDoc(roomRef).catch(console.error);
                     return;
                 }
 
                 if (roomData.players.length === 2) {
-                    // Game can start
                     startOnlineGame(roomCode, playerId, playerNumber, roomData, unsubscribe);
                 }
             }, (error) => {
                 console.error('Game listener error:', error);
-                // Don't auto-return to menu on connection errors, just log
             });
         }
 
         function startOnlineGame(roomCode, playerId, playerNumber, roomData, waitingRoomListener) {
-            // Stop the waiting room listener
             if (waitingRoomListener) {
                 waitingRoomListener();
             }
 
-            // Hide waiting room, show game
             hideAllMenus();
             document.getElementById('gameContainer').style.display = 'flex';
             document.getElementById('onlineGameInfo').style.display = 'block';
             
-            // Create online game instance
             game = new Connect4Game(true);
             game.roomId = roomCode;
             game.playerId = playerId;
             game.playerNumber = playerNumber;
             
-            // Initialize board from room data
             game.board = unflattenBoard(roomData.board);
             game.currentPlayer = roomData.currentPlayer;
             game.updatePlayerDisplay();
             
-            // Render initial board state
             game.renderBoardFromState();
             
-            // Set up opponent info
             const opponentNumber = playerNumber === 1 ? 2 : 1;
             document.getElementById('opponentInfo').textContent = `You are Player ${playerNumber} - Opponent is Player ${opponentNumber}`;
             
-            // Set up real-time game updates
             const roomRef = doc(db, 'rooms', roomCode);
             game.roomListener = onSnapshot(roomRef, async (doc) => {
                 if (!doc.exists()) {
@@ -1457,23 +1374,18 @@
 
                 const data = doc.data();
                 
-                // Check if game has ended
                 if (data.gameEnded) {
                     game.gameOver = true;
                     game.stopMoveTimer();
                     
-                    // Update board first to show final state
                     game.board = unflattenBoard(data.board);
                     game.renderBoardFromState();
                     
-                    // Find the winning move if there was one
                     if (data.winner !== 'tie') {
-                        // Find the last move to highlight winning cells
                         let lastMoveRow = -1, lastMoveCol = -1;
                         for (let row = 0; row < 6; row++) {
                             for (let col = 0; col < 7; col++) {
                                 if (game.board[row][col] === data.winner) {
-                                    // This is a potential winning move location
                                     if (game.checkWinOnBoard(game.board, row, col, data.winner)) {
                                         lastMoveRow = row;
                                         lastMoveCol = col;
@@ -1490,7 +1402,6 @@
                         }
                     }
                     
-                    // Show win/lose message
                     const winMessage = document.getElementById('winMessage');
                     const winText = document.getElementById('winText');
                     
@@ -1507,7 +1418,6 @@
                     
                     winMessage.style.display = 'block';
                     
-                    // Auto return to menu after 5 seconds as backup
                     setTimeout(() => {
                         if (winMessage.style.display !== 'none') {
                             game.cleanup();
@@ -1515,15 +1425,13 @@
                         }
                     }, 5000);
                     
-                    return; // Don't process any more updates
+                    return;
                 }
                 
-                // Regular game updates
                 const newBoard = unflattenBoard(data.board);
                 const boardChanged = JSON.stringify(game.board) !== JSON.stringify(newBoard);
                 
                 if (boardChanged) {
-                    // Find the new move by comparing boards
                     let newRow = -1, newCol = -1, newPlayer = -1;
                     
                     for (let row = 0; row < 6; row++) {
@@ -1538,27 +1446,22 @@
                         if (newRow !== -1) break;
                     }
                     
-                    // Update board state
                     game.board = newBoard;
                     game.currentPlayer = data.currentPlayer;
                     
-                    // If this was an opponent's move, animate it with correct color
                     if (newRow !== -1 && newPlayer !== playerNumber && !game.animating && !game.gameOver) {
                         game.animating = true;
                         await game.dropTokenWithPlayer(newRow, newCol, newPlayer);
                         game.animating = false;
                     } else {
-                        // Just render the current board state
                         game.renderBoardFromState();
                     }
                 } else {
-                    // No board change, just update current player
                     game.currentPlayer = data.currentPlayer;
                 }
                 
                 game.updatePlayerDisplay();
                 
-                // Start timer if it's this player's turn and game isn't over
                 if (game.currentPlayer === playerNumber && !game.gameOver) {
                     game.startMoveTimer();
                 } else {
@@ -1567,10 +1470,8 @@
                 
             }, (error) => {
                 console.error('Game update listener error:', error);
-                // Don't immediately kick players out on connection errors
             });
             
-            // Start the move timer if it's this player's turn
             if (game.currentPlayer === playerNumber) {
                 game.startMoveTimer();
             }
@@ -1581,7 +1482,6 @@
             lobbiesContainer.innerHTML = '<p style="color: white; text-align: center;">Loading lobbies...</p>';
 
             try {
-                await ensureDbReady();
                 const q = query(
                     collection(db, 'rooms'),
                     where('isPublic', '==', true),
@@ -1621,7 +1521,6 @@
 
         window.cancelWaiting = async function() {
             if (game && game.roomId) {
-                await ensureDbReady();
                 await deleteDoc(doc(db, 'rooms', game.roomId));
             }
             backToMainMenu();
@@ -1636,10 +1535,8 @@
             document.getElementById('gameContainer').style.display = 'none';
         }
 
-        // Make joinRoom globally accessible
         window.joinRoom = joinRoom;
 
-        // Add enter key support for room code input
         document.getElementById('roomCodeInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 joinPrivateRoom();
