@@ -60,11 +60,6 @@ const gamesData = [
     link: "/local games/motox3m-winter/index.html"
 },
 {
-    title: "Javlien Fighting",
-    imgSrc: "/img/gameimg/image_10.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://kbhgames.com/game/javelin-fighting")
-}, 
-{
     title: "Spacebar Clicker", 
     imgSrc: "/img/gameimg/spacebarclicker.jpg",
     link: "/local games/spacebarclicker/index.html"
@@ -131,34 +126,9 @@ const gamesData = [
     link: "/local games/wordle/index.html"
 },
 {
-    title: "Ba</x>ll Bla</x>st", 
-    imgSrc: "https://play-lh.googleusercontent.com/p0_Vxw_LM74HDO43ZFC1X_IoUpBIJmBUIxSnImQxwlNBoJe4gGASpMW4cEkjmOokNOw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://scratch.mit.edu/projects/472077983/embed")
-},
-{
-    title: "A</x>tt</x>ack Ho</x>le", 
-    imgSrc: "https://play-lh.googleusercontent.com/r8TsKF6VY6FC74IDuX8qAe0iOoQpsIY2cPzm-6PIvk3qv7rtpZleZqZ2b7t9N5EYHwjY",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://5419033273760513604.playables.usercontent.goog/v/assets/index.html")
-},
-{
-    title: "Stealth Master", 
-    imgSrc: "https://www.metacritic.com/a/img/catalog/provider/6/12/6-1-762178-52.jpg",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://5052011930274534086.playables.usercontent.goog/v/assets/index.html")
-},
-{
     title: "Cu</x>t T</x>he R</x>ope", 
     imgSrc: "/img/gameimg/CutTheRope.jpg",
     link: "/local games/cuttherope/index.html"
-},
-{
-    title: "Ta</x>ll M</x>an R</x>un", 
-    imgSrc: "https://m.media-amazon.com/images/I/81pW+JQUauL.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://g.igroutka.ru/games/23/kAweCuOlx3YIN4KP/rvvASMiM/7980c23fbbae4af6851e01052fce3cce/")
-},
-{
-    title: "Hi</x>de N Se</x>ek", 
-    imgSrc: "https://play-lh.googleusercontent.com/7VQodLWKe2zr9wW0U3togmnBj5TcPvpXLK5fI0HBeETsxgVNZ68xW6h_bGmgElYyGA",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://11663829181267212807.playables.usercontent.goog/v/assets/index.html")
 },
 {
     title: "Le</x>arn to F</x>ly", 
@@ -169,11 +139,6 @@ const gamesData = [
     title: "Squ</x>areX 2: eXt</x>reme", 
     imgSrc: "/img/gameimg/SquareX.png",
     link: __uv$config.prefix + __uv$config.encodeUrl("https://www.coolmathgames.com/sites/default/files/public_games/51216/")
-},
-{
-    title: "Po</x>wer</x>line.</x>io (TEST)", 
-    imgSrc: "https://play-lh.googleusercontent.com/PZang3VRK1IIFtw-CBzA3KHXZAdCb-x3lD_n-c2yL_vP22jNOSc87kiQKI9Ww6M90g",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://powerline.io")
 },
 {
     title: "Sc</x>ribble", 
@@ -239,11 +204,6 @@ const gamesData = [
     title: "OvO", 
     imgSrc: "/img/gameimg/OVO.png",
     link: "/local games/ovo/index.html"
-},
-{
-    title: "Poly Track", 
-    imgSrc: "/img/gameimg/polytrack.png",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://iliill1.github.io/polytrackfix/polytrack/")
 },
 {
     title: "The Impossible Quiz", 
