@@ -1,171 +1,4 @@
-// Settings Sync - Apply all stored settings to the current page
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Global JS Loaded: Applying settings'); // Debug log
-
-    // Apply favicon/title changes
-    const savedIcon = localStorage.getItem('favicon');
-    const savedTitle = localStorage.getItem('tabTitle');
-    
-    // Ensure favicon is updated
-    function updateFavicon(iconURL) {
-        console.log('Attempting to update favicon:', iconURL); // Debug log
-
-        // Remove existing favicon links
-        const existingFavicons = document.querySelectorAll("link[rel='icon'], link[rel='shortcut icon']");
-        existingFavicons.forEach(link => {
-            console.log('Removing existing favicon:', link); // Debug log
-            link.remove();
-        });
-        
-        // Create new favicon link
-        const faviconElement = document.createElement('link');
-        faviconElement.rel = 'icon';
-        faviconElement.href = iconURL;
-        document.head.appendChild(faviconElement);
-        
-        console.log('Favicon updated successfully'); // Debug log
-    }
-    
-    // Apply saved favicon
-    if (savedIcon) {
-        console.log('Saved icon found:', savedIcon); // Debug log
-        try {
-            updateFavicon(savedIcon);
-        } catch (error) {
-            console.error('Error updating favicon:', error);
-        }
-    } else {
-        console.log('No saved icon found'); // Debug log
-    }
-    
-    // Apply saved title
-    if (savedTitle) {
-        console.log('Saved title found:', savedTitle); // Debug log
-        document.title = savedTitle;
-    } else {
-        console.log('No saved title found'); // Debug log
-    }
-    
-    // Apply search engine preference
-    const searchBackend = localStorage.getItem('searchBackend') || 'UV';
-    window.currentSearchEngine = searchBackend;
-    
-    // Check and apply Anti-close protection
-    if (localStorage.getItem('anticlose') === 'true') {
-        window.addEventListener('beforeunload', function(e) {
-            // Only activate if not navigating through our own site
-            if (!e.target.location.href.includes("redirect")) {
-                e.preventDefault();
-                e.returnValue = 'Leave site? Changes you made may not be saved.';
-                return e.returnValue;
-            }
-        });
-    }
-});
-
-// Favicon and Title Change Function
-window.changeFavicon = function(iconURL, pageTitle) {
-    console.log('Changing favicon:', iconURL, 'Title:', pageTitle); // Debug log
-
-    // Remove existing favicon links
-    const existingFavicons = document.querySelectorAll("link[rel='icon'], link[rel='shortcut icon']");
-    existingFavicons.forEach(link => link.remove());
-    
-    // Change favicon
-    const faviconElement = document.createElement('link');
-    faviconElement.rel = 'icon';
-    faviconElement.href = iconURL;
-    document.head.appendChild(faviconElement);
-    
-    // Change title
-    if (pageTitle) {
-        document.title = pageTitle;
-    }
-    
-    // Save preferences
-    localStorage.setItem('favicon', iconURL);
-    localStorage.setItem('tabTitle', pageTitle || document.title);
-    
-    console.log('Favicon and title updated in localStorage'); // Debug log
-};
-
-// Additional key terminal shortcut
-document.addEventListener("keydown", function(e) {
-    if ((e.altKey && e.key == "t")) {
-        if (document.getElementById("terminal") != null) {
-            document.getElementById("terminal").remove()
-            // Re-enable cursor when terminal is closed
-            if (window.customCursor) {
-                window.customCursor.classList.remove('hidden');
-            }
-            return;
-        }
-        if (document.getElementById("terminal") == null) {
-            renderFile("/terminal.html", "50%", "50%", "terminal")
-            // Hide cursor when terminal is open
-            if (window.customCursor) {
-                window.customCursor.classList.add('hidden');
-            }
-            return
-        }
-    }
-});
-
-// Render File Function
-function renderFile(url, width, height, id) { // Renders URL in a centered iframe w/ w&h set
-    let fr = document.createElement("iframe")
-    fr.src = url 
-    fr.width = width 
-    fr.height = height
-    fr.id = id
-    fr.style.transform = "translate(-50%, -50%)"
-    fr.style.position = "absolute"
-    fr.style.top = "50%"
-    fr.style.left = "50%"
-    fr.style.opacity = 0.9
-    document.body.appendChild(fr)
-    
-    // Hide cursor when iframe is rendered
-    if (window.customCursor) {
-        window.customCursor.classList.add('hidden');
-    }
-}
-
-// Delete Item Function
-function deleteItem(id) {
-    const element = document.getElementById(id);
-    if (element && element.tagName === 'IFRAME') {
-        element.remove();
-        // Re-check if cursor should be visible after iframe removal
-        if (window.customCursor) {
-            setTimeout(() => {
-                const iframes = document.querySelectorAll('iframe');
-                if (iframes.length === 0) {
-                    window.customCursor.classList.remove('hidden');
-                }
-            }, 100);
-        }
-    } else if (element) {
-        element.remove();
-    }
-}
-
-// Load HTML Function
-function loadHTML(url, elementId) {
-    fetch(url)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response threw an error  ' + response.statusText);
-            }
-            return response.text();
-        })
-        .then(data => {
-            document.getElementById(elementId).innerHTML = data;
-        })
-        .catch(error => console.error('Error loading HTML:', error));
-}
-
-// Custom Red Dot Cursor
+// Custom White Pointer Cursor
 (function() {
     // Wait for DOM to be ready
     if (document.readyState === 'loading') {
@@ -184,29 +17,41 @@ function loadHTML(url, elementId) {
             
             .custom-cursor {
                 position: fixed;
-                width: 12px;
-                height: 12px;
+                width: 24px;
+                height: 24px;
                 pointer-events: none;
                 z-index: 9999999999999999999999999;
-                transform: translate(-50%, -50%);
+                transform-origin: center center;
+                transition: none;
             }
             
-            .custom-cursor-dot {
+            .custom-cursor-pointer {
                 position: absolute;
-                width: 100%;
-                height: 100%;
-                background: #ff0000;
-                border-radius: 50%;
-                top: 0;
-                left: 0;
-                transition: all 0.1s ease;
-                box-shadow: 0 0 6px rgba(255, 0, 0, 0.5);
+                width: 0;
+                height: 0;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%) rotate(0deg);
+                transition: transform 0.1s ease-out;
+                filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
             }
             
-            .custom-cursor.clicking .custom-cursor-dot {
-                transform: scale(0.7);
-                background: #ff4444;
-                box-shadow: 0 0 12px rgba(255, 0, 0, 0.8);
+            .custom-cursor-pointer::before {
+                content: '';
+                position: absolute;
+                width: 0;
+                height: 0;
+                border-left: 8px solid transparent;
+                border-right: 8px solid transparent;
+                border-bottom: 20px solid white;
+                top: -10px;
+                left: -8px;
+                border-radius: 2px;
+            }
+            
+            .custom-cursor.clicking .custom-cursor-pointer::before {
+                border-bottom-color: #e0e0e0;
+                transform: scale(0.9);
             }
             
             /* Hide custom cursor when it leaves the window */
@@ -215,9 +60,10 @@ function loadHTML(url, elementId) {
             }
             
             /* Hover effect for interactive elements */
-            .custom-cursor.hovering .custom-cursor-dot {
-                transform: scale(1.5);
-                background: #ff6666;
+            .custom-cursor.hovering .custom-cursor-pointer::before {
+                border-bottom-color: #f0f0f0;
+                transform: scale(1.1);
+                filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.6));
             }
         `;
         document.head.appendChild(style);
@@ -225,17 +71,22 @@ function loadHTML(url, elementId) {
         // Create cursor element
         const cursor = document.createElement('div');
         cursor.className = 'custom-cursor';
-        cursor.innerHTML = `<div class="custom-cursor-dot"></div>`;
+        cursor.innerHTML = `<div class="custom-cursor-pointer"></div>`;
         document.body.appendChild(cursor);
         
         // Save cursor reference globally
         window.customCursor = cursor;
+        const pointer = cursor.querySelector('.custom-cursor-pointer');
 
         // Cursor position tracking
         let mouseX = 0;
         let mouseY = 0;
         let cursorX = 0;
         let cursorY = 0;
+        let prevX = 0;
+        let prevY = 0;
+        let currentAngle = -45; // Default angle pointing top-left
+        let targetAngle = -45;
         let isPointerLocked = false;
         let lastMouseMove = Date.now();
         let lastCursorPosition = { x: 0, y: 0 };
@@ -250,8 +101,29 @@ function loadHTML(url, elementId) {
             cursorX += dx * 0.2;
             cursorY += dy * 0.2;
             
+            // Calculate movement direction for rotation
+            const moveDx = mouseX - prevX;
+            const moveDy = mouseY - prevY;
+            
+            // Only update angle if there's significant movement
+            if (Math.abs(moveDx) > 2 || Math.abs(moveDy) > 2) {
+                targetAngle = Math.atan2(moveDy, moveDx) * (180 / Math.PI) + 90; // +90 to point forward
+                prevX = mouseX;
+                prevY = mouseY;
+            }
+            
+            // Smooth angle interpolation
+            let angleDiff = targetAngle - currentAngle;
+            
+            // Normalize angle difference to [-180, 180]
+            while (angleDiff > 180) angleDiff -= 360;
+            while (angleDiff < -180) angleDiff += 360;
+            
+            currentAngle += angleDiff * 0.15;
+            
             cursor.style.left = cursorX + 'px';
             cursor.style.top = cursorY + 'px';
+            pointer.style.transform = `translate(-50%, -50%) rotate(${currentAngle}deg)`;
             
             requestAnimationFrame(animate);
         }
@@ -415,6 +287,8 @@ function loadHTML(url, elementId) {
         cursor.style.top = window.innerHeight / 2 + 'px';
         cursorX = window.innerWidth / 2;
         cursorY = window.innerHeight / 2;
+        prevX = cursorX;
+        prevY = cursorY;
 
         // Optional: Add hover detection for interactive elements
         let hoverTargets = [];
