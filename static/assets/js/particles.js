@@ -167,65 +167,27 @@
       const glowIntensity = getGlowIntensity(particle.y, canvas.height);
       
       // Update pulse phase for subtle animation
-      particle.pulsePhase = (particle.pulsePhase + 0.03) % (Math.PI * 2);
-      const pulseMultiplier = 1 + Math.sin(particle.pulsePhase) * 0.2;
+      particle.pulsePhase = (particle.pulsePhase + 0.02) % (Math.PI * 2);
+      const pulseMultiplier = 1 + Math.sin(particle.pulsePhase) * 0.1;
       
-      // Calculate glow parameters
-      const baseGlow = glowIntensity * pulseMultiplier;
-      const glowRadius = particle.size * (2 + baseGlow * 3);
-      const coreRadius = particle.size;
+      // Calculate glow parameters - much more subtle
+      const baseGlow = glowIntensity * pulseMultiplier * 0.3; // Reduced intensity
+      const glowRadius = particle.size + baseGlow * 2; // Minimal size increase
       
-      // Save context state
-      ctx.save();
+      // Set shadow for subtle glow effect
+      ctx.shadowColor = `rgba(255, 255, 255, ${baseGlow * 0.6})`;
+      ctx.shadowBlur = glowRadius;
       
-      // Create radial gradient for glow effect
-      const gradient = ctx.createRadialGradient(
-        particle.x, particle.y, 0,
-        particle.x, particle.y, glowRadius
-      );
+      // Draw the particle with dynamic opacity
+      const dynamicOpacity = particle.opacity * (0.8 + baseGlow * 0.4);
+      ctx.fillStyle = `rgba(255, 255, 255, ${dynamicOpacity})`;
       
-      // Gradient stops based on glow intensity
-      const centerOpacity = particle.opacity * (0.9 + baseGlow * 0.6);
-      const glowOpacity = particle.opacity * baseGlow * 0.4;
-      
-      gradient.addColorStop(0, `rgba(255, 255, 255, ${centerOpacity})`);
-      gradient.addColorStop(0.3, `rgba(255, 255, 255, ${glowOpacity})`);
-      gradient.addColorStop(0.7, `rgba(200, 220, 255, ${glowOpacity * 0.5})`);
-      gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      
-      // Draw outer glow
-      ctx.fillStyle = gradient;
       ctx.beginPath();
-      ctx.arc(particle.x, particle.y, glowRadius, 0, Math.PI * 2);
+      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
       ctx.fill();
       
-      // Draw bright core with additional glow layers for bottom particles
-      if (glowIntensity > 0.3) {
-        // Multiple glow layers for intense bottom effect
-        for (let layer = 0; layer < 3; layer++) {
-          const layerRadius = coreRadius * (1 + layer * 0.8 * baseGlow);
-          const layerOpacity = centerOpacity * (1 - layer * 0.3) * baseGlow;
-          
-          ctx.shadowColor = `rgba(255, 255, 255, ${layerOpacity})`;
-          ctx.shadowBlur = layerRadius * 2;
-          
-          ctx.fillStyle = `rgba(255, 255, 255, ${layerOpacity})`;
-          ctx.beginPath();
-          ctx.arc(particle.x, particle.y, layerRadius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      
-      // Draw solid core
-      ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
-      ctx.shadowBlur = coreRadius * baseGlow;
-      ctx.fillStyle = `rgba(255, 255, 255, ${centerOpacity})`;
-      ctx.beginPath();
-      ctx.arc(particle.x, particle.y, coreRadius, 0, Math.PI * 2);
-      ctx.fill();
-      
-      // Restore context state
-      ctx.restore();
+      // Reset shadow for next particle
+      ctx.shadowBlur = 0;
     }
     
     // ======== SPECIAL RED PARTICLE FEATURE - START ========
