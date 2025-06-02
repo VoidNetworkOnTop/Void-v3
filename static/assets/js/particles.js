@@ -1,5 +1,6 @@
-// Upward Floating Particles with Hard Umbrella Effect
+// Upward Floating Particles with Hard Umbrella Effect and Dynamic Glow
 // Particles float upward and bounce off a hard umbrella barrier around the cursor
+// Added dynamic glow effect that fades from bottom to top
 
 (function() {
   // Wait for the DOM to be fully loaded before initializing
@@ -46,7 +47,7 @@
     const particleCount = 300; // More particles
     const minSize = 1.5;
     const maxSize = 4;
-    const baseOpacity = 0.3;
+    const baseOpacity = 0.4;
     const floatSpeedMin = 1.5; // Much faster upward movement
     const floatSpeedMax = 3.0;
     const horizontalDrift = 0.8; // Maximum horizontal movement for diagonal effect
@@ -83,7 +84,8 @@
           originalSpeedX: (Math.random() - 0.5) * horizontalDrift * 2,
           // Each particle gets a slight blur effect for smoother appearance
           blur: Math.random() * 2,
-          isSpecialRed: false // Flag for normal particles
+          isSpecialRed: false, // Flag for normal particles
+          pulsePhase: Math.random() * Math.PI * 2 // Random starting phase for glow animation
         });
       }
     }
@@ -145,6 +147,85 @@
       const bounceIntensity = 1.2;
       particle.speedX *= bounceIntensity;
       particle.speedY *= bounceIntensity;
+    }
+    
+    // Function to calculate glow intensity based on vertical position
+    function getGlowIntensity(particleY, canvasHeight) {
+      // Calculate position as percentage from bottom (1 = bottom, 0 = top)
+      const heightRatio = (canvasHeight - particleY) / canvasHeight;
+      
+      // Clamp to 0-1 range
+      const clampedRatio = Math.max(0, Math.min(1, heightRatio));
+      
+      // Create exponential curve for more dramatic effect at bottom
+      // Using power of 2.5 to create strong glow at bottom that fades quickly
+      return Math.pow(clampedRatio, 0.4);
+    }
+    
+    // Function to draw a glowing particle
+    function drawGlowingParticle(particle) {
+      const glowIntensity = getGlowIntensity(particle.y, canvas.height);
+      
+      // Update pulse phase for subtle animation
+      particle.pulsePhase = (particle.pulsePhase + 0.03) % (Math.PI * 2);
+      const pulseMultiplier = 1 + Math.sin(particle.pulsePhase) * 0.2;
+      
+      // Calculate glow parameters
+      const baseGlow = glowIntensity * pulseMultiplier;
+      const glowRadius = particle.size * (2 + baseGlow * 3);
+      const coreRadius = particle.size;
+      
+      // Save context state
+      ctx.save();
+      
+      // Create radial gradient for glow effect
+      const gradient = ctx.createRadialGradient(
+        particle.x, particle.y, 0,
+        particle.x, particle.y, glowRadius
+      );
+      
+      // Gradient stops based on glow intensity
+      const centerOpacity = particle.opacity * (0.9 + baseGlow * 0.6);
+      const glowOpacity = particle.opacity * baseGlow * 0.4;
+      
+      gradient.addColorStop(0, `rgba(255, 255, 255, ${centerOpacity})`);
+      gradient.addColorStop(0.3, `rgba(255, 255, 255, ${glowOpacity})`);
+      gradient.addColorStop(0.7, `rgba(200, 220, 255, ${glowOpacity * 0.5})`);
+      gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      
+      // Draw outer glow
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw bright core with additional glow layers for bottom particles
+      if (glowIntensity > 0.3) {
+        // Multiple glow layers for intense bottom effect
+        for (let layer = 0; layer < 3; layer++) {
+          const layerRadius = coreRadius * (1 + layer * 0.8 * baseGlow);
+          const layerOpacity = centerOpacity * (1 - layer * 0.3) * baseGlow;
+          
+          ctx.shadowColor = `rgba(255, 255, 255, ${layerOpacity})`;
+          ctx.shadowBlur = layerRadius * 2;
+          
+          ctx.fillStyle = `rgba(255, 255, 255, ${layerOpacity})`;
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, layerRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      
+      // Draw solid core
+      ctx.shadowColor = 'rgba(255, 255, 255, 0.8)';
+      ctx.shadowBlur = coreRadius * baseGlow;
+      ctx.fillStyle = `rgba(255, 255, 255, ${centerOpacity})`;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, coreRadius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Restore context state
+      ctx.restore();
     }
     
     // ======== SPECIAL RED PARTICLE FEATURE - START ========
@@ -379,14 +460,14 @@
           particle.x = 0;
         }
         
-        // Choose color based on particle type
+        // Draw particle based on type
         if (particle.isSpecialRed) {
           // Update pulse phase for neon effect
           if (particle.pulsePhase !== undefined) {
             particle.pulsePhase = (particle.pulsePhase + 0.05) % (Math.PI * 2);
           }
           
-          // Red particle - more subtle now
+          // Red particle - traditional drawing
           ctx.fillStyle = 'rgba(255, 50, 50, ' + particle.opacity + ')';
           ctx.shadowColor = 'rgba(255, 0, 0, 0.7)';
           ctx.shadowBlur = particle.blur;
@@ -395,22 +476,13 @@
           ctx.beginPath();
           ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
           ctx.fill();
+          
+          // Reset shadow
+          ctx.shadowBlur = 0;
         } else {
-          // Regular white particles
-          ctx.fillStyle = `rgba(255, 255, 255, ${particle.opacity})`;
-          ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
-          
-          // Use shadow blur for softer dots
-          ctx.shadowBlur = particle.blur;
-          
-          // Draw the dot
-          ctx.beginPath();
-          ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-          ctx.fill();
+          // Regular glowing white particles with dynamic effect
+          drawGlowingParticle(particle);
         }
-        
-        // Reset shadow for better performance
-        ctx.shadowBlur = 0;
       }
       
       // Check if the special red particle needs cleanup
