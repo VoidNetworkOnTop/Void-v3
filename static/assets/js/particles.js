@@ -168,41 +168,41 @@
       
       // Update pulse phase for subtle animation
       particle.pulsePhase = (particle.pulsePhase + 0.02) % (Math.PI * 2);
-      const pulseMultiplier = 1 + Math.sin(particle.pulsePhase) * 0.15;
+      const pulseMultiplier = 1 + Math.sin(particle.pulsePhase) * 0.25;
       
-      // Calculate dynamic glow parameters based on "bottom light source"
+      // Calculate dynamic glow parameters based on "bottom light source" - STRONGER
       const bottomLightIntensity = glowIntensity * pulseMultiplier;
-      const glowRadius = 8 + bottomLightIntensity * 12; // Dynamic glow size
-      const glowOpacity = bottomLightIntensity * 0.8;
+      const glowRadius = 15 + bottomLightIntensity * 25; // Much larger glow
+      const glowOpacity = bottomLightIntensity * 1.2; // Higher opacity
       
-      // Draw outer glow ring (light reflection)
-      if (bottomLightIntensity > 0.1) {
-        ctx.shadowColor = `rgba(255, 255, 255, ${glowOpacity * 0.3})`;
-        ctx.shadowBlur = glowRadius;
+      // Draw outer glow ring (light reflection) - STRONGER
+      if (bottomLightIntensity > 0.05) {
+        ctx.shadowColor = `rgba(255, 255, 255, ${glowOpacity * 0.6})`;
+        ctx.shadowBlur = glowRadius * 1.5;
         
         // Draw multiple glow layers for realistic light reflection
-        for (let layer = 2; layer >= 0; layer--) {
-          const layerRadius = glowRadius * (0.3 + layer * 0.2);
-          const layerOpacity = glowOpacity * (0.2 + layer * 0.1);
+        for (let layer = 3; layer >= 0; layer--) {
+          const layerRadius = glowRadius * (0.4 + layer * 0.3);
+          const layerOpacity = glowOpacity * (0.3 + layer * 0.2);
           
           ctx.shadowColor = `rgba(255, 255, 255, ${layerOpacity})`;
           ctx.shadowBlur = layerRadius;
           
           // Draw invisible circle to create glow effect
-          ctx.fillStyle = `rgba(255, 255, 255, 0.01)`;
+          ctx.fillStyle = `rgba(255, 255, 255, 0.02)`;
           ctx.beginPath();
-          ctx.arc(particle.x, particle.y, 1, 0, Math.PI * 2);
+          ctx.arc(particle.x, particle.y, 2, 0, Math.PI * 2);
           ctx.fill();
         }
       }
       
-      // Draw the core particle
-      ctx.shadowColor = `rgba(255, 255, 255, ${glowOpacity})`;
-      ctx.shadowBlur = 3 + bottomLightIntensity * 4;
+      // Draw the core particle with stronger glow
+      ctx.shadowColor = `rgba(255, 255, 255, ${Math.min(1, glowOpacity * 1.5)})`;
+      ctx.shadowBlur = 8 + bottomLightIntensity * 12;
       
-      // Dynamic particle brightness based on bottom light
-      const particleOpacity = particle.opacity * (0.6 + bottomLightIntensity * 0.7);
-      ctx.fillStyle = `rgba(255, 255, 255, ${particleOpacity})`;
+      // Dynamic particle brightness based on bottom light - STRONGER
+      const particleOpacity = particle.opacity * (0.7 + bottomLightIntensity * 1.2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1, particleOpacity)})`;
       
       ctx.beginPath();
       ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
