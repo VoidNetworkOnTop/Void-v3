@@ -271,19 +271,9 @@ const gamesData = [
     link: "/local games/crossyroad/index.html"
 },
 {
-    title: "A Dance Of Fire And Ice", 
-    imgSrc: "https://lh7-us.googleusercontent.com/OnLUO5_5ONgtJrsEW_iPLtX86ILb9O-M-4s1Ae7zALw25b0gucoF7xraNHojCKzmOpXTNIp0cuGsQkB1jJ9pbQWRx9JMgEmwpQZ7E8RDNSoyLzaUE6r-6vOJKouFUzzFxp_CZHHBmRguZr6JB5bZmbL1HDrhoA",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://hushygames.github.io/games/a-dance-of-fire-and-ice/game.html")
-},
-{
     title: "Run 3", 
     imgSrc: "https://lh7-us.googleusercontent.com/6avdW0W2-vTEubtnOORUqELyCbi-axinh-m-R1b7ZXKG6y4kLz18WYO20gQ3Ml4FRXAZAdlH6_s6ADOoowHf6ReiZXbmfdwCiaVBEV59uGb0LQx9qq1vAX41DpNU7rA7AKlqJYc76fjPcCqKCD-8PLW-p5H8Xw",
     link: "/local games/run3/index.html"
-},
-{
-    title: "FNAF Shooter", 
-    imgSrc: "https://lh7-us.googleusercontent.com/OP2j-g-PMnyZTGsPtcNtdlIxpTPRAj0Nsw4ix0zIUtlLX_EgnJC6SzDWvYLtLKrUKFdvO-0TQSyeGrsQRXj3yYAVIgQUVT3cuOwKwcOqe3soxse1UUdl2iqlsjuiqpGERvK_LyFXqrpceXv5mZsyE67wnhFJGw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://bitlifeonline.github.io/fnaf-shooter/")
 },
 {
     title: "CSGO Clicker", 
@@ -291,19 +281,9 @@ const gamesData = [
     link: "/local games/csgoclicker/index.html"
 },
 {
-    title: "Doodle Baseball", 
-    imgSrc: "https://lh7-us.googleusercontent.com/yKr7ixizlZD6yUBmJSaN88tpzv5CSYH0bVjm8X9B1bYPqSDAe7Vv6SGZuec2AUUD0wexRUr0Dm6_64Ns0yNF-tp_HlU05nk6x-yrz994cl8LNsySFCJYevOcuRuHdSlEgd3UOq4EpwhHaUcAz74jh9TAeiVEbw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://gnhustgames.github.io/googledoodle/")
-},
-{
     title: "Bad Time Sim", 
     imgSrc: "https://lh7-us.googleusercontent.com/mBlISAzKsz0xx5ZSEBstU7rGyMaL2zZPKDmZ-ZTRnb9c6NxfMBKkaF1Hfc4fTO0svWeokE1UyIQLzDZliz6LEfDMEvAMXQtZzQ3HjFWZ9qljNJj7nKIFMpvDXrgETdka6QEbDHXZpl-JHMuAVsRhhVAoaWFlnw",
     link: "/local games/badtimesimulator/index.html"
-},
-{
-    title: "Dead or No Deal", 
-    imgSrc: "https://lh7-us.googleusercontent.com/Z5ieJTMKR0G9NsY_fPPvCgSoQVC4J_6CBK7gFlPxpKFUBxgZQxGxcQMRxNcJeDfcsZqx14DBa8Bqi3lhoEp6gfzVgEUiE-4w9gjnIKLczzgtEyhgnUVfjUt1YrLSc-UJzj2Jd7ImUzYdQ-W2859pR1yH2L3-Mw",
-    link: __uv$config.prefix + __uv$config.encodeUrl("https://munetracker.github.io/dealornodeal/")
 },
 {
     title: "PokeRogue", 
