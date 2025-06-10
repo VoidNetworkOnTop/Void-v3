@@ -134,6 +134,15 @@ const games2Data = [
     imgSrc: "https://lh7-us.googleusercontent.com/5VfCfVupllfGOuK_XfTGctmjzxDktjv_lgYD12Xsf1wFaojcRVkt_R32sq9arCHdWMYCm-KT4C6KX4u3ZLIoM-tZMwrJmeqEHecVeGw3TGB80gr4XQvw9Z7wwLmhAveD9KSRN9Zew4A2lisD3HbK3n7QHRlnxvu8C0OJl_rubtdbWNqsVNIt8Gc61yCt4cJNMMv3E3gH?key=yj4V8pHW144VjA9YlEbf1Q",
     link: "/local games/connect4-main/index.html"
 },
+{
+
+    title: "Squ</x>areX 2: eXt</x>reme", 
+
+    imgSrc: "/img/gameimg/SquareX.png",
+
+    link: "/local games/square22/www.coolmathgames.com/sites/default/files/public_games/51216/index.html"
+
+},
 
 ];
 export { games2Data }; // Named export
