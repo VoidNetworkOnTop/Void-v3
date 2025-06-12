@@ -1,11 +1,10 @@
 /**
- * leaderboard.js - Fixed Connectivity Leaderboard
- * Retrieves ALL users without limits and ignores offline checks
+ * leaderboard.js - OPTIMIZED PERFORMANCE Leaderboard
+ * Fixed to only fetch top users and reduce database load
  */
 
 /**
- * Leaderboard Class
- * Handles fetching and displaying the leaderboard
+ * Leaderboard Class - Performance Optimized
  */
 class VoidLeaderboard {
     constructor(db) {
@@ -17,15 +16,19 @@ class VoidLeaderboard {
         this.retryTimeout = null;
         this.isMinimized = false;
         this.lastUpdateTime = 0;
-        this.bannedUserCache = new Map(); // Cache for banned users to avoid repeated queries
+        this.bannedUserCache = new Map();
         this.lastCacheRefresh = 0;
         this.throttleTimer = null;
-        this.throttleDelay = 1000; // Reduced for more responsive updates
-        this.leaderboardData = []; // Cache leaderboard data
-        this.isUpdating = false; // Flag to prevent multiple concurrent updates
-        this.allUsers = []; // Store all users for easy access
+        this.throttleDelay = 2000; // Increased throttle delay
+        this.leaderboardData = [];
+        this.isUpdating = false;
+        this.topUsers = []; // Only store top users
+        this.maxUsers = 50; // Limit to top 50 users instead of ALL users
+        this.displayUsers = 20; // Only display top 20
+        this.lastRefreshTime = 0;
+        this.minRefreshInterval = 10000; // Minimum 10 seconds between refreshes
         
-        console.log("VoidLeaderboard initialized - FIXED CONNECTIVITY VERSION");
+        console.log("VoidLeaderboard initialized - PERFORMANCE OPTIMIZED VERSION");
         
         // Set up minimize/maximize toggle
         const toggleBtn = document.getElementById('leaderboardToggle');
@@ -33,30 +36,43 @@ class VoidLeaderboard {
             toggleBtn.addEventListener('click', () => this.toggleLeaderboard());
         }
         
-        // Set up refresh button
+        // Set up refresh button with throttling
         const refreshBtn = document.getElementById('leaderboardRefresh');
         if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => this.forceRefreshLeaderboard());
+            refreshBtn.addEventListener('click', () => this.throttledRefresh());
         }
         
-        // Initial load of banned users
+        // Initial load of banned users (only once)
         this.refreshBannedUsersCache();
     }
     
-    // Force refresh the leaderboard when button is clicked
+    // Throttled refresh to prevent spam clicking
+    throttledRefresh() {
+        const now = Date.now();
+        if (now - this.lastRefreshTime < this.minRefreshInterval) {
+            const remaining = Math.ceil((this.minRefreshInterval - (now - this.lastRefreshTime)) / 1000);
+            window.showNotification(`Please wait ${remaining} seconds before refreshing again`, "error");
+            return;
+        }
+        
+        this.forceRefreshLeaderboard();
+    }
+    
+    // OPTIMIZED: Force refresh with proper limits and error handling
     async forceRefreshLeaderboard() {
         if (this.isUpdating) {
             console.log("Leaderboard update already in progress, skipping force refresh");
             return;
         }
         
-        console.log("Forcing COMPLETE leaderboard refresh");
+        console.log("Forcing OPTIMIZED leaderboard refresh - TOP 50 USERS ONLY");
+        this.lastRefreshTime = Date.now();
         this.isUpdating = true;
         
         try {
             // Show loading spinner
             if (this.leaderboardElement) {
-                this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Refreshing leaderboard (getting ALL users)...</div>';
+                this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">Loading top players...</div>';
             }
             
             // Stop current subscription
@@ -65,95 +81,69 @@ class VoidLeaderboard {
                 this.unsubscribe = null;
             }
             
-            // Check if Firebase Functions is available
-            if (typeof firebase.functions === 'function') {
-                // Use Cloud Function if available
-                try {
-                    console.log("Using Cloud Function for leaderboard update");
-                    
-                    // Check if user is logged in
-                    if (!firebase.auth().currentUser) {
-                        console.log("User must be logged in to refresh leaderboard");
-                        window.showNotification("Please log in to refresh the leaderboard", "error");
-                        this.showErrorState("You must be logged in to refresh the leaderboard");
-                        this.isUpdating = false;
-                        return;
-                    }
-                    
-                    // Get the Firebase Functions instance
-                    const functions = firebase.functions();
-                    const triggerLeaderboardUpdate = functions.httpsCallable('triggerLeaderboardUpdate');
-                    
-                    // Call the cloud function to update the leaderboard
-                    const result = await triggerLeaderboardUpdate();
-                    console.log("Leaderboard update succeeded via Cloud Function:", result.data);
-                    window.showNotification(`Leaderboard updated via Cloud Function! Updated ${result.data.count} users.`, "success");
-                } catch (functionError) {
-                    console.error("Error with Cloud Function, falling back to direct method:", functionError);
-                    // Fall back to direct method
-                }
-            } else {
-                console.log("Firebase Functions not available, using direct method");
-            }
+            // Get only top users - MUCH more efficient
+            await this.getTopUsers();
             
-            // Get ALL users first - IGNORING OFFLINE CHECK
-            await this.getAllUsers();
-            
-            // Update the leaderboard with our comprehensive data
+            // Update the leaderboard with our limited data
             this.renderLeaderboard();
             
-            window.showNotification("Leaderboard refreshed successfully with ALL users", "success");
+            window.showNotification("Leaderboard refreshed successfully", "success");
         } catch (error) {
             console.error("Error during forced leaderboard refresh:", error);
             window.showNotification("Error refreshing leaderboard: " + error.message, "error");
             
             // Show error state
-            this.showErrorState("Error getting all users: " + error.message);
+            this.showErrorState("Error loading leaderboard: " + error.message);
         } finally {
             this.isUpdating = false;
         }
     }
     
-    // NEW METHOD: Get ALL users from the database without any limits
-    async getAllUsers() {
-        console.log("Getting ALL users from database without limits");
-        
-        // REMOVED OFFLINE CHECK - assume we're always online
+    // OPTIMIZED: Get only top users with proper limits and indexing
+    async getTopUsers() {
+        console.log(`Getting top ${this.maxUsers} users from database with optimized query`);
         
         try {
-            console.log("Checking Firestore connection status...");
-            
             // Check if Firebase is initialized
             if (!firebase || !firebase.firestore) {
                 throw new Error("Firebase not initialized properly");
             }
             
-            console.log("Firebase initialized correctly - continuing");
+            console.log("Firebase initialized correctly - fetching top users only");
             
-            // First refresh banned cache
-            await this.refreshBannedUsersCache();
+            // First refresh banned cache (only if needed)
+            const cacheAge = Date.now() - this.lastCacheRefresh;
+            if (cacheAge > 300000) { // 5 minutes
+                await this.refreshBannedUsersCache();
+            }
             
-            // Get ALL users from users collection - NO LIMIT
+            // OPTIMIZED QUERY: Get only top users by balance with LIMIT
+            // This is much more efficient than getting ALL users
             const usersRef = firebase.firestore().collection('users');
             
-            console.log("Fetching ALL users from database...");
+            console.log(`Fetching top ${this.maxUsers} users by balance...`);
             
-            // We need to get a snapshot of all users without a limit
-            const allUsersSnapshot = await usersRef.get();
+            // Query top users by accountBalance in descending order with LIMIT
+            // This uses an index and is much faster than loading all users
+            const topUsersQuery = usersRef
+                .orderBy('accountBalance', 'desc')
+                .limit(this.maxUsers);
             
-            console.log(`Retrieved ${allUsersSnapshot.size} total users`);
+            const topUsersSnapshot = await topUsersQuery.get();
             
-            // Process all users
-            const allUsersData = [];
+            console.log(`Retrieved ${topUsersSnapshot.size} top users (limited query)`);
+            
+            // Process only the top users (much smaller dataset)
+            const topUsersData = [];
             let bannedCount = 0;
             
-            allUsersSnapshot.forEach(doc => {
+            topUsersSnapshot.forEach(doc => {
                 if (!doc.exists) return;
                 
                 const userId = doc.id;
                 const userData = doc.data();
                 
-                // ONLY check for banned status
+                // Check for banned status
                 const isBanned = 
                     userData.banned === true || 
                     userData.isBanned === true || 
@@ -166,7 +156,7 @@ class VoidLeaderboard {
                 }
                 
                 // Add valid user to our data array
-                allUsersData.push({
+                topUsersData.push({
                     id: userId,
                     username: userData.username || 'Unknown',
                     accountBalance: userData.accountBalance || 0,
@@ -174,219 +164,192 @@ class VoidLeaderboard {
                 });
             });
             
-            console.log(`Processed ${allUsersData.length} valid users (${bannedCount} banned)`);
+            console.log(`Processed ${topUsersData.length} valid top users (${bannedCount} banned)`);
             
-            // Log top 10 users by balance for debugging
-            const top10 = [...allUsersData].sort((a, b) => b.accountBalance - a.accountBalance).slice(0, 10);
-            console.log("Top 10 users by balance:");
-            top10.forEach((user, index) => {
-                console.log(`${index + 1}. ${user.username}: ${user.accountBalance.toLocaleString()}`);
-            });
+            // Already sorted by query, but ensure it's correct
+            topUsersData.sort((a, b) => b.accountBalance - a.accountBalance);
             
-            // Save all user data
-            this.allUsers = allUsersData;
+            // Store only top users (not all users)
+            this.topUsers = topUsersData;
             
-            // Sort by balance
-            this.allUsers.sort((a, b) => b.accountBalance - a.accountBalance);
-            
-            // Check if we have Firebase Functions to avoid direct update
-            if (typeof firebase.functions !== 'function') {
-                // Only update leaderboard directly if Functions isn't available
-                try {
-                    // Now update all leaderboard entries to match our user data
-                    // This ensures the leaderboard is in sync with user data
-                    let batch = firebase.firestore().batch();
-                    let updateCount = 0;
-                    
-                    // Update each in a batch - focus on top 100 to avoid too many writes
-                    const topUsersToUpdate = Math.min(100, this.allUsers.length);
-                    console.log(`Updating top ${topUsersToUpdate} users in leaderboard collection`);
-                    
-                    for (let i = 0; i < topUsersToUpdate; i++) {
-                        const user = this.allUsers[i];
-                        const leaderboardRef = firebase.firestore().collection('leaderboard').doc(user.id);
-                        
-                        // Always set the entry, overwriting if needed
-                        batch.set(leaderboardRef, {
-                            username: user.username,
-                            accountBalance: user.accountBalance,
-                            joinDate: new Date(), // Default in case it doesn't exist
-                            lastSynced: new Date(),
-                            banned: false // Explicitly mark as not banned
-                        }, { merge: true }); // Use merge to keep other fields
-                        
-                        updateCount++;
-                        
-                        // Commit in batches to avoid limits
-                        if (updateCount >= 20) {
-                            await batch.commit();
-                            console.log(`Committed batch of ${updateCount} leaderboard updates`);
-                            batch = firebase.firestore().batch();
-                            updateCount = 0;
-                        }
-                    }
-                    
-                    // Commit any remaining updates
-                    if (updateCount > 0) {
-                        await batch.commit();
-                        console.log(`Committed final batch of ${updateCount} leaderboard updates`);
-                    }
-                } catch (updateError) {
-                    console.error("Error updating leaderboard entries:", updateError);
-                    // Continue without updates if there's an error
-                }
-            }
-            
-            // Get avatar data from leaderboard - this part is optional
+            // OPTIMIZED: Get avatar data only for top users we're displaying
             try {
-                // Get leaderboard data to get avatars
-                const leaderboardRef = firebase.firestore().collection('leaderboard');
-                const leaderboardSnapshot = await leaderboardRef.get();
+                const userIds = this.topUsers.slice(0, this.displayUsers).map(user => user.id);
                 
-                // Create a map of userId -> avatar
-                const avatarMap = new Map();
-                
-                leaderboardSnapshot.forEach(doc => {
-                    if (!doc.exists) return;
+                if (userIds.length > 0) {
+                    // Get leaderboard data only for users we're displaying
+                    const leaderboardRefs = userIds.map(id => 
+                        firebase.firestore().collection('leaderboard').doc(id)
+                    );
                     
-                    const leaderboardData = doc.data();
-                    if (leaderboardData.equippedAvatar) {
-                        avatarMap.set(doc.id, leaderboardData.equippedAvatar);
-                    }
-                });
+                    // Use Promise.allSettled to handle individual failures gracefully
+                    const leaderboardDocs = await Promise.allSettled(
+                        leaderboardRefs.map(ref => ref.get())
+                    );
+                    
+                    // Process avatar data
+                    leaderboardDocs.forEach((result, index) => {
+                        if (result.status === 'fulfilled' && result.value.exists) {
+                            const leaderboardData = result.value.data();
+                            if (leaderboardData.equippedAvatar && this.topUsers[index]) {
+                                const avatarId = leaderboardData.equippedAvatar;
+                                this.topUsers[index].avatar = window.itemManager?.items[avatarId]?.url || null;
+                            }
+                        }
+                    });
+                }
                 
-                // Update avatars in our all users array
-                this.allUsers.forEach(user => {
-                    if (avatarMap.has(user.id)) {
-                        const avatarId = avatarMap.get(user.id);
-                        user.avatar = window.itemManager?.items[avatarId]?.url || null;
-                    }
-                });
-                
-                console.log(`Updated avatar data for users`);
+                console.log(`Updated avatar data for top ${userIds.length} users`);
             } catch (error) {
                 console.error("Error getting avatar data:", error);
                 // Continue without avatars if there's an error
             }
             
-            return this.allUsers;
+            return this.topUsers;
         } catch (error) {
-            console.error("Error getting all users:", error);
+            console.error("Error getting top users:", error);
             throw error;
         }
     }
     
-    // Render leaderboard with our all users data
+    // OPTIMIZED: Render only what we need with better DOM handling
     renderLeaderboard() {
         if (!this.leaderboardElement) {
             console.error("Leaderboard element not found");
             return;
         }
         
-        if (this.allUsers.length === 0) {
+        if (this.topUsers.length === 0) {
             this.leaderboardElement.innerHTML = '<div class="leaderboard-loading">No players available</div>';
             return;
         }
         
-        // Clear the leaderboard
-        this.leaderboardElement.innerHTML = '';
+        console.log(`Rendering leaderboard with ${this.topUsers.length} top users`);
         
-        console.log(`Rendering leaderboard with ${this.allUsers.length} total users`);
-        
-        // Save top users to leaderboard data
-        this.leaderboardData = this.allUsers.slice(0, 20);
+        // Use DocumentFragment for efficient DOM manipulation
+        const fragment = document.createDocumentFragment();
         
         // Display exactly 20 users, or as many as available
-        const displayCount = Math.min(this.allUsers.length, 20);
+        const displayCount = Math.min(this.topUsers.length, this.displayUsers);
         
         for (let i = 0; i < displayCount; i++) {
-            const userData = this.allUsers[i];
-            const leaderboardItem = document.createElement('div');
-            leaderboardItem.className = 'leaderboard-item';
-            leaderboardItem.id = `leaderboard-item-${userData.id}`;
-            
-            // Create rank element
-            const rankSpan = document.createElement('span');
-            rankSpan.className = 'leaderboard-rank';
-            rankSpan.innerText = `#${i + 1}`;
-            leaderboardItem.appendChild(rankSpan);
-            
-            // Create username container
-            const usernameContainer = document.createElement('div');
-            usernameContainer.className = 'leaderboard-username-container';
-            
-            // Add avatar if present
-            if (userData.avatar) {
-                const avatarDiv = document.createElement('div');
-                avatarDiv.className = 'leaderboard-avatar';
-                
-                const avatarImg = document.createElement('img');
-                avatarImg.src = userData.avatar;
-                avatarImg.alt = 'User avatar';
-                
-                avatarDiv.appendChild(avatarImg);
-                usernameContainer.appendChild(avatarDiv);
-            }
-            
-            // Create and add username
-            const usernameSpan = document.createElement('span');
-            usernameSpan.className = 'leaderboard-username';
-            usernameSpan.innerText = userData.username;
-            usernameContainer.appendChild(usernameSpan);
-            
-            // Add username container to item
-            leaderboardItem.appendChild(usernameContainer);
-            
-            // Create and add balance
-            const balanceSpan = document.createElement('span');
-            balanceSpan.className = 'leaderboard-balance';
-            balanceSpan.innerText = userData.accountBalance.toLocaleString();
-            leaderboardItem.appendChild(balanceSpan);
-            
-            this.leaderboardElement.appendChild(leaderboardItem);
+            const userData = this.topUsers[i];
+            const leaderboardItem = this.createLeaderboardItem(userData, i + 1);
+            fragment.appendChild(leaderboardItem);
         }
         
-        // Add placeholders if needed
-        if (displayCount < 20) {
-            for (let i = displayCount; i < 20; i++) {
-                const placeholderItem = document.createElement('div');
-                placeholderItem.className = 'leaderboard-item';
-                
-                const placeholderRank = document.createElement('span');
-                placeholderRank.className = 'leaderboard-rank';
-                placeholderRank.innerText = `#${i + 1}`;
-                placeholderItem.appendChild(placeholderRank);
-                
-                const placeholderUsernameContainer = document.createElement('div');
-                placeholderUsernameContainer.className = 'leaderboard-username-container';
-                
-                const placeholderUsername = document.createElement('span');
-                placeholderUsername.className = 'leaderboard-username';
-                placeholderUsername.innerText = '...';
-                placeholderUsernameContainer.appendChild(placeholderUsername);
-                placeholderItem.appendChild(placeholderUsernameContainer);
-                
-                const placeholderBalance = document.createElement('span');
-                placeholderBalance.className = 'leaderboard-balance';
-                placeholderBalance.innerText = '--';
-                placeholderItem.appendChild(placeholderBalance);
-                
-                this.leaderboardElement.appendChild(placeholderItem);
+        // Add placeholders if needed (only if we have fewer than 20)
+        if (displayCount < this.displayUsers) {
+            for (let i = displayCount; i < this.displayUsers; i++) {
+                const placeholderItem = this.createPlaceholderItem(i + 1);
+                fragment.appendChild(placeholderItem);
             }
         }
+        
+        // Replace all content at once (much more efficient)
+        this.leaderboardElement.innerHTML = '';
+        this.leaderboardElement.appendChild(fragment);
+        
+        // Save leaderboard data (only top users)
+        this.leaderboardData = this.topUsers.slice(0, this.displayUsers);
         
         // Highlight special users
         this.highlightSpecialUsers();
     }
     
-    // Simplified banned users cache refresh - NO OFFLINE CHECK
+    // Helper method to create a leaderboard item
+    createLeaderboardItem(userData, rank) {
+        const leaderboardItem = document.createElement('div');
+        leaderboardItem.className = 'leaderboard-item';
+        leaderboardItem.id = `leaderboard-item-${userData.id}`;
+        
+        // Create rank element
+        const rankSpan = document.createElement('span');
+        rankSpan.className = 'leaderboard-rank';
+        rankSpan.textContent = `#${rank}`;
+        leaderboardItem.appendChild(rankSpan);
+        
+        // Create username container
+        const usernameContainer = document.createElement('div');
+        usernameContainer.className = 'leaderboard-username-container';
+        
+        // Add avatar if present
+        if (userData.avatar) {
+            const avatarDiv = document.createElement('div');
+            avatarDiv.className = 'leaderboard-avatar';
+            
+            const avatarImg = document.createElement('img');
+            avatarImg.src = userData.avatar;
+            avatarImg.alt = 'User avatar';
+            avatarImg.loading = 'lazy'; // Lazy load avatars for better performance
+            
+            avatarDiv.appendChild(avatarImg);
+            usernameContainer.appendChild(avatarDiv);
+        }
+        
+        // Create and add username
+        const usernameSpan = document.createElement('span');
+        usernameSpan.className = 'leaderboard-username';
+        usernameSpan.textContent = userData.username;
+        usernameContainer.appendChild(usernameSpan);
+        
+        leaderboardItem.appendChild(usernameContainer);
+        
+        // Create and add balance
+        const balanceSpan = document.createElement('span');
+        balanceSpan.className = 'leaderboard-balance';
+        balanceSpan.textContent = userData.accountBalance.toLocaleString();
+        leaderboardItem.appendChild(balanceSpan);
+        
+        return leaderboardItem;
+    }
+    
+    // Helper method to create placeholder items
+    createPlaceholderItem(rank) {
+        const placeholderItem = document.createElement('div');
+        placeholderItem.className = 'leaderboard-item';
+        
+        const placeholderRank = document.createElement('span');
+        placeholderRank.className = 'leaderboard-rank';
+        placeholderRank.textContent = `#${rank}`;
+        placeholderItem.appendChild(placeholderRank);
+        
+        const placeholderUsernameContainer = document.createElement('div');
+        placeholderUsernameContainer.className = 'leaderboard-username-container';
+        
+        const placeholderUsername = document.createElement('span');
+        placeholderUsername.className = 'leaderboard-username';
+        placeholderUsername.textContent = '...';
+        placeholderUsernameContainer.appendChild(placeholderUsername);
+        placeholderItem.appendChild(placeholderUsernameContainer);
+        
+        const placeholderBalance = document.createElement('span');
+        placeholderBalance.className = 'leaderboard-balance';
+        placeholderBalance.textContent = '--';
+        placeholderItem.appendChild(placeholderBalance);
+        
+        return placeholderItem;
+    }
+    
+    // OPTIMIZED: Banned users cache refresh with better error handling
     async refreshBannedUsersCache() {
         try {
             console.log("Refreshing banned users cache");
             this.bannedUserCache.clear();
             
-            // Get all banned users from the banned_users collection
-            const bannedUsersSnapshot = await firebase.firestore().collection('banned_users').get();
+            // OPTIMIZED: Limit banned users query and add timeout
+            const bannedUsersRef = firebase.firestore().collection('banned_users');
+            const bannedUsersQuery = bannedUsersRef.limit(1000); // Reasonable limit
+            
+            // Add timeout to prevent hanging
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Banned users query timeout')), 5000)
+            );
+            
+            const bannedUsersSnapshot = await Promise.race([
+                bannedUsersQuery.get(),
+                timeoutPromise
+            ]);
             
             bannedUsersSnapshot.forEach(doc => {
                 this.bannedUserCache.set(doc.id, true);
@@ -397,6 +360,37 @@ class VoidLeaderboard {
         } catch (error) {
             console.error("Error refreshing banned users cache:", error);
             // Continue without banned cache rather than failing
+        }
+    }
+    
+    // Update a specific user's balance without full refresh
+    updateUserBalance(userId, newBalance) {
+        try {
+            // Find user in current data
+            const userIndex = this.topUsers.findIndex(user => user.id === userId);
+            
+            if (userIndex !== -1) {
+                // Update the balance
+                this.topUsers[userIndex].accountBalance = newBalance;
+                
+                // Re-sort the array
+                this.topUsers.sort((a, b) => b.accountBalance - a.accountBalance);
+                
+                // Re-render only if the user is still in top 20
+                const newUserIndex = this.topUsers.findIndex(user => user.id === userId);
+                if (newUserIndex < this.displayUsers) {
+                    // User is still in top 20, do a quick re-render
+                    this.renderLeaderboard();
+                }
+            } else {
+                // User not in current top users, might need a full refresh if they're now in top
+                if (newBalance > (this.topUsers[this.topUsers.length - 1]?.accountBalance || 0)) {
+                    // User might be in top now, schedule a refresh
+                    setTimeout(() => this.throttledRefresh(), 1000);
+                }
+            }
+        } catch (error) {
+            console.error("Error updating user balance:", error);
         }
     }
     
@@ -433,77 +427,77 @@ class VoidLeaderboard {
     // Show error state in leaderboard
     showErrorState(message) {
         if (this.leaderboardElement) {
-            // Clear existing content
-            this.leaderboardElement.innerHTML = '';
+            this.leaderboardElement.innerHTML = `
+                <div class="leaderboard-error">${message}</div>
+                <div class="leaderboard-retry">
+                    <button id="leaderboard-retry-button">Retry</button>
+                </div>
+            `;
             
-            // Create error div
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'leaderboard-error';
-            errorDiv.innerText = message;
-            this.leaderboardElement.appendChild(errorDiv);
-            
-            // Create retry container
-            const retryDiv = document.createElement('div');
-            retryDiv.className = 'leaderboard-retry';
-            
-            // Create retry button
-            const retryButton = document.createElement('button');
-            retryButton.id = 'leaderboard-retry-button';
-            retryButton.innerText = 'Retry';
-            retryButton.addEventListener('click', () => {
-                this.forceRefreshLeaderboard();
-            });
-            
-            retryDiv.appendChild(retryButton);
-            this.leaderboardElement.appendChild(retryDiv);
+            // Add retry functionality
+            const retryButton = document.getElementById('leaderboard-retry-button');
+            if (retryButton) {
+                retryButton.addEventListener('click', () => {
+                    this.throttledRefresh();
+                });
+            }
         }
     }
     
-    // Specifically highlight special usernames
+    // Highlight special users with better performance
     highlightSpecialUsers() {
+        // Use querySelectorAll once and cache the results
         const usernameElements = this.leaderboardElement.querySelectorAll('.leaderboard-username');
         
-        usernameElements.forEach(el => {
-            // Get username text safely
-            const username = el.innerText;
+        // Process in batches to avoid blocking the main thread
+        const batchSize = 5;
+        let currentIndex = 0;
+        
+        const processBatch = () => {
+            const endIndex = Math.min(currentIndex + batchSize, usernameElements.length);
             
-            // Explicitly check for "VoidNetworkOnTop" username
-            if (username === 'VoidNetworkOnTop') {
-                // Apply blue styling
-                el.style.color = '#1DA1F2';
-                el.style.textShadow = '0 0 5px rgba(29, 161, 242, 0.3)';
-                el.style.fontWeight = 'bold';
+            for (let i = currentIndex; i < endIndex; i++) {
+                const el = usernameElements[i];
+                const username = el.textContent;
                 
-                // Add verification badge if it doesn't exist
-                if (!el.querySelector('.verified-badge')) {
-                    const badge = document.createElement('span');
-                    badge.className = 'verified-badge';
-                    badge.innerText = '✓'; // Use innerText for badge text
-                    badge.style.marginLeft = '4px';
-                    badge.style.color = '#1DA1F2';
-                    el.appendChild(badge);
+                // Apply special styling based on username
+                if (username === 'VoidNetworkOnTop') {
+                    this.applySpecialStyling(el, '#1DA1F2', '✓', 'verified-badge');
+                } else if (username === 'void_client' || username === 'queso') {
+                    this.applySpecialStyling(el, '#FF5722', 'DEV', 'dev-badge');
                 }
             }
             
-            // Handle developer accounts
-            if (username === 'void_client' || username === 'queso') {
-                // Apply special styling
-                el.style.color = '#FF5722';
-                el.style.textShadow = '0 0 5px rgba(255, 87, 34, 0.3)';
-                el.style.fontWeight = 'bold';
-                
-                // Add dev badge if it doesn't exist
-                if (!el.querySelector('.dev-badge')) {
-                    const badge = document.createElement('span');
-                    badge.className = 'dev-badge';
-                    badge.innerText = 'DEV'; // Use innerText for badge text
-                    badge.style.marginLeft = '4px';
-                    badge.style.color = '#FF5722';
-                    badge.style.fontSize = '0.7em';
-                    el.appendChild(badge);
-                }
+            currentIndex = endIndex;
+            
+            // Continue processing if there are more elements
+            if (currentIndex < usernameElements.length) {
+                requestAnimationFrame(processBatch);
             }
-        });
+        };
+        
+        // Start processing
+        requestAnimationFrame(processBatch);
+    }
+    
+    // Helper method to apply special styling
+    applySpecialStyling(el, color, badgeText, badgeClass) {
+        el.style.color = color;
+        el.style.textShadow = `0 0 5px ${color}30`;
+        el.style.fontWeight = 'bold';
+        
+        // Add badge if it doesn't exist
+        if (!el.querySelector(`.${badgeClass}`)) {
+            const badge = document.createElement('span');
+            badge.className = badgeClass;
+            badge.textContent = badgeText;
+            badge.style.marginLeft = '4px';
+            badge.style.color = color;
+            if (badgeText === 'DEV') {
+                badge.style.fontSize = '0.7em';
+            }
+            el.appendChild(badge);
+        }
     }
     
     // Stop leaderboard updates
@@ -525,17 +519,15 @@ class VoidLeaderboard {
     }
 }
 
-// Leaderboard refresh functionality
+// OPTIMIZED: Leaderboard refresh functionality with better throttling
 let leaderboardRefreshInterval;
 
 window.refreshLeaderboard = function() {
     console.log("Manual leaderboard refresh requested");
     
-    // Skip offline check completely
-    
-    // If leaderboard exists, force a complete refresh
+    // If leaderboard exists, force a refresh (with throttling)
     if (window.voidLeaderboard) {
-        window.voidLeaderboard.forceRefreshLeaderboard();
+        window.voidLeaderboard.throttledRefresh();
     }
 };
 
@@ -545,8 +537,14 @@ function startLeaderboardRefreshInterval() {
         clearInterval(leaderboardRefreshInterval);
     }
     
-    // Set up new interval - refresh every 30 seconds
-    leaderboardRefreshInterval = setInterval(window.refreshLeaderboard, 30000);
+    // OPTIMIZED: Longer interval to reduce server load (60 seconds instead of 30)
+    leaderboardRefreshInterval = setInterval(() => {
+        if (window.voidLeaderboard && !window.voidLeaderboard.isUpdating) {
+            console.log("Auto-refreshing leaderboard (60s interval)");
+            window.voidLeaderboard.forceRefreshLeaderboard();
+        }
+    }, 60000); // 60 seconds
+    
     window.leaderboardRefreshInterval = leaderboardRefreshInterval;
 }
 
@@ -555,36 +553,36 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize Leaderboard
     window.voidLeaderboard = new VoidLeaderboard(window.db);
     
-    console.log("Fixed Connectivity Leaderboard initialized");
+    console.log("OPTIMIZED Leaderboard initialized");
     
-    // Immediately get all users and render the leaderboard
+    // Initial load with delay to ensure Firebase is ready
     setTimeout(() => {
-        window.voidLeaderboard.getAllUsers().then(() => {
+        window.voidLeaderboard.getTopUsers().then(() => {
             window.voidLeaderboard.renderLeaderboard();
             
-            // Start periodic leaderboard refresh
+            // Start periodic leaderboard refresh (longer interval)
             startLeaderboardRefreshInterval();
         }).catch(error => {
             console.error("Error during initial leaderboard setup:", error);
-            // Show error state
             window.voidLeaderboard.showErrorState("Error loading leaderboard: " + error.message);
         });
-    }, 1000); // Short delay to ensure Firebase is fully initialized
+    }, 2000); // Slightly longer delay for better initialization
 });
 
 // Core ready event
 document.addEventListener('core-ready', function() {
     console.log("Core ready event received - will refresh leaderboard");
     
-    // Make sure leaderboard is initialized
     if (!window.voidLeaderboard) {
         window.voidLeaderboard = new VoidLeaderboard(window.db);
     }
     
-    // Force a refresh after a short delay
+    // Throttled refresh after core is ready
     setTimeout(() => {
-        window.refreshLeaderboard();
-    }, 2000);
+        if (window.voidLeaderboard) {
+            window.voidLeaderboard.throttledRefresh();
+        }
+    }, 3000);
 });
 
 // Clean up when page unloads
@@ -598,4 +596,4 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
-console.log('Fixed Connectivity Leaderboard system loaded');
+console.log('OPTIMIZED Performance Leaderboard system loaded');
