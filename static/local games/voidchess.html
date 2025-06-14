@@ -394,14 +394,10 @@
         /* Chess Board */
         .chess-container {
             display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
             max-width: 1200px;
             width: 100%;
             animation: elegantEntrance 1.8s cubic-bezier(0.19, 1, 0.22, 1);
             padding: 2rem;
-            min-height: 600px;
         }
 
         .chess-header {
@@ -409,7 +405,7 @@
             margin-bottom: 3rem;
         }
 
-        .timer-display {
+        .game-timer {
             font-size: 1.5rem;
             font-weight: 500;
             margin: 1rem 0;
@@ -419,33 +415,37 @@
                 rgba(0,0,0,0.2);
             border-radius: 20px;
             border: 1px solid rgba(255,255,255,0.15);
-            backdrop-filter: blur(20px);
-            display: none;
+            display: inline-block;
+            min-width: 200px;
             transition: all 0.3s ease;
         }
 
-        .timer-display.active {
-            display: block;
-        }
-
-        .timer-display.warning {
-            border-color: rgba(255,120,120,0.5);
+        .timer-warning {
+            color: #ff6b6b !important;
+            border-color: rgba(255,107,107,0.3) !important;
             background: 
-                linear-gradient(135deg, rgba(255,120,120,0.15) 0%, rgba(255,120,120,0.08) 100%),
-                rgba(0,0,0,0.2);
-            color: rgba(255,120,120,0.95);
+                linear-gradient(135deg, rgba(255,107,107,0.15) 0%, rgba(255,107,107,0.08) 100%),
+                rgba(0,0,0,0.2) !important;
             animation: timerPulse 1s ease-in-out infinite;
         }
 
+        .timer-critical {
+            color: #ff3333 !important;
+            border-color: rgba(255,51,51,0.4) !important;
+            background: 
+                linear-gradient(135deg, rgba(255,51,51,0.2) 0%, rgba(255,51,51,0.1) 100%),
+                rgba(0,0,0,0.3) !important;
+            animation: timerCritical 0.5s ease-in-out infinite;
+        }
+
         @keyframes timerPulse {
-            0%, 100% { 
-                transform: scale(1); 
-                box-shadow: 0 8px 30px rgba(255,120,120,0.2);
-            }
-            50% { 
-                transform: scale(1.02); 
-                box-shadow: 0 12px 40px rgba(255,120,120,0.4);
-            }
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        @keyframes timerCritical {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(255,51,51,0.3); }
+            50% { transform: scale(1.05); box-shadow: 0 0 30px rgba(255,51,51,0.5); }
         }
 
         .chess-board {
@@ -1286,11 +1286,6 @@
         .hidden {
             display: none !important;
         }
-
-        /* Ensure chess container is visible when shown */
-        .chess-container:not(.hidden) {
-            display: flex !important;
-        }
     </style>
 </head>
 
@@ -1336,14 +1331,16 @@
             <div class="chess-container" id="chessContainer">
                 <div class="chess-header">
                     <h2 id="gameTitle">Chess Game</h2>
-                    <div class="timer-display" id="timerDisplay">Time: 60s</div>
+                    <div class="game-timer" id="gameTimer" style="display: none;">
+                        Time remaining: <span id="timerDisplay">60</span>s
+                    </div>
                     <div id="gameStatus" class="status-message status-info">Your turn</div>
                 </div>
                 <div class="chess-board" id="chessBoard"></div>
                 <div class="game-controls">
                     <button class="control-btn" id="backToMenuBtn">Back to Menu</button>
                     <button class="control-btn" id="resignBtn">Resign</button>
-                    <button class="control-btn hidden" id="newGameBtn">New Game</button>
+                    <button class="control-btn" id="newGameBtn" style="display: none;">New Game</button>
                 </div>
             </div>
 
@@ -1470,6 +1467,7 @@
             const onlineContainer = document.getElementById('onlineContainer');
             const gameStatus = document.getElementById('gameStatus');
             const gameTitle = document.getElementById('gameTitle');
+            const gameTimerElement = document.getElementById('gameTimer');
             const timerDisplay = document.getElementById('timerDisplay');
 
             // Button references
@@ -1483,153 +1481,173 @@
             let chessBoard = null;
 
             // Timer and Anti-Cheat Functions
-            function startTurnTimer() {
-                if (!gameInProgress || chess.gameOver || chess.currentPlayer !== 'white') return;
+            function startMoveTimer() {
+                if (!gameInProgress || chess.gameOver) return;
                 
-                remainingTime = turnTimeLimit;
+                clearTimer();
+                moveTimeLeft = 60;
+                hasUserMoved = false;
                 updateTimerDisplay();
-                timerDisplay.classList.add('active');
-                timerDisplay.classList.remove('warning');
+                
+                if (gameTimerElement) {
+                    gameTimerElement.style.display = 'block';
+                }
                 
                 gameTimer = setInterval(() => {
-                    remainingTime--;
+                    moveTimeLeft--;
                     updateTimerDisplay();
                     
-                    // Warning when 10 seconds left
-                    if (remainingTime <= 10) {
-                        timerDisplay.classList.add('warning');
-                    }
-                    
-                    // Time's up!
-                    if (remainingTime <= 0) {
-                        clearInterval(gameTimer);
-                        console.log("Time's up! Auto-resigning player");
-                        autoResignPlayer("Time limit exceeded");
+                    if (moveTimeLeft <= 0) {
+                        handleTimeOut();
                     }
                 }, 1000);
             }
-
-            function stopTurnTimer() {
+            
+            function clearTimer() {
                 if (gameTimer) {
                     clearInterval(gameTimer);
                     gameTimer = null;
                 }
-                timerDisplay.classList.remove('active', 'warning');
+                if (gameTimerElement) {
+                    gameTimerElement.style.display = 'none';
+                }
             }
-
+            
             function updateTimerDisplay() {
-                if (timerDisplay) {
-                    timerDisplay.textContent = `Time: ${remainingTime}s`;
+                if (!timerDisplay) return;
+                
+                timerDisplay.textContent = moveTimeLeft;
+                
+                // Update timer styling based on time left
+                if (moveTimeLeft <= 10) {
+                    gameTimerElement.className = 'game-timer timer-critical';
+                } else if (moveTimeLeft <= 20) {
+                    gameTimerElement.className = 'game-timer timer-warning';
+                } else {
+                    gameTimerElement.className = 'game-timer';
                 }
             }
-
-            async function autoResignPlayer(reason) {
-                if (!gameInProgress) return;
+            
+            async function handleTimeOut() {
+                console.log("Player timed out");
+                clearTimer();
                 
-                console.log(`Auto-resigning player: ${reason}`);
-                userLeftGame = true;
-                gameInProgress = false;
-                
-                if (chess) {
+                if (!chess.gameOver && gameInProgress) {
                     chess.gameOver = true;
+                    gameInProgress = false;
+                    
+                    // Deduct timeout penalty
+                    await updateCoins(-600, false);
+                    
+                    gameStatus.innerHTML = '⏰ Time out! You lose -600 coins';
+                    gameStatus.className = 'status-message status-lose';
+                    
+                    // Show new game button
+                    newGameBtn.style.display = 'inline-block';
                 }
+            }
+            
+            // Activity Detection
+            function trackActivity() {
+                lastActivityTime = Date.now();
+            }
+            
+            function startActivityMonitoring() {
+                // Track mouse movement and clicks
+                document.addEventListener('mousemove', trackActivity);
+                document.addEventListener('click', trackActivity);
+                document.addEventListener('keydown', trackActivity);
+                document.addEventListener('scroll', trackActivity);
                 
-                stopTurnTimer();
+                // Check for inactivity every 5 seconds
+                activityCheckInterval = setInterval(() => {
+                    if (gameInProgress && !chess.gameOver) {
+                        const timeSinceActivity = Date.now() - lastActivityTime;
+                        
+                        // If inactive for more than 30 seconds, warn user
+                        if (timeSinceActivity > 30000 && timeSinceActivity < 45000) {
+                            console.log("User appears inactive");
+                        }
+                        
+                        // If inactive for more than 60 seconds, consider abandonment
+                        if (timeSinceActivity > 60000) {
+                            handleUserAbandonment("inactivity");
+                        }
+                    }
+                }, 5000);
+            }
+            
+            function stopActivityMonitoring() {
+                document.removeEventListener('mousemove', trackActivity);
+                document.removeEventListener('click', trackActivity);
+                document.removeEventListener('keydown', trackActivity);
+                document.removeEventListener('scroll', trackActivity);
                 
-                // Deduct the losing penalty
+                if (activityCheckInterval) {
+                    clearInterval(activityCheckInterval);
+                    activityCheckInterval = null;
+                }
+            }
+            
+            // Page Visibility Detection
+            function handleVisibilityChange() {
+                if (document.hidden && gameInProgress && !chess.gameOver) {
+                    console.log("User switched away from game");
+                    
+                    // Start a timeout for tab switching
+                    setTimeout(() => {
+                        if (document.hidden && gameInProgress && !chess.gameOver) {
+                            handleUserAbandonment("tab_switch");
+                        }
+                    }, 10000); // 10 seconds grace period
+                }
+            }
+            
+            // Prevent page unload during active game
+            function handleBeforeUnload(e) {
+                if (gameInProgress && !chess.gameOver) {
+                    // Immediately forfeit the game
+                    handleUserAbandonment("page_close");
+                    
+                    // Show browser warning
+                    e.preventDefault();
+                    e.returnValue = 'You have an active chess game. Leaving will result in a loss and -600 coins penalty.';
+                    return e.returnValue;
+                }
+            }
+            
+            async function handleUserAbandonment(reason) {
+                if (!gameInProgress || chess.gameOver) return;
+                
+                console.log("User abandoned game:", reason);
+                
+                chess.gameOver = true;
+                gameInProgress = false;
+                clearTimer();
+                
+                // Deduct abandonment penalty
                 await updateCoins(-600, false);
                 
-                // Update UI
-                gameStatus.innerHTML = `💸 Game Lost - ${reason}: -600 coins`;
+                let message = '';
+                switch (reason) {
+                    case 'inactivity':
+                        message = '😴 Inactive too long! You lose -600 coins';
+                        break;
+                    case 'tab_switch':
+                        message = '👀 Left the game! You lose -600 coins';
+                        break;
+                    case 'page_close':
+                        message = '🚪 Closed the game! You lose -600 coins';
+                        break;
+                    default:
+                        message = '❌ Game abandoned! You lose -600 coins';
+                }
+                
+                gameStatus.innerHTML = message;
                 gameStatus.className = 'status-message status-lose';
                 
                 // Show new game button
-                newGameBtn.classList.remove('hidden');
-                
-                // Clear any auto-resign timeout
-                if (autoResignTimeout) {
-                    clearTimeout(autoResignTimeout);
-                    autoResignTimeout = null;
-                }
-            }
-
-            // Anti-Cheat: Detect if user leaves the game
-            function setupAntiCheatDetection() {
-                // Detect tab visibility changes
-                document.addEventListener('visibilitychange', () => {
-                    if (gameInProgress && hasGameStarted && !chess.gameOver) {
-                        if (document.hidden) {
-                            console.log("User switched away from tab during game");
-                            // Give a 3-second grace period before auto-resign
-                            autoResignTimeout = setTimeout(() => {
-                                if (document.hidden && gameInProgress) {
-                                    autoResignPlayer("Left game (tab switch)");
-                                }
-                            }, 3000);
-                        } else {
-                            // User came back, cancel auto-resign if they're quick enough
-                            if (autoResignTimeout) {
-                                clearTimeout(autoResignTimeout);
-                                autoResignTimeout = null;
-                            }
-                        }
-                    }
-                });
-
-                // Detect window focus/blur
-                window.addEventListener('blur', () => {
-                    if (gameInProgress && hasGameStarted && !chess.gameOver) {
-                        console.log("Window lost focus during game");
-                        // Auto-resign after 5 seconds if window stays unfocused
-                        autoResignTimeout = setTimeout(() => {
-                            if (gameInProgress && !document.hasFocus()) {
-                                autoResignPlayer("Left game (window focus lost)");
-                            }
-                        }, 5000);
-                    }
-                });
-
-                window.addEventListener('focus', () => {
-                    if (autoResignTimeout) {
-                        clearTimeout(autoResignTimeout);
-                        autoResignTimeout = null;
-                    }
-                });
-
-                // Detect tab/window closing
-                window.addEventListener('beforeunload', (event) => {
-                    if (gameInProgress && hasGameStarted && !chess.gameOver && !userLeftGame) {
-                        // Immediately deduct coins for attempting to leave
-                        updateCoins(-600, false);
-                        
-                        // Show warning message (some browsers may not show this)
-                        const message = 'You will lose 600 coins if you leave the game!';
-                        event.returnValue = message;
-                        return message;
-                    }
-                });
-
-                // Detect right-click context menu (attempt to manipulate page)
-                document.addEventListener('contextmenu', (event) => {
-                    if (gameInProgress && hasGameStarted) {
-                        event.preventDefault();
-                        console.log("Context menu blocked during game");
-                    }
-                });
-
-                // Detect F12 and other dev tools shortcuts
-                document.addEventListener('keydown', (event) => {
-                    if (gameInProgress && hasGameStarted) {
-                        // Block F12, Ctrl+Shift+I, Ctrl+Shift+C, Ctrl+Shift+J
-                        if (event.key === 'F12' || 
-                            (event.ctrlKey && event.shiftKey && ['I', 'C', 'J'].includes(event.key)) ||
-                            (event.ctrlKey && event.key === 'u')) { // Ctrl+U (view source)
-                            event.preventDefault();
-                            console.log("Developer tools access blocked during game");
-                            return false;
-                        }
-                    }
-                });
+                newGameBtn.style.display = 'inline-block';
             }
 
             // Chess Game Implementation
@@ -1970,12 +1988,11 @@
             let bot = null;
             let isPlayerVsBot = false;
             let gameTimer = null;
-            let turnTimeLimit = 60; // 60 seconds per turn
-            let remainingTime = turnTimeLimit;
+            let moveTimeLeft = 60;
+            let lastActivityTime = Date.now();
+            let activityCheckInterval = null;
             let gameInProgress = false;
-            let hasGameStarted = false;
-            let userLeftGame = false;
-            let autoResignTimeout = null;
+            let hasUserMoved = false;
 
             // Authentication and Balance Management
             async function verifyBalance() {
@@ -2111,7 +2128,6 @@
                     return;
                 }
                 
-                console.log("Rendering chess board...");
                 chessBoard.innerHTML = '';
                 
                 for (let row = 0; row < 8; row++) {
@@ -2133,16 +2149,14 @@
                     }
                 }
                 
-                console.log("Chess board rendered successfully - squares created:", chessBoard.children.length);
-                console.log("Chess board visibility:", {
-                    display: chessBoard.style.display,
-                    parentDisplay: chessBoard.parentElement?.style.display,
-                    hasHiddenClass: chessBoard.parentElement?.classList.contains('hidden')
-                });
+                console.log("Chess board rendered successfully");
             }
 
             async function handleSquareClick(event) {
                 if (chess.gameOver || !gameInProgress) return;
+                
+                // Track activity
+                trackActivity();
                 
                 const row = parseInt(event.currentTarget.dataset.row);
                 const col = parseInt(event.currentTarget.dataset.col);
@@ -2159,12 +2173,13 @@
                     }
                     
                     if (chess.makeMove(fromRow, fromCol, row, col)) {
+                        // User made a valid move
+                        hasUserMoved = true;
+                        clearTimer(); // Stop the timer since move was made
+                        
                         chess.selectedSquare = null;
                         clearHighlights();
                         renderBoard();
-                        
-                        // Stop the timer since player made a move
-                        stopTurnTimer();
                         
                         // Check game state
                         if (chess.isCheckmate(chess.currentPlayer)) {
@@ -2172,6 +2187,7 @@
                             gameInProgress = false;
                             const winner = chess.currentPlayer === 'white' ? 'Black' : 'White';
                             gameStatus.textContent = `Checkmate! ${winner} wins!`;
+                            gameStatus.className = 'status-message status-win';
                             
                             if (!isOnlineGame) {
                                 const playerWon = (winner === 'White');
@@ -2188,6 +2204,9 @@
                         // Bot move
                         if (isPlayerVsBot && chess.currentPlayer === 'black' && !chess.gameOver) {
                             setTimeout(makeBotMove, 1000);
+                        } else if (chess.currentPlayer === 'white' && !chess.gameOver) {
+                            // Start timer for next user move
+                            startMoveTimer();
                         }
                     }
                 } else {
@@ -2229,7 +2248,10 @@
             }
 
             async function makeBotMove() {
-                if (chess.gameOver || chess.currentPlayer !== 'black' || !gameInProgress) return;
+                if (chess.gameOver || chess.currentPlayer !== 'black') return;
+                
+                // Clear any existing timer during bot move
+                clearTimer();
                 
                 const move = bot.getBestMove(chess);
                 if (move) {
@@ -2245,13 +2267,17 @@
                     } else if (chess.isInCheck(chess.currentPlayer)) {
                         gameStatus.textContent = "White is in check!";
                         gameStatus.className = 'status-message status-lose';
-                        // Start timer for player's turn
-                        startTurnTimer();
+                        // Start timer for user's next move
+                        if (!chess.gameOver) {
+                            startMoveTimer();
+                        }
                     } else {
                         gameStatus.textContent = "Your turn";
                         gameStatus.className = 'status-message status-info';
-                        // Start timer for player's turn
-                        startTurnTimer();
+                        // Start timer for user's next move
+                        if (!chess.gameOver) {
+                            startMoveTimer();
+                        }
                     }
                 }
             }
@@ -2260,7 +2286,8 @@
                 if (isOnlineGame) return; // Online games handled separately
                 
                 gameInProgress = false;
-                stopTurnTimer();
+                clearTimer();
+                stopActivityMonitoring();
                 
                 const amount = playerWon ? 500 : -600;
                 await updateCoins(amount, playerWon);
@@ -2274,7 +2301,7 @@
                 }
                 
                 // Show new game button when game is over
-                newGameBtn.classList.remove('hidden');
+                newGameBtn.style.display = 'inline-block';
             }
 
             // Game Mode Functions
@@ -2295,32 +2322,28 @@
                     isPlayerVsBot = true;
                     isOnlineGame = false;
                     gameInProgress = true;
-                    hasGameStarted = true;
-                    userLeftGame = false;
+                    hasUserMoved = false;
                     
                     gameTitle.textContent = 'Chess vs Bot';
                     gameStatus.textContent = 'Your turn (White)';
                     gameStatus.className = 'status-message status-info';
                     
                     // Hide new game button during active game
-                    newGameBtn.classList.add('hidden');
+                    newGameBtn.style.display = 'none';
                     
                     console.log("Switching to chess screen...");
                     showScreen('chess');
                     
-                    // Longer delay and double-check visibility
+                    // Small delay to ensure DOM is ready
                     setTimeout(() => {
-                        console.log("Chess container after delay:", {
-                            display: chessContainer.style.display,
-                            visibility: chessContainer.style.visibility,
-                            opacity: chessContainer.style.opacity,
-                            hidden: chessContainer.classList.contains('hidden')
-                        });
-                        
                         renderBoard();
-                        startTurnTimer(); // Start the timer for the first move
+                        
+                        // Start timer and anti-cheat systems
+                        startMoveTimer();
+                        startActivityMonitoring();
+                        
                         console.log("Bot game started successfully");
-                    }, 200);
+                    }, 100);
                     
                 } catch (error) {
                     console.error("Error starting bot game:", error);
@@ -2331,19 +2354,18 @@
             function showScreen(screen) {
                 console.log("Showing screen:", screen);
                 
-                // Hide all screens first
-                if (welcomeScreen) {
-                    welcomeScreen.style.display = 'none';
-                    welcomeScreen.classList.add('hidden');
-                }
-                if (chessContainer) {
-                    chessContainer.style.display = 'none';
-                    chessContainer.classList.add('hidden');
-                }
-                if (onlineContainer) {
-                    onlineContainer.style.display = 'none';
-                    onlineContainer.classList.add('hidden');
-                }
+                // Hide all screens first and reset their styles
+                const screens = [
+                    { element: welcomeScreen, defaultDisplay: 'block' },
+                    { element: chessContainer, defaultDisplay: 'block' },
+                    { element: onlineContainer, defaultDisplay: 'block' }
+                ];
+                
+                screens.forEach(screenObj => {
+                    if (screenObj.element) {
+                        screenObj.element.classList.add('hidden');
+                    }
+                });
                 
                 // Show the requested screen
                 let targetScreen = null;
@@ -2362,14 +2384,11 @@
                 
                 if (targetScreen) {
                     targetScreen.classList.remove('hidden');
-                    targetScreen.style.display = 'flex';
-                    targetScreen.style.visibility = 'visible';
-                    targetScreen.style.opacity = '1';
                     
                     // Force a reflow to ensure proper layout
                     targetScreen.offsetHeight;
                     
-                    console.log("Screen switched to:", screen, "Display:", targetScreen.style.display);
+                    console.log("Screen switched to:", screen);
                 } else {
                     console.error("Target screen not found:", screen);
                 }
@@ -2378,15 +2397,13 @@
             // Event Listeners
             playBotBtn.addEventListener('click', startBotGame);
             playOnlineBtn.addEventListener('click', () => showScreen('online'));
-            
             backToMenuBtn.addEventListener('click', () => {
-                // Prevent leaving during active game
-                if (gameInProgress && hasGameStarted && !chess.gameOver) {
-                    const confirmLeave = confirm('You will lose 600 coins if you leave the game! Are you sure?');
-                    if (!confirmLeave) return;
-                    
-                    // Auto-resign and deduct coins
-                    autoResignPlayer("Left to main menu");
+                // Check if game is in progress
+                if (gameInProgress && !chess.gameOver) {
+                    if (confirm('You have an active game. Going back to menu will result in a loss and -600 coins penalty. Are you sure?')) {
+                        handleUserAbandonment("menu_exit");
+                    }
+                    return;
                 }
                 
                 // Reset game state
@@ -2395,15 +2412,8 @@
                 isPlayerVsBot = false;
                 isOnlineGame = false;
                 gameInProgress = false;
-                hasGameStarted = false;
-                userLeftGame = false;
-                stopTurnTimer();
-                
-                // Clear any timeouts
-                if (autoResignTimeout) {
-                    clearTimeout(autoResignTimeout);
-                    autoResignTimeout = null;
-                }
+                clearTimer();
+                stopActivityMonitoring();
                 
                 // Clear any game status
                 if (gameStatus) {
@@ -2412,24 +2422,38 @@
                 }
                 
                 // Hide new game button
-                newGameBtn.classList.add('hidden');
+                newGameBtn.style.display = 'none';
                 
                 // Return to welcome screen
                 showScreen('welcome');
             });
             
             resignBtn.addEventListener('click', async () => {
-                if (gameInProgress && hasGameStarted && !chess.gameOver) {
-                    const confirmResign = confirm('Are you sure you want to resign? You will lose 600 coins!');
-                    if (confirmResign) {
-                        await autoResignPlayer("Manual resignation");
+                if (gameInProgress && !chess.gameOver) {
+                    if (confirm('Are you sure you want to resign? You will lose 600 coins.')) {
+                        chess.gameOver = true;
+                        gameInProgress = false;
+                        clearTimer();
+                        await endGame(false);
                     }
+                } else if (chess.gameOver) {
+                    // Game already over, just acknowledge
+                    alert('Game is already finished.');
                 }
             });
             
             newGameBtn.addEventListener('click', () => {
-                if (!gameInProgress && isPlayerVsBot) {
+                if (isPlayerVsBot && !gameInProgress) {
                     startBotGame();
+                }
+            });
+
+            // Page visibility and unload detection
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+            window.addEventListener('beforeunload', handleBeforeUnload);
+            window.addEventListener('unload', () => {
+                if (gameInProgress && !chess.gameOver) {
+                    handleUserAbandonment("page_close");
                 }
             });
 
@@ -2497,7 +2521,6 @@
                 }
                 
                 createParticles();
-                setupAntiCheatDetection(); // Initialize anti-cheat measures
                 
                 // Initialize with default balance for offline mode
                 if (!currentUser) {
