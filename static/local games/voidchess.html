@@ -453,20 +453,57 @@
             grid-template-columns: repeat(8, 1fr);
             gap: 1px;
             aspect-ratio: 1;
-            max-width: 650px;
+            max-width: 450px;
+            width: 90vw;
+            max-height: 60vh;
             margin: 0 auto;
-            border-radius: 28px;
+            border-radius: 16px;
             overflow: hidden;
             box-shadow: 
-                0 25px 80px rgba(0,0,0,0.5),
-                0 10px 40px rgba(0,0,0,0.3),
+                0 15px 40px rgba(0,0,0,0.4),
+                0 6px 20px rgba(0,0,0,0.2),
                 inset 0 1px 0 rgba(255,255,255,0.1),
                 inset 0 -1px 0 rgba(0,0,0,0.2);
             background: 
                 linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%),
                 rgba(0,0,0,0.3);
-            padding: 12px;
+            padding: 8px;
             position: relative;
+        }
+
+        .chess-board.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            max-height: none;
+            z-index: 9999;
+            background: #000;
+            border-radius: 0;
+            padding: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chess-board.fullscreen::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(90vh, 90vw);
+            height: min(90vh, 90vw);
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 1px;
+            border-radius: 16px;
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%),
+                rgba(0,0,0,0.3);
+            padding: 8px;
         }
 
         .chess-board::before {
@@ -596,7 +633,29 @@
 
         .chess-piece:hover {
             transform: scale(1.15) translateY(-2px);
-            filter: drop-shadow(0 6px 12px rgba(0,0,0,0.5));
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+        }
+
+        /* White pieces styling */
+        .chess-square.light .chess-piece {
+            color: #2c2c2c;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.3);
+        }
+
+        .chess-square.dark .chess-piece {
+            color: #ffffff;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        /* Ensure white pawns on dark squares and black pawns on light squares are visible */
+        .chess-square.dark .chess-piece[data-piece-color="white"] {
+            color: #ffffff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+        }
+
+        .chess-square.light .chess-piece[data-piece-color="black"] {
+            color: #1a1a1a;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.4);
         }
 
         /* Game Controls */
@@ -1349,7 +1408,11 @@
                     </div>
                     <div id="gameStatus" class="status-message status-info">Your turn</div>
                 </div>
-                <div class="chess-board" id="chessBoard"></div>
+                <div class="chess-board-container">
+                    <div class="chess-board" id="chessBoard">
+                        <button class="fullscreen-btn" id="fullscreenBtn" title="Fullscreen">⛶</button>
+                    </div>
+                </div>
                 <div class="game-controls">
                     <button class="control-btn" id="backToMenuBtn">Back to Menu</button>
                     <button class="control-btn" id="resignBtn">Resign</button>
@@ -1482,6 +1545,7 @@
             const gameTitle = document.getElementById('gameTitle');
             const gameTimerElement = document.getElementById('gameTimer');
             const timerDisplay = document.getElementById('timerDisplay');
+            const fullscreenBtn = document.getElementById('fullscreenBtn');
 
             // Button references
             const playBotBtn = document.getElementById('playBotBtn');
@@ -1493,7 +1557,39 @@
             // Initialize chessboard element
             let chessBoard = null;
 
-            // Timer and Anti-Cheat Functions
+            // Fullscreen functionality
+            function toggleFullscreen() {
+                if (!chessBoard) return;
+                
+                if (!document.fullscreenElement) {
+                    chessBoard.requestFullscreen().then(() => {
+                        chessBoard.classList.add('fullscreen');
+                        fullscreenBtn.textContent = '⊡';
+                        fullscreenBtn.title = 'Exit Fullscreen';
+                    }).catch(err => {
+                        console.error('Error entering fullscreen:', err);
+                    });
+                } else {
+                    document.exitFullscreen().then(() => {
+                        chessBoard.classList.remove('fullscreen');
+                        fullscreenBtn.textContent = '⛶';
+                        fullscreenBtn.title = 'Fullscreen';
+                    }).catch(err => {
+                        console.error('Error exiting fullscreen:', err);
+                    });
+                }
+            }
+
+            // Listen for fullscreen changes
+            document.addEventListener('fullscreenchange', () => {
+                if (!document.fullscreenElement && chessBoard) {
+                    chessBoard.classList.remove('fullscreen');
+                    if (fullscreenBtn) {
+                        fullscreenBtn.textContent = '⛶';
+                        fullscreenBtn.title = 'Fullscreen';
+                    }
+                }
+            });
             function startMoveTimer() {
                 if (!gameInProgress || chess.gameOver) return;
                 
@@ -1677,11 +1773,11 @@
                 initializeBoard() {
                     const board = Array(8).fill(null).map(() => Array(8).fill(null));
                     
-                    // Set up pieces
+                    // Set up pieces - using same pawn character for both colors
                     const pieces = {
                         0: ['♜','♞','♝','♛','♚','♝','♞','♜'],
-                        1: ['♟','♟','♟','♟','♟','♟','♟','♟'],
-                        6: ['♙','♙','♙','♙','♙','♙','♙','♙'],
+                        1: ['♟','♟','♟','♟','♟','♟','♟','♟'], // Black pawns
+                        6: ['♟','♟','♟','♟','♟','♟','♟','♟'], // White pawns (same character)
                         7: ['♖','♘','♗','♕','♔','♗','♘','♖']
                     };
 
@@ -1694,12 +1790,20 @@
                     return board;
                 }
 
-                isWhitePiece(piece) {
-                    return piece && '♔♕♖♗♘♙'.includes(piece);
+                isWhitePiece(piece, row = null) {
+                    // For pawns, determine color by row position
+                    if (piece === '♟') {
+                        return row >= 6; // White pawns start on rows 6-7
+                    }
+                    return piece && '♔♕♖♗♘'.includes(piece);
                 }
 
-                isBlackPiece(piece) {
-                    return piece && '♚♛♜♝♞♟'.includes(piece);
+                isBlackPiece(piece, row = null) {
+                    // For pawns, determine color by row position  
+                    if (piece === '♟') {
+                        return row <= 1; // Black pawns start on rows 0-1
+                    }
+                    return piece && '♚♛♜♝♞'.includes(piece);
                 }
 
                 isValidMove(fromRow, fromCol, toRow, toCol) {
@@ -1711,14 +1815,14 @@
                     if (!piece) return false;
                     
                     // Can't capture own pieces
-                    if ((this.currentPlayer === 'white' && this.isWhitePiece(targetPiece)) ||
-                        (this.currentPlayer === 'black' && this.isBlackPiece(targetPiece))) {
+                    if ((this.currentPlayer === 'white' && this.isWhitePiece(targetPiece, toRow)) ||
+                        (this.currentPlayer === 'black' && this.isBlackPiece(targetPiece, toRow))) {
                         return false;
                     }
 
                     // Can't move opponent's pieces
-                    if ((this.currentPlayer === 'white' && this.isBlackPiece(piece)) ||
-                        (this.currentPlayer === 'black' && this.isWhitePiece(piece))) {
+                    if ((this.currentPlayer === 'white' && this.isBlackPiece(piece, fromRow)) ||
+                        (this.currentPlayer === 'black' && this.isWhitePiece(piece, fromRow))) {
                         return false;
                     }
 
@@ -1730,21 +1834,26 @@
                     const colDiff = Math.abs(toCol - fromCol);
 
                     switch (piece) {
-                        case '♙': // White Pawn
-                            if (fromCol === toCol) {
-                                if (fromRow === 6 && toRow === 4) return !this.board[5][toCol] && !this.board[4][toCol];
-                                if (toRow === fromRow - 1) return !this.board[toRow][toCol];
-                            } else if (colDiff === 1 && toRow === fromRow - 1) {
-                                return this.isBlackPiece(this.board[toRow][toCol]);
-                            }
-                            break;
-
-                        case '♟': // Black Pawn
-                            if (fromCol === toCol) {
-                                if (fromRow === 1 && toRow === 3) return !this.board[2][toCol] && !this.board[3][toCol];
-                                if (toRow === fromRow + 1) return !this.board[toRow][toCol];
-                            } else if (colDiff === 1 && toRow === fromRow + 1) {
-                                return this.isWhitePiece(this.board[toRow][toCol]);
+                        case '♟': // Pawns (both colors use same character)
+                            // Determine if this is a white or black pawn by position
+                            const isWhitePawn = fromRow >= 6 || (fromRow >= 4 && this.currentPlayer === 'white');
+                            
+                            if (isWhitePawn) {
+                                // White Pawn logic
+                                if (fromCol === toCol) {
+                                    if (fromRow === 6 && toRow === 4) return !this.board[5][toCol] && !this.board[4][toCol];
+                                    if (toRow === fromRow - 1) return !this.board[toRow][toCol];
+                                } else if (colDiff === 1 && toRow === fromRow - 1) {
+                                    return this.isBlackPiece(this.board[toRow][toCol], toRow);
+                                }
+                            } else {
+                                // Black Pawn logic
+                                if (fromCol === toCol) {
+                                    if (fromRow === 1 && toRow === 3) return !this.board[2][toCol] && !this.board[3][toCol];
+                                    if (toRow === fromRow + 1) return !this.board[toRow][toCol];
+                                } else if (colDiff === 1 && toRow === fromRow + 1) {
+                                    return this.isWhitePiece(this.board[toRow][toCol], toRow);
+                                }
                             }
                             break;
 
@@ -1824,8 +1933,8 @@
                         for (let col = 0; col < 8; col++) {
                             const piece = this.board[row][col];
                             if (piece && 
-                                ((opponentColor === 'white' && this.isWhitePiece(piece)) ||
-                                 (opponentColor === 'black' && this.isBlackPiece(piece)))) {
+                                ((opponentColor === 'white' && this.isWhitePiece(piece, row)) ||
+                                 (opponentColor === 'black' && this.isBlackPiece(piece, row)))) {
                                 
                                 if (this.isValidPieceMove(piece, row, col, king.row, king.col)) {
                                     return true;
@@ -1843,8 +1952,8 @@
                         for (let fromCol = 0; fromCol < 8; fromCol++) {
                             const piece = this.board[fromRow][fromCol];
                             if (piece && 
-                                ((color === 'white' && this.isWhitePiece(piece)) ||
-                                 (color === 'black' && this.isBlackPiece(piece)))) {
+                                ((color === 'white' && this.isWhitePiece(piece, fromRow)) ||
+                                 (color === 'black' && this.isBlackPiece(piece, fromRow)))) {
                                 
                                 for (let toRow = 0; toRow < 8; toRow++) {
                                     for (let toCol = 0; toCol < 8; toCol++) {
@@ -1877,30 +1986,89 @@
                 }
             }
 
-            // Chess Bot AI using Minimax
+            // Chess Bot AI using Minimax with improvements
             class ChessBot {
-                constructor(depth = 3) {
+                constructor(depth = 4) { // Increased depth for smarter play
                     this.depth = depth;
                     this.pieceValues = {
-                        '♙': 1, '♟': -1,
+                        '♟': 1, // Pawns (both colors, value determined by position)
                         '♘': 3, '♞': -3,
                         '♗': 3, '♝': -3,
                         '♖': 5, '♜': -5,
                         '♕': 9, '♛': -9,
                         '♔': 1000, '♚': -1000
                     };
+                    
+                    // Positional bonus tables for better play
+                    this.pawnTable = [
+                        [0,  0,  0,  0,  0,  0,  0,  0],
+                        [50, 50, 50, 50, 50, 50, 50, 50],
+                        [10, 10, 20, 30, 30, 20, 10, 10],
+                        [5,  5, 10, 25, 25, 10,  5,  5],
+                        [0,  0,  0, 20, 20,  0,  0,  0],
+                        [5, -5,-10,  0,  0,-10, -5,  5],
+                        [5, 10, 10,-20,-20, 10, 10,  5],
+                        [0,  0,  0,  0,  0,  0,  0,  0]
+                    ];
+                    
+                    this.knightTable = [
+                        [-50,-40,-30,-30,-30,-30,-40,-50],
+                        [-40,-20,  0,  0,  0,  0,-20,-40],
+                        [-30,  0, 10, 15, 15, 10,  0,-30],
+                        [-30,  5, 15, 20, 20, 15,  5,-30],
+                        [-30,  0, 15, 20, 20, 15,  0,-30],
+                        [-30,  5, 10, 15, 15, 10,  5,-30],
+                        [-40,-20,  0,  5,  5,  0,-20,-40],
+                        [-50,-40,-30,-30,-30,-30,-40,-50]
+                    ];
                 }
 
                 evaluateBoard(game) {
                     let score = 0;
+                    
                     for (let row = 0; row < 8; row++) {
                         for (let col = 0; col < 8; col++) {
                             const piece = game.board[row][col];
                             if (piece) {
-                                score += this.pieceValues[piece] || 0;
+                                let pieceValue = 0;
+                                
+                                // Handle pawns with position-based color detection
+                                if (piece === '♟') {
+                                    const isWhitePawn = row >= 6 || (row >= 4 && game.isWhitePiece(piece, row));
+                                    pieceValue = isWhitePawn ? 1 : -1;
+                                    
+                                    // Add positional bonus
+                                    const posBonus = this.pawnTable[row][col] / 100;
+                                    pieceValue += isWhitePawn ? posBonus : -posBonus;
+                                } else {
+                                    pieceValue = this.pieceValues[piece] || 0;
+                                    
+                                    // Add positional bonuses for knights
+                                    if (piece === '♘') {
+                                        pieceValue += this.knightTable[row][col] / 100;
+                                    } else if (piece === '♞') {
+                                        pieceValue -= this.knightTable[row][col] / 100;
+                                    }
+                                }
+                                
+                                score += pieceValue;
                             }
                         }
                     }
+                    
+                    // Add bonus for controlling center
+                    const centerSquares = [[3,3], [3,4], [4,3], [4,4]];
+                    for (const [row, col] of centerSquares) {
+                        if (game.board[row][col]) {
+                            const piece = game.board[row][col];
+                            if (game.isWhitePiece(piece, row)) {
+                                score += 0.3;
+                            } else if (game.isBlackPiece(piece, row)) {
+                                score -= 0.3;
+                            }
+                        }
+                    }
+                    
                     return score;
                 }
 
@@ -1910,6 +2078,9 @@
                     }
 
                     const moves = this.getAllValidMoves(game);
+                    
+                    // Shuffle moves for variety in equal positions
+                    this.shuffleArray(moves);
                     
                     if (maximizingPlayer) {
                         let maxEval = -Infinity;
@@ -1938,9 +2109,12 @@
 
                 getBestMove(game) {
                     const moves = this.getAllValidMoves(game);
-                    let bestMove = null;
+                    if (moves.length === 0) return null;
+                    
+                    let bestMoves = [];
                     let bestValue = Infinity;
 
+                    // Evaluate all moves
                     for (const move of moves) {
                         const newGame = this.cloneGame(game);
                         newGame.makeMove(move.from.row, move.from.col, move.to.row, move.to.col);
@@ -1948,11 +2122,22 @@
                         
                         if (moveValue < bestValue) {
                             bestValue = moveValue;
-                            bestMove = move;
+                            bestMoves = [move];
+                        } else if (Math.abs(moveValue - bestValue) < 0.1) {
+                            // Moves with similar value - add for variety
+                            bestMoves.push(move);
                         }
                     }
 
-                    return bestMove;
+                    // Return random move from best moves for variety
+                    return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+                }
+
+                shuffleArray(array) {
+                    for (let i = array.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [array[i], array[j]] = [array[j], array[i]];
+                    }
                 }
 
                 getAllValidMoves(game) {
@@ -1963,8 +2148,8 @@
                         for (let fromCol = 0; fromCol < 8; fromCol++) {
                             const piece = game.board[fromRow][fromCol];
                             if (piece && 
-                                ((color === 'white' && game.isWhitePiece(piece)) ||
-                                 (color === 'black' && game.isBlackPiece(piece)))) {
+                                ((color === 'white' && game.isWhitePiece(piece, fromRow)) ||
+                                 (color === 'black' && game.isBlackPiece(piece, fromRow)))) {
                                 
                                 for (let toRow = 0; toRow < 8; toRow++) {
                                     for (let toCol = 0; toCol < 8; toCol++) {
@@ -2164,6 +2349,14 @@
                             const piece = document.createElement('div');
                             piece.className = 'chess-piece';
                             piece.textContent = chess.board[row][col];
+                            
+                            // Add piece color data attribute for proper styling
+                            if (chess.isWhitePiece(chess.board[row][col], row)) {
+                                piece.setAttribute('data-piece-color', 'white');
+                            } else if (chess.isBlackPiece(chess.board[row][col], row)) {
+                                piece.setAttribute('data-piece-color', 'black');
+                            }
+                            
                             square.appendChild(piece);
                         }
                         
@@ -2238,8 +2431,8 @@
                     // Select piece
                     const piece = chess.board[row][col];
                     if (piece && 
-                        ((chess.currentPlayer === 'white' && chess.isWhitePiece(piece)) ||
-                         (chess.currentPlayer === 'black' && chess.isBlackPiece(piece)))) {
+                        ((chess.currentPlayer === 'white' && chess.isWhitePiece(piece, row)) ||
+                         (chess.currentPlayer === 'black' && chess.isBlackPiece(piece, row)))) {
                         
                         chess.selectedSquare = {row, col};
                         highlightSquare(row, col);
@@ -2343,7 +2536,7 @@
                     await updateCoins(-200);
                     
                     chess = new ChessGame();
-                    bot = new ChessBot(3);
+                    bot = new ChessBot(4); // Increased depth for smarter play
                     isPlayerVsBot = true;
                     isOnlineGame = false;
                     gameInProgress = true;
@@ -2496,6 +2689,11 @@
                     startBotGame();
                 }
             });
+
+            // Fullscreen button event listener
+            if (fullscreenBtn) {
+                fullscreenBtn.addEventListener('click', toggleFullscreen);
+            }
 
             // Page visibility and unload detection
             document.addEventListener('visibilitychange', handleVisibilityChange);
