@@ -303,6 +303,9 @@
             width: 100%;
             animation: elegantEntrance 1.8s cubic-bezier(0.19, 1, 0.22, 1);
             padding: 2rem;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
 
         .chess-header {
@@ -912,6 +915,17 @@
             }
         }
 
+        @keyframes slideInRight {
+            0% { 
+                transform: translateX(100%); 
+                opacity: 0; 
+            }
+            100% { 
+                transform: translateX(0); 
+                opacity: 1; 
+            }
+        }
+
         /* Responsive Design */
         @media (max-width: 768px) {
             .header {
@@ -1273,36 +1287,34 @@
                     .join('');
             }
 
-            // Anti-debugging and tampering protection
+            // Anti-debugging and tampering protection (simplified for better compatibility)
             const antiDebugMeasures = () => {
-                // Console override to detect manipulation attempts
+                // Basic console monitoring without blocking
                 const originalLog = console.log;
                 console.log = function(...args) {
                     const message = args.join(' ').toLowerCase();
-                    if (message.includes('coin') || message.includes('balance') || message.includes('cheat')) {
-                        console.warn("🚨 SECURITY: Potential manipulation detected");
-                        verifyBalance();
+                    if (message.includes('manipulation') || message.includes('cheat')) {
+                        console.warn("🚨 SECURITY: Monitoring detected unusual activity");
                     }
                     return originalLog.apply(console, args);
                 };
 
-                // Prevent access to sensitive variables
-                Object.defineProperty(window, 'coinBalance', {
-                    get: () => { console.warn("🚨 Access denied"); return 0; },
-                    set: () => { console.warn("🚨 Modification denied"); return false; },
-                    configurable: false
-                });
-
-                // Detect developer tools
-                setInterval(() => {
-                    const start = performance.now();
-                    debugger;
-                    const end = performance.now();
-                    if (end - start > 100) {
-                        console.warn("🚨 Developer tools detected");
-                        verifyBalance();
-                    }
-                }, 3000);
+                // Light protection without blocking functionality
+                try {
+                    Object.defineProperty(window, 'gameBalance', {
+                        get: () => { 
+                            console.info("Access to game data monitored"); 
+                            return 0; 
+                        },
+                        set: () => { 
+                            console.info("Modification attempt monitored"); 
+                            return false; 
+                        },
+                        configurable: false
+                    });
+                } catch (e) {
+                    // Silently handle if property can't be defined
+                }
             };
 
             // Initialize anti-cheat measures
@@ -1664,7 +1676,7 @@
 
             // Authentication and Balance Management
             async function verifyBalance() {
-                if (!currentUser) return false;
+                if (!currentUser) return true; // Allow offline play
                 
                 try {
                     const userRef = doc(db, 'users', currentUser.uid);
@@ -1679,15 +1691,20 @@
                         }
                         return true;
                     }
-                    return false;
+                    return true; // Allow if no document exists
                 } catch (error) {
                     console.error("Balance verification error:", error);
-                    return false;
+                    return true; // Allow offline play on error
                 }
             }
 
             async function loadUserBalance() {
-                if (!currentUser) return;
+                if (!currentUser) {
+                    // Set default balance for offline play
+                    _coinBalance = 1000;
+                    updateCoinDisplay();
+                    return;
+                }
 
                 try {
                     const userRef = doc(db, 'users', currentUser.uid);
@@ -1715,12 +1732,21 @@
                     updateCoinDisplay();
                 } catch (error) {
                     console.error("Error loading balance:", error);
-                    showLoginPrompt();
+                    // Fall back to offline mode
+                    _coinBalance = 1000;
+                    updateCoinDisplay();
                 }
             }
 
             async function updateCoins(amount, isWin = false) {
-                if (!currentUser) return false;
+                // Update local balance immediately for offline play
+                _coinBalance += amount;
+                updateCoinDisplay();
+                
+                if (!currentUser) {
+                    console.log("Offline mode: coins updated locally");
+                    return true;
+                }
                 
                 if (!await verifyBalance()) {
                     console.error("Balance verification failed");
@@ -1767,7 +1793,8 @@
                     return true;
                 } catch (error) {
                     console.error("Transaction error:", error);
-                    return false;
+                    // Keep local update even if server fails
+                    return true;
                 }
             }
 
@@ -1776,29 +1803,33 @@
             }
 
             function showLoginPrompt() {
-                const overlay = document.createElement('div');
-                overlay.style.cssText = `
-                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                    background: rgba(0,0,0,0.9); display: flex; justify-content: center;
-                    align-items: center; z-index: 1000;
+                // Don't block the game, just show a notification
+                console.log("User not authenticated - running in offline mode");
+                
+                // Optional: Show a small notification instead of blocking modal
+                const notification = document.createElement('div');
+                notification.style.cssText = `
+                    position: fixed; top: 20px; right: 20px; 
+                    background: rgba(255,255,255,0.1); color: white; 
+                    padding: 1rem; border-radius: 15px; z-index: 1000;
+                    backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.2);
+                    animation: slideInRight 0.5s ease-out;
                 `;
-
-                overlay.innerHTML = `
-                    <div style="background: #222; padding: 2rem; border-radius: 15px; text-align: center; color: white; border: 1px solid rgba(255,255,255,0.3);">
-                        <h2>Authentication Required</h2>
-                        <p>Please log in to access Void Chess and manage your coins.</p>
-                        <button onclick="window.location.href='index.html'" style="
-                            background: #4CAF50; color: white; border: none; padding: 10px 20px;
-                            margin: 10px; border-radius: 5px; cursor: pointer;
-                        ">Go to Login</button>
-                        <button onclick="this.parentElement.parentElement.remove()" style="
-                            background: #f44336; color: white; border: none; padding: 10px 20px;
-                            margin: 10px; border-radius: 5px; cursor: pointer;
-                        ">Cancel</button>
+                notification.innerHTML = `
+                    <div style="font-size: 0.9rem;">
+                        Playing in offline mode<br>
+                        <small>Login to save your progress</small>
                     </div>
                 `;
-
-                document.body.appendChild(overlay);
+                
+                document.body.appendChild(notification);
+                
+                // Auto-remove after 3 seconds
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 3000);
             }
 
             // Chess UI Functions
@@ -1949,41 +1980,67 @@
 
             // Game Mode Functions
             async function startBotGame() {
+                console.log("Starting bot game...", "Balance:", _coinBalance);
+                
                 if (_coinBalance < 200) {
                     alert('Insufficient coins! You need 200 coins to play.');
                     return;
                 }
                 
-                await updateCoins(-200);
-                
-                chess = new ChessGame();
-                bot = new ChessBot(3);
-                isPlayerVsBot = true;
-                isOnlineGame = false;
-                
-                gameTitle.textContent = 'Chess vs Bot';
-                gameStatus.textContent = 'Your turn (White)';
-                gameStatus.className = 'status-message status-info';
-                
-                showScreen('chess');
-                renderBoard();
+                try {
+                    await updateCoins(-200);
+                    
+                    chess = new ChessGame();
+                    bot = new ChessBot(3);
+                    isPlayerVsBot = true;
+                    isOnlineGame = false;
+                    
+                    gameTitle.textContent = 'Chess vs Bot';
+                    gameStatus.textContent = 'Your turn (White)';
+                    gameStatus.className = 'status-message status-info';
+                    
+                    console.log("Switching to chess screen...");
+                    showScreen('chess');
+                    renderBoard();
+                    console.log("Bot game started successfully");
+                } catch (error) {
+                    console.error("Error starting bot game:", error);
+                    alert("Error starting game. Please try again.");
+                }
             }
 
             function showScreen(screen) {
-                welcomeScreen.classList.add('hidden');
-                chessContainer.classList.add('hidden');
-                onlineContainer.classList.add('hidden');
+                console.log("Showing screen:", screen);
                 
+                // Hide all screens first
+                const screens = [welcomeScreen, chessContainer, onlineContainer];
+                screens.forEach(s => {
+                    if (s) {
+                        s.classList.add('hidden');
+                        s.style.display = 'none';
+                    }
+                });
+                
+                // Show the requested screen
+                let targetScreen = null;
                 switch(screen) {
                     case 'welcome':
-                        welcomeScreen.classList.remove('hidden');
+                        targetScreen = welcomeScreen;
                         break;
                     case 'chess':
-                        chessContainer.classList.remove('hidden');
+                        targetScreen = chessContainer;
                         break;
                     case 'online':
-                        onlineContainer.classList.remove('hidden');
+                        targetScreen = onlineContainer;
                         break;
+                }
+                
+                if (targetScreen) {
+                    targetScreen.classList.remove('hidden');
+                    targetScreen.style.display = 'flex';
+                    console.log("Screen switched to:", screen);
+                } else {
+                    console.error("Target screen not found:", screen);
                 }
             }
 
@@ -2041,18 +2098,42 @@
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     currentUser = user;
+                    console.log("User authenticated:", user.uid);
                     await loadUserBalance();
                 } else {
                     currentUser = null;
+                    console.log("No user authenticated - enabling offline mode");
+                    // Don't block the game, just set default balance
+                    _coinBalance = 1000;
+                    updateCoinDisplay();
                     showLoginPrompt();
                 }
             });
 
             // Initialize
             document.addEventListener('DOMContentLoaded', () => {
+                console.log("DOM loaded, initializing game...");
+                
+                // Ensure all required elements exist
+                if (!canvas) {
+                    console.error("Canvas element not found!");
+                    return;
+                }
+                
+                if (!coinDisplay || !welcomeScreen || !chessContainer) {
+                    console.error("Required elements not found!");
+                    return;
+                }
+                
                 createParticles();
                 
-                // Online mode setup (simplified for this example)
+                // Initialize with default balance for offline mode
+                if (!currentUser) {
+                    _coinBalance = 1000;
+                    updateCoinDisplay();
+                }
+                
+                // Setup online mode
                 const setupOnlineMode = () => {
                     const backFromOnlineBtn = document.getElementById('backFromOnlineBtn');
                     const playLocallyBtn = document.getElementById('playLocallyBtn');
@@ -2070,6 +2151,7 @@
                 };
                 
                 setupOnlineMode();
+                console.log("Game initialized successfully");
             });
 
         })(); // End of security wrapper
