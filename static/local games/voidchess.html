@@ -448,6 +448,13 @@
             50% { transform: scale(1.05); box-shadow: 0 0 30px rgba(255,51,51,0.5); }
         }
 
+        .chess-board-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
         .chess-board {
             display: grid;
             grid-template-columns: repeat(8, 1fr);
@@ -469,6 +476,47 @@
                 rgba(0,0,0,0.3);
             padding: 8px;
             position: relative;
+        }
+
+        /* Move line overlay */
+        .move-line-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .move-line {
+            position: absolute;
+            background: linear-gradient(90deg, 
+                rgba(255, 100, 100, 0.8) 0%, 
+                rgba(255, 100, 100, 0.9) 50%, 
+                rgba(255, 100, 100, 0.8) 100%);
+            height: 4px;
+            border-radius: 2px;
+            transform-origin: left center;
+            box-shadow: 
+                0 0 10px rgba(255, 100, 100, 0.6),
+                0 0 20px rgba(255, 100, 100, 0.3);
+            animation: fadeOutLine 1.5s ease-out forwards;
+        }
+
+        @keyframes fadeOutLine {
+            0% {
+                opacity: 1;
+                transform: scaleX(0);
+            }
+            20% {
+                opacity: 1;
+                transform: scaleX(1);
+            }
+            100% {
+                opacity: 0;
+                transform: scaleX(1);
+            }
         }
 
         .chess-board.fullscreen {
@@ -612,6 +660,34 @@
             background: radial-gradient(circle, rgba(255,80,80,0.8) 0%, rgba(255,80,80,0.4) 70%, transparent 100%);
             border-radius: 50%;
             animation: possiblePulse 2s ease-in-out infinite;
+        }
+
+        .chess-square.castling-move {
+            box-shadow: 
+                0 0 25px rgba(255,215,0,0.4),
+                inset 0 0 20px rgba(255,215,0,0.15);
+            position: relative;
+        }
+
+        .chess-square.castling-move::after {
+            content: '🏰';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.2rem;
+            animation: castlingPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes castlingPulse {
+            0%, 100% { 
+                opacity: 0.7; 
+                transform: translate(-50%, -50%) scale(1); 
+            }
+            50% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1.1); 
+            }
         }
 
         .chess-square.last-move {
@@ -1386,6 +1462,7 @@
                 </div>
                 <div class="chess-board-container">
                     <div class="chess-board" id="chessBoard"></div>
+                    <div class="move-line-overlay" id="moveLineOverlay"></div>
                 </div>
                 <div class="game-controls">
                     <button class="control-btn" id="backToMenuBtn">Back to Menu</button>
@@ -1520,6 +1597,7 @@
             const gameTimerElement = document.getElementById('gameTimer');
             const timerDisplay = document.getElementById('timerDisplay');
             const fullscreenBtn = document.getElementById('fullscreenBtn');
+            const moveLineOverlay = document.getElementById('moveLineOverlay');
 
             // Button references
             const playBotBtn = document.getElementById('playBotBtn');
@@ -1733,6 +1811,43 @@
                 newGameBtn.style.display = 'inline-block';
             }
 
+            // Show move line for bot moves
+            function showMoveAnimation(fromRow, fromCol, toRow, toCol) {
+                if (!chessBoard || !moveLineOverlay) return;
+
+                const boardRect = chessBoard.getBoundingClientRect();
+                const squareSize = boardRect.width / 8;
+                
+                // Calculate positions
+                const fromX = (fromCol * squareSize) + (squareSize / 2);
+                const fromY = (fromRow * squareSize) + (squareSize / 2);
+                const toX = (toCol * squareSize) + (squareSize / 2);
+                const toY = (toRow * squareSize) + (squareSize / 2);
+                
+                // Calculate distance and angle
+                const deltaX = toX - fromX;
+                const deltaY = toY - fromY;
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                const angle = Math.atan2(deltaY, deltaX) * 180 / Math.PI;
+                
+                // Create line element
+                const line = document.createElement('div');
+                line.className = 'move-line';
+                line.style.left = fromX + 'px';
+                line.style.top = fromY + 'px';
+                line.style.width = distance + 'px';
+                line.style.transform = `rotate(${angle}deg)`;
+                
+                moveLineOverlay.appendChild(line);
+                
+                // Remove line after animation
+                setTimeout(() => {
+                    if (line.parentNode) {
+                        line.remove();
+                    }
+                }, 1500);
+            }
+
             // Chess Game Implementation
             class ChessGame {
                 constructor() {
@@ -1742,6 +1857,14 @@
                     this.selectedSquare = null;
                     this.moveHistory = [];
                     this.kings = { white: {row: 7, col: 4}, black: {row: 0, col: 4} };
+                    
+                    // Track castling rights
+                    this.castlingRights = {
+                        white: { kingside: true, queenside: true, kingMoved: false },
+                        black: { kingside: true, queenside: true, kingMoved: false },
+                        whiteRooks: { kingside: true, queenside: true },
+                        blackRooks: { kingside: true, queenside: true }
+                    };
                 }
 
                 initializeBoard() {
@@ -1792,7 +1915,70 @@
                         return false;
                     }
 
+                    // Check for castling
+                    if ((piece === '♔' || piece === '♚') && Math.abs(toCol - fromCol) === 2) {
+                        return this.isValidCastling(fromRow, fromCol, toRow, toCol);
+                    }
+
                     return this.isValidPieceMove(piece, fromRow, fromCol, toRow, toCol);
+                }
+
+                isValidCastling(fromRow, fromCol, toRow, toCol) {
+                    const piece = this.board[fromRow][fromCol];
+                    const isWhite = piece === '♔';
+                    const color = isWhite ? 'white' : 'black';
+                    
+                    // Must be on the same row
+                    if (fromRow !== toRow) return false;
+                    
+                    // King must not have moved
+                    if (this.castlingRights[color].kingMoved) return false;
+                    
+                    // King must not be in check
+                    if (this.isInCheck(color)) return false;
+                    
+                    // Determine castling type
+                    const isKingside = toCol > fromCol;
+                    const rookCol = isKingside ? 7 : 0;
+                    const rookPiece = this.board[fromRow][rookCol];
+                    
+                    // Check if rook is present and hasn't moved
+                    if (!rookPiece) return false;
+                    if (isWhite && rookPiece !== '♖') return false;
+                    if (!isWhite && rookPiece !== '♜') return false;
+                    
+                    // Check castling rights for this rook
+                    const rookSide = isKingside ? 'kingside' : 'queenside';
+                    const rookRights = isWhite ? 'whiteRooks' : 'blackRooks';
+                    if (!this.castlingRights[rookRights][rookSide]) return false;
+                    
+                    // Check path is clear between king and rook
+                    const step = isKingside ? 1 : -1;
+                    const endCol = isKingside ? rookCol - 1 : rookCol + 1;
+                    
+                    for (let col = fromCol + step; col !== endCol + step; col += step) {
+                        if (this.board[fromRow][col] !== null) return false;
+                    }
+                    
+                    // Check that king doesn't pass through or end in check
+                    for (let col = fromCol; col !== toCol + step; col += step) {
+                        // Temporarily move king to this position
+                        const originalPiece = this.board[fromRow][col];
+                        this.board[fromRow][fromCol] = null;
+                        this.board[fromRow][col] = piece;
+                        this.kings[color] = {row: fromRow, col: col};
+                        
+                        const inCheck = this.isInCheck(color);
+                        
+                        // Restore position
+                        this.board[fromRow][fromCol] = piece;
+                        this.board[fromRow][col] = originalPiece;
+                        this.kings[color] = {row: fromRow, col: fromCol};
+                        
+                        if (inCheck) return false;
+                    }
+                    
+                    return true;
                 }
 
                 isValidPieceMove(piece, fromRow, fromCol, toRow, toCol) {
@@ -1867,10 +2053,20 @@
 
                     const piece = this.board[fromRow][fromCol];
                     const capturedPiece = this.board[toRow][toCol];
+                    const isWhite = this.isWhitePiece(piece);
+                    const color = isWhite ? 'white' : 'black';
+
+                    // Handle castling
+                    if ((piece === '♔' || piece === '♚') && Math.abs(toCol - fromCol) === 2) {
+                        return this.performCastling(fromRow, fromCol, toRow, toCol);
+                    }
 
                     // Update king position
                     if (piece === '♔') this.kings.white = {row: toRow, col: toCol};
                     if (piece === '♚') this.kings.black = {row: toRow, col: toCol};
+
+                    // Update castling rights
+                    this.updateCastlingRights(piece, fromRow, fromCol, toRow, toCol);
 
                     this.board[toRow][toCol] = piece;
                     this.board[fromRow][fromCol] = null;
@@ -1879,11 +2075,98 @@
                         from: {row: fromRow, col: fromCol},
                         to: {row: toRow, col: toCol},
                         piece: piece,
-                        captured: capturedPiece
+                        captured: capturedPiece,
+                        castling: false
                     });
 
                     this.currentPlayer = this.currentPlayer === 'white' ? 'black' : 'white';
                     return true;
+                }
+
+                performCastling(fromRow, fromCol, toRow, toCol) {
+                    const piece = this.board[fromRow][fromCol];
+                    const isWhite = piece === '♔';
+                    const color = isWhite ? 'white' : 'black';
+                    const isKingside = toCol > fromCol;
+                    
+                    // Move the king
+                    this.board[toRow][toCol] = piece;
+                    this.board[fromRow][fromCol] = null;
+                    this.kings[color] = {row: toRow, col: toCol};
+                    
+                    // Move the rook
+                    const rookFromCol = isKingside ? 7 : 0;
+                    const rookToCol = isKingside ? toCol - 1 : toCol + 1;
+                    const rook = this.board[fromRow][rookFromCol];
+                    
+                    this.board[fromRow][rookToCol] = rook;
+                    this.board[fromRow][rookFromCol] = null;
+                    
+                    // Update castling rights - no more castling after castling
+                    this.castlingRights[color].kingMoved = true;
+                    this.castlingRights[color].kingside = false;
+                    this.castlingRights[color].queenside = false;
+                    
+                    this.moveHistory.push({
+                        from: {row: fromRow, col: fromCol},
+                        to: {row: toRow, col: toCol},
+                        piece: piece,
+                        captured: null,
+                        castling: true,
+                        castlingType: isKingside ? 'kingside' : 'queenside',
+                        rookFrom: {row: fromRow, col: rookFromCol},
+                        rookTo: {row: fromRow, col: rookToCol}
+                    });
+                    
+                    this.currentPlayer = this.currentPlayer === 'white' ? 'black' : 'white';
+                    return true;
+                }
+
+                updateCastlingRights(piece, fromRow, fromCol, toRow, toCol) {
+                    // King moved
+                    if (piece === '♔') {
+                        this.castlingRights.white.kingMoved = true;
+                        this.castlingRights.white.kingside = false;
+                        this.castlingRights.white.queenside = false;
+                    } else if (piece === '♚') {
+                        this.castlingRights.black.kingMoved = true;
+                        this.castlingRights.black.kingside = false;
+                        this.castlingRights.black.queenside = false;
+                    }
+                    
+                    // Rook moved
+                    if (piece === '♖') {
+                        if (fromRow === 7 && fromCol === 0) {
+                            this.castlingRights.whiteRooks.queenside = false;
+                            this.castlingRights.white.queenside = false;
+                        } else if (fromRow === 7 && fromCol === 7) {
+                            this.castlingRights.whiteRooks.kingside = false;
+                            this.castlingRights.white.kingside = false;
+                        }
+                    } else if (piece === '♜') {
+                        if (fromRow === 0 && fromCol === 0) {
+                            this.castlingRights.blackRooks.queenside = false;
+                            this.castlingRights.black.queenside = false;
+                        } else if (fromRow === 0 && fromCol === 7) {
+                            this.castlingRights.blackRooks.kingside = false;
+                            this.castlingRights.black.kingside = false;
+                        }
+                    }
+                    
+                    // Rook captured
+                    if (toRow === 0 && toCol === 0) {
+                        this.castlingRights.blackRooks.queenside = false;
+                        this.castlingRights.black.queenside = false;
+                    } else if (toRow === 0 && toCol === 7) {
+                        this.castlingRights.blackRooks.kingside = false;
+                        this.castlingRights.black.kingside = false;
+                    } else if (toRow === 7 && toCol === 0) {
+                        this.castlingRights.whiteRooks.queenside = false;
+                        this.castlingRights.white.queenside = false;
+                    } else if (toRow === 7 && toCol === 7) {
+                        this.castlingRights.whiteRooks.kingside = false;
+                        this.castlingRights.white.kingside = false;
+                    }
                 }
 
                 isInCheck(color) {
@@ -1972,7 +2255,7 @@
                         [0,  0,  0,  0,  0,  0,  0,  0]
                     ];
                     
-                    this.knightTable = [
+this.knightTable = [
                         [-50,-40,-30,-30,-30,-30,-40,-50],
                         [-40,-20,  0,  0,  0,  0,-20,-40],
                         [-30,  0, 10, 15, 15, 10,  0,-30],
@@ -2131,6 +2414,15 @@
                         black: {...game.kings.black}
                     };
                     newGame.moveHistory = [...game.moveHistory];
+                    
+                    // Copy castling rights
+                    newGame.castlingRights = {
+                        white: {...game.castlingRights.white},
+                        black: {...game.castlingRights.black},
+                        whiteRooks: {...game.castlingRights.whiteRooks},
+                        blackRooks: {...game.castlingRights.blackRooks}
+                    };
+                    
                     return newGame;
                 }
             }
@@ -2209,7 +2501,7 @@
                 }
             }
 
-async function updateCoins(amount, isWin = false) {
+            async function updateCoins(amount, isWin = false) {
                 console.log("Updating coins by:", amount, "Current balance:", _coinBalance);
                 
                 // Update local balance immediately
@@ -2350,26 +2642,48 @@ async function updateCoins(amount, isWin = false) {
                         hasUserMoved = true;
                         clearTimer(); // Stop the timer since move was made
                         
+                        // Check if it was a castling move
+                        const lastMove = chess.moveHistory[chess.moveHistory.length - 1];
+                        if (lastMove.castling) {
+                            const castlingType = lastMove.castlingType === 'kingside' ? 'Kingside' : 'Queenside';
+                            console.log(`${castlingType} castling performed!`);
+                            
+                            // Brief visual feedback for castling
+                            gameStatus.textContent = `${castlingType} castling! 🏰`;
+                            gameStatus.className = 'status-message status-info';
+                            
+                            setTimeout(() => {
+                                if (!chess.gameOver) {
+                                    gameStatus.textContent = chess.currentPlayer === 'white' ? 'Your turn' : "Bot's turn";
+                                }
+                            }, 2000);
+                        }
+                        
                         chess.selectedSquare = null;
                         clearHighlights();
                         renderBoard();
                         
-                        // Check game state
+                        // Check game state immediately after move
                         if (chess.isCheckmate(chess.currentPlayer)) {
                             chess.gameOver = true;
                             gameInProgress = false;
                             const winner = chess.currentPlayer === 'white' ? 'Black' : 'White';
                             gameStatus.textContent = `Checkmate! ${winner} wins!`;
-                            gameStatus.className = 'status-message status-win';
                             
                             if (!isOnlineGame) {
                                 const playerWon = (winner === 'White');
+                                if (playerWon) {
+                                    gameStatus.className = 'status-message status-win';
+                                } else {
+                                    gameStatus.className = 'status-message status-lose';
+                                }
                                 await endGame(playerWon);
                             }
+                            return; // Stop processing since game is over
                         } else if (chess.isInCheck(chess.currentPlayer)) {
                             gameStatus.textContent = `${chess.currentPlayer} is in check!`;
                             gameStatus.className = 'status-message status-lose';
-                        } else {
+                        } else if (!lastMove.castling) {
                             gameStatus.textContent = `${chess.currentPlayer}'s turn`;
                             gameStatus.className = 'status-message status-info';
                         }
@@ -2379,7 +2693,11 @@ async function updateCoins(amount, isWin = false) {
                             setTimeout(makeBotMove, 1000);
                         } else if (chess.currentPlayer === 'white' && !chess.gameOver) {
                             // Start timer for next user move
-                            startMoveTimer();
+                            setTimeout(() => {
+                                if (!lastMove.castling && !chess.gameOver) {
+                                    startMoveTimer();
+                                }
+                            }, lastMove.castling ? 2000 : 0);
                         }
                     }
                 } else {
@@ -2392,6 +2710,25 @@ async function updateCoins(amount, isWin = false) {
                         chess.selectedSquare = {row, col};
                         highlightSquare(row, col);
                         showPossibleMoves(row, col);
+                        
+                        // Show castling hint for kings
+                        if ((piece === '♔' || piece === '♚') && !chess.castlingRights[chess.currentPlayer].kingMoved) {
+                            const color = chess.currentPlayer;
+                            let castlingHint = "Castling available: ";
+                            const hints = [];
+                            
+                            if (chess.castlingRights[color].kingside && chess.isValidMove(row, col, row, col + 2)) {
+                                hints.push("O-O (kingside)");
+                            }
+                            if (chess.castlingRights[color].queenside && chess.isValidMove(row, col, row, col - 2)) {
+                                hints.push("O-O-O (queenside)");
+                            }
+                            
+                            if (hints.length > 0) {
+                                gameStatus.textContent = castlingHint + hints.join(", ");
+                                gameStatus.className = 'status-message status-info';
+                            }
+                        }
                     }
                 }
             }
@@ -2403,11 +2740,19 @@ async function updateCoins(amount, isWin = false) {
             }
 
             function showPossibleMoves(row, col) {
+                const piece = chess.board[row][col];
+                
                 for (let toRow = 0; toRow < 8; toRow++) {
                     for (let toCol = 0; toCol < 8; toCol++) {
                         if (chess.isValidMove(row, col, toRow, toCol)) {
                             const square = chessBoard.children[toRow * 8 + toCol];
-                            square.classList.add('possible-move');
+                            
+                            // Check if this is a castling move
+                            if ((piece === '♔' || piece === '♚') && Math.abs(toCol - col) === 2) {
+                                square.classList.add('castling-move');
+                            } else {
+                                square.classList.add('possible-move');
+                            }
                         }
                     }
                 }
@@ -2416,7 +2761,7 @@ async function updateCoins(amount, isWin = false) {
             function clearHighlights() {
                 const squares = chessBoard.querySelectorAll('.chess-square');
                 squares.forEach(square => {
-                    square.classList.remove('selected', 'possible-move', 'last-move');
+                    square.classList.remove('selected', 'possible-move', 'last-move', 'castling-move');
                 });
             }
 
@@ -2428,9 +2773,13 @@ async function updateCoins(amount, isWin = false) {
                 
                 const move = bot.getBestMove(chess);
                 if (move) {
+                    // Show move animation before making the move
+                    showMoveAnimation(move.from.row, move.from.col, move.to.row, move.to.col);
+                    
                     chess.makeMove(move.from.row, move.from.col, move.to.row, move.to.col);
                     renderBoard();
                     
+                    // Check for checkmate after bot move
                     if (chess.isCheckmate(chess.currentPlayer)) {
                         chess.gameOver = true;
                         gameInProgress = false;
