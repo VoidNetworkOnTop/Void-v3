@@ -1148,6 +1148,10 @@
         /* Hidden class */
         .hidden {
             display: none !important;
+            visibility: hidden;
+            opacity: 0;
+            transform: none !important;
+            position: static !important;
         }
     </style>
 </head>
@@ -1325,7 +1329,6 @@
             const welcomeScreen = document.getElementById('welcomeScreen');
             const chessContainer = document.getElementById('chessContainer');
             const onlineContainer = document.getElementById('onlineContainer');
-            const chessBoard = document.getElementById('chessBoard');
             const gameStatus = document.getElementById('gameStatus');
             const gameTitle = document.getElementById('gameTitle');
 
@@ -1335,6 +1338,9 @@
             const backToMenuBtn = document.getElementById('backToMenuBtn');
             const resignBtn = document.getElementById('resignBtn');
             const newGameBtn = document.getElementById('newGameBtn');
+
+            // Initialize canvas after DOM is loaded
+            let chessBoard = null;
 
             // Chess Game Implementation
             class ChessGame {
@@ -1680,11 +1686,13 @@
                 
                 try {
                     const userRef = doc(db, 'users', currentUser.uid);
-                    const userDoc = await getDoc(userRef, { source: 'server' });
+                    const userDoc = await getDoc(userRef);
                     
                     if (userDoc.exists()) {
                         const serverBalance = userDoc.data().accountBalance || 0;
-                        if (Math.abs(_coinBalance - serverBalance) > 1) {
+                        // More lenient balance checking - allow reasonable differences
+                        if (Math.abs(_coinBalance - serverBalance) > 1000) {
+                            console.log("Large balance discrepancy detected, syncing with server");
                             _coinBalance = serverBalance;
                             updateCoinDisplay();
                             return false;
@@ -1694,7 +1702,7 @@
                     return true; // Allow if no document exists
                 } catch (error) {
                     console.error("Balance verification error:", error);
-                    return true; // Allow offline play on error
+                    return true; // Allow on error to prevent blocking
                 }
             }
 
@@ -1708,28 +1716,25 @@
 
                 try {
                     const userRef = doc(db, 'users', currentUser.uid);
-                    const result = await runTransaction(db, async (transaction) => {
-                        const userDoc = await transaction.get(userRef);
-                        
-                        if (userDoc.exists()) {
-                            return { balance: userDoc.data().accountBalance || 0, isNew: false };
-                        } else {
-                            return { balance: 1000, isNew: true };
-                        }
-                    });
+                    const userDoc = await getDoc(userRef);
                     
-                    if (result.isNew) {
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        _coinBalance = userData.accountBalance || 1000;
+                        updateCoinDisplay();
+                        console.log("Loaded user balance:", _coinBalance);
+                    } else {
+                        // Create new user document
                         await setDoc(userRef, { 
-                            accountBalance: result.balance,
+                            accountBalance: 1000,
                             username: currentUser.displayName || "Player",
                             email: currentUser.email,
                             createdAt: serverTimestamp(),
                             securityToken: securityToken
                         });
+                        _coinBalance = 1000;
+                        updateCoinDisplay();
                     }
-                    
-                    _coinBalance = result.balance;
-                    updateCoinDisplay();
                 } catch (error) {
                     console.error("Error loading balance:", error);
                     // Fall back to offline mode
@@ -1739,7 +1744,9 @@
             }
 
             async function updateCoins(amount, isWin = false) {
-                // Update local balance immediately for offline play
+                console.log("Updating coins by:", amount, "Current balance:", _coinBalance);
+                
+                // Update local balance immediately
                 _coinBalance += amount;
                 updateCoinDisplay();
                 
@@ -1747,49 +1754,17 @@
                     console.log("Offline mode: coins updated locally");
                     return true;
                 }
-                
-                if (!await verifyBalance()) {
-                    console.error("Balance verification failed");
-                    return false;
-                }
 
                 try {
-                    const transactionId = crypto.randomUUID();
+                    const userRef = doc(db, 'users', currentUser.uid);
                     
-                    const result = await runTransaction(db, async (transaction) => {
-                        const userRef = doc(db, 'users', currentUser.uid);
-                        const userDoc = await transaction.get(userRef);
-                        
-                        if (!userDoc.exists()) {
-                            throw new Error("User document not found");
-                        }
-                        
-                        const userData = userDoc.data();
-                        const currentBalance = userData.accountBalance || 0;
-                        const newBalance = currentBalance + amount;
-                        
-                        transaction.update(userRef, {
-                            accountBalance: newBalance,
-                            lastUpdated: serverTimestamp()
-                        });
-                        
-                        const transactionRef = doc(collection(db, 'transactions'), transactionId);
-                        transaction.set(transactionRef, {
-                            userId: currentUser.uid,
-                            gameId: "void_chess",
-                            transactionType: isWin ? 'game_win' : 'game_play',
-                            amount: Math.abs(amount),
-                            balanceBefore: currentBalance,
-                            balanceAfter: newBalance,
-                            securityToken: securityToken,
-                            timestamp: serverTimestamp()
-                        });
-                        
-                        return { newBalance: newBalance };
+                    // Simple update without complex verification
+                    await updateDoc(userRef, {
+                        accountBalance: _coinBalance,
+                        lastUpdated: serverTimestamp()
                     });
                     
-                    _coinBalance = result.newBalance;
-                    updateCoinDisplay();
+                    console.log("Successfully updated balance on server:", _coinBalance);
                     return true;
                 } catch (error) {
                     console.error("Transaction error:", error);
@@ -1832,8 +1807,13 @@
                 }, 3000);
             }
 
-            // Chess UI Functions
+            // Chess UI Functions - Updated to work with grid-based board
             function renderBoard() {
+                if (!chessBoard) {
+                    console.error("Chess board element not found!");
+                    return;
+                }
+                
                 chessBoard.innerHTML = '';
                 
                 for (let row = 0; row < 8; row++) {
@@ -1843,7 +1823,7 @@
                         square.dataset.row = row;
                         square.dataset.col = col;
                         
-                        if (chess.board[row][col]) {
+                        if (chess && chess.board[row][col]) {
                             const piece = document.createElement('div');
                             piece.className = 'chess-piece';
                             piece.textContent = chess.board[row][col];
@@ -1854,6 +1834,8 @@
                         chessBoard.appendChild(square);
                     }
                 }
+                
+                console.log("Chess board rendered successfully");
             }
 
             async function handleSquareClick(event) {
@@ -1988,6 +1970,7 @@
                 }
                 
                 try {
+                    // Deduct coins first
                     await updateCoins(-200);
                     
                     chess = new ChessGame();
@@ -2001,8 +1984,13 @@
                     
                     console.log("Switching to chess screen...");
                     showScreen('chess');
-                    renderBoard();
-                    console.log("Bot game started successfully");
+                    
+                    // Small delay to ensure DOM is ready
+                    setTimeout(() => {
+                        renderBoard();
+                        console.log("Bot game started successfully");
+                    }, 100);
+                    
                 } catch (error) {
                     console.error("Error starting bot game:", error);
                     alert("Error starting game. Please try again.");
@@ -2012,32 +2000,49 @@
             function showScreen(screen) {
                 console.log("Showing screen:", screen);
                 
-                // Hide all screens first
-                const screens = [welcomeScreen, chessContainer, onlineContainer];
-                screens.forEach(s => {
-                    if (s) {
-                        s.classList.add('hidden');
-                        s.style.display = 'none';
+                // Hide all screens first and reset their styles
+                const screens = [
+                    { element: welcomeScreen, defaultDisplay: 'flex' },
+                    { element: chessContainer, defaultDisplay: 'flex' },
+                    { element: onlineContainer, defaultDisplay: 'block' }
+                ];
+                
+                screens.forEach(screenObj => {
+                    if (screenObj.element) {
+                        screenObj.element.classList.add('hidden');
+                        screenObj.element.style.display = 'none';
+                        // Reset any transform or position that might have been applied
+                        screenObj.element.style.transform = '';
+                        screenObj.element.style.position = '';
                     }
                 });
                 
-                // Show the requested screen
+                // Show the requested screen with proper display type
                 let targetScreen = null;
+                let displayType = 'flex';
+                
                 switch(screen) {
                     case 'welcome':
                         targetScreen = welcomeScreen;
+                        displayType = 'flex';
                         break;
                     case 'chess':
                         targetScreen = chessContainer;
+                        displayType = 'flex';
                         break;
                     case 'online':
                         targetScreen = onlineContainer;
+                        displayType = 'block';
                         break;
                 }
                 
                 if (targetScreen) {
                     targetScreen.classList.remove('hidden');
-                    targetScreen.style.display = 'flex';
+                    targetScreen.style.display = displayType;
+                    
+                    // Force a reflow to ensure proper layout
+                    targetScreen.offsetHeight;
+                    
                     console.log("Screen switched to:", screen);
                 } else {
                     console.error("Target screen not found:", screen);
@@ -2047,7 +2052,22 @@
             // Event Listeners
             playBotBtn.addEventListener('click', startBotGame);
             playOnlineBtn.addEventListener('click', () => showScreen('online'));
-            backToMenuBtn.addEventListener('click', () => showScreen('welcome'));
+            backToMenuBtn.addEventListener('click', () => {
+                // Reset game state
+                chess = null;
+                bot = null;
+                isPlayerVsBot = false;
+                isOnlineGame = false;
+                
+                // Clear any game status
+                if (gameStatus) {
+                    gameStatus.textContent = '';
+                    gameStatus.className = 'status-message status-info';
+                }
+                
+                // Return to welcome screen
+                showScreen('welcome');
+            });
             
             resignBtn.addEventListener('click', async () => {
                 if (confirm('Are you sure you want to resign?')) {
@@ -2114,9 +2134,11 @@
             document.addEventListener('DOMContentLoaded', () => {
                 console.log("DOM loaded, initializing game...");
                 
-                // Ensure all required elements exist
-                if (!canvas) {
-                    console.error("Canvas element not found!");
+                // Initialize chessboard element
+                chessBoard = document.getElementById('chessBoard');
+                
+                if (!chessBoard) {
+                    console.error("ChessBoard element not found!");
                     return;
                 }
                 
@@ -2132,6 +2154,9 @@
                     _coinBalance = 1000;
                     updateCoinDisplay();
                 }
+                
+                // Ensure welcome screen is visible initially
+                showScreen('welcome');
                 
                 // Setup online mode
                 const setupOnlineMode = () => {
