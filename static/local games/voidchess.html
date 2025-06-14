@@ -1286,6 +1286,19 @@
         .hidden {
             display: none !important;
         }
+
+        /* Ensure visible screens display correctly */
+        .welcome-screen:not(.hidden) {
+            display: block;
+        }
+
+        .chess-container:not(.hidden) {
+            display: block;
+        }
+
+        .online-container:not(.hidden) {
+            display: block;
+        }
     </style>
 </head>
 
@@ -2123,12 +2136,22 @@
 
             // Chess UI Functions - Updated to work with grid-based board
             function renderBoard() {
+                console.log("renderBoard called");
+                console.log("chessBoard element:", chessBoard);
+                console.log("chess object:", chess);
+                
                 if (!chessBoard) {
                     console.error("Chess board element not found!");
                     return;
                 }
                 
+                if (!chess) {
+                    console.error("Chess game object not found!");
+                    return;
+                }
+                
                 chessBoard.innerHTML = '';
+                console.log("Chess board cleared");
                 
                 for (let row = 0; row < 8; row++) {
                     for (let col = 0; col < 8; col++) {
@@ -2149,7 +2172,9 @@
                     }
                 }
                 
-                console.log("Chess board rendered successfully");
+                console.log("Chess board rendered successfully with", chessBoard.children.length, "squares");
+                console.log("Chess board display:", window.getComputedStyle(chessBoard).display);
+                console.log("Chess board visibility:", window.getComputedStyle(chessBoard).visibility);
             }
 
             async function handleSquareClick(event) {
@@ -2324,26 +2349,35 @@
                     gameInProgress = true;
                     hasUserMoved = false;
                     
-                    gameTitle.textContent = 'Chess vs Bot';
-                    gameStatus.textContent = 'Your turn (White)';
-                    gameStatus.className = 'status-message status-info';
+                    console.log("Game objects created successfully");
+                    
+                    // Update UI elements
+                    if (gameTitle) gameTitle.textContent = 'Chess vs Bot';
+                    if (gameStatus) {
+                        gameStatus.textContent = 'Your turn (White)';
+                        gameStatus.className = 'status-message status-info';
+                    }
                     
                     // Hide new game button during active game
-                    newGameBtn.style.display = 'none';
+                    if (newGameBtn) newGameBtn.style.display = 'none';
                     
-                    console.log("Switching to chess screen...");
+                    console.log("UI updated, switching to chess screen...");
                     showScreen('chess');
                     
-                    // Small delay to ensure DOM is ready
+                    // Wait a bit longer to ensure DOM is ready
                     setTimeout(() => {
+                        console.log("Rendering board...");
+                        console.log("ChessBoard element:", chessBoard);
+                        console.log("Chess container visible:", chessContainer && !chessContainer.classList.contains('hidden'));
+                        
                         renderBoard();
                         
                         // Start timer and anti-cheat systems
                         startMoveTimer();
                         startActivityMonitoring();
                         
-                        console.log("Bot game started successfully");
-                    }, 100);
+                        console.log("Bot game started successfully - board should be visible");
+                    }, 200);
                     
                 } catch (error) {
                     console.error("Error starting bot game:", error);
@@ -2354,20 +2388,21 @@
             function showScreen(screen) {
                 console.log("Showing screen:", screen);
                 
-                // Hide all screens first and reset their styles
-                const screens = [
-                    { element: welcomeScreen, defaultDisplay: 'block' },
-                    { element: chessContainer, defaultDisplay: 'block' },
-                    { element: onlineContainer, defaultDisplay: 'block' }
-                ];
+                // Hide all screens first
+                if (welcomeScreen) {
+                    welcomeScreen.classList.add('hidden');
+                    welcomeScreen.style.display = 'none';
+                }
+                if (chessContainer) {
+                    chessContainer.classList.add('hidden');
+                    chessContainer.style.display = 'none';
+                }
+                if (onlineContainer) {
+                    onlineContainer.classList.add('hidden');
+                    onlineContainer.style.display = 'none';
+                }
                 
-                screens.forEach(screenObj => {
-                    if (screenObj.element) {
-                        screenObj.element.classList.add('hidden');
-                    }
-                });
-                
-                // Show the requested screen
+                // Show the requested screen with explicit display
                 let targetScreen = null;
                 
                 switch(screen) {
@@ -2384,18 +2419,32 @@
                 
                 if (targetScreen) {
                     targetScreen.classList.remove('hidden');
+                    targetScreen.style.display = 'block';
+                    targetScreen.style.visibility = 'visible';
+                    targetScreen.style.opacity = '1';
                     
                     // Force a reflow to ensure proper layout
                     targetScreen.offsetHeight;
                     
-                    console.log("Screen switched to:", screen);
+                    console.log("Screen switched to:", screen, "Element:", targetScreen);
+                    console.log("Element classes:", targetScreen.className);
+                    console.log("Element display:", window.getComputedStyle(targetScreen).display);
                 } else {
                     console.error("Target screen not found:", screen);
                 }
             }
 
             // Event Listeners
-            playBotBtn.addEventListener('click', startBotGame);
+            playBotBtn.addEventListener('click', () => {
+                console.log("Play bot button clicked");
+                console.log("Current elements state:");
+                console.log("- chessContainer exists:", !!chessContainer);
+                console.log("- chessBoard exists:", !!chessBoard);
+                console.log("- gameStatus exists:", !!gameStatus);
+                console.log("- gameTitle exists:", !!gameTitle);
+                
+                startBotGame();
+            });
             playOnlineBtn.addEventListener('click', () => showScreen('online'));
             backToMenuBtn.addEventListener('click', () => {
                 // Check if game is in progress
@@ -2510,6 +2559,16 @@
                 // Initialize chessboard element
                 chessBoard = document.getElementById('chessBoard');
                 
+                console.log("Element checks:");
+                console.log("- chessBoard:", chessBoard);
+                console.log("- coinDisplay:", coinDisplay);
+                console.log("- welcomeScreen:", welcomeScreen);
+                console.log("- chessContainer:", chessContainer);
+                console.log("- gameStatus:", gameStatus);
+                console.log("- gameTitle:", gameTitle);
+                console.log("- gameTimerElement:", gameTimerElement);
+                console.log("- timerDisplay:", timerDisplay);
+                
                 if (!chessBoard) {
                     console.error("ChessBoard element not found!");
                     return;
@@ -2517,6 +2576,7 @@
                 
                 if (!coinDisplay || !welcomeScreen || !chessContainer) {
                     console.error("Required elements not found!");
+                    console.error("Missing: coinDisplay =", !!coinDisplay, "welcomeScreen =", !!welcomeScreen, "chessContainer =", !!chessContainer);
                     return;
                 }
                 
@@ -2529,6 +2589,7 @@
                 }
                 
                 // Ensure welcome screen is visible initially
+                console.log("Setting initial screen to welcome...");
                 showScreen('welcome');
                 
                 // Setup online mode
