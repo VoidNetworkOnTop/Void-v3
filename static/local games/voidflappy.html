@@ -1124,13 +1124,6 @@
         const scoreValue = document.getElementById('scoreValue');
         const sessionCoinsValue = document.getElementById('sessionCoinsValue');
 
-        // Buttons
-        const startGameBtn = document.getElementById('startGameBtn');
-        const pauseBtn = document.getElementById('pauseBtn');
-        const backToMenuBtn = document.getElementById('backToMenuBtn');
-        const playAgainBtn = document.getElementById('playAgainBtn');
-        const menuBtn = document.getElementById('menuBtn');
-
         // Coin management functions
         async function loadUserBalance() {
             if (!currentUser) {
@@ -1212,6 +1205,11 @@
             bird = document.getElementById('bird');
             gameCanvas = document.getElementById('gameCanvas');
             
+            if (!bird || !gameCanvas) {
+                console.error('Game elements not found');
+                return false;
+            }
+            
             // Reset game state
             birdY = 250;
             birdVelocity = 0;
@@ -1231,9 +1229,17 @@
             const existingPipes = gameCanvas.querySelectorAll('.pipe');
             existingPipes.forEach(pipe => pipe.remove());
             
+            // Clear any existing clouds
+            const existingClouds = gameCanvas.querySelectorAll('.cloud');
+            existingClouds.forEach(cloud => cloud.remove());
+            
             // Show instructions
-            instructions.style.display = 'block';
-            gameOverScreen.style.display = 'none';
+            const instructions = document.getElementById('instructions');
+            const gameOverScreen = document.getElementById('gameOverScreen');
+            if (instructions) instructions.style.display = 'block';
+            if (gameOverScreen) gameOverScreen.style.display = 'none';
+            
+            return true;
         }
 
         function startGame() {
@@ -1249,7 +1255,11 @@
             gamePaused = false;
             
             showScreen('game');
-            initializeGame();
+            
+            if (!initializeGame()) {
+                console.error('Failed to initialize game');
+                return;
+            }
             
             // Start game loop
             gameLoop = setInterval(updateGame, 16); // ~60 FPS
@@ -1269,7 +1279,8 @@
             if (!gameActive || gamePaused) return;
             
             // Hide instructions after first interaction
-            if (instructions.style.display !== 'none') {
+            const instructions = document.getElementById('instructions');
+            if (instructions && instructions.style.display !== 'none') {
                 instructions.style.display = 'none';
             }
             
@@ -1278,12 +1289,14 @@
             birdY += birdVelocity;
             
             // Apply bird position and rotation based on velocity
-            bird.style.top = birdY + 'px';
-            const rotation = Math.max(-30, Math.min(30, birdVelocity * 3));
-            bird.style.transform = `rotate(${rotation}deg)`;
+            if (bird) {
+                bird.style.top = birdY + 'px';
+                const rotation = Math.max(-30, Math.min(30, birdVelocity * 3));
+                bird.style.transform = `rotate(${rotation}deg)`;
+            }
             
             // Check ground collision
-            if (birdY > gameCanvas.offsetHeight - 90) { // 50px ground + 40px bird height
+            if (gameCanvas && birdY > gameCanvas.offsetHeight - 90) { // 50px ground + 40px bird height
                 endGame();
                 return;
             }
@@ -1310,6 +1323,8 @@
         }
 
         function spawnPipe() {
+            if (!gameCanvas) return;
+            
             const pipeGapStart = Math.random() * (gameCanvas.offsetHeight - pipeGap - 150) + 50;
             
             // Top pipe
@@ -1417,14 +1432,24 @@
         }
 
         function updateGameStats() {
-            scoreValue.textContent = score;
-            sessionCoinsValue.textContent = sessionCoins > 0 ? `+${sessionCoins}` : sessionCoins;
-            sessionCoinsValue.style.color = sessionCoins >= 0 ? '#4CAF50' : '#f44336';
+            const scoreValue = document.getElementById('scoreValue');
+            const sessionCoinsValue = document.getElementById('sessionCoinsValue');
+            
+            if (scoreValue) {
+                scoreValue.textContent = score;
+            }
+            if (sessionCoinsValue) {
+                sessionCoinsValue.textContent = sessionCoins > 0 ? `+${sessionCoins}` : sessionCoins;
+                sessionCoinsValue.style.color = sessionCoins >= 0 ? '#4CAF50' : '#f44336';
+            }
         }
 
         function pauseGame() {
             gamePaused = !gamePaused;
-            pauseBtn.textContent = gamePaused ? 'Resume' : 'Pause';
+            const pauseBtn = document.getElementById('pauseBtn');
+            if (pauseBtn) {
+                pauseBtn.textContent = gamePaused ? 'Resume' : 'Pause';
+            }
         }
 
         function endGame() {
@@ -1433,21 +1458,28 @@
             clearInterval(cloudInterval);
             
             // Update final stats
-            document.getElementById('finalScore').textContent = score;
-            document.getElementById('coinsGained').textContent = `+${coinsGained}`;
-            document.getElementById('coinsLost').textContent = `-${coinsLost}`;
-            document.getElementById('netResult').textContent = sessionCoins > 0 ? `+${sessionCoins}` : sessionCoins;
-            
-            // Style net result
+            const finalScoreElement = document.getElementById('finalScore');
+            const coinsGainedElement = document.getElementById('coinsGained');
+            const coinsLostElement = document.getElementById('coinsLost');
             const netResultElement = document.getElementById('netResult');
-            netResultElement.style.color = sessionCoins >= 0 ? '#4CAF50' : '#f44336';
+            const gameOverScreen = document.getElementById('gameOverScreen');
             
-            gameOverScreen.style.display = 'block';
+            if (finalScoreElement) finalScoreElement.textContent = score;
+            if (coinsGainedElement) coinsGainedElement.textContent = `+${coinsGained}`;
+            if (coinsLostElement) coinsLostElement.textContent = `-${coinsLost}`;
+            if (netResultElement) {
+                netResultElement.textContent = sessionCoins > 0 ? `+${sessionCoins}` : sessionCoins;
+                netResultElement.style.color = sessionCoins >= 0 ? '#4CAF50' : '#f44336';
+            }
+            
+            if (gameOverScreen) {
+                gameOverScreen.style.display = 'block';
+            }
         }
 
         function generateClouds() {
             cloudInterval = setInterval(() => {
-                if (!gameActive) return;
+                if (!gameActive || !gameCanvas) return;
                 
                 const cloud = document.createElement('div');
                 cloud.className = 'cloud';
@@ -1480,8 +1512,15 @@
         }
 
         function showScreen(screen) {
-            welcomeScreen.style.display = screen === 'welcome' ? 'block' : 'none';
-            gameContainer.style.display = screen === 'game' ? 'block' : 'none';
+            const welcomeScreen = document.getElementById('welcomeScreen');
+            const gameContainer = document.getElementById('gameContainer');
+            
+            if (welcomeScreen) {
+                welcomeScreen.style.display = screen === 'welcome' ? 'block' : 'none';
+            }
+            if (gameContainer) {
+                gameContainer.style.display = screen === 'game' ? 'block' : 'none';
+            }
         }
 
         function resetToMenu() {
@@ -1491,39 +1530,26 @@
             if (cloudInterval) clearInterval(cloudInterval);
             
             // Clear pipes
-            const existingPipes = gameCanvas.querySelectorAll('.pipe');
-            existingPipes.forEach(pipe => pipe.remove());
+            if (gameCanvas) {
+                const existingPipes = gameCanvas.querySelectorAll('.pipe');
+                existingPipes.forEach(pipe => pipe.remove());
+            }
             pipes = [];
             
             // Clear clouds
-            const existingClouds = gameCanvas.querySelectorAll('.cloud');
-            existingClouds.forEach(cloud => cloud.remove());
+            if (gameCanvas) {
+                const existingClouds = gameCanvas.querySelectorAll('.cloud');
+                existingClouds.forEach(cloud => cloud.remove());
+            }
             
-            pauseBtn.textContent = 'Pause';
+            const pauseBtn = document.getElementById('pauseBtn');
+            if (pauseBtn) {
+                pauseBtn.textContent = 'Pause';
+            }
             showScreen('welcome');
         }
 
-        // Event listeners
-        startGameBtn.addEventListener('click', startGame);
-        pauseBtn.addEventListener('click', pauseGame);
-        backToMenuBtn.addEventListener('click', () => {
-            if (gameActive && confirm('Are you sure you want to quit? You will lose your progress.')) {
-                resetToMenu();
-            } else if (!gameActive) {
-                resetToMenu();
-            }
-        });
-        playAgainBtn.addEventListener('click', startGame);
-        menuBtn.addEventListener('click', resetToMenu);
-
-        // Game controls
-        gameCanvas.addEventListener('click', jump);
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
-                e.preventDefault();
-                jump();
-            }
-        });
+        // Event listeners will be added in DOMContentLoaded
 
         // Initialize particles animation
         function createParticles() {
@@ -1571,6 +1597,52 @@
             }
             
             showScreen('welcome');
+            
+            // Add event listeners after DOM is loaded
+            const startGameBtn = document.getElementById('startGameBtn');
+            const pauseBtn = document.getElementById('pauseBtn');
+            const backToMenuBtn = document.getElementById('backToMenuBtn');
+            const playAgainBtn = document.getElementById('playAgainBtn');
+            const menuBtn = document.getElementById('menuBtn');
+            const gameCanvas = document.getElementById('gameCanvas');
+            
+            if (startGameBtn) {
+                startGameBtn.addEventListener('click', startGame);
+            }
+            
+            if (pauseBtn) {
+                pauseBtn.addEventListener('click', pauseGame);
+            }
+            
+            if (backToMenuBtn) {
+                backToMenuBtn.addEventListener('click', () => {
+                    if (gameActive && confirm('Are you sure you want to quit? You will lose your progress.')) {
+                        resetToMenu();
+                    } else if (!gameActive) {
+                        resetToMenu();
+                    }
+                });
+            }
+            
+            if (playAgainBtn) {
+                playAgainBtn.addEventListener('click', startGame);
+            }
+            
+            if (menuBtn) {
+                menuBtn.addEventListener('click', resetToMenu);
+            }
+
+            // Game controls
+            if (gameCanvas) {
+                gameCanvas.addEventListener('click', jump);
+            }
+            
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    jump();
+                }
+            });
         });
     </script>
 </body>
