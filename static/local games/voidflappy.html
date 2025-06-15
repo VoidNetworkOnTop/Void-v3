@@ -1103,8 +1103,9 @@
                     
                     <div class="instructions" id="instructions">
                         <h3>Get Ready!</h3>
-                        <p>Click anywhere or press SPACE to fly</p>
+                        <p>Click anywhere or press SPACE to start flying</p>
                         <p>Avoid the ground, fly through pipes!</p>
+                        <p>The bird will stay still until you click</p>
                     </div>
                 </div>
                 
@@ -1188,6 +1189,7 @@
         let gameLoop = null;
         let lastPipeSpawn = 0;
         let cloudInterval = null;
+        let gameStarted = false; // Track if player has made first input
 
         // Bird physics
         let birdY = 250;
@@ -1311,6 +1313,7 @@
             coinsLost = 0;
             pipes = [];
             lastPipeSpawn = 0;
+            gameStarted = false; // Reset game started flag
             
             // Reset difficulty to base values
             currentPipeSpeed = basePipeSpeed;
@@ -1321,6 +1324,7 @@
             
             // Position bird
             bird.style.top = birdY + 'px';
+            bird.style.transform = 'rotate(0deg)'; // Reset rotation
             
             // Clear any existing pipes
             const existingPipes = gameCanvas.querySelectorAll('.pipe');
@@ -1361,12 +1365,8 @@
             // Start game loop
             gameLoop = setInterval(updateGame, 16); // ~60 FPS
             
-            // Start spawning pipes
-            setTimeout(() => {
-                if (gameActive) {
-                    spawnPipe();
-                }
-            }, 2000);
+            // Don't spawn pipes immediately - wait for first player input
+            // Pipes will start spawning when gameStarted becomes true
             
             // Generate clouds
             generateClouds();
@@ -1375,50 +1375,63 @@
         function updateGame() {
             if (!gameActive || gamePaused) return;
             
-            // Hide instructions after first interaction
+            // Keep instructions visible until player starts
             const instructions = document.getElementById('instructions');
-            if (instructions && instructions.style.display !== 'none') {
+            if (instructions && !gameStarted) {
+                instructions.style.display = 'block';
+            } else if (instructions && gameStarted) {
                 instructions.style.display = 'none';
             }
             
-            // Get current difficulty-adjusted gravity
-            const currentGravity = updateDifficulty();
+            // Only apply physics after the game has started (first click)
+            if (gameStarted) {
+                // Get current difficulty-adjusted gravity
+                const currentGravity = updateDifficulty();
+                
+                // Update bird physics with current gravity
+                birdVelocity += currentGravity;
+                birdY += birdVelocity;
+                
+                // Check ground collision (50px ground height + 40px bird height = 90px from bottom)
+                if (gameCanvas && birdY > gameCanvas.offsetHeight - 90) {
+                    endGame();
+                    return;
+                }
+                
+                // Check ceiling collision
+                if (birdY < 0) {
+                    birdY = 0;
+                    birdVelocity = 0;
+                }
+                
+                // Update pipes
+                updatePipes();
+                
+                // Spawn new pipes using current difficulty interval
+                if (Date.now() - lastPipeSpawn > currentPipeSpawnInterval) {
+                    spawnPipe();
+                    lastPipeSpawn = Date.now();
+                }
+            }
             
-            // Update bird physics with current gravity
-            birdVelocity += currentGravity;
-            birdY += birdVelocity;
-            
-            // Apply bird position and rotation based on velocity
+            // Always update bird position and rotation (even when frozen)
             if (bird) {
                 bird.style.top = birdY + 'px';
-                const rotation = Math.max(-30, Math.min(30, birdVelocity * 3));
+                const rotation = gameStarted ? Math.max(-30, Math.min(30, birdVelocity * 3)) : 0;
                 bird.style.transform = `rotate(${rotation}deg)`;
-            }
-            
-            // Check ground collision (50px ground height + 40px bird height = 90px from bottom)
-            if (gameCanvas && birdY > gameCanvas.offsetHeight - 90) {
-                endGame();
-                return;
-            }
-            
-            // Check ceiling collision
-            if (birdY < 0) {
-                birdY = 0;
-                birdVelocity = 0;
-            }
-            
-            // Update pipes
-            updatePipes();
-            
-            // Spawn new pipes using current difficulty interval
-            if (Date.now() - lastPipeSpawn > currentPipeSpawnInterval) {
-                spawnPipe();
-                lastPipeSpawn = Date.now();
             }
         }
 
         function jump() {
             if (!gameActive || gamePaused) return;
+            
+            // Start the game on first click
+            if (!gameStarted) {
+                gameStarted = true;
+                // Give player a moment to get oriented before first pipe spawns
+                lastPipeSpawn = Date.now() + 1000; // Add 1 second delay
+            }
+            
             birdVelocity = jumpStrength;
         }
 
