@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Void Games Flappy Bird</title>
+    <link rel="shortcut icon" href="./assets/favicon.png" type="image/png">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body, html {
+            height: 100%;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 25%, #0f0f0f 50%, #1a1a1a 75%, #0a0a0a 100%);
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro Display', Roboto, Helvetica, Arial, sans-serif;
+            overflow-x: hidden;
+            font-weight: 300;
+            background-attachment: fixed;
+        }
+
+        /* Animated Background */
+        .matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(ellipse at top left, rgba(40,40,40,0.3) 0%, transparent 50%),
+                radial-gradient(ellipse at top right, rgba(60,60,60,0.2) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom left, rgba(30,30,30,0.3) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(50,50,50,0.2) 0%, transparent 50%),
+                linear-gradient(135deg, #000000 0%, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%, #000000 100%);
+            background-size: 200% 200%, 200% 200%, 200% 200%, 200% 200%, 100% 100%;
+            animation: gentleFlow 12s ease-in-out infinite;
+            z-index: -2;
+        }
+
+        .matrix-bg::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 30% 40%, rgba(255,255,255,0.02) 0%, transparent 60%),
+                radial-gradient(circle at 70% 80%, rgba(255,255,255,0.015) 0%, transparent 60%),
+                radial-gradient(circle at 20% 80%, rgba(255,255,255,0.01) 0%, transparent 60%);
+            animation: floatingLights 15s ease-in-out infinite;
+        }
+
+        .matrix-bg::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                0deg,
+                transparent 0%,
+                rgba(255,255,255,0.005) 50%,
+                transparent 100%
+            );
+            animation: subtleShimmer 8s ease-in-out infinite;
+        }
+
+        /* Floating Particles */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 40%, transparent 70%);
+            border-radius: 50%;
+            animation: elegantFloat 18s infinite ease-in-out;
+            filter: blur(1px);
+            opacity: 0.6;
+        }
+
+        /* Main Container */
+        .game-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* Header */
+        .header {
+            padding: 2rem 3rem;
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%),
+                rgba(0,0,0,0.4);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            position: relative;
+            box-shadow: 
+                0 1px 40px rgba(0,0,0,0.1),
+                inset 0 1px 0 rgba(255,255,255,0.08),
+                inset 0 -1px 0 rgba(255,255,255,0.02);
+            flex-shrink: 0;
+        }
+
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            animation: gentleGlow 6s ease-in-out infinite;
+        }
+
+        .nav-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.75rem;
+            font-weight: 500;
+            background: linear-gradient(135deg, #ffffff 0%, #f0f0f0 30%, #e8e8e8 70%, #ffffff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 0.5px;
+            position: relative;
+        }
+
+        .logo::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 100%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            opacity: 0;
+            animation: logoShine 4s ease-in-out infinite;
+        }
+
+        .coin-display {
+            display: flex;
+            align-items: center;
+            gap: 0.9rem;
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.06) 100%),
+                rgba(0,0,0,0.2);
+            padding: 0.9rem 1.6rem;
+            border-radius: 25px;
+            border: 1px solid rgba(255,255,255,0.12);
+            box-shadow: 
+                0 8px 32px rgba(0,0,0,0.15),
+                inset 0 1px 0 rgba(255,255,255,0.15),
+                inset 0 -1px 0 rgba(0,0,0,0.1);
+            backdrop-filter: blur(20px) saturate(150%);
+            -webkit-backdrop-filter: blur(20px) saturate(150%);
+            transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        .coin-display:hover {
+            transform: translateY(-1px);
+            box-shadow: 
+                0 12px 40px rgba(0,0,0,0.2),
+                inset 0 1px 0 rgba(255,255,255,0.2),
+                inset 0 -1px 0 rgba(0,0,0,0.1);
+        }
+
+        .coin-icon {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #FFD700 0%, #FFC107 30%, #FF8F00 100%);
+            border-radius: 50%;
+            box-shadow: 
+                0 4px 12px rgba(255,215,0,0.25),
+                inset 0 1px 0 rgba(255,255,255,0.4),
+                inset 0 -1px 0 rgba(0,0,0,0.1);
+            animation: coinPulse 4s ease-in-out infinite;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .coin-icon::before {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.3), transparent);
+            border-radius: 50%;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            position: relative;
+            min-height: 0;
+        }
+
+        /* Welcome Screen */
+        .welcome-screen {
+            text-align: center;
+            max-width: 1000px;
+            width: 100%;
+            animation: elegantEntrance 1.8s cubic-bezier(0.19, 1, 0.22, 1);
+            padding: 2rem;
+        }
+
+        .welcome-title {
+            font-size: 3.2rem;
+            margin-bottom: 2rem;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f8f8 25%, #e8e8e8 50%, #f8f8f8 75%, #ffffff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 200;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+            position: relative;
+            animation: titleGlow 6s ease-in-out infinite;
+        }
+
+        .welcome-title::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 120%;
+            height: 120%;
+            background: radial-gradient(ellipse, rgba(255,255,255,0.05) 0%, transparent 70%);
+            border-radius: 50%;
+            z-index: -1;
+            animation: halo 8s ease-in-out infinite;
+        }
+
+        .welcome-text {
+            font-size: 1.15rem;
+            margin-bottom: 3rem;
+            line-height: 1.8;
+            color: rgba(255,255,255,0.75);
+            font-weight: 300;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .game-info {
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%),
+                rgba(0,0,0,0.2);
+            padding: 3rem;
+            border-radius: 32px;
+            border: 1px solid rgba(255,255,255,0.08);
+            margin-bottom: 3rem;
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            box-shadow: 
+                0 20px 60px rgba(0,0,0,0.3),
+                inset 0 1px 0 rgba(255,255,255,0.1),
+                inset 0 -1px 0 rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .game-info::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+            animation: infoShine 8s ease-in-out infinite;
+        }
+
+        .game-info p {
+            margin: 0.8rem 0;
+            font-size: 1.1rem;
+            font-weight: 300;
+        }
+
+        .game-info p:first-child {
+            font-weight: 500;
+            font-size: 1.2rem;
+            margin-bottom: 1.5rem;
+            color: rgba(255,255,255,0.9);
+        }
+
+        .mode-buttons {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .mode-btn {
+            padding: 1.4rem 3rem;
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.04) 100%),
+                rgba(0,0,0,0.1);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 24px;
+            color: #fff;
+            font-size: 1.05rem;
+            font-weight: 400;
+            cursor: pointer;
+            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+            letter-spacing: 0.3px;
+            position: relative;
+            overflow: hidden;
+            backdrop-filter: blur(20px) saturate(150%);
+            -webkit-backdrop-filter: blur(20px) saturate(150%);
+            box-shadow: 
+                0 8px 32px rgba(0,0,0,0.15),
+                inset 0 1px 0 rgba(255,255,255,0.15),
+                inset 0 -1px 0 rgba(0,0,0,0.1);
+            min-width: 200px;
+        }
+
+        .mode-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+            transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        .mode-btn::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 0;
+            height: 0;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            border-radius: 50%;
+            transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        .mode-btn:hover::before {
+            left: 100%;
+        }
+
+        .mode-btn:hover::after {
+            width: 300px;
+            height: 300px;
+        }
+
+        .mode-btn:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 
+                0 16px 48px rgba(0,0,0,0.25),
+                inset 0 1px 0 rgba(255,255,255,0.2),
+                inset 0 -1px 0 rgba(0,0,0,0.1);
+            border-color: rgba(255,255,255,0.25);
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.08) 100%),
+                rgba(0,0,0,0.1);
+        }
+
+        .mode-btn:active {
+            transform: translateY(-2px) scale(1.01);
+            transition: all 0.15s ease;
+        }
+
+        /* Game Screen */
+        .game-container-inner {
+            display: none;
+            width: 100%;
+            height: 100vh;
+            animation: elegantEntrance 1.8s cubic-bezier(0.19, 1, 0.22, 1);
+        }
+
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%),
+                rgba(0,0,0,0.4);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(40px) saturate(180%);
+            position: relative;
+        }
+
+        .game-stats {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .stat-item {
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%),
+                rgba(0,0,0,0.2);
+            padding: 0.8rem 1.5rem;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.12);
+            backdrop-filter: blur(20px) saturate(150%);
+            text-align: center;
+            min-width: 80px;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.7);
+            margin-bottom: 0.3rem;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: 500;
+            color: #fff;
+        }
+
+        .coin-change {
+            position: absolute;
+            top: -30px;
+            right: 50%;
+            transform: translateX(50%);
+            font-size: 1rem;
+            font-weight: 600;
+            z-index: 1000;
+            pointer-events: none;
+            animation: coinChangeFloat 2s ease-out forwards;
+        }
+
+        .coin-change.positive {
+            color: #4CAF50;
+        }
+
+        .coin-change.negative {
+            color: #f44336;
+        }
+
+        .game-canvas {
+            width: 100%;
+            height: calc(100vh - 200px);
+            background: linear-gradient(180deg, 
+                #87CEEB 0%, 
+                #87CEEB 70%, 
+                #228B22 70%, 
+                #32CD32 100%);
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .bird {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            border-radius: 50% 40% 50% 40%;
+            border: 2px solid #FF8C00;
+            left: 100px;
+            z-index: 10;
+            transition: transform 0.1s ease;
+            box-shadow: 
+                0 4px 8px rgba(0,0,0,0.3),
+                inset 0 2px 4px rgba(255,255,255,0.3);
+        }
+
+        .bird::before {
+            content: '';
+            position: absolute;
+            top: 8px;
+            left: 20px;
+            width: 8px;
+            height: 8px;
+            background: #000;
+            border-radius: 50%;
+        }
+
+        .bird::after {
+            content: '';
+            position: absolute;
+            top: 12px;
+            right: -8px;
+            width: 0;
+            height: 0;
+            border-left: 10px solid #FFA500;
+            border-top: 5px solid transparent;
+            border-bottom: 5px solid transparent;
+        }
+
+        .pipe {
+            position: absolute;
+            background: linear-gradient(90deg, #228B22, #32CD32, #228B22);
+            border: 2px solid #006400;
+            border-radius: 8px;
+            z-index: 5;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .pipe-top {
+            top: 0;
+        }
+
+        .pipe-bottom {
+            bottom: 50px;
+        }
+
+        .ground {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 50px;
+            background: linear-gradient(90deg, #8B4513, #A0522D, #8B4513);
+            border-top: 3px solid #654321;
+            z-index: 20;
+        }
+
+        .cloud {
+            position: absolute;
+            background: rgba(255,255,255,0.8);
+            border-radius: 50px;
+            animation: cloudMove 15s linear infinite;
+        }
+
+        .cloud::before {
+            content: '';
+            position: absolute;
+            background: rgba(255,255,255,0.8);
+            border-radius: 50px;
+        }
+
+        .cloud::after {
+            content: '';
+            position: absolute;
+            background: rgba(255,255,255,0.8);
+            border-radius: 50px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%),
+                rgba(0,0,0,0.4);
+        }
+
+        .control-btn {
+            padding: 1rem 2rem;
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%),
+                rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 20px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+            font-weight: 400;
+            letter-spacing: 0.3px;
+            backdrop-filter: blur(20px) saturate(150%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .control-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+            transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        .control-btn:hover::before {
+            left: 100%;
+        }
+
+        .control-btn:hover {
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.06) 100%),
+                rgba(0,0,0,0.2);
+            transform: translateY(-3px) scale(1.02);
+        }
+
+        /* Game Over Screen */
+        .game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%),
+                rgba(0,0,0,0.8);
+            padding: 3rem;
+            border-radius: 32px;
+            border: 1px solid rgba(255,255,255,0.15);
+            backdrop-filter: blur(40px) saturate(180%);
+            text-align: center;
+            z-index: 1000;
+            min-width: 400px;
+            display: none;
+        }
+
+        .game-over-title {
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8e8e 50%, #ff6b6b 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .final-stats {
+            margin: 2rem 0;
+        }
+
+        .final-stats h3 {
+            margin-bottom: 1rem;
+            color: rgba(255,255,255,0.9);
+        }
+
+        .final-stat {
+            display: flex;
+            justify-content: space-between;
+            margin: 0.8rem 0;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 100;
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%),
+                rgba(0,0,0,0.7);
+            padding: 2rem;
+            border-radius: 20px;
+            backdrop-filter: blur(20px);
+            color: #fff;
+            pointer-events: none;
+        }
+
+        .instructions h3 {
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        .instructions p {
+            margin: 0.5rem 0;
+            font-size: 1.1rem;
+        }
+
+        /* Animations */
+        @keyframes elegantFloat {
+            0% { 
+                transform: translateY(100vh) rotate(0deg) scale(0.5); 
+                opacity: 0; 
+            }
+            5% { 
+                opacity: 0.3; 
+                transform: translateY(95vh) rotate(18deg) scale(0.8);
+            }
+            15% { 
+                opacity: 0.6; 
+                transform: translateY(85vh) rotate(45deg) scale(1);
+            }
+            85% { 
+                opacity: 0.6; 
+                transform: translateY(15vh) rotate(315deg) scale(1);
+            }
+            95% { 
+                opacity: 0.3; 
+                transform: translateY(5vh) rotate(342deg) scale(0.8);
+            }
+            100% { 
+                transform: translateY(-5vh) rotate(360deg) scale(0.5); 
+                opacity: 0; 
+            }
+        }
+
+        @keyframes gentleFlow {
+            0%, 100% { 
+                background-position: 0% 50%, 0% 50%, 0% 50%, 0% 50%, 0% 0%; 
+                transform: scale(1);
+            }
+            25% { 
+                background-position: 25% 75%, 75% 25%, 25% 25%, 75% 75%, 25% 25%; 
+                transform: scale(1.02);
+            }
+            50% { 
+                background-position: 100% 50%, 50% 100%, 100% 100%, 50% 50%, 50% 50%; 
+                transform: scale(1);
+            }
+            75% { 
+                background-position: 75% 25%, 25% 75%, 75% 75%, 25% 25%, 75% 75%; 
+                transform: scale(1.02);
+            }
+        }
+
+        @keyframes floatingLights {
+            0%, 100% { 
+                background-position: 30% 40%, 70% 80%, 20% 80%; 
+                opacity: 0.5;
+            }
+            33% { 
+                background-position: 70% 20%, 30% 60%, 80% 40%; 
+                opacity: 0.8;
+            }
+            66% { 
+                background-position: 50% 90%, 90% 30%, 10% 70%; 
+                opacity: 0.6;
+            }
+        }
+
+        @keyframes subtleShimmer {
+            0%, 100% { 
+                transform: translateX(-100%) skewX(-15deg); 
+                opacity: 0; 
+            }
+            50% { 
+                transform: translateX(100%) skewX(-15deg); 
+                opacity: 0.3; 
+            }
+        }
+
+        @keyframes gentleGlow {
+            0%, 100% { 
+                opacity: 0.6; 
+                transform: translateX(-50%) scaleX(0.8); 
+            }
+            50% { 
+                opacity: 1; 
+                transform: translateX(-50%) scaleX(1.2); 
+            }
+        }
+
+        @keyframes logoShine {
+            0%, 100% { 
+                opacity: 0; 
+                transform: scaleX(0); 
+            }
+            20%, 80% { 
+                opacity: 0.6; 
+                transform: scaleX(1); 
+            }
+        }
+
+        @keyframes coinPulse {
+            0%, 100% { 
+                transform: scale(1) rotate(0deg); 
+                box-shadow: 0 4px 12px rgba(255,215,0,0.25);
+            }
+            25% { 
+                transform: scale(1.05) rotate(90deg); 
+                box-shadow: 0 6px 18px rgba(255,215,0,0.35);
+            }
+            50% { 
+                transform: scale(1.08) rotate(180deg); 
+                box-shadow: 0 8px 24px rgba(255,215,0,0.4);
+            }
+            75% { 
+                transform: scale(1.05) rotate(270deg); 
+                box-shadow: 0 6px 18px rgba(255,215,0,0.35);
+            }
+        }
+
+        @keyframes titleGlow {
+            0%, 100% { 
+                filter: brightness(1) drop-shadow(0 0 10px rgba(255,255,255,0.2)); 
+                transform: scale(1);
+            }
+            50% { 
+                filter: brightness(1.08) drop-shadow(0 0 25px rgba(255,255,255,0.4)); 
+                transform: scale(1.005);
+            }
+        }
+
+        @keyframes halo {
+            0%, 100% { 
+                opacity: 0.3; 
+                transform: translate(-50%, -50%) scale(1) rotate(0deg); 
+            }
+            50% { 
+                opacity: 0.6; 
+                transform: translate(-50%, -50%) scale(1.1) rotate(180deg); 
+            }
+        }
+
+        @keyframes infoShine {
+            0% { 
+                left: -100%; 
+                opacity: 0; 
+            }
+            50% { 
+                left: 0%; 
+                opacity: 1; 
+            }
+            100% { 
+                left: 100%; 
+                opacity: 0; 
+            }
+        }
+
+        @keyframes elegantEntrance {
+            0% { 
+                transform: translateY(40px) scale(0.95); 
+                opacity: 0; 
+                filter: blur(20px);
+            }
+            50% { 
+                transform: translateY(20px) scale(0.98); 
+                opacity: 0.7; 
+                filter: blur(10px);
+            }
+            100% { 
+                transform: translateY(0) scale(1); 
+                opacity: 1; 
+                filter: blur(0);
+            }
+        }
+
+        @keyframes cloudMove {
+            0% { 
+                transform: translateX(-100px); 
+            }
+            100% { 
+                transform: translateX(calc(100vw + 100px)); 
+            }
+        }
+
+        @keyframes coinChangeFloat {
+            0% {
+                opacity: 1;
+                transform: translateX(50%) translateY(0);
+            }
+            100% {
+                opacity: 0;
+                transform: translateX(50%) translateY(-50px);
+            }
+        }
+
+        /* Hidden class */
+        .hidden {
+            display: none !important;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .header {
+                padding: 1rem 1.5rem;
+            }
+            
+            .logo {
+                font-size: 1.3rem;
+            }
+            
+            .coin-display {
+                padding: 0.6rem 1rem;
+                gap: 0.6rem;
+            }
+
+            .coin-icon {
+                width: 16px;
+                height: 16px;
+            }
+            
+            .game-stats {
+                gap: 1rem;
+            }
+            
+            .stat-item {
+                padding: 0.5rem 1rem;
+                min-width: 60px;
+            }
+            
+            .control-btn {
+                padding: 0.7rem 1.2rem;
+                font-size: 0.9rem;
+            }
+            
+            .bird {
+                width: 30px;
+                height: 30px;
+            }
+            
+            .game-over-screen {
+                min-width: 300px;
+                padding: 2rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .welcome-title {
+                font-size: 2.5rem;
+            }
+            
+            .game-info {
+                padding: 2rem;
+            }
+            
+            .mode-btn {
+                padding: 1rem 2rem;
+                min-width: 150px;
+            }
+            
+            .game-stats {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .stat-item {
+                padding: 0.4rem 0.8rem;
+            }
+            
+            .bird {
+                width: 25px;
+                height: 25px;
+                left: 80px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Animated Background -->
+    <div class="matrix-bg"></div>
+    <div class="particles" id="particles"></div>
+
+    <div class="game-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="nav-row">
+                <div class="logo">Void Flappy</div>
+                <div class="coin-display">
+                    <div class="coin-icon"></div>
+                    <span id="coinAmount">0</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Welcome Screen -->
+            <div class="welcome-screen" id="welcomeScreen">
+                <h1 class="welcome-title">Welcome to Void Games Flappy Bird</h1>
+                <p class="welcome-text">
+                    Navigate through pipes in our futuristic flappy bird experience. 
+                    Hit pipes to lose coins, pass them to gain coins!
+                </p>
+                <div class="game-info">
+                    <p><strong>Game Rules:</strong></p>
+                    <p>🎯 Pass a pipe: +100 coins</p>
+                    <p>💥 Hit a pipe: -350 coins (continues playing)</p>
+                    <p>🎮 Play Cost: 200 coins</p>
+                    <p>☠️ Hit the ground: Game Over</p>
+                </div>
+                <div class="mode-buttons">
+                    <button class="mode-btn" id="startGameBtn">Start Flying</button>
+                </div>
+            </div>
+
+            <!-- Game Screen -->
+            <div class="game-container-inner" id="gameContainer">
+                <div class="game-header">
+                    <div class="game-stats">
+                        <div class="stat-item">
+                            <div class="stat-label">Score</div>
+                            <div class="stat-value" id="scoreValue">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Session Coins</div>
+                            <div class="stat-value" id="sessionCoinsValue">-200</div>
+                        </div>
+                    </div>
+                    <div class="controls">
+                        <button class="control-btn" id="pauseBtn">Pause</button>
+                        <button class="control-btn" id="backToMenuBtn">Back to Menu</button>
+                    </div>
+                </div>
+                
+                <div class="game-canvas" id="gameCanvas">
+                    <div class="bird" id="bird"></div>
+                    <div class="ground"></div>
+                    
+                    <div class="instructions" id="instructions">
+                        <h3>Get Ready!</h3>
+                        <p>Click anywhere or press SPACE to fly</p>
+                        <p>Avoid the ground, fly through pipes!</p>
+                    </div>
+                </div>
+                
+                <div class="game-over-screen" id="gameOverScreen">
+                    <h2 class="game-over-title">Game Over!</h2>
+                    <div class="final-stats">
+                        <h3>Final Results</h3>
+                        <div class="final-stat">
+                            <span>Score (Pipes Passed):</span>
+                            <span id="finalScore">0</span>
+                        </div>
+                        <div class="final-stat">
+                            <span>Coins Gained from Pipes:</span>
+                            <span id="coinsGained">0</span>
+                        </div>
+                        <div class="final-stat">
+                            <span>Coins Lost from Hits:</span>
+                            <span id="coinsLost">0</span>
+                        </div>
+                        <div class="final-stat">
+                            <span>Game Cost:</span>
+                            <span>-200</span>
+                        </div>
+                        <div class="final-stat" style="border-top: 2px solid rgba(255,255,255,0.3); margin-top: 1rem; padding-top: 1rem; font-weight: 600;">
+                            <span>Net Session Result:</span>
+                            <span id="netResult">-200</span>
+                        </div>
+                    </div>
+                    <div class="mode-buttons">
+                        <button class="mode-btn" id="playAgainBtn">Play Again</button>
+                        <button class="mode-btn" id="menuBtn">Main Menu</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Firebase and Game Scripts -->
+    <script type="module">
+        // Firebase imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            getDoc, 
+            updateDoc, 
+            setDoc, 
+            serverTimestamp
+        } from "https://www.gstatic.com/firebasejs/11.4.0/firebase-firestore.js";
+
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkAp_GCGCtw4zv7GgHJOE9GPgIaPEuOvQ",
+            authDomain: "void-games-c8d9e.firebaseapp.com",
+            projectId: "void-games-c8d9e",
+            storageBucket: "void-games-c8d9e.firebasestorage.app",
+            messagingSenderId: "1063089929776",
+            appId: "1:1063089929776:web:8e226a23a4f3ab9c5777f5"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Game variables
+        let currentUser = null;
+        let _coinBalance = 0;
+        let gameActive = false;
+        let gamePaused = false;
+        let score = 0;
+        let sessionCoins = -200; // Start with game cost
+        let coinsGained = 0;
+        let coinsLost = 0;
+
+        // Game objects
+        let bird = null;
+        let pipes = [];
+        let gameCanvas = null;
+        let gameLoop = null;
+        let lastPipeSpawn = 0;
+        let cloudInterval = null;
+
+        // Bird physics
+        let birdY = 250;
+        let birdVelocity = 0;
+        const gravity = 0.5;
+        const jumpStrength = -10;
+        const birdX = 100;
+
+        // Pipe settings
+        const pipeWidth = 60;
+        const pipeGap = 200;
+        const pipeSpeed = 3;
+        const pipeSpawnInterval = 1500; // milliseconds
+
+        // DOM Elements
+        const coinDisplay = document.getElementById('coinAmount');
+        const welcomeScreen = document.getElementById('welcomeScreen');
+        const gameContainer = document.getElementById('gameContainer');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const instructions = document.getElementById('instructions');
+        const scoreValue = document.getElementById('scoreValue');
+        const sessionCoinsValue = document.getElementById('sessionCoinsValue');
+
+        // Buttons
+        const startGameBtn = document.getElementById('startGameBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const backToMenuBtn = document.getElementById('backToMenuBtn');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+        const menuBtn = document.getElementById('menuBtn');
+
+        // Coin management functions
+        async function loadUserBalance() {
+            if (!currentUser) {
+                _coinBalance = 1000;
+                updateCoinDisplay();
+                return;
+            }
+
+            try {
+                const userRef = doc(db, 'users', currentUser.uid);
+                const userDoc = await getDoc(userRef);
+                
+                if (userDoc.exists()) {
+                    const userData = userDoc.data();
+                    _coinBalance = userData.accountBalance || 1000;
+                    updateCoinDisplay();
+                } else {
+                    await setDoc(userRef, { 
+                        accountBalance: 1000,
+                        username: currentUser.displayName || "Player",
+                        email: currentUser.email,
+                        createdAt: serverTimestamp()
+                    });
+                    _coinBalance = 1000;
+                    updateCoinDisplay();
+                }
+            } catch (error) {
+                console.error("Error loading balance:", error);
+                _coinBalance = 1000;
+                updateCoinDisplay();
+            }
+        }
+
+        async function updateCoins(amount, showAnimation = true) {
+            _coinBalance += amount;
+            updateCoinDisplay();
+
+            if (showAnimation && amount !== 0) {
+                showCoinChangeAnimation(amount);
+            }
+
+            if (!currentUser) return true;
+
+            try {
+                const userRef = doc(db, 'users', currentUser.uid);
+                await updateDoc(userRef, {
+                    accountBalance: _coinBalance,
+                    lastUpdated: serverTimestamp()
+                });
+                return true;
+            } catch (error) {
+                console.error("Error updating coins:", error);
+                return true;
+            }
+        }
+
+        function updateCoinDisplay() {
+            coinDisplay.textContent = _coinBalance.toLocaleString();
+        }
+
+        function showCoinChangeAnimation(amount) {
+            const coinChange = document.createElement('div');
+            coinChange.className = `coin-change ${amount > 0 ? 'positive' : 'negative'}`;
+            coinChange.textContent = `${amount > 0 ? '+' : ''}${amount}`;
+            
+            const coinDisplayElement = document.querySelector('.coin-display');
+            coinDisplayElement.style.position = 'relative';
+            coinDisplayElement.appendChild(coinChange);
+            
+            setTimeout(() => {
+                if (coinChange.parentNode) {
+                    coinChange.remove();
+                }
+            }, 2000);
+        }
+
+        // Game functions
+        function initializeGame() {
+            bird = document.getElementById('bird');
+            gameCanvas = document.getElementById('gameCanvas');
+            
+            // Reset game state
+            birdY = 250;
+            birdVelocity = 0;
+            score = 0;
+            sessionCoins = -200;
+            coinsGained = 0;
+            coinsLost = 0;
+            pipes = [];
+            lastPipeSpawn = 0;
+            
+            updateGameStats();
+            
+            // Position bird
+            bird.style.top = birdY + 'px';
+            
+            // Clear any existing pipes
+            const existingPipes = gameCanvas.querySelectorAll('.pipe');
+            existingPipes.forEach(pipe => pipe.remove());
+            
+            // Show instructions
+            instructions.style.display = 'block';
+            gameOverScreen.style.display = 'none';
+        }
+
+        function startGame() {
+            if (_coinBalance < 200) {
+                alert('Insufficient coins! You need 200 coins to play.');
+                return;
+            }
+
+            // Deduct game cost
+            updateCoins(-200);
+            
+            gameActive = true;
+            gamePaused = false;
+            
+            showScreen('game');
+            initializeGame();
+            
+            // Start game loop
+            gameLoop = setInterval(updateGame, 16); // ~60 FPS
+            
+            // Start spawning pipes
+            setTimeout(() => {
+                if (gameActive) {
+                    spawnPipe();
+                }
+            }, 2000);
+            
+            // Generate clouds
+            generateClouds();
+        }
+
+        function updateGame() {
+            if (!gameActive || gamePaused) return;
+            
+            // Hide instructions after first interaction
+            if (instructions.style.display !== 'none') {
+                instructions.style.display = 'none';
+            }
+            
+            // Update bird physics
+            birdVelocity += gravity;
+            birdY += birdVelocity;
+            
+            // Apply bird position and rotation based on velocity
+            bird.style.top = birdY + 'px';
+            const rotation = Math.max(-30, Math.min(30, birdVelocity * 3));
+            bird.style.transform = `rotate(${rotation}deg)`;
+            
+            // Check ground collision
+            if (birdY > gameCanvas.offsetHeight - 90) { // 50px ground + 40px bird height
+                endGame();
+                return;
+            }
+            
+            // Check ceiling collision
+            if (birdY < 0) {
+                birdY = 0;
+                birdVelocity = 0;
+            }
+            
+            // Update pipes
+            updatePipes();
+            
+            // Spawn new pipes
+            if (Date.now() - lastPipeSpawn > pipeSpawnInterval) {
+                spawnPipe();
+                lastPipeSpawn = Date.now();
+            }
+        }
+
+        function jump() {
+            if (!gameActive || gamePaused) return;
+            birdVelocity = jumpStrength;
+        }
+
+        function spawnPipe() {
+            const pipeGapStart = Math.random() * (gameCanvas.offsetHeight - pipeGap - 150) + 50;
+            
+            // Top pipe
+            const topPipe = document.createElement('div');
+            topPipe.className = 'pipe pipe-top';
+            topPipe.style.left = gameCanvas.offsetWidth + 'px';
+            topPipe.style.width = pipeWidth + 'px';
+            topPipe.style.height = pipeGapStart + 'px';
+            
+            // Bottom pipe
+            const bottomPipe = document.createElement('div');
+            bottomPipe.className = 'pipe pipe-bottom';
+            bottomPipe.style.left = gameCanvas.offsetWidth + 'px';
+            bottomPipe.style.width = pipeWidth + 'px';
+            bottomPipe.style.height = (gameCanvas.offsetHeight - pipeGapStart - pipeGap - 50) + 'px';
+            
+            // Add pipes to canvas
+            gameCanvas.appendChild(topPipe);
+            gameCanvas.appendChild(bottomPipe);
+            
+            pipes.push({ 
+                top: topPipe, 
+                bottom: bottomPipe, 
+                x: gameCanvas.offsetWidth, 
+                passed: false,
+                hit: false 
+            });
+        }
+
+        function updatePipes() {
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                const pipe = pipes[i];
+                pipe.x -= pipeSpeed;
+                
+                // Update pipe positions
+                pipe.top.style.left = pipe.x + 'px';
+                pipe.bottom.style.left = pipe.x + 'px';
+                
+                // Check if bird passed the pipe
+                if (!pipe.passed && pipe.x + pipeWidth < birdX) {
+                    pipe.passed = true;
+                    score++;
+                    const coinReward = 100;
+                    sessionCoins += coinReward;
+                    coinsGained += coinReward;
+                    updateCoins(coinReward);
+                    updateGameStats();
+                }
+                
+                // Check collision with pipe
+                if (!pipe.hit && checkPipeCollision(pipe)) {
+                    pipe.hit = true;
+                    const coinPenalty = -350;
+                    sessionCoins += coinPenalty;
+                    coinsLost += Math.abs(coinPenalty);
+                    updateCoins(coinPenalty);
+                    updateGameStats();
+                    
+                    // Visual feedback for hit
+                    pipe.top.style.background = 'linear-gradient(90deg, #ff6b6b, #ff8e8e, #ff6b6b)';
+                    pipe.bottom.style.background = 'linear-gradient(90deg, #ff6b6b, #ff8e8e, #ff6b6b)';
+                    
+                    setTimeout(() => {
+                        if (pipe.top.parentNode) {
+                            pipe.top.style.background = 'linear-gradient(90deg, #228B22, #32CD32, #228B22)';
+                            pipe.bottom.style.background = 'linear-gradient(90deg, #228B22, #32CD32, #228B22)';
+                        }
+                    }, 500);
+                }
+                
+                // Remove pipes that are off screen
+                if (pipe.x < -pipeWidth) {
+                    pipe.top.remove();
+                    pipe.bottom.remove();
+                    pipes.splice(i, 1);
+                }
+            }
+        }
+
+        function checkPipeCollision(pipe) {
+            const birdLeft = birdX;
+            const birdRight = birdX + 40;
+            const birdTop = birdY;
+            const birdBottom = birdY + 40;
+            
+            const pipeLeft = pipe.x;
+            const pipeRight = pipe.x + pipeWidth;
+            
+            // Check if bird is horizontally aligned with pipe
+            if (birdRight > pipeLeft && birdLeft < pipeRight) {
+                // Check collision with top pipe
+                const topPipeHeight = parseFloat(pipe.top.style.height);
+                if (birdTop < topPipeHeight) {
+                    return true;
+                }
+                
+                // Check collision with bottom pipe
+                const bottomPipeTop = gameCanvas.offsetHeight - parseFloat(pipe.bottom.style.height) - 50;
+                if (birdBottom > bottomPipeTop) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        function updateGameStats() {
+            scoreValue.textContent = score;
+            sessionCoinsValue.textContent = sessionCoins > 0 ? `+${sessionCoins}` : sessionCoins;
+            sessionCoinsValue.style.color = sessionCoins >= 0 ? '#4CAF50' : '#f44336';
+        }
+
+        function pauseGame() {
+            gamePaused = !gamePaused;
+            pauseBtn.textContent = gamePaused ? 'Resume' : 'Pause';
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(gameLoop);
+            clearInterval(cloudInterval);
+            
+            // Update final stats
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('coinsGained').textContent = `+${coinsGained}`;
+            document.getElementById('coinsLost').textContent = `-${coinsLost}`;
+            document.getElementById('netResult').textContent = sessionCoins > 0 ? `+${sessionCoins}` : sessionCoins;
+            
+            // Style net result
+            const netResultElement = document.getElementById('netResult');
+            netResultElement.style.color = sessionCoins >= 0 ? '#4CAF50' : '#f44336';
+            
+            gameOverScreen.style.display = 'block';
+        }
+
+        function generateClouds() {
+            cloudInterval = setInterval(() => {
+                if (!gameActive) return;
+                
+                const cloud = document.createElement('div');
+                cloud.className = 'cloud';
+                
+                const size = Math.random() * 60 + 40;
+                cloud.style.width = size + 'px';
+                cloud.style.height = size * 0.6 + 'px';
+                cloud.style.top = Math.random() * 200 + 50 + 'px';
+                cloud.style.left = '-100px';
+                
+                // Add cloud parts
+                cloud.style.setProperty('--before-width', size * 0.5 + 'px');
+                cloud.style.setProperty('--before-height', size * 0.5 + 'px');
+                cloud.style.setProperty('--before-top', '-' + size * 0.2 + 'px');
+                cloud.style.setProperty('--before-left', size * 0.1 + 'px');
+                
+                cloud.style.setProperty('--after-width', size * 0.3 + 'px');
+                cloud.style.setProperty('--after-height', size * 0.3 + 'px');
+                cloud.style.setProperty('--after-top', '-' + size * 0.1 + 'px');
+                cloud.style.setProperty('--after-right', size * 0.1 + 'px');
+                
+                gameCanvas.appendChild(cloud);
+                
+                setTimeout(() => {
+                    if (cloud.parentNode) {
+                        cloud.remove();
+                    }
+                }, 15000);
+            }, 3000);
+        }
+
+        function showScreen(screen) {
+            welcomeScreen.style.display = screen === 'welcome' ? 'block' : 'none';
+            gameContainer.style.display = screen === 'game' ? 'block' : 'none';
+        }
+
+        function resetToMenu() {
+            gameActive = false;
+            gamePaused = false;
+            if (gameLoop) clearInterval(gameLoop);
+            if (cloudInterval) clearInterval(cloudInterval);
+            
+            // Clear pipes
+            const existingPipes = gameCanvas.querySelectorAll('.pipe');
+            existingPipes.forEach(pipe => pipe.remove());
+            pipes = [];
+            
+            // Clear clouds
+            const existingClouds = gameCanvas.querySelectorAll('.cloud');
+            existingClouds.forEach(cloud => cloud.remove());
+            
+            pauseBtn.textContent = 'Pause';
+            showScreen('welcome');
+        }
+
+        // Event listeners
+        startGameBtn.addEventListener('click', startGame);
+        pauseBtn.addEventListener('click', pauseGame);
+        backToMenuBtn.addEventListener('click', () => {
+            if (gameActive && confirm('Are you sure you want to quit? You will lose your progress.')) {
+                resetToMenu();
+            } else if (!gameActive) {
+                resetToMenu();
+            }
+        });
+        playAgainBtn.addEventListener('click', startGame);
+        menuBtn.addEventListener('click', resetToMenu);
+
+        // Game controls
+        gameCanvas.addEventListener('click', jump);
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                jump();
+            }
+        });
+
+        // Initialize particles animation
+        function createParticles() {
+            const particlesContainer = document.getElementById('particles');
+            
+            setInterval(() => {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                
+                const size = Math.random() * 8 + 3;
+                particle.style.width = particle.style.height = size + 'px';
+                particle.style.animationDuration = (Math.random() * 8 + 12) + 's';
+                particle.style.animationDelay = (Math.random() * 2) + 's';
+                
+                particlesContainer.appendChild(particle);
+                
+                setTimeout(() => {
+                    if (particle.parentNode) {
+                        particle.remove();
+                    }
+                }, 22000);
+            }, 600);
+        }
+
+        // Authentication state listener
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                await loadUserBalance();
+            } else {
+                currentUser = null;
+                _coinBalance = 1000;
+                updateCoinDisplay();
+            }
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            createParticles();
+            
+            if (!currentUser) {
+                _coinBalance = 1000;
+                updateCoinDisplay();
+            }
+            
+            showScreen('welcome');
+        });
+    </script>
+</body>
+</html>
