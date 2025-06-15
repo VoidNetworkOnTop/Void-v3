@@ -1071,6 +1071,7 @@
                     <p>💥 Hit a pipe: -350 coins (continues playing)</p>
                     <p>🎮 Play Cost: 200 coins</p>
                     <p>☠️ Hit the ground: Game Over</p>
+                    <p>⚡ Game gets progressively harder as you advance!</p>
                 </div>
                 <div class="mode-buttons">
                     <button class="mode-btn" id="startGameBtn">Start Flying</button>
@@ -1197,9 +1198,14 @@
 
         // Pipe settings
         const pipeWidth = 60;
-        const pipeGap = 200;
-        const pipeSpeed = 3;
-        const pipeSpawnInterval = 1500; // milliseconds
+        const basePipeGap = 200;
+        const basePipeSpeed = 3;
+        const basePipeSpawnInterval = 1500; // milliseconds
+        
+        // Difficulty progression
+        let currentPipeSpeed = basePipeSpeed;
+        let currentPipeGap = basePipeGap;
+        let currentPipeSpawnInterval = basePipeSpawnInterval;
 
         // DOM Elements
         const coinDisplay = document.getElementById('coinAmount');
@@ -1306,6 +1312,11 @@
             pipes = [];
             lastPipeSpawn = 0;
             
+            // Reset difficulty to base values
+            currentPipeSpeed = basePipeSpeed;
+            currentPipeGap = basePipeGap;
+            currentPipeSpawnInterval = basePipeSpawnInterval;
+            
             updateGameStats();
             
             // Position bird
@@ -1370,8 +1381,11 @@
                 instructions.style.display = 'none';
             }
             
-            // Update bird physics
-            birdVelocity += gravity;
+            // Get current difficulty-adjusted gravity
+            const currentGravity = updateDifficulty();
+            
+            // Update bird physics with current gravity
+            birdVelocity += currentGravity;
             birdY += birdVelocity;
             
             // Apply bird position and rotation based on velocity
@@ -1396,8 +1410,8 @@
             // Update pipes
             updatePipes();
             
-            // Spawn new pipes
-            if (Date.now() - lastPipeSpawn > pipeSpawnInterval) {
+            // Spawn new pipes using current difficulty interval
+            if (Date.now() - lastPipeSpawn > currentPipeSpawnInterval) {
                 spawnPipe();
                 lastPipeSpawn = Date.now();
             }
@@ -1411,7 +1425,7 @@
         function spawnPipe() {
             if (!gameCanvas) return;
             
-            const pipeGapStart = Math.random() * (gameCanvas.offsetHeight - pipeGap - 150) + 50;
+            const pipeGapStart = Math.random() * (gameCanvas.offsetHeight - currentPipeGap - 150) + 50;
             
             // Top pipe
             const topPipe = document.createElement('div');
@@ -1425,7 +1439,7 @@
             bottomPipe.className = 'pipe pipe-bottom';
             bottomPipe.style.left = gameCanvas.offsetWidth + 'px';
             bottomPipe.style.width = pipeWidth + 'px';
-            bottomPipe.style.height = (gameCanvas.offsetHeight - pipeGapStart - pipeGap - 50) + 'px';
+            bottomPipe.style.height = (gameCanvas.offsetHeight - pipeGapStart - currentPipeGap - 50) + 'px';
             
             // Add pipes to canvas
             gameCanvas.appendChild(topPipe);
@@ -1443,7 +1457,7 @@
         function updatePipes() {
             for (let i = pipes.length - 1; i >= 0; i--) {
                 const pipe = pipes[i];
-                pipe.x -= pipeSpeed;
+                pipe.x -= currentPipeSpeed; // Use current difficulty-adjusted speed
                 
                 // Update pipe positions
                 pipe.top.style.left = pipe.x + 'px';
@@ -1458,6 +1472,9 @@
                     coinsGained += coinReward;
                     updateCoins(coinReward);
                     updateGameStats();
+                    
+                    // Update difficulty when score increases
+                    updateDifficulty();
                 }
                 
                 // Check collision with pipe
@@ -1515,6 +1532,24 @@
             }
             
             return false;
+        }
+
+        function updateDifficulty() {
+            // Very gradual difficulty increase based on score
+            // Speed increases by 0.1 every 5 pipes (very slow)
+            currentPipeSpeed = basePipeSpeed + (Math.floor(score / 5) * 0.1);
+            
+            // Spawn interval decreases by 50ms every 10 pipes (more frequent pipes)
+            currentPipeSpawnInterval = Math.max(800, basePipeSpawnInterval - (Math.floor(score / 10) * 50));
+            
+            // Gap slightly decreases by 5px every 15 pipes (smaller gaps at high scores)
+            currentPipeGap = Math.max(150, basePipeGap - (Math.floor(score / 15) * 5));
+            
+            // Optional: Add slight gravity increase every 20 pipes
+            const gravityIncrease = Math.floor(score / 20) * 0.02;
+            const currentGravity = gravity + gravityIncrease;
+            
+            return currentGravity;
         }
 
         function updateGameStats() {
