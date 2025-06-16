@@ -61,6 +61,11 @@ const defaultApps = [
         imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVAPpi6GcK8ISUK5QWBF7vY3vNHuGHC_8PQDI53AJ2Zjhq45VzIhCPlcv7IEyDJwCJ6J95p9GSy_Bl6_D05ZO6z2a62wsKO0A_td1sWltwzvXTLvzA4Gr0HwqobtqFbIuLN4QaE8NLyDKF1jlLwEE_GZ-1Od43G3N8UcFw?key=50gdziqO_dSI4pHVaqqAEw",
         link: "/local games/voidflappy.html"
     },
+    {
+        title: "Rock Paper Scissors",
+        imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVDbFmRAf90OF_QNSf3Um-1XEr2aNPTo7xI3eZHnK-W2qcA7vmusYia_4qUWOkpcNaNZK8ZleOfjRH5nbpngvTl-UxNZZ-iyr-6vsqGj0_CNdJpQcxdlaVBAyASq5jjCzRUs3K_TB1U8EHpUCiYI2aGt8lmD5_RqOaFGnQ?key=50gdziqO_dSI4pHVaqqAEw",
+        link: "/local games/voidrps.html"
+    },
 ];
 
 /**
