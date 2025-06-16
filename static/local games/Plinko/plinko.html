@@ -823,7 +823,7 @@
             ballRadius: 8,
             pegRadius: 5,
             pegSpacing: 60,
-            pegRows: 10,
+            pegRows: 7,
             dropSpeed: 2,
             gravity: 0.6,
             friction: 0.85,
@@ -1002,45 +1002,10 @@
             updateCoinDisplay();
             updateEarningsDisplay();
             
-            // Calculate optimal spacing based on canvas size
-            const availableWidth = canvasWidth * 0.8; // Use 80% of width for pegs
-            const availableHeight = canvasHeight * 0.7; // Use 70% of height for pegs
-            
-            const maxPegSpacing = Math.min(
-                availableWidth / (config.pegRows + 1),
-                availableHeight / config.pegRows,
-                config.pegSpacing
-            );
-            
-            const actualPegSpacing = Math.max(30, maxPegSpacing); // Minimum 30px spacing
-            
-            const startX = canvasWidth / 2;
-            const startY = Math.max(40, canvasHeight * 0.1); // Start 10% down from top
-            
-            // Create pegs in triangular pattern
-            for (let row = 0; row < config.pegRows; row++) {
-                const pegCount = row + 1;
-                
-                for (let i = 0; i < pegCount; i++) {
-                    const x = startX - (pegCount - 1) * actualPegSpacing / 2 + i * actualPegSpacing;
-                    const y = startY + row * actualPegSpacing;
-                    
-                    // Only add peg if it's within canvas bounds
-                    if (x >= config.pegRadius && x <= canvasWidth - config.pegRadius && 
-                        y >= config.pegRadius && y <= canvasHeight - 100) {
-                        pegs.push({
-                            x: x,
-                            y: y,
-                            radius: config.pegRadius
-                        });
-                    }
-                }
-            }
-            
-            // Setup buckets at the bottom
+            // Setup buckets first to determine the peg triangle size
             const bucketWidth = canvasWidth / config.buckets;
             const bucketHeight = Math.min(50, canvasHeight * 0.1);
-            const bucketY = canvasHeight - bucketHeight - 10; // 10px from bottom
+            const bucketY = canvasHeight - bucketHeight - 10;
             const rewards = generateBucketRewards();
             
             for (let i = 0; i < config.buckets; i++) {
@@ -1048,10 +1013,50 @@
                 buckets.push({
                     x: x,
                     y: bucketY,
-                    width: bucketWidth * 0.9, // Slight gap between buckets
+                    width: bucketWidth * 0.9,
                     height: bucketHeight,
                     reward: rewards[i]
                 });
+            }
+            
+            // Calculate peg triangle size based on bucket positions
+            const leftmostBucket = buckets[0];
+            const rightmostBucket = buckets[buckets.length - 1];
+            const triangleWidth = rightmostBucket.x - leftmostBucket.x;
+            
+            // Calculate optimal spacing for pegs
+            const availableHeight = bucketY - 80; // Space above buckets
+            const pegSpacing = Math.min(
+                triangleWidth / config.pegRows,
+                availableHeight / config.pegRows,
+                45
+            );
+            
+            const startX = canvasWidth / 2;
+            const startY = 60;
+            
+            // Create pegs in triangular pattern that aligns with buckets
+            for (let row = 0; row < config.pegRows; row++) {
+                const pegCount = row + 1;
+                
+                // Calculate how much this row should spread
+                const rowProgress = row / (config.pegRows - 1);
+                const currentRowWidth = triangleWidth * rowProgress;
+                
+                for (let i = 0; i < pegCount; i++) {
+                    const x = startX - currentRowWidth / 2 + (i * currentRowWidth / (pegCount - 1 || 1));
+                    const y = startY + row * pegSpacing;
+                    
+                    // Only add peg if it's within reasonable bounds
+                    if (x >= config.pegRadius + 10 && x <= canvasWidth - config.pegRadius - 10 && 
+                        y >= config.pegRadius && y <= bucketY - 40) {
+                        pegs.push({
+                            x: x,
+                            y: y,
+                            radius: config.pegRadius
+                        });
+                    }
+                }
             }
             
             drawGame();
@@ -1134,13 +1139,18 @@
                 }
             }
             
-            // Keep ball within bounds
-            if (ball.x - ball.radius < 0) {
-                ball.x = ball.radius;
-                ball.velocityX = Math.abs(ball.velocityX) * config.friction;
-            } else if (ball.x + ball.radius > canvasWidth) {
-                ball.x = canvasWidth - ball.radius;
-                ball.velocityX = -Math.abs(ball.velocityX) * config.friction;
+            // Keep ball within the triangle bounds (invisible side walls)
+            if (buckets.length > 0) {
+                const leftBound = buckets[0].x - buckets[0].width / 2;
+                const rightBound = buckets[buckets.length - 1].x + buckets[buckets.length - 1].width / 2;
+                
+                if (ball.x - ball.radius < leftBound) {
+                    ball.x = leftBound + ball.radius;
+                    ball.velocityX = Math.abs(ball.velocityX) * config.friction;
+                } else if (ball.x + ball.radius > rightBound) {
+                    ball.x = rightBound - ball.radius;
+                    ball.velocityX = -Math.abs(ball.velocityX) * config.friction;
+                }
             }
             
             // Check if ball has reached bucket level
@@ -1163,37 +1173,35 @@
                         
                         dropButton.disabled = false;
                         resetButton.disabled = false;
-                        break;
+                        return;
                     }
                 }
                 
                 // If ball didn't land in any bucket, find the nearest one
-                if (gameActive) {
-                    let nearestBucket = buckets[0];
-                    let nearestDistance = Math.abs(ball.x - buckets[0].x);
-                    
-                    for (let i = 1; i < buckets.length; i++) {
-                        const distance = Math.abs(ball.x - buckets[i].x);
-                        if (distance < nearestDistance) {
-                            nearestDistance = distance;
-                            nearestBucket = buckets[i];
-                        }
+                let nearestBucket = buckets[0];
+                let nearestDistance = Math.abs(ball.x - buckets[0].x);
+                
+                for (let i = 1; i < buckets.length; i++) {
+                    const distance = Math.abs(ball.x - buckets[i].x);
+                    if (distance < nearestDistance) {
+                        nearestDistance = distance;
+                        nearestBucket = buckets[i];
                     }
-                    
-                    gameComplete = true;
-                    gameActive = false;
-                    
-                    updateCoins(nearestBucket.reward);
-                    
-                    if (nearestBucket.reward >= 0) {
-                        scoreDisplay.innerHTML = `You won: <span class="win-amount">+${nearestBucket.reward.toLocaleString()}</span> coins!`;
-                    } else {
-                        scoreDisplay.innerHTML = `You lost: <span class="lose-amount">${nearestBucket.reward.toLocaleString()}</span> coins!`;
-                    }
-                    
-                    dropButton.disabled = false;
-                    resetButton.disabled = false;
                 }
+                
+                gameComplete = true;
+                gameActive = false;
+                
+                updateCoins(nearestBucket.reward);
+                
+                if (nearestBucket.reward >= 0) {
+                    scoreDisplay.innerHTML = `You won: <span class="win-amount">+${nearestBucket.reward.toLocaleString()}</span> coins!`;
+                } else {
+                    scoreDisplay.innerHTML = `You lost: <span class="lose-amount">${nearestBucket.reward.toLocaleString()}</span> coins!`;
+                }
+                
+                dropButton.disabled = false;
+                resetButton.disabled = false;
             }
         }
 
@@ -1252,17 +1260,32 @@
             
             // Draw guide triangle connecting pegs to buckets
             if (pegs.length > 0 && buckets.length > 0) {
-                const topPeg = pegs[0];
+                const topPeg = pegs[0]; // First peg at the top
                 const leftBucket = buckets[0];
                 const rightBucket = buckets[buckets.length - 1];
                 
                 ctx.beginPath();
                 ctx.moveTo(topPeg.x, topPeg.y);
-                ctx.lineTo(leftBucket.x - leftBucket.width / 2, leftBucket.y);
-                ctx.lineTo(rightBucket.x + rightBucket.width / 2, leftBucket.y);
+                ctx.lineTo(leftBucket.x, leftBucket.y);
+                ctx.lineTo(rightBucket.x, leftBucket.y);
                 ctx.closePath();
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
                 ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // Draw side walls
+                ctx.beginPath();
+                ctx.moveTo(topPeg.x, topPeg.y);
+                ctx.lineTo(leftBucket.x, leftBucket.y);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(topPeg.x, topPeg.y);
+                ctx.lineTo(rightBucket.x, rightBucket.y);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 2;
                 ctx.stroke();
             }
             
