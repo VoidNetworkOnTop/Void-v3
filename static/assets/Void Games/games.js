@@ -47,11 +47,6 @@ const defaultApps = [
         link: "/local games/TicTacToe/TicTacToe.html"
     },
     {
-        title: "Click Race Multiplayer",
-        imgSrc: "https://lh7-us.googleusercontent.com/0uIu5df5JmX-mNMQCWXZU39v4N0h3tYQntJyUgd74z_OBw5neJum7hYw7YroKxDZI4lqaEZi66aTB3PuKtJ2-DdaPqf9ZhyzVrMkBaHuFTlITvL3dBLWVqpFBRKWr9lapTsOrbZMhjlf6MyKa3mcou5hO3zl5g",
-        link: "/local games/ClickRace/ClickRace.html"
-    },
-    {
         title: "Flappy Bird",
         imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVAPpi6GcK8ISUK5QWBF7vY3vNHuGHC_8PQDI53AJ2Zjhq45VzIhCPlcv7IEyDJwCJ6J95p9GSy_Bl6_D05ZO6z2a62wsKO0A_td1sWltwzvXTLvzA4Gr0HwqobtqFbIuLN4QaE8NLyDKF1jlLwEE_GZ-1Od43G3N8UcFw?key=50gdziqO_dSI4pHVaqqAEw",
         link: "/local games/voidflappy.html"
