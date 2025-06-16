@@ -820,10 +820,10 @@
 
         // Game Configuration
         const config = {
-            ballRadius: 8,
-            pegRadius: 4,
-            pegSpacing: 35,
-            pegRows: 12,
+            ballRadius: 6,
+            pegRadius: 3,
+            pegSpacing: 25,
+            pegRows: 16,
             dropSpeed: 2,
             gravity: 0.6,
             friction: 0.85,
@@ -1019,21 +1019,21 @@
                 });
             }
             
-            // Calculate triangle dimensions
+            // Calculate compact triangle dimensions
             const leftmostBucket = buckets[0];
             const rightmostBucket = buckets[buckets.length - 1];
-            const triangleBaseWidth = rightmostBucket.x - leftmostBucket.x;
+            const triangleBaseWidth = (rightmostBucket.x - leftmostBucket.x) * 0.8; // Make it 80% of bucket width for more compact look
             
             const startX = canvasWidth / 2;
-            const startY = 60;
-            const availableHeight = bucketY - startY - 40;
+            const startY = 80;
+            const availableHeight = bucketY - startY - 60;
             const pegSpacing = Math.min(config.pegSpacing, availableHeight / config.pegRows);
             
-            // Create pegs in proper triangular pattern
+            // Create denser peg pattern
             for (let row = 0; row < config.pegRows; row++) {
                 const pegCount = row + 1;
                 
-                // Calculate the width of this row based on triangle proportion
+                // Calculate the width of this row - more gradual expansion
                 const rowProgress = row / (config.pegRows - 1);
                 const currentRowWidth = triangleBaseWidth * rowProgress;
                 
@@ -1047,9 +1047,9 @@
                     
                     const y = startY + row * pegSpacing;
                     
-                    // Add peg if it's within bounds
-                    if (x >= config.pegRadius + 10 && x <= canvasWidth - config.pegRadius - 10 && 
-                        y >= config.pegRadius && y <= bucketY - 40) {
+                    // More lenient bounds checking for denser pattern
+                    if (x >= config.pegRadius + 5 && x <= canvasWidth - config.pegRadius - 5 && 
+                        y >= config.pegRadius && y <= bucketY - 50) {
                         pegs.push({
                             x: x,
                             y: y,
@@ -1141,8 +1141,16 @@
             
             // Keep ball within the triangle bounds (invisible side walls)
             if (buckets.length > 0) {
-                const leftBound = buckets[0].x - buckets[0].width / 2;
-                const rightBound = buckets[buckets.length - 1].x + buckets[buckets.length - 1].width / 2;
+                // Use a tighter funnel based on the smaller triangle
+                const triangleProgress = Math.max(0, (ball.y - 80) / (buckets[0].y - 80));
+                const leftmostBucket = buckets[0];
+                const rightmostBucket = buckets[buckets.length - 1];
+                const triangleBaseWidth = (rightmostBucket.x - leftmostBucket.x) * 0.8;
+                
+                const currentWidth = triangleBaseWidth * triangleProgress;
+                const centerX = canvasWidth / 2;
+                const leftBound = centerX - currentWidth / 2;
+                const rightBound = centerX + currentWidth / 2;
                 
                 if (ball.x - ball.radius < leftBound) {
                     ball.x = leftBound + ball.radius;
@@ -1245,7 +1253,7 @@
                 ctx.stroke();
                 ctx.shadowBlur = 0;
                 
-                ctx.font = 'bold 12px Arial';
+                ctx.font = 'bold 10px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 
@@ -1261,31 +1269,36 @@
             // Draw guide triangle connecting pegs to buckets
             if (pegs.length > 0 && buckets.length > 0) {
                 const topPeg = pegs[0]; // First peg at the top
-                const leftBucket = buckets[0];
-                const rightBucket = buckets[buckets.length - 1];
+                const leftmostBucket = buckets[0];
+                const rightmostBucket = buckets[buckets.length - 1];
+                const triangleBaseWidth = (rightmostBucket.x - leftmostBucket.x) * 0.8;
+                const centerX = canvasWidth / 2;
+                
+                const leftEdge = centerX - triangleBaseWidth / 2;
+                const rightEdge = centerX + triangleBaseWidth / 2;
                 
                 ctx.beginPath();
                 ctx.moveTo(topPeg.x, topPeg.y);
-                ctx.lineTo(leftBucket.x, leftBucket.y);
-                ctx.lineTo(rightBucket.x, leftBucket.y);
+                ctx.lineTo(leftEdge, buckets[0].y);
+                ctx.lineTo(rightEdge, buckets[0].y);
                 ctx.closePath();
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
                 ctx.lineWidth = 1;
                 ctx.stroke();
                 
                 // Draw side walls
                 ctx.beginPath();
                 ctx.moveTo(topPeg.x, topPeg.y);
-                ctx.lineTo(leftBucket.x, leftBucket.y);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-                ctx.lineWidth = 2;
+                ctx.lineTo(leftEdge, buckets[0].y);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.lineWidth = 1;
                 ctx.stroke();
                 
                 ctx.beginPath();
                 ctx.moveTo(topPeg.x, topPeg.y);
-                ctx.lineTo(rightBucket.x, rightBucket.y);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-                ctx.lineWidth = 2;
+                ctx.lineTo(rightEdge, buckets[0].y);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.lineWidth = 1;
                 ctx.stroke();
             }
             
