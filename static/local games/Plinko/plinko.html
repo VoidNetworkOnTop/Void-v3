@@ -269,9 +269,9 @@
 
         /* Game Container */
         .game-container-inner {
-            width: 75%;
+            width: 98%;
             max-width: none;
-            height: 75vh;
+            height: 85vh;
             min-height: 800px;
             max-height: none;
             animation: elegantEntrance 1.8s cubic-bezier(0.19, 1, 0.22, 1);
@@ -343,9 +343,9 @@
                 rgba(0,0,0,0.3);
             border-radius: 16px;
             border: 1px solid rgba(255,255,255,0.1);
-            padding: 1.5rem 2rem;
+            padding: 1rem 2rem;
             color: white;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             text-align: center;
             backdrop-filter: blur(20px) saturate(150%);
             box-shadow: 
@@ -357,6 +357,7 @@
             transform: translateX(-50%);
             z-index: 10;
             max-width: 90%;
+            pointer-events: none;
         }
 
         .controls {
@@ -709,7 +710,8 @@
             
             .game-info {
                 font-size: 0.9rem;
-                padding: 1rem;
+                padding: 0.8rem 1rem;
+                bottom: 0.5rem;
             }
         }
 
@@ -819,9 +821,9 @@
         // Game Configuration
         const config = {
             ballRadius: 8,
-            pegRadius: 4,
-            pegSpacing: 50,
-            pegRows: 8,
+            pegRadius: 5,
+            pegSpacing: 60,
+            pegRows: 10,
             dropSpeed: 2,
             gravity: 0.6,
             friction: 0.85,
@@ -930,11 +932,17 @@
             const gameBoard = document.querySelector('.game-board');
             if (!gameBoard) return;
             
+            // Account for the game info panel at the bottom
+            const gameInfo = document.querySelector('.game-info');
+            const infoHeight = gameInfo ? gameInfo.offsetHeight + 40 : 80; // 40px for margins
+            
             canvasWidth = gameBoard.clientWidth;
-            canvasHeight = gameBoard.clientHeight;
+            canvasHeight = gameBoard.clientHeight - infoHeight;
             
             canvas.width = canvasWidth;
             canvas.height = canvasHeight;
+            canvas.style.width = canvasWidth + 'px';
+            canvas.style.height = canvasHeight + 'px';
             
             if (!gameActive) {
                 setupGame();
@@ -982,6 +990,7 @@
             
             if (!canvasWidth || !canvasHeight) {
                 resizeCanvas();
+                return;
             }
             
             ball = null;
@@ -993,16 +1002,20 @@
             updateCoinDisplay();
             updateEarningsDisplay();
             
-            const startX = canvasWidth / 2;
-            const startY = 60;
+            // Calculate optimal spacing based on canvas size
+            const availableWidth = canvasWidth * 0.8; // Use 80% of width for pegs
+            const availableHeight = canvasHeight * 0.7; // Use 70% of height for pegs
             
-            const optimalPegSpacing = Math.min(
-                config.pegSpacing,
-                canvasWidth / (config.pegRows + 1),
-                (canvasHeight - 120) / (config.pegRows + 4)
+            const maxPegSpacing = Math.min(
+                availableWidth / (config.pegRows + 1),
+                availableHeight / config.pegRows,
+                config.pegSpacing
             );
             
-            const actualPegSpacing = Math.min(config.pegSpacing, optimalPegSpacing);
+            const actualPegSpacing = Math.max(30, maxPegSpacing); // Minimum 30px spacing
+            
+            const startX = canvasWidth / 2;
+            const startY = Math.max(40, canvasHeight * 0.1); // Start 10% down from top
             
             // Create pegs in triangular pattern
             for (let row = 0; row < config.pegRows; row++) {
@@ -1012,17 +1025,22 @@
                     const x = startX - (pegCount - 1) * actualPegSpacing / 2 + i * actualPegSpacing;
                     const y = startY + row * actualPegSpacing;
                     
-                    pegs.push({
-                        x: x,
-                        y: y,
-                        radius: config.pegRadius
-                    });
+                    // Only add peg if it's within canvas bounds
+                    if (x >= config.pegRadius && x <= canvasWidth - config.pegRadius && 
+                        y >= config.pegRadius && y <= canvasHeight - 100) {
+                        pegs.push({
+                            x: x,
+                            y: y,
+                            radius: config.pegRadius
+                        });
+                    }
                 }
             }
             
-            // Setup buckets
+            // Setup buckets at the bottom
             const bucketWidth = canvasWidth / config.buckets;
-            const bucketY = canvasHeight - 80;
+            const bucketHeight = Math.min(50, canvasHeight * 0.1);
+            const bucketY = canvasHeight - bucketHeight - 10; // 10px from bottom
             const rewards = generateBucketRewards();
             
             for (let i = 0; i < config.buckets; i++) {
@@ -1030,8 +1048,8 @@
                 buckets.push({
                     x: x,
                     y: bucketY,
-                    width: bucketWidth,
-                    height: 50,
+                    width: bucketWidth * 0.9, // Slight gap between buckets
+                    height: bucketHeight,
                     reward: rewards[i]
                 });
             }
@@ -1048,7 +1066,7 @@
             
             ball = {
                 x: canvasWidth / 2,
-                y: 30,
+                y: Math.max(10, canvasHeight * 0.05), // Start 5% down from top
                 radius: config.ballRadius,
                 velocityX: 0,
                 velocityY: config.dropSpeed
@@ -1125,12 +1143,12 @@
                 ball.velocityX = -Math.abs(ball.velocityX) * config.friction;
             }
             
-            // Check if ball has entered a bucket
-            if (ball.y > buckets[0].y - ball.radius) {
+            // Check if ball has reached bucket level
+            if (buckets.length > 0 && ball.y + ball.radius >= buckets[0].y) {
                 for (let i = 0; i < buckets.length; i++) {
                     const bucket = buckets[i];
-                    if (ball.x > bucket.x - bucket.width / 2 && 
-                        ball.x < bucket.x + bucket.width / 2) {
+                    if (ball.x >= bucket.x - bucket.width / 2 && 
+                        ball.x <= bucket.x + bucket.width / 2) {
                         
                         gameComplete = true;
                         gameActive = false;
@@ -1138,9 +1156,9 @@
                         updateCoins(bucket.reward);
                         
                         if (bucket.reward >= 0) {
-                            scoreDisplay.innerHTML = `You won: <span class="win-amount">+${bucket.reward.toLocaleString()}</span>`;
+                            scoreDisplay.innerHTML = `You won: <span class="win-amount">+${bucket.reward.toLocaleString()}</span> coins!`;
                         } else {
-                            scoreDisplay.innerHTML = `You lost: <span class="lose-amount">${bucket.reward.toLocaleString()}</span>`;
+                            scoreDisplay.innerHTML = `You lost: <span class="lose-amount">${bucket.reward.toLocaleString()}</span> coins!`;
                         }
                         
                         dropButton.disabled = false;
@@ -1148,25 +1166,34 @@
                         break;
                     }
                 }
-            }
-            
-            // Force ball into bucket if it escapes
-            if (ball.y > canvasHeight) {
-                let nearestBucket = buckets[0];
-                let nearestDistance = Math.abs(ball.x - buckets[0].x);
                 
-                for (let i = 1; i < buckets.length; i++) {
-                    const distance = Math.abs(ball.x - buckets[i].x);
-                    if (distance < nearestDistance) {
-                        nearestDistance = distance;
-                        nearestBucket = buckets[i];
+                // If ball didn't land in any bucket, find the nearest one
+                if (gameActive) {
+                    let nearestBucket = buckets[0];
+                    let nearestDistance = Math.abs(ball.x - buckets[0].x);
+                    
+                    for (let i = 1; i < buckets.length; i++) {
+                        const distance = Math.abs(ball.x - buckets[i].x);
+                        if (distance < nearestDistance) {
+                            nearestDistance = distance;
+                            nearestBucket = buckets[i];
+                        }
                     }
+                    
+                    gameComplete = true;
+                    gameActive = false;
+                    
+                    updateCoins(nearestBucket.reward);
+                    
+                    if (nearestBucket.reward >= 0) {
+                        scoreDisplay.innerHTML = `You won: <span class="win-amount">+${nearestBucket.reward.toLocaleString()}</span> coins!`;
+                    } else {
+                        scoreDisplay.innerHTML = `You lost: <span class="lose-amount">${nearestBucket.reward.toLocaleString()}</span> coins!`;
+                    }
+                    
+                    dropButton.disabled = false;
+                    resetButton.disabled = false;
                 }
-                
-                ball.x = nearestBucket.x;
-                ball.y = nearestBucket.y + 1;
-                ball.velocityX = 0;
-                ball.velocityY = 1;
             }
         }
 
@@ -1176,6 +1203,7 @@
             
             if (canvas.width === 0 || canvas.height === 0) {
                 resizeCanvas();
+                return;
             }
             
             ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -1209,7 +1237,7 @@
                 ctx.stroke();
                 ctx.shadowBlur = 0;
                 
-                ctx.font = 'bold 14px Arial';
+                ctx.font = 'bold 12px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 
@@ -1222,17 +1250,16 @@
                 }
             });
             
-            // Draw guide triangle
-            if (pegs.length > 0) {
+            // Draw guide triangle connecting pegs to buckets
+            if (pegs.length > 0 && buckets.length > 0) {
                 const topPeg = pegs[0];
-                const lastRowStartIndex = Math.max(0, pegs.length - config.pegRows);
-                const leftPeg = pegs[lastRowStartIndex];
-                const rightPeg = pegs[pegs.length - 1];
+                const leftBucket = buckets[0];
+                const rightBucket = buckets[buckets.length - 1];
                 
                 ctx.beginPath();
-                ctx.moveTo(topPeg.x, topPeg.y - 20);
-                ctx.lineTo(leftPeg.x - 20, buckets[0].y);
-                ctx.lineTo(rightPeg.x + 20, buckets[0].y);
+                ctx.moveTo(topPeg.x, topPeg.y);
+                ctx.lineTo(leftBucket.x - leftBucket.width / 2, leftBucket.y);
+                ctx.lineTo(rightBucket.x + rightBucket.width / 2, leftBucket.y);
                 ctx.closePath();
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
                 ctx.lineWidth = 1;
@@ -1318,8 +1345,10 @@
             window.addEventListener('resize', resizeCanvas);
             
             // Initial setup
-            resizeCanvas();
-            setupGame();
+            setTimeout(() => {
+                resizeCanvas();
+                setupGame();
+            }, 100);
         });
     </script>
 </body>
