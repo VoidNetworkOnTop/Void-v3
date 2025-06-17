@@ -1,0 +1,246 @@
+<!DOCTYPE html> // if your looking in this code trying to get admin please dont 😭😭😭
+<html lang="en"> 
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Void Games ADMIN</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #000;
+            color: #fff;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .login-container {
+            background-color: #fff;
+            color: #000;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(255, 255, 255, 0.1);
+            width: 350px;
+        }
+
+        .login-title {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #000;
+            border-radius: 4px;
+            font-size: 16px;
+            background-color: #fff;
+            color: #000;
+        }
+
+        input[type="email"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: #333;
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: #000;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .login-btn:hover {
+            background-color: #333;
+        }
+
+        .login-btn:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+        }
+
+        .popup {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+        }
+
+        .popup-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #fff;
+            color: #000;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 300px;
+        }
+
+        .popup-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #000;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .status-message {
+            text-align: center;
+            margin-top: 20px;
+            font-weight: bold;
+            color: #00ff00;
+        }
+
+        .loading {
+            text-align: center;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container" id="loginContainer">
+        <h1 class="login-title">Admin Vault Access</h1>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="login-btn" id="loginBtn">Login</button>
+        </form>
+        <div id="statusMessage" class="status-message" style="display: none;"></div>
+        <div id="loading" class="loading" style="display: none;">Authenticating...</div>
+    </div>
+
+    <!-- Popup for invalid credentials -->
+    <div class="popup" id="errorPopup">
+        <div class="popup-content">
+            <h2>Authentication Failed</h2>
+            <p>Invalid credentials</p>
+            <button class="popup-btn" onclick="closePopup()">OK</button>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const loginBtn = document.getElementById('loginBtn');
+            const loading = document.getElementById('loading');
+            const statusMessage = document.getElementById('statusMessage');
+            
+            // Clear previous status
+            statusMessage.style.display = 'none';
+            
+            // Show loading state
+            loginBtn.disabled = true;
+            loading.style.display = 'block';
+            
+            try {
+                // Construct API URL
+                const apiUrl = `https://void-games-admin-api-j7fg.vercel.app/api/admin?usercreds=${encodeURIComponent(email)}-${encodeURIComponent(password)}`;
+                
+                // Make API request
+                const response = await fetch(apiUrl);
+                const responseText = await response.text();
+                
+                // Hide loading
+                loading.style.display = 'none';
+                loginBtn.disabled = false;
+                
+                // Check if response contains HTML or is unauthorized
+                if (responseText.trim() === 'Unauthorized access - Invalid credentials') {
+                    // Show error popup
+                    showErrorPopup();
+                } else if (isHtmlContent(responseText)) {
+                    // Valid credentials - show success message
+                    statusMessage.textContent = 'Valid credentials';
+                    statusMessage.style.display = 'block';
+                    
+                    // Wait 1 second then display the HTML content
+                    setTimeout(() => {
+                        displayAdminPanel(responseText);
+                    }, 1000);
+                } else {
+                    // Unexpected response
+                    showErrorPopup();
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                loading.style.display = 'none';
+                loginBtn.disabled = false;
+                showErrorPopup();
+            }
+        });
+        
+        function isHtmlContent(text) {
+            // Check if the response contains HTML tags
+            const htmlRegex = /<\s*[a-zA-Z][^>]*>/;
+            return htmlRegex.test(text);
+        }
+        
+        function showErrorPopup() {
+            document.getElementById('errorPopup').style.display = 'block';
+        }
+        
+        function closePopup() {
+            document.getElementById('errorPopup').style.display = 'none';
+        }
+        
+        function displayAdminPanel(htmlContent) {
+            // Replace entire document with the admin panel HTML
+            document.open();
+            document.write(htmlContent);
+            document.close();
+        }
+        
+        // Close popup when clicking outside
+        document.getElementById('errorPopup').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closePopup();
+            }
+        });
+    </script>
+</body>
+</html>
