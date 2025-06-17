@@ -256,10 +256,34 @@
         <div class="header">
             <h1>🎮 Void Network Admin Panel</h1>
             <p>Firebase Admin Dashboard</p>
+            <div id="authStatus" class="status-indicator status-error">
+                ❌ Not authenticated
+            </div>
             <div id="connectionStatus" class="status-indicator status-loading">
-                <span class="loading"></span> Connecting to Firebase...
+                <span class="loading"></span> Waiting for authentication...
             </div>
         </div>
+
+        <!-- Login Section -->
+        <div id="loginSection" class="card" style="max-width: 400px; margin: 0 auto 30px auto;">
+            <h3>🔐 Admin Login</h3>
+            <div class="form-group">
+                <label for="adminEmail">Admin Email:</label>
+                <input type="email" id="adminEmail" placeholder="void.client@yandex.com" value="void.client@yandex.com">
+            </div>
+            <div class="form-group">
+                <label for="adminPassword">Password:</label>
+                <input type="password" id="adminPassword" placeholder="Enter password...">
+            </div>
+            <button class="btn" onclick="loginAdmin()">Login as Admin</button>
+            <div id="loginResult"></div>
+        </div>
+
+        <!-- Admin Actions (hidden until logged in) -->
+        <div id="adminActions" style="display: none;">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <button class="btn btn-warning" onclick="logoutAdmin()">Logout</button>
+            </div>
 
         <div class="grid">
             <!-- Search User Card -->
@@ -337,6 +361,7 @@
                 </div>
             </div>
         </div>
+        </div> <!-- End adminActions -->
 
         <!-- Logs Section -->
         <div class="logs">
@@ -350,6 +375,7 @@
         // Import Firebase modules
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
         import { getFirestore, collection, doc, getDoc, getDocs, query, where, limit, runTransaction, updateDoc, setDoc, deleteDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
 
         // Firebase configuration - REPLACE WITH YOUR ACTUAL CONFIG
         const firebaseConfig = {
@@ -364,24 +390,73 @@
         // Initialize Firebase
         let app;
         let db;
+        let auth;
         let isConnected = false;
+        let isAuthenticated = false;
+        let currentUser = null;
 
         try {
             app = initializeApp(firebaseConfig);
             db = getFirestore(app);
-            window.db = db; // Make available globally
+            auth = getAuth(app);
+            
+            // Make available globally
+            window.db = db;
+            window.auth = auth;
             window.firebaseModules = { 
                 collection, doc, getDoc, getDocs, query, where, limit, 
-                runTransaction, updateDoc, setDoc, deleteDoc, serverTimestamp 
+                runTransaction, updateDoc, setDoc, deleteDoc, serverTimestamp,
+                signInWithEmailAndPassword, signOut
             };
-            testInitialConnection();
+            
+            // Set up auth state listener
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    currentUser = user;
+                    isAuthenticated = true;
+                    window.isAuthenticated = true;
+                    window.currentUser = user;
+                    updateAuthStatus(true, user);
+                    testInitialConnection();
+                } else {
+                    currentUser = null;
+                    isAuthenticated = false;
+                    window.isAuthenticated = false;
+                    window.currentUser = null;
+                    updateAuthStatus(false, null);
+                    updateConnectionStatus(false, 'Not authenticated');
+                }
+            });
+            
         } catch (error) {
             console.error('Failed to initialize Firebase:', error);
             logMessage('Failed to initialize Firebase: ' + error.message, 'error');
             updateConnectionStatus(false, 'Initialization failed: ' + error.message);
         }
 
+        function updateAuthStatus(authenticated, user) {
+            const authStatusEl = document.getElementById('authStatus');
+            if (authenticated && user) {
+                authStatusEl.className = 'status-indicator status-connected';
+                authStatusEl.innerHTML = `✅ Signed in as: ${user.email}`;
+                document.getElementById('loginSection').style.display = 'none';
+                document.getElementById('adminActions').style.display = 'block';
+                logMessage(`Authenticated as: ${user.email}`, 'success');
+            } else {
+                authStatusEl.className = 'status-indicator status-error';
+                authStatusEl.innerHTML = '❌ Not authenticated';
+                document.getElementById('loginSection').style.display = 'block';
+                document.getElementById('adminActions').style.display = 'none';
+                logMessage('Not authenticated', 'warning');
+            }
+        }
+
         async function testInitialConnection() {
+            if (!isAuthenticated) {
+                updateConnectionStatus(false, 'Authentication required');
+                return;
+            }
+            
             try {
                 updateConnectionStatus(null, 'Testing connection...');
                 logMessage('Testing Firebase connection...', 'info');
@@ -406,11 +481,14 @@
 
         // Make functions available globally
         window.testInitialConnection = testInitialConnection;
+        window.updateAuthStatus = updateAuthStatus;
     </script>
 
     <script>
         // Global variables
         let isConnected = false;
+        let isAuthenticated = false;
+        let currentUser = null;
 
         // This function is now in the module script above
 
@@ -441,6 +519,9 @@
         }
 
         async function findUserByIdentifier(identifier) {
+            if (!window.isAuthenticated) {
+                throw new Error('Authentication required');
+            }
             if (!window.isConnected) {
                 throw new Error('Firebase not connected');
             }
@@ -505,9 +586,80 @@
             }
         }
 
+        async function loginAdmin() {
+            const email = document.getElementById('adminEmail').value;
+            const password = document.getElementById('adminPassword').value;
+            const resultEl = document.getElementById('loginResult');
+            
+            if (!email || !password) {
+                resultEl.innerHTML = '<div class="result-area">❌ Please enter email and password</div>';
+                return;
+            }
+
+            resultEl.innerHTML = '<div class="result-area"><span class="loading"></span> Signing in...</div>';
+            
+            try {
+                const { signInWithEmailAndPassword } = window.firebaseModules;
+                const userCredential = await signInWithEmailAndPassword(window.auth, email, password);
+                
+                // Check if this is the admin email
+                if (userCredential.user.email !== 'void.client@yandex.com') {
+                    await window.firebaseModules.signOut(window.auth);
+                    resultEl.innerHTML = '<div class="result-area">❌ Unauthorized: Admin access required</div>';
+                    logMessage('Unauthorized login attempt: ' + email, 'warning');
+                    return;
+                }
+                
+                resultEl.innerHTML = '<div class="result-area">✅ Successfully signed in as admin</div>';
+                logMessage('Admin login successful: ' + email, 'success');
+                
+                // Clear the form
+                document.getElementById('adminPassword').value = '';
+                
+            } catch (error) {
+                console.error('Login failed:', error);
+                let errorMessage = 'Login failed';
+                
+                switch (error.code) {
+                    case 'auth/user-not-found':
+                        errorMessage = 'User not found';
+                        break;
+                    case 'auth/wrong-password':
+                        errorMessage = 'Invalid password';
+                        break;
+                    case 'auth/invalid-email':
+                        errorMessage = 'Invalid email address';
+                        break;
+                    case 'auth/too-many-requests':
+                        errorMessage = 'Too many failed attempts. Try again later.';
+                        break;
+                    default:
+                        errorMessage = error.message;
+                }
+                
+                resultEl.innerHTML = `<div class="result-area">❌ ${errorMessage}</div>`;
+                logMessage('Login failed: ' + errorMessage, 'error');
+            }
+        }
+
+        async function logoutAdmin() {
+            try {
+                await window.firebaseModules.signOut(window.auth);
+                logMessage('Admin logged out successfully', 'info');
+            } catch (error) {
+                console.error('Logout failed:', error);
+                logMessage('Logout failed: ' + error.message, 'error');
+            }
+        }
+
         async function searchUser() {
             const identifier = document.getElementById('searchIdentifier').value;
             const resultEl = document.getElementById('searchResult');
+            
+            if (!window.isAuthenticated) {
+                resultEl.innerHTML = '<div class="result-area">❌ Please login as admin first</div>';
+                return;
+            }
             
             if (!identifier.trim()) {
                 resultEl.innerHTML = '<div class="result-area">❌ Please enter a user identifier</div>';
@@ -600,6 +752,11 @@
             const amount = parseInt(document.getElementById('addCoinsAmount').value);
             const resultEl = document.getElementById('addCoinsResult');
             const adminName = document.getElementById('adminName').value || 'Admin Panel';
+            
+            if (!window.isAuthenticated) {
+                resultEl.innerHTML = '<div class="result-area">❌ Please login as admin first</div>';
+                return;
+            }
             
             if (!identifier.trim() || !amount) {
                 resultEl.innerHTML = '<div class="result-area">❌ Please fill in all fields</div>';
@@ -700,6 +857,11 @@
             const amount = parseInt(document.getElementById('removeCoinsAmount').value);
             const resultEl = document.getElementById('removeCoinsResult');
             const adminName = document.getElementById('adminName').value || 'Admin Panel';
+            
+            if (!window.isAuthenticated) {
+                resultEl.innerHTML = '<div class="result-area">❌ Please login as admin first</div>';
+                return;
+            }
             
             if (!identifier.trim() || !amount) {
                 resultEl.innerHTML = '<div class="result-area">❌ Please fill in all fields</div>';
@@ -802,6 +964,11 @@
             const reason = document.getElementById('banReason').value;
             const resultEl = document.getElementById('banResult');
             const adminName = document.getElementById('adminName').value || 'Admin Panel';
+            
+            if (!window.isAuthenticated) {
+                resultEl.innerHTML = '<div class="result-area">❌ Please login as admin first</div>';
+                return;
+            }
             
             if (!identifier.trim() || !reason.trim()) {
                 resultEl.innerHTML = '<div class="result-area">❌ Please fill in all fields</div>';
@@ -1060,6 +1227,13 @@
             document.getElementById('searchIdentifier').addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     searchUser();
+                }
+            });
+            
+            // Add enter key support for login
+            document.getElementById('adminPassword').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    loginAdmin();
                 }
             });
         });
