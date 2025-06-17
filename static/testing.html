@@ -547,17 +547,51 @@
                     }
                 }
 
-                // Strategy 2: Email search
+                // Strategy 2: Email search with multiple approaches
                 if (identifier.includes('@')) {
                     const usersRef = collection(db, 'users');
+                    
+                    // Try exact email match first
+                    logMessage(`Trying exact email match for: ${identifier}`, 'info');
                     const emailQuery = query(usersRef, where('email', '==', identifier), limit(1));
                     const querySnapshot = await getDocs(emailQuery);
                     
                     if (!querySnapshot.empty) {
                         const doc = querySnapshot.docs[0];
-                        logMessage('Found user by email', 'success');
+                        logMessage('Found user by exact email', 'success');
                         return { data: doc.data(), id: doc.id, foundBy: 'email' };
                     }
+                    
+                    // Try lowercase email match
+                    logMessage(`Trying lowercase email match for: ${identifier.toLowerCase()}`, 'info');
+                    const emailQueryLower = query(usersRef, where('email', '==', identifier.toLowerCase()), limit(1));
+                    const querySnapshotLower = await getDocs(emailQueryLower);
+                    
+                    if (!querySnapshotLower.empty) {
+                        const doc = querySnapshotLower.docs[0];
+                        logMessage('Found user by lowercase email', 'success');
+                        return { data: doc.data(), id: doc.id, foundBy: 'email_lowercase' };
+                    }
+                    
+                    // Fallback: Manual search through users (for debugging)
+                    logMessage('Email query failed, trying manual search...', 'warning');
+                    const allUsersQuery = query(usersRef, limit(100));
+                    const allUsersSnapshot = await getDocs(allUsersQuery);
+                    
+                    for (const doc of allUsersSnapshot.docs) {
+                        const userData = doc.data();
+                        logMessage(`Checking user: ${userData.username || 'no username'}, email: ${userData.email || 'no email'}`, 'info');
+                        
+                        if (userData.email) {
+                            if (userData.email.toLowerCase() === identifier.toLowerCase()) {
+                                logMessage('Found user by manual email search', 'success');
+                                return { data: userData, id: doc.id, foundBy: 'email_manual' };
+                            }
+                        }
+                    }
+                    
+                    logMessage(`No user found with email: ${identifier}`, 'warning');
+                    
                 } else {
                     // Strategy 3: Username search
                     const usersRef = collection(db, 'users');
@@ -795,27 +829,28 @@
                 const currentBalance = userData.accountBalance || 0;
                 const newBalance = currentBalance + amount;
 
-                // Update using transaction
+                // Update using transaction with proper read/write ordering
                 const { doc, getDoc, runTransaction, updateDoc, serverTimestamp } = window.firebaseModules;
                 
                 await runTransaction(window.db, async (transaction) => {
                     const userRef = doc(window.db, 'users', userId);
+                    const leaderboardRef = doc(window.db, 'leaderboard', userId);
+                    
+                    // Do ALL reads first
                     const userDoc = await transaction.get(userRef);
+                    const leaderboardDoc = await transaction.get(leaderboardRef);
                     
                     if (!userDoc.exists()) {
                         throw new Error('User not found');
                     }
 
-                    // Update users collection
+                    // Then do ALL writes
                     transaction.update(userRef, {
                         accountBalance: newBalance,
                         balanceUpdatedAt: serverTimestamp(),
                         balanceUpdatedBy: adminName
                     });
 
-                    // Update leaderboard if exists
-                    const leaderboardRef = doc(window.db, 'leaderboard', userId);
-                    const leaderboardDoc = await transaction.get(leaderboardRef);
                     if (leaderboardDoc.exists()) {
                         transaction.update(leaderboardRef, {
                             accountBalance: newBalance,
@@ -901,27 +936,28 @@
                 const newBalance = Math.max(0, currentBalance - amount);
                 const actualRemoved = currentBalance - newBalance;
 
-                // Update using transaction
+                // Update using transaction with proper read/write ordering
                 const { doc, runTransaction, serverTimestamp } = window.firebaseModules;
                 
                 await runTransaction(window.db, async (transaction) => {
                     const userRef = doc(window.db, 'users', userId);
+                    const leaderboardRef = doc(window.db, 'leaderboard', userId);
+                    
+                    // Do ALL reads first
                     const userDoc = await transaction.get(userRef);
+                    const leaderboardDoc = await transaction.get(leaderboardRef);
                     
                     if (!userDoc.exists()) {
                         throw new Error('User not found');
                     }
 
-                    // Update users collection
+                    // Then do ALL writes
                     transaction.update(userRef, {
                         accountBalance: newBalance,
                         balanceUpdatedAt: serverTimestamp(),
                         balanceUpdatedBy: adminName
                     });
 
-                    // Update leaderboard if exists
-                    const leaderboardRef = doc(window.db, 'leaderboard', userId);
-                    const leaderboardDoc = await transaction.get(leaderboardRef);
                     if (leaderboardDoc.exists()) {
                         transaction.update(leaderboardRef, {
                             accountBalance: newBalance,
@@ -999,12 +1035,17 @@
                     return;
                 }
 
-                // Ban using transaction
+                // Ban using transaction with proper read/write ordering
                 const { doc, runTransaction, setDoc, serverTimestamp } = window.firebaseModules;
                 
                 await runTransaction(window.db, async (transaction) => {
                     const userRef = doc(window.db, 'users', userId);
+                    const leaderboardRef = doc(window.db, 'leaderboard', userId);
+                    const bannedRef = doc(window.db, 'banned_users', userId);
+                    
+                    // Do ALL reads first
                     const userDoc = await transaction.get(userRef);
+                    const leaderboardDoc = await transaction.get(leaderboardRef);
                     
                     if (!userDoc.exists()) {
                         throw new Error('User not found');
@@ -1012,8 +1053,7 @@
 
                     const userData = userDoc.data();
 
-                    // Add to banned_users collection
-                    const bannedRef = doc(window.db, 'banned_users', userId);
+                    // Then do ALL writes
                     transaction.set(bannedRef, {
                         bannedAt: serverTimestamp(),
                         bannedBy: adminName,
@@ -1023,7 +1063,6 @@
                         email: userData.email || 'Unknown'
                     });
 
-                    // Update user document
                     transaction.update(userRef, {
                         banned: true,
                         bannedAt: serverTimestamp(),
@@ -1031,9 +1070,6 @@
                         banReason: reason
                     });
 
-                    // Update leaderboard if exists
-                    const leaderboardRef = doc(window.db, 'leaderboard', userId);
-                    const leaderboardDoc = await transaction.get(leaderboardRef);
                     if (leaderboardDoc.exists()) {
                         transaction.update(leaderboardRef, {
                             banned: true,
