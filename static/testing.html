@@ -363,8 +363,8 @@
         </div>
         </div> <!-- End adminActions -->
 
-        <!-- Logs Section -->
-        <div class="logs">
+        <!-- Logs Section (only visible when authenticated) -->
+        <div id="logsSection" class="logs" style="display: none;">
             <h3>📋 Activity Logs</h3>
             <div id="logs"></div>
         </div>
@@ -377,15 +377,37 @@
         import { getFirestore, collection, doc, getDoc, getDocs, query, where, limit, runTransaction, updateDoc, setDoc, deleteDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
 
-        // Firebase configuration - REPLACE WITH YOUR ACTUAL CONFIG
+        // Firebase configuration - YOU MUST REPLACE THIS WITH YOUR ACTUAL CONFIG
+        // Get your config from: Firebase Console > Project Settings > General > Your apps > Web app
         const firebaseConfig = {
-            apiKey: "AIzaSyBr8Qh8YL9mJ9qF7pQw8V2rZ1kKn3tX5vM", // Replace with your actual API key
+            apiKey: "YOUR_ACTUAL_API_KEY_HERE",           // Replace with your real API key
             authDomain: "void-games-c8d9e.firebaseapp.com",
             projectId: "void-games-c8d9e",
             storageBucket: "void-games-c8d9e.appspot.com",
             messagingSenderId: "102046798842741402658",
-            appId: "1:102046798842741402658:web:abc123def456" // Replace with your actual app ID
+            appId: "YOUR_ACTUAL_APP_ID_HERE"             // Replace with your real app ID
         };
+
+        // Check if config is still using placeholders
+        if (firebaseConfig.apiKey === "YOUR_ACTUAL_API_KEY_HERE" || firebaseConfig.appId === "YOUR_ACTUAL_APP_ID_HERE") {
+            console.error("⚠️ FIREBASE CONFIG ERROR: You must replace the placeholder values with your actual Firebase configuration!");
+            document.getElementById('connectionStatus').innerHTML = '❌ Firebase config not set up - check console for instructions';
+            document.getElementById('loginSection').innerHTML = `
+                <div class="card" style="background: rgba(244, 67, 54, 0.1); border-color: #f44336;">
+                    <h3>🚨 Firebase Configuration Required</h3>
+                    <p><strong>You need to replace the placeholder Firebase configuration with your actual project settings.</strong></p>
+                    <ol style="text-align: left; margin: 15px 0;">
+                        <li>Go to <a href="https://console.firebase.google.com/project/void-games-c8d9e/settings/general" target="_blank" style="color: #4ecdc4;">Firebase Console</a></li>
+                        <li>Click "Project Settings" (gear icon)</li>
+                        <li>Scroll down to "Your apps" section</li>
+                        <li>Click on your web app or create one</li>
+                        <li>Copy the config object and replace the placeholder values in the code</li>
+                    </ol>
+                    <p><small>Look for: <code>apiKey</code> and <code>appId</code> in your Firebase config</small></p>
+                </div>
+            `;
+            return; // Stop execution
+        }
 
         // Initialize Firebase
         let app;
@@ -436,17 +458,21 @@
 
         function updateAuthStatus(authenticated, user) {
             const authStatusEl = document.getElementById('authStatus');
+            const logsSection = document.getElementById('logsSection');
+            
             if (authenticated && user) {
                 authStatusEl.className = 'status-indicator status-connected';
                 authStatusEl.innerHTML = `✅ Signed in as: ${user.email}`;
                 document.getElementById('loginSection').style.display = 'none';
                 document.getElementById('adminActions').style.display = 'block';
+                logsSection.style.display = 'block'; // Show logs when authenticated
                 logMessage(`Authenticated as: ${user.email}`, 'success');
             } else {
                 authStatusEl.className = 'status-indicator status-error';
                 authStatusEl.innerHTML = '❌ Not authenticated';
                 document.getElementById('loginSection').style.display = 'block';
                 document.getElementById('adminActions').style.display = 'none';
+                logsSection.style.display = 'none'; // Hide logs when not authenticated
                 logMessage('Not authenticated', 'warning');
             }
         }
@@ -621,6 +647,9 @@
                 let errorMessage = 'Login failed';
                 
                 switch (error.code) {
+                    case 'auth/api-key-not-valid':
+                        errorMessage = 'Invalid API Key - Please check your Firebase configuration';
+                        break;
                     case 'auth/user-not-found':
                         errorMessage = 'User not found';
                         break;
@@ -633,12 +662,27 @@
                     case 'auth/too-many-requests':
                         errorMessage = 'Too many failed attempts. Try again later.';
                         break;
+                    case 'auth/configuration-not-found':
+                        errorMessage = 'Firebase configuration error - check your project settings';
+                        break;
                     default:
                         errorMessage = error.message;
                 }
                 
                 resultEl.innerHTML = `<div class="result-area">❌ ${errorMessage}</div>`;
                 logMessage('Login failed: ' + errorMessage, 'error');
+                
+                // If it's a config error, show additional help
+                if (error.code === 'auth/api-key-not-valid' || error.code === 'auth/configuration-not-found') {
+                    resultEl.innerHTML += `
+                        <div class="result-area" style="margin-top: 10px; background: rgba(255, 193, 7, 0.1); border-color: #ffc107;">
+                            💡 <strong>Need help?</strong><br>
+                            1. Go to <a href="https://console.firebase.google.com/project/void-games-c8d9e/settings/general" target="_blank" style="color: #4ecdc4;">Firebase Console</a><br>
+                            2. Get your web app configuration<br>
+                            3. Replace the placeholder values in the code
+                        </div>
+                    `;
+                }
             }
         }
 
