@@ -1,39 +1,99 @@
 <!DOCTYPE html>
+
 <html>
 <head>
-    <title></title>
+    <title>Redirecting...</title>
 </head>
 <body>
-    <script>
-        // Get the current URL
-        const currentUrl = window.location.href;
-        
-        // Extract protocol and hostname to get the root domain
-        const rootUrl = window.location.origin;
-        
-        // Create HTML for the iframe page
-        const iframeHtml = `
-            <html>
-                <head></head>
-                <body style="margin: 0px; height: 100vh;">
-                    <iframe src="${rootUrl}" style="border: none; width: 100%; height: 100%; margin: 0px;"></iframe>
-                </body>
-            </html>
-        `;
-        
-        // Save the HTML content in a variable
-        const contentToWrite = iframeHtml;
-        
-        // Create a new about:blank window and write content to it
-        const newWindow = window.open('about:blank', '_blank');
-        setTimeout(function() {
-            newWindow.document.open();
-            newWindow.document.write(contentToWrite);
-            newWindow.document.close();
-            
-            // Close the current window
+    <div id="status" style="font-family: Arial, sans-serif; text-align: center; margin-top: 50px;">
+        <p>Redirecting...</p>
+        <p id="message"></p>
+    </div>
+
+```
+<script>
+    // Get the current URL
+    const currentUrl = window.location.href;
+    
+    // Extract protocol and hostname to get the root domain
+    const rootUrl = window.location.origin;
+    
+    // Create HTML for the iframe page
+    const iframeHtml = `
+        <html>
+            <head>
+                <title>Framed Content</title>
+            </head>
+            <body style="margin: 0px; height: 100vh;">
+                <iframe src="${rootUrl}" style="border: none; width: 100%; height: 100%; margin: 0px;"></iframe>
+            </body>
+        </html>
+    `;
+    
+    // Save the HTML content in a variable
+    const contentToWrite = iframeHtml;
+    
+    // Function to attempt closing the window
+    function attemptClose() {
+        try {
+            // Try to close the window
             window.close();
-        }, 100);
-    </script>
+            
+            // If close didn't work, check if window is still open after a delay
+            setTimeout(function() {
+                if (!window.closed) {
+                    // If window couldn't be closed automatically, show instructions
+                    document.getElementById('message').innerHTML = 
+                        'Please close this tab manually.<br><small>Automatic closing is restricted by your browser.</small>';
+                    
+                    // Try to navigate away as a fallback
+                    setTimeout(function() {
+                        window.location.href = 'about:blank';
+                    }, 2000);
+                }
+            }, 500);
+        } catch (e) {
+            console.log('Window close failed:', e);
+            document.getElementById('message').innerHTML = 
+                'Please close this tab manually.<br><small>Automatic closing is not available.</small>';
+        }
+    }
+    
+    // Create a new about:blank window and write content to it
+    try {
+        const newWindow = window.open('about:blank', '_blank');
+        
+        if (newWindow) {
+            // Wait a bit longer to ensure the new window is ready
+            setTimeout(function() {
+                try {
+                    newWindow.document.open();
+                    newWindow.document.write(contentToWrite);
+                    newWindow.document.close();
+                    
+                    // Focus the new window
+                    newWindow.focus();
+                    
+                    // Attempt to close this window after new window is ready
+                    setTimeout(attemptClose, 200);
+                    
+                } catch (e) {
+                    console.log('Error writing to new window:', e);
+                    document.getElementById('message').innerHTML = 
+                        'Error creating new window. Please check popup blocker settings.';
+                }
+            }, 150);
+        } else {
+            document.getElementById('message').innerHTML = 
+                'Popup blocked. Please allow popups for this site and try again.';
+        }
+    } catch (e) {
+        console.log('Error opening new window:', e);
+        document.getElementById('message').innerHTML = 
+            'Error opening new window. Please check your browser settings.';
+    }
+</script>
+```
+
 </body>
 </html>
