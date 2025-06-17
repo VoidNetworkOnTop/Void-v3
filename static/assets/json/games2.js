@@ -143,6 +143,11 @@ const games2Data = [
     link: "/local games/square22/www.coolmathgames.com/sites/default/files/public_games/51216/index.html"
 
 },
+{
+    title: "Wheelie Bike", 
+    imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVDHRzh80n6-i5ZpIFzKttxVEmBFQoV05ShUlS6095RiAEL59RhRQ18Io3F7pM45hxPqRQKXP7Hx1-FUNz8RO0JVXCIjIUZ1ZGMHIgT_zCZdqvSgvGLGnGglgR-s3YT51l8NKuWQcBeIU_dlD2Hv987wP4P5a78ybtnBPA?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: "/local games/wheelie-bike-gamedistribution/index.html"
+},
 
 ];
 export { games2Data }; // Named export
