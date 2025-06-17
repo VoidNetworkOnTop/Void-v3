@@ -269,7 +269,7 @@
             <h3>🔐 Admin Login</h3>
             <div class="form-group">
                 <label for="adminEmail">Admin Email:</label>
-                <input type="email" id="adminEmail" placeholder="void.client@yandex.com" value="void.client@yandex.com">
+                <input type="email" id="adminEmail" placeholder="admin" value="admin">
             </div>
             <div class="form-group">
                 <label for="adminPassword">Password:</label>
@@ -374,7 +374,7 @@
     <script type="module">
         // Import Firebase modules
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
-        import { getFirestore, collection, doc, getDoc, getDocs, query, where, limit, runTransaction, updateDoc, setDoc, deleteDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+        import { getFirestore, collection, doc, getDoc, getDocs, query, where, limit, startAfter, runTransaction, updateDoc, setDoc, deleteDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
 
         // Firebase configuration with your actual project settings
@@ -404,7 +404,7 @@
             window.db = db;
             window.auth = auth;
             window.firebaseModules = { 
-                collection, doc, getDoc, getDocs, query, where, limit, 
+                collection, doc, getDoc, getDocs, query, where, limit, startAfter,
                 runTransaction, updateDoc, setDoc, deleteDoc, serverTimestamp,
                 signInWithEmailAndPassword, signOut
             };
@@ -530,7 +530,7 @@
                 throw new Error('Firebase not connected');
             }
 
-            const { collection, doc, getDoc, getDocs, query, where, limit } = window.firebaseModules;
+            const { collection, doc, getDoc, getDocs, query, where, limit, startAfter } = window.firebaseModules;
             const db = window.db;
 
             identifier = identifier.trim();
@@ -547,50 +547,59 @@
                     }
                 }
 
-                // Strategy 2: Email search with multiple approaches
+                // Strategy 2: Email search - COMPREHENSIVE APPROACH
                 if (identifier.includes('@')) {
                     const usersRef = collection(db, 'users');
+                    const searchEmail = identifier.toLowerCase().trim();
                     
-                    // Try exact email match first
-                    logMessage(`Trying exact email match for: ${identifier}`, 'info');
-                    const emailQuery = query(usersRef, where('email', '==', identifier), limit(1));
-                    const querySnapshot = await getDocs(emailQuery);
+                    logMessage(`Starting comprehensive email search for: "${searchEmail}"`, 'info');
                     
-                    if (!querySnapshot.empty) {
-                        const doc = querySnapshot.docs[0];
-                        logMessage('Found user by exact email', 'success');
-                        return { data: doc.data(), id: doc.id, foundBy: 'email' };
-                    }
+                    // Get ALL users (we'll search through them manually)
+                    // This ensures we don't miss anyone due to Firestore query limitations
+                    let allUsers = [];
+                    let lastDoc = null;
+                    let batchCount = 0;
                     
-                    // Try lowercase email match
-                    logMessage(`Trying lowercase email match for: ${identifier.toLowerCase()}`, 'info');
-                    const emailQueryLower = query(usersRef, where('email', '==', identifier.toLowerCase()), limit(1));
-                    const querySnapshotLower = await getDocs(emailQueryLower);
-                    
-                    if (!querySnapshotLower.empty) {
-                        const doc = querySnapshotLower.docs[0];
-                        logMessage('Found user by lowercase email', 'success');
-                        return { data: doc.data(), id: doc.id, foundBy: 'email_lowercase' };
-                    }
-                    
-                    // Fallback: Manual search through users (for debugging)
-                    logMessage('Email query failed, trying manual search...', 'warning');
-                    const allUsersQuery = query(usersRef, limit(100));
-                    const allUsersSnapshot = await getDocs(allUsersQuery);
-                    
-                    for (const doc of allUsersSnapshot.docs) {
-                        const userData = doc.data();
-                        logMessage(`Checking user: ${userData.username || 'no username'}, email: ${userData.email || 'no email'}`, 'info');
+                    // Paginate through ALL users in batches
+                    do {
+                        let currentQuery;
+                        if (lastDoc) {
+                            currentQuery = query(usersRef, startAfter(lastDoc), limit(500));
+                        } else {
+                            currentQuery = query(usersRef, limit(500));
+                        }
                         
-                        if (userData.email) {
-                            if (userData.email.toLowerCase() === identifier.toLowerCase()) {
-                                logMessage('Found user by manual email search', 'success');
-                                return { data: userData, id: doc.id, foundBy: 'email_manual' };
+                        const snapshot = await getDocs(currentQuery);
+                        
+                        if (snapshot.empty) break;
+                        
+                        batchCount++;
+                        logMessage(`Processing batch ${batchCount} with ${snapshot.docs.length} users...`, 'info');
+                        
+                        // Search through this batch
+                        for (const doc of snapshot.docs) {
+                            const userData = doc.data();
+                            const storedEmail = userData.email;
+                            
+                            // Check all possible email matches
+                            if (storedEmail) {
+                                const normalizedStoredEmail = storedEmail.toLowerCase().trim();
+                                
+                                if (normalizedStoredEmail === searchEmail) {
+                                    logMessage(`✓ FOUND USER BY EMAIL in batch ${batchCount}!`, 'success');
+                                    logMessage(`  - Searched for: "${searchEmail}"`, 'info');
+                                    logMessage(`  - Found stored: "${storedEmail}"`, 'info');
+                                    logMessage(`  - Username: "${userData.username || 'N/A'}"`, 'info');
+                                    return { data: userData, id: doc.id, foundBy: 'email_comprehensive' };
+                                }
                             }
                         }
-                    }
+                        
+                        lastDoc = snapshot.docs[snapshot.docs.length - 1];
+                        
+                    } while (lastDoc);
                     
-                    logMessage(`No user found with email: ${identifier}`, 'warning');
+                    logMessage(`Email search complete. Searched through ${batchCount} batches. No match found for: "${searchEmail}"`, 'warning');
                     
                 } else {
                     // Strategy 3: Username search
@@ -604,20 +613,46 @@
                         return { data: doc.data(), id: doc.id, foundBy: 'username' };
                     }
 
-                    // Strategy 4: Case-insensitive fallback (limited scope)
-                    const limitedQuery = query(usersRef, limit(50));
-                    const limitedSnapshot = await getDocs(limitedQuery);
-                    for (const doc of limitedSnapshot.docs) {
-                        const userData = doc.data();
-                        if (userData.username && userData.username.toLowerCase() === identifier.toLowerCase()) {
-                            logMessage('Found user by case-insensitive username', 'success');
-                            return { data: userData, id: doc.id, foundBy: 'username_case_insensitive' };
+                    // Strategy 4: Case-insensitive username search
+                    logMessage('Exact username not found, trying case-insensitive search...', 'info');
+                    
+                    let found = null;
+                    let lastDoc = null;
+                    let batchCount = 0;
+                    
+                    do {
+                        let currentQuery;
+                        if (lastDoc) {
+                            currentQuery = query(usersRef, startAfter(lastDoc), limit(500));
+                        } else {
+                            currentQuery = query(usersRef, limit(500));
                         }
-                    }
+                        
+                        const snapshot = await getDocs(currentQuery);
+                        if (snapshot.empty) break;
+                        
+                        batchCount++;
+                        
+                        for (const doc of snapshot.docs) {
+                            const userData = doc.data();
+                            if (userData.username && userData.username.toLowerCase() === identifier.toLowerCase()) {
+                                logMessage(`Found user by case-insensitive username in batch ${batchCount}`, 'success');
+                                found = { data: userData, id: doc.id, foundBy: 'username_case_insensitive' };
+                                break;
+                            }
+                        }
+                        
+                        if (found) break;
+                        lastDoc = snapshot.docs[snapshot.docs.length - 1];
+                        
+                    } while (lastDoc && !found);
+                    
+                    if (found) return found;
                 }
 
-                logMessage('User not found', 'warning');
+                logMessage('User not found after comprehensive search', 'warning');
                 return null;
+                
             } catch (error) {
                 logMessage('Search error: ' + error.message, 'error');
                 throw error;
