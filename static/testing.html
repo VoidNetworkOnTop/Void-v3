@@ -388,27 +388,6 @@
             appId: "1:1063089929776:web:8e226a23a4f3ab9c5777f5"             // Replace with your real app ID
         };
 
-        // Check if config is still using placeholders
-        if (firebaseConfig.apiKey === "AIzaSyCkAp_GCGCtw4zv7GgHJOE9GPgIaPEuOvQ" || firebaseConfig.appId === "1:1063089929776:web:8e226a23a4f3ab9c5777f5") {
-            console.error("⚠️ FIREBASE CONFIG ERROR: You must replace the placeholder values with your actual Firebase configuration!");
-            document.getElementById('connectionStatus').innerHTML = '❌ Firebase config not set up - check console for instructions';
-            document.getElementById('loginSection').innerHTML = `
-                <div class="card" style="background: rgba(244, 67, 54, 0.1); border-color: #f44336;">
-                    <h3>🚨 Firebase Configuration Required</h3>
-                    <p><strong>You need to replace the placeholder Firebase configuration with your actual project settings.</strong></p>
-                    <ol style="text-align: left; margin: 15px 0;">
-                        <li>Go to <a href="https://console.firebase.google.com/project/void-games-c8d9e/settings/general" target="_blank" style="color: #4ecdc4;">Firebase Console</a></li>
-                        <li>Click "Project Settings" (gear icon)</li>
-                        <li>Scroll down to "Your apps" section</li>
-                        <li>Click on your web app or create one</li>
-                        <li>Copy the config object and replace the placeholder values in the code</li>
-                    </ol>
-                    <p><small>Look for: <code>apiKey</code> and <code>appId</code> in your Firebase config</small></p>
-                </div>
-            `;
-            return; // Stop execution
-        }
-
         // Initialize Firebase
         let app;
         let db;
@@ -417,38 +396,77 @@
         let isAuthenticated = false;
         let currentUser = null;
 
+        // Check if config is still using placeholders
+        function checkFirebaseConfig() {
+            if (firebaseConfig.apiKey === "AIzaSyCkAp_GCGCtw4zv7GgHJOE9GPgIaPEuOvQ" || firebaseConfig.appId === "1:1063089929776:web:8e226a23a4f3ab9c5777f5") {
+                console.error("⚠️ FIREBASE CONFIG ERROR: You must replace the placeholder values with your actual Firebase configuration!");
+                updateConnectionStatus(false, 'Firebase config not set up');
+                
+                const loginSection = document.getElementById('loginSection');
+                loginSection.innerHTML = `
+                    <div style="background: rgba(244, 67, 54, 0.1); border: 1px solid #f44336; border-radius: 15px; padding: 25px;">
+                        <h3>🚨 Firebase Configuration Required</h3>
+                        <p><strong>You need to replace the placeholder Firebase configuration with your actual project settings.</strong></p>
+                        <ol style="text-align: left; margin: 15px 0;">
+                            <li>Go to <a href="https://console.firebase.google.com/project/void-games-c8d9e/settings/general" target="_blank" style="color: #4ecdc4;">Firebase Console</a></li>
+                            <li>Click "Project Settings" (gear icon)</li>
+                            <li>Scroll down to "Your apps" section</li>
+                            <li>Click on your web app or create one</li>
+                            <li>Copy the config object and replace the placeholder values in the code</li>
+                        </ol>
+                        <p><small>Look for: <code>apiKey</code> and <code>appId</code> in your Firebase config</small></p>
+                    </div>
+                `;
+                return false;
+            }
+            return true;
+        }
+
         try {
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-            
-            // Make available globally
-            window.db = db;
-            window.auth = auth;
+            // Make Firebase modules available globally first (even if config is wrong)
             window.firebaseModules = { 
                 collection, doc, getDoc, getDocs, query, where, limit, 
                 runTransaction, updateDoc, setDoc, deleteDoc, serverTimestamp,
                 signInWithEmailAndPassword, signOut
             };
-            
-            // Set up auth state listener
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    currentUser = user;
-                    isAuthenticated = true;
-                    window.isAuthenticated = true;
-                    window.currentUser = user;
-                    updateAuthStatus(true, user);
-                    testInitialConnection();
-                } else {
-                    currentUser = null;
-                    isAuthenticated = false;
-                    window.isAuthenticated = false;
-                    window.currentUser = null;
-                    updateAuthStatus(false, null);
-                    updateConnectionStatus(false, 'Not authenticated');
-                }
-            });
+
+            // Check config before initializing
+            if (!checkFirebaseConfig()) {
+                // Config is invalid, but we still set up basic structure
+                window.db = null;
+                window.auth = null;
+                window.isConnected = false;
+                window.isAuthenticated = false;
+                window.currentUser = null;
+            } else {
+                // Config is valid, proceed with initialization
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Make available globally
+                window.db = db;
+                window.auth = auth;
+                
+                // Set up auth state listener
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUser = user;
+                        isAuthenticated = true;
+                        window.isAuthenticated = true;
+                        window.currentUser = user;
+                        updateAuthStatus(true, user);
+                        testInitialConnection();
+                    } else {
+                        currentUser = null;
+                        isAuthenticated = false;
+                        window.isAuthenticated = false;
+                        window.currentUser = null;
+                        updateAuthStatus(false, null);
+                        updateConnectionStatus(false, 'Not authenticated');
+                    }
+                });
+            }
             
         } catch (error) {
             console.error('Failed to initialize Firebase:', error);
@@ -619,6 +637,12 @@
             
             if (!email || !password) {
                 resultEl.innerHTML = '<div class="result-area">❌ Please enter email and password</div>';
+                return;
+            }
+
+            // Check if Firebase is properly configured
+            if (!window.auth) {
+                resultEl.innerHTML = '<div class="result-area">❌ Firebase not configured properly</div>';
                 return;
             }
 
