@@ -157,6 +157,15 @@ const games2Data = [
     link: "/local games/core-ball-web/index.html"
 
 },
+{
+
+    title: "Papa's Pizzeria", 
+
+    imgSrc: "https://lh7-us.googleusercontent.com/xlAFdWg3NsJ2FnvB2HLNRhdMJayauFsKICNWfBKCv6OFymWJOgaxz8xG25d0BpRmmjNivG7AH__vC9QMM1bxSx3XBVAeLnT_GR6i3l6rUmO6v1fUBUsKZVsFmYlsv3DM-IggICm_m9cxoYKzjo3-y1Lhei1Wqg",
+
+    "/local games/papas-pizzeria-main/index.html"
+
+},
 
 ];
 export { games2Data }; // Named export
