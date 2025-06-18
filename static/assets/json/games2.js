@@ -184,6 +184,15 @@ const games2Data = [
     link: "/local games/house-of-hazards-main/index.html"
 
 },
+{
+
+    title: "Speed Stars", 
+
+    imgSrc: "https://lh7-us.googleusercontent.com/ud4mZPl0dGjWzNuTc-rEY-lKLyqoln5Tfdo9bnk9bHYR-X0WdrD_teYV6RfG2ZAEEUgTuFVQ5_Q7xTpgyBScUxuQFbX2AVjV9VdKYgWC5h06t4uHkmv7Eu7ozqDOYmlpKeln4F75Px53YOWcPqh2A5t2V2QoQek3GjBYaxsDfgEawsFvmRvtqh56m5BJvX1UlRDC0EFy?key=yj4V8pHW144VjA9YlEbf1Q",
+
+    link: "/local games/speedstar/index.html"
+
+}, 
 
 ];
 export { games2Data }; // Named export
