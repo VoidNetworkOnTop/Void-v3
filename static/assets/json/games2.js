@@ -166,6 +166,15 @@ const games2Data = [
     "/local games/papas-pizzeria-main/index.html"
 
 },
+{
+
+    title: "Crazy Cattle 3D", 
+
+    imgSrc: "https://lh7-us.googleusercontent.com/A2kcwkSl4mGLLMtOm6YiuSrgezQ0KxKi9k92Ju_4z8IEvQHeXYtW6KamntKutGZJES4Fa1vUH2itvpptMC4MrOywXKHkm6aFNYnX-XWo5z2V9C7OzFEjdhZlwHX8Uwca8SmG4ceF82e3Al0QyBHqwWw5UqAjhyAPf_Wl75-dkZ7_tv8hjoI7PpPHWaIVtA146y_Y0iRs?key=yj4V8pHW144VjA9YlEbf1Q",
+
+    link: "/local games/https___yujiandemo.com/yujiandemo.com/index.html"
+
+}, 
 
 ];
 export { games2Data }; // Named export
