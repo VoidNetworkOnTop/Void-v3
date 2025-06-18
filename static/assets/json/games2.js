@@ -175,6 +175,15 @@ const games2Data = [
     link: "/local games/https___yujiandemo.com/yujiandemo.com/index.html"
 
 }, 
+{
+
+    title: "House of Hazards", 
+
+    imgSrc: "https://lh7-us.googleusercontent.com/6fQmRC7Le6oqmBNIPFBW5QKyRvKE4qubVXlPU1s1lhM3vR32I75hUcCwSs32NpHdHq4YafutCj2KXAXGluJLzPgzdD1Adbsz8-UF27_ymBCMgLwuSQWI6q-0ETJL28B_KaEbsKeoLdQZ6h-akidcb2GSv09xgw",
+
+    link: "/local games/house-of-hazards-main/index.html"
+
+},
 
 ];
 export { games2Data }; // Named export
