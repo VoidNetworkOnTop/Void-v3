@@ -211,7 +211,15 @@ const games2Data = [
     link: "/local games/soccer-legends-main/index.html"
 
 }, 
+{
 
+    title: "Ragdoll Hit", 
+
+    imgSrc: "https://lh7-us.googleusercontent.com/fMYsrt3Lp6FlRyA8pbx7xwJjLXmDXn34b-OAhBulIDVrrdqV8d3WADtoGJABgu9iTv_dTWZNICKUw_uzGyvJjOoQfu4FVmi6sMkHeP58PpraePdNwXRyNnCP6L_gwWD7UQO1TvCKR-5Z5MvZ_39RmIfgJClczi7rBkaMJk68FnUX4tXBN9_wBOJXvHasRcjv2I0-",
+
+    link: "/local games/ragdoll-hit-poki/index.html"
+
+},
 
 ];
 export { games2Data }; // Named export
