@@ -262,6 +262,15 @@ const games2Data = [
     link: "/local games/tanuki-sunset-main/index.html"
 
 },
+{
+
+    title: "Gun Spin", 
+
+    imgSrc: "/img/gameimg/gunspin.png",
+
+    link: "/local games/gun-spin/index.html"
+
+},
 
 
 ];
