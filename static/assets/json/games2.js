@@ -234,7 +234,11 @@ const games2Data = [
     link: "/local games/a-dance-of-fire-and-ice/index.html"
 
 },
-
+{
+    title: "A Small World Cup", 
+    imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVAIaO3RG2si5yf7K9Rwm5m-YmIotES4L9NCAocMB9F4p1DyhRQCCvhZdVbDgF6ZtV2NKsgRs0ANUlUtSxrPKOo1vQRpwFxbHYMCELtTqWH1bbQwBjhQOPn44vZ0VsMU4H5OjQ6CaWfLrfF0bsz-QRqPtVn4TCuv0Un3mA?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: "/local games/a-small-world-cup-freezenova/index.html"
+},
 
 ];
 export { games2Data }; // Named export
