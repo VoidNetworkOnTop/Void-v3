@@ -239,6 +239,11 @@ const games2Data = [
     imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVAIaO3RG2si5yf7K9Rwm5m-YmIotES4L9NCAocMB9F4p1DyhRQCCvhZdVbDgF6ZtV2NKsgRs0ANUlUtSxrPKOo1vQRpwFxbHYMCELtTqWH1bbQwBjhQOPn44vZ0VsMU4H5OjQ6CaWfLrfF0bsz-QRqPtVn4TCuv0Un3mA?key=yj4V8pHW144VjA9YlEbf1Q",
     link: "/local games/a-small-world-cup-freezenova/index.html"
 },
+{
+    title: "8 Ball Pool", 
+    imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVBlleTS1GJYv-KCGXIRWlwuXFkTHsZQ6aXPSoBfc0TjEgQGNjnuNc6gDueGlS-5KBbA5RS32S8jPMEm0fr95gPlK-6pJudpzt29inkLDoOblWar8AUGJnpWvx87baUtiYmwKXXFxWQ4l3k2Cq-iikfG3jTJvBRpffdx8g?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: "/local games/8-ball-pool-yyggames/index.html"
+},
 
 ];
 export { games2Data }; // Named export
