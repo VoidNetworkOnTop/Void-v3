@@ -244,6 +244,16 @@ const games2Data = [
     imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVBlleTS1GJYv-KCGXIRWlwuXFkTHsZQ6aXPSoBfc0TjEgQGNjnuNc6gDueGlS-5KBbA5RS32S8jPMEm0fr95gPlK-6pJudpzt29inkLDoOblWar8AUGJnpWvx87baUtiYmwKXXFxWQ4l3k2Cq-iikfG3jTJvBRpffdx8g?key=yj4V8pHW144VjA9YlEbf1Q",
     link: "/local games/8-ball-pool-yyggames/index.html"
 },
+{
+
+    title: "Head Soccer", 
+
+    imgSrc: "https://play-lh.googleusercontent.com/yVRLyqu3y5wKs5WKcaeeKbTZygK-rCp6SDScAyTX4XqvJlNSi4WZzbDZf2a_zR-47g",
+
+    link: "/local games/head-soccer-2023-main/index.html"
+
+},
+
 
 ];
 export { games2Data }; // Named export
