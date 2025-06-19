@@ -202,6 +202,16 @@ const games2Data = [
     link: "/local games/basketball-legends-main/index.html"
 
 }, 
+{
+
+    title: "Soccer Legends", 
+
+    imgSrc: "https://lh7-us.googleusercontent.com/BOFW1ZerubL2OaBLXFFS-Ns2OWRr_yO1gGqCJPSckN5jnlpKxChw-fbKiHrJ4iIQMVbJRwxARPvqzR8OukN6KmFQfaOkV1rZlLY3ghMmZKuKmeLsBi2rdfYmY3u_0oXSOqpffNAgrs-7RUYjtK8ecj6YR1zEDiXK-hYOkFUKnySdslg2l1I74Sngv5j3D1Au9fLmymBe?key=yj4V8pHW144VjA9YlEbf1Q",
+
+    link: "/local games/soccer-legends-main/index.html"
+
+}, 
+
 
 ];
 export { games2Data }; // Named export
