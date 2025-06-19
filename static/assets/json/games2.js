@@ -225,6 +225,16 @@ const games2Data = [
     imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVDPM-mu7l0vROyVRjK2hmfH-NDVGtLwAgfwVr2bPFYzmIqtb5kxlxF1qmVL5PvjTksq9lOAuWy47LbJ8z0jszxCgslskD3Sk8WjY38tcKEhyBEapRHE3zkaTcbb4OdnPQelHFIPcYQaIAibKXGlOfmi52cMMZ6GcGNCuw?key=yj4V8pHW144VjA9YlEbf1Q",
     link: "/local games/2-minute-football/index.html"
 },
+{
+
+    title: "A Dance Of Fire And Ice", 
+
+    imgSrc: "https://lh7-us.googleusercontent.com/OnLUO5_5ONgtJrsEW_iPLtX86ILb9O-M-4s1Ae7zALw25b0gucoF7xraNHojCKzmOpXTNIp0cuGsQkB1jJ9pbQWRx9JMgEmwpQZ7E8RDNSoyLzaUE6r-6vOJKouFUzzFxp_CZHHBmRguZr6JB5bZmbL1HDrhoA",
+
+    link: "/local games/a-dance-of-fire-and-ice/index.html"
+
+},
+
 
 ];
 export { games2Data }; // Named export
