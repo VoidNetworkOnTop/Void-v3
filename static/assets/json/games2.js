@@ -271,6 +271,15 @@ const games2Data = [
     link: "/local games/gun-spin/index.html"
 
 },
+{
+
+    title: "Papery Planes", 
+
+    imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVAu0RuoTt5BJ_GjxyG7t8NNZjdFnDOnvm8tfDpsZn-5N8BChXRhvLPl-0-NLziDqufB-sLNh6WUg2gN0bQKa0yFbKQJTPcqVh96u997lLnWuQYDQrfQXq7mWJau5-VpM77Nwa8O1eS8wPAHS1jSX3Sz9zIGdeajXGZ6mA?key=yj4V8pHW144VjA9YlEbf1Q",
+
+    link: "/local games/papery-planes/index.html"
+
+},
 
 
 ];
