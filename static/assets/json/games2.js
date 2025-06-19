@@ -253,6 +253,15 @@ const games2Data = [
     link: "/local games/head-soccer-2023-main/index.html"
 
 },
+{
+
+    title: "Tanuki Sunset", 
+
+    imgSrc: "/img/gameimg/tanukisunset.png",
+
+    link: "/local games/tanuki-sunset-main/index.html"
+
+},
 
 
 ];
