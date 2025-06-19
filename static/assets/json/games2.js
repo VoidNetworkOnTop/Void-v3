@@ -220,6 +220,11 @@ const games2Data = [
     link: "/local games/ragdoll-hit-poki/index.html"
 
 },
+{
+    title: "2 Minute Football", 
+    imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVDPM-mu7l0vROyVRjK2hmfH-NDVGtLwAgfwVr2bPFYzmIqtb5kxlxF1qmVL5PvjTksq9lOAuWy47LbJ8z0jszxCgslskD3Sk8WjY38tcKEhyBEapRHE3zkaTcbb4OdnPQelHFIPcYQaIAibKXGlOfmi52cMMZ6GcGNCuw?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: "/local games/2-minute-football/index.html"
+},
 
 ];
 export { games2Data }; // Named export
