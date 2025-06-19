@@ -193,6 +193,15 @@ const games2Data = [
     link: "/local games/speedstar/index.html"
 
 }, 
+{
+
+    title: "Basketball Legends", 
+
+    imgSrc: "https://lh7-us.googleusercontent.com/0nwyFoEcn-ISiCZwdyIdyVVRuVYIVgoqXEbMGtyx2pYQwIoyv-EMYmeVtz1_UZHY5t8YSO-e09wE9WYTymvkqTixPqjHepJgXExnhc_4SBOATtY_b7onEebJMTXG2CSE6FpJeCi6UK9KuQ51XUwgNxG4qTxFZ5j-nQ9BiaZxVCydE1M28x4IHOfHQ4dm2uEzj2g_qbyu?key=yj4V8pHW144VjA9YlEbf1Q",
+
+    link: "/local games/basketball-legends-main/index.html"
+
+}, 
 
 ];
 export { games2Data }; // Named export
