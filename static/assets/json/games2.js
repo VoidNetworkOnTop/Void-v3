@@ -285,6 +285,11 @@ const games2Data = [
     imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVACcca3js0BWVDYPVb5HN7dl8nFi7ZsuE-Peeyor0VmrcgSN_iayJmCAj81YwnZK3dIAZsTUe_HEMzd6J5q9gxyrWCrX7CNqtgtwByQuCWk1Bkt6mXm0PpEaK4z2wgyp7oPBZ6DW60K9YeccLq9q0QBtpCkl3-8rfoxoA?key=yj4V8pHW144VjA9YlEbf1Q",
     link: "/local games/aquapark-io/index.html"
 },
+{
+    title: "Apple Shooter", 
+    imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVCsqU4fwyDtFpqsw1CLI5hoeThJ5HyLMkLc4kE0RZCS7mvkAP__BeaEMdP2I6Wdjpoi-8BewN3hug5lpABfbKaNflOGlovQWcorJcXTQa6oERfhB697SXYkgHw94lY8FI5OEAF_pP3efbmaSBkVkKkUSmSDK_WIwxhxvQ?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: "/local games/apple-shooter/index.html"
+},
 
 
 ];
