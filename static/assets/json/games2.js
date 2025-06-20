@@ -291,6 +291,5 @@ const games2Data = [
     link: "/local games/apple-shooter/index.html"
 },
 
-
 ];
 export { games2Data }; // Named export
