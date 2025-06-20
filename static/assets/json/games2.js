@@ -290,6 +290,11 @@ const games2Data = [
     imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVCsqU4fwyDtFpqsw1CLI5hoeThJ5HyLMkLc4kE0RZCS7mvkAP__BeaEMdP2I6Wdjpoi-8BewN3hug5lpABfbKaNflOGlovQWcorJcXTQa6oERfhB697SXYkgHw94lY8FI5OEAF_pP3efbmaSBkVkKkUSmSDK_WIwxhxvQ?key=yj4V8pHW144VjA9YlEbf1Q",
     link: "/local games/apple-shooter/index.html"
 },
+{
+    title: "Italian Brainrot", 
+    imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVBnbUkKWuWutWTF4vSkAah7BI60Ganfn7mqXhRapqJDlibvtv6dt3wK0s2k13BjQdmo6z_JMW3l6uk-CgNl6JG_H_83BQeg3ufnOzNvm9JZo4Bru6ExcuGMj96HKGZD6qe9HrsMuz7uyvCyqbS9QSbCv4R-64UTardFBQ?key=yj4V8pHW144VjA9YlEbf1Q",
+    link: "/local games/italian Brainrot/g.igroutka.ru/games/8/zPWB0Z3MWEWki3/files/games/h1/italian-brainrot-obby-parkour-v01i/index.html"
+},
 
 ];
 export { games2Data }; // Named export
