@@ -295,6 +295,11 @@ const games2Data = [
     imgSrc: "https://lh7-rt.googleusercontent.com/formsz/AN7BsVBnbUkKWuWutWTF4vSkAah7BI60Ganfn7mqXhRapqJDlibvtv6dt3wK0s2k13BjQdmo6z_JMW3l6uk-CgNl6JG_H_83BQeg3ufnOzNvm9JZo4Bru6ExcuGMj96HKGZD6qe9HrsMuz7uyvCyqbS9QSbCv4R-64UTardFBQ?key=yj4V8pHW144VjA9YlEbf1Q",
     link: "/local games/italian Brainrot/g.igroutka.ru/games/8/zPWB0Z3MWEWki3/files/games/h1/italian-brainrot-obby-parkour-v01i/index.html"
 },
+{
+    title: "Real Flight Sim", 
+    imgSrc: "https://lh7-us.googleusercontent.com/UIiQ-6cWcHvKszc2Cjf66S4VhUgRjnA8nBcd717nC1E02Jx0cUhcnpBfk3CQilbg8WWGOdcl0dJsfYiDKEbXMbpLKZMH0rTlwSwG8rw-qwaLeUEeVXzy2cizsbIqQ0uxjXAwuTOOJ3VSbCUvNyBvtYcfSNO2Tg",
+    link: __uv$config.prefix + __uv$config.encodeUrl("https://www.onlinegames.io/games/2023/unity/real-flight-simulator/index.html")
+},
 
 ];
 export { games2Data }; // Named export
