@@ -379,6 +379,53 @@ app.use((req, res, next) => {
 // ==== HTML ROUTES WITH CACHE BUSTING ====
 // All routes that serve HTML files
 
+app.get("/ga", function (req, res) {
+  res.sendFile(path.join(dirname, "static/games.html"));
+});
+
+app.get("/rga", function(req, res) {
+  res.sendFile(path.join(dirname, "static/rga.html"));
+});
+
+app.get("/learn", function (req, res) {
+  res.sendFile(path.join(dirname, "static/proxy.html"));
+});
+
+app.get("/app", function (req, res) {
+  res.sendFile(path.join(dirname, "static/apps.html"));
+});
+
+app.get('/scramjet/game', (req, res) => {
+  res.sendFile(path.join(__dirname, 'static/scramjet-handler.html'));
+});
+
+app.get("/test-proxy", function (req, res) {
+  res.sendFile(path.join(dirname, "static/scramjet-test.html"));
+});
+
+app.get("/credits", function (req, res) {
+  res.sendFile(path.join(dirname, "static/credits.html"));
+});
+
+app.get("/voidurls", function (req, res) {
+  res.sendFile(path.join(dirname, "static/voidurls.html"));
+});
+
+app.get("/settings", function (req, res) {
+  res.sendFile(path.join(dirname, "static/settings.html"));
+});
+
+app.get("/chat", function (req, res) {
+  res.sendFile(path.join(dirname, "static/chat.html"));
+});
+
+app.get("/voidgpt", function (req, res) {
+  res.sendFile(path.join(dirname, "static/voidgpt.html"));
+});
+
+app.get("/voidvc", function (req, res) {
+  res.sendFile(path.join(dirname, "static/void-vc.html"));
+});
 
 // Main index page route - special handling for the homepage
 app.get("/", function(req, res) {
