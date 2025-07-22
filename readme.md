@@ -1,16 +1,13 @@
-# Versioning rules:
-    Unstable -> add a letter (example - v3.1.1 -> v3.1.1a)    
-    Stable -> Incriment one (example - v3.1.1 -> v3.1.2)    
-    Minor update -> Incriment one (example - v3.4.6 -> v3.5)    
-    Major update -> Incriment one (example - v3.4.2 -> v4.0)    
-    
-# Run 
-    node index.js
+# Void Network V5 is officially out!
 
-# TODO 
-    1. Fix css
-    2. Add more games 
-    3. Make proxy not shit itself (fits under fix css)
-    4. Uv 3 & rammerhead
-    5. Adblock (for proxy) 
-    6. Adblock (paid & for site)
+# Huge thanks to everyone who's supported us from V3 up to now — I really appreciate all of you. Special shoutout to the PRO users and everyone who helps out daily, whether it's big or small.
+
+**Some Awesome People**
+@beanbosssssssssiwq2534_ 
+@proxy.ip 
+@zshark216 – check out his site: https://boredomarcade.xyz and his Discord: https://discord.gg/Fm8JTbyftC
+@sovietrussia_1 – easily one of the best Void Network PRO users
+
+And with that, Void V3 has officially reached the end.  :sob: :skull: :saluting_face: 
+
+all of the urls will be updated shortly. to check it out you can use this.
